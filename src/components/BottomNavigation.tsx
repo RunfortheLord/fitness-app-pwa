@@ -1,0 +1,32 @@
+import { Dumbbell, History, Home, Plus, Utensils } from 'lucide-react'
+import { NavLink } from 'react-router-dom'
+
+export function BottomNavigation() {
+  return (
+    <nav className="bottom-nav" aria-label="Primary">
+      <NavLink to="/" end className="bottom-nav-link">
+        <Home aria-hidden="true" size={20} />
+        <span>Home</span>
+      </NavLink>
+      <NavLink to="/nutrition" className="bottom-nav-link">
+        <Utensils aria-hidden="true" size={20} />
+        <span>Nutrition</span>
+      </NavLink>
+      <button
+        className="bottom-nav-add"
+        type="button"
+        aria-label="Open quick actions"
+      >
+        <Plus aria-hidden="true" size={28} />
+      </button>
+      <NavLink to="/training" className="bottom-nav-link">
+        <Dumbbell aria-hidden="true" size={20} />
+        <span>Training</span>
+      </NavLink>
+      <NavLink to="/history" className="bottom-nav-link">
+        <History aria-hidden="true" size={20} />
+        <span>History</span>
+      </NavLink>
+    </nav>
+  )
+}

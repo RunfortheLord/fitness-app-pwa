@@ -1,0 +1,74 @@
+import path from 'node:path'
+
+import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
+import { defineConfig } from 'vitest/config'
+
+export default defineConfig({
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'prompt',
+      includeAssets: [
+        'apple-touch-icon.png',
+        'icons/icon-192.png',
+        'icons/icon-512.png',
+      ],
+      manifest: {
+        name: 'Training Log',
+        short_name: 'Training Log',
+        description: 'A local-first fitness training log.',
+        theme_color: '#101112',
+        background_color: '#101112',
+        display: 'standalone',
+        start_url: '/',
+        scope: '/',
+        icons: [
+          {
+            src: '/icons/icon-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any maskable',
+          },
+          {
+            src: '/icons/icon-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any maskable',
+          },
+        ],
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+        navigateFallbackDenylist: [/^\/api\//],
+      },
+    }),
+  ],
+  resolve: {
+    alias: {
+      '@app': path.resolve(__dirname, 'src/app'),
+      '@components': path.resolve(__dirname, 'src/components'),
+      '@db': path.resolve(__dirname, 'src/db'),
+      '@domain': path.resolve(__dirname, 'src/domain'),
+      '@features': path.resolve(__dirname, 'src/features'),
+      '@hooks': path.resolve(__dirname, 'src/hooks'),
+      '@pages': path.resolve(__dirname, 'src/pages'),
+      '@repositories': path.resolve(__dirname, 'src/repositories'),
+      '@services': path.resolve(__dirname, 'src/services'),
+      '@styles': path.resolve(__dirname, 'src/styles'),
+      '@test': path.resolve(__dirname, 'src/test'),
+      '@shared-types': path.resolve(__dirname, 'src/types'),
+    },
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
+    setupFiles: ['./src/test/setup.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html'],
+    },
+  },
+})
