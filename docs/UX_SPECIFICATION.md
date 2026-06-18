@@ -1,0 +1,238 @@
+# UX Specification
+
+## Design Direction
+
+- Use a dark, card-based interface informed by `docs/VIDEO_UI_ANALYSIS.md`.
+- Adapt layout density, bottom sheets, fixed navigation, date controls, compact cards, and live workout ergonomics.
+- Do not copy logos, brand names, proprietary illustrations, copyrighted artwork, or exact icon assets from the reference recording.
+- First release should feel utilitarian and quick to use, not like a marketing site.
+
+## Global Layout
+
+- Mobile-first and portrait-first.
+- No horizontal scrolling in primary screens.
+- Use `env(safe-area-inset-top)` and `env(safe-area-inset-bottom)` for iPhone chrome, Dynamic Island, and home indicator.
+- Fixed bottom navigation contains Home, Nutrition, Add, Training, and History.
+- The center Add button is visually prominent, circular, and raised above the tab bar.
+- Main content scrolls behind fixed header and nav only when padding prevents occlusion.
+- Header contains current screen title plus Settings access or contextual secondary action.
+
+## Visual System
+
+- Background: near black.
+- Card surfaces: dark charcoal with subtle elevation or border.
+- Raised sheets: slightly lighter charcoal with top radius and grab handle.
+- Inputs: muted charcoal fill with clear focus state.
+- Primary action: high-contrast light button with dark text.
+- Secondary action: muted filled or outlined button.
+- Destructive action: red accent.
+- Selected state: restrained accent such as purple or blue.
+- Minimum touch target: 44 by 44 CSS pixels.
+- Typography hierarchy:
+  - Screen title: compact semibold.
+  - Section title: bold and scannable.
+  - Card title: semibold.
+  - Metadata: muted and smaller.
+  - Numeric totals: larger than labels but not decorative.
+
+## Home Screen
+
+### Cards and Controls
+
+- Header: selected date, previous-day button, next-day button, return-to-today action, Settings access.
+- Nutrition summary card:
+  - calories consumed
+  - calorie target
+  - calories remaining
+  - protein consumed/target
+  - carbohydrates consumed/target
+  - fat consumed/target
+- Bodyweight card:
+  - selected date value or empty state
+  - quick entry action
+- Training card:
+  - current active program
+  - selected workout-day entry point
+  - start workout action
+  - resume workout action when an active workout exists
+- Recent workout card:
+  - most recent completed workout
+  - date, duration, and concise exercise/set summary
+- Recent activity card:
+  - compact timeline of food logs, bodyweight entries, and completed workouts.
+
+### Empty States
+
+- No nutrition target: prompt to set targets in Settings.
+- No foods logged: show Log Food quick action.
+- No bodyweight: show Add Bodyweight action.
+- No active program: show Create Program and Activate Program actions.
+- No workout history: show Start Workout after program setup or Empty Workout if supported later.
+
+## Nutrition Screen
+
+### Primary Layout
+
+- Date selector at top.
+- Daily total card with calories and macros.
+- Search input for foods.
+- Recent foods list.
+- Logged foods grouped for the selected date.
+- Create Food action reachable from header, empty state, and Add sheet.
+
+### Food Rows
+
+- Food name.
+- Serving definition.
+- Calories and macro line.
+- Row-level add button for reusable foods.
+- Logged rows show multiplier, computed totals, edit action, and delete action.
+
+### Create/Edit Food Form
+
+- Fields: name, serving quantity, serving unit or description, calories, protein, carbohydrates, fat, notes.
+- Required fields are marked without excessive copy.
+- Numeric fields reject invalid, blank, negative, or nonnumeric values.
+- Save remains disabled until required fields are valid.
+- Editing a reusable food does not rewrite historical log snapshots.
+
+### Log Food Sheet
+
+- Shows selected food and serving definition.
+- Multiplier input supports decimal values.
+- Preview displays computed calories and macros.
+- Save logs the snapshot to the selected date.
+
+## Training Screen
+
+### Primary Layout
+
+- Active program card.
+- Program library cards.
+- Exercise library entry point.
+- Create Program and Create Exercise actions.
+- Resume active workout banner when applicable.
+
+### Exercise Library
+
+- Searchable list of active exercises.
+- Filter by tracking preset where practical.
+- Archived exercises are hidden by default but reachable through a filter.
+- Exercise detail shows notes, default rest time, tracking method, created/updated timestamps, and archive status.
+
+### Create/Edit Exercise
+
+- Required name.
+- Optional notes.
+- Default rest time in seconds.
+- Tracking preset selector.
+- Archive action when referenced by history or programs.
+- Hard delete only when no references exist, with confirmation.
+
+## Program Template Screens
+
+### Program Library
+
+- Compact cards with program name, workout-day count, active status when applicable, and overflow actions.
+- Template detail contains ordered workout days.
+- No weekday schedule is shown or implied.
+
+### Program Builder
+
+- Program name and notes.
+- Ordered workout day cards.
+- Add Day action.
+- Workout day editor with name, notes, and ordered prescribed exercises.
+- Prescribed exercise card shows exercise name, target sets, optional reps/range, optional RIR, optional rest override, and notes.
+- Exercise options bottom sheet includes edit prescription, replace, move, duplicate, remove, and notes.
+
+### Activation
+
+- Activate Program action explains that an independent active cycle will be created.
+- If another active cycle exists, confirmation explains replacement or archiving behavior according to implementation decision.
+
+## Active Workout Screen
+
+### Header
+
+- Workout name.
+- Elapsed duration.
+- Finish action.
+- Cancel action behind confirmation.
+- Workout notes action.
+
+### Exercise Cards
+
+- Exercise name.
+- Source prescription summary.
+- Previous performance.
+- Exercise-level notes.
+- Skip exercise action.
+- Replace exercise action.
+- Add set action.
+- Delete set action.
+- Reorder exercise action where practical.
+
+### Set Rows
+
+- Weight + reps: set number, previous, weight, reps, RIR, complete.
+- Bodyweight + reps: set number, previous, reps, RIR, complete.
+- Assisted weight + reps: set number, previous, assistance weight, reps, RIR, complete.
+- Reps only: set number, previous, reps, RIR, complete.
+- Duration: set number, previous, duration, RIR if applicable, complete.
+- Distance + duration: set number, previous, distance, duration, RIR if applicable, complete.
+
+### Rest Timer
+
+- Appears after completing a set when rest is configured.
+- Shows remaining time calculated from start timestamp and duration.
+- Controls: pause, skip, extend, dismiss.
+- On resume from background, recalculates remaining time instead of trusting an interval count.
+
+## Completion and Change Review
+
+- Finish Workout saves the historical workout first.
+- If structural changes are detected, show a compact checklist.
+- Each item has a destination selector: active cycle only, template only, both, neither.
+- User can finish without applying any changes.
+- Failed apply operation shows an error and leaves saved workout intact.
+
+## History Screen
+
+- Date-sorted list of completed workouts.
+- Search/filter can be deferred unless needed for usability.
+- Workout detail shows local date, source program/day, start and completion times, duration, exercises, sets, notes, skipped exercises, and change review results.
+- Editing is limited to notes and recorded performance values.
+- Delete requires confirmation.
+
+## Settings Screen
+
+- Nutrition targets.
+- Backup export.
+- CSV export.
+- Restore backup.
+- Clear all data.
+- App version and update status.
+- Data schema version.
+
+## Bottom Sheets
+
+- Used for quick actions, log food, bodyweight entry, exercise options, set edit actions, rest timer controls, detected-change destination selection, and destructive confirmations.
+- Include grab handle, close control, title, and safe-area bottom padding.
+- Avoid nested sheets deeper than one level unless replacing the current sheet.
+
+## Validation States
+
+- Required text fields show inline error after blur or submit.
+- Numeric fields show unit, accepted range, and clear error message.
+- Duplicate food, exercise, or program names may be allowed but should warn if confusing.
+- Save buttons are disabled when required data is missing.
+- Destructive actions require explicit confirmation.
+
+## Error States
+
+- IndexedDB unavailable: show blocking local storage error and explain that the app cannot safely store data.
+- Backup validation failed: show a concise reason and do not modify data.
+- Restore transaction failed: show failure and confirm current data was preserved.
+- Service worker update failed: continue using current version and allow retry.
+- Active workout persistence failed: keep user on screen and retry; do not claim a set was saved if it was not.
