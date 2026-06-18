@@ -20,12 +20,12 @@ describe('App', () => {
 
     render(<RouterProvider router={router} />)
 
-    expect(
-      screen.getByRole('heading', { name: 'Training Log' }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Home' })).toBeInTheDocument()
     expect(
       screen.getByRole('navigation', { name: 'Primary' }),
     ).toBeInTheDocument()
-    expect(await screen.findByText(/Database schema/)).toBeInTheDocument()
+    expect(
+      await screen.findByText('Loading local metadata'),
+    ).toBeInTheDocument()
   })
 })

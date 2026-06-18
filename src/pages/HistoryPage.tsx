@@ -1,11 +1,24 @@
-import { DashboardCard } from '@components/DashboardCard'
+import {
+  Card,
+  EmptyState,
+  PageContainer,
+  SecondaryButton,
+  SectionHeader,
+} from '@components/ui'
 
 export function HistoryPage() {
   return (
-    <div className="page-stack">
-      <DashboardCard title="History">
-        <p className="muted">Completed workout history will live here.</p>
-      </DashboardCard>
-    </div>
+    <PageContainer>
+      <SectionHeader title="Completed workouts" />
+      <Card>
+        <EmptyState
+          title="No workout history"
+          message="Completed workout snapshots will appear here after live logging exists."
+          action={
+            <SecondaryButton type="button">Review placeholder</SecondaryButton>
+          }
+        />
+      </Card>
+    </PageContainer>
   )
 }

@@ -1,7 +1,11 @@
 import { Dumbbell, History, Home, Plus, Utensils } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
-export function BottomNavigation() {
+type BottomNavigationProps = {
+  onAdd: () => void
+}
+
+export function BottomNavigation({ onAdd }: BottomNavigationProps) {
   return (
     <nav className="bottom-nav" aria-label="Primary">
       <NavLink to="/" end className="bottom-nav-link">
@@ -16,6 +20,7 @@ export function BottomNavigation() {
         className="bottom-nav-add"
         type="button"
         aria-label="Open quick actions"
+        onClick={onAdd}
       >
         <Plus aria-hidden="true" size={28} />
       </button>
