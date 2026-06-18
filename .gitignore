@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+.env
+.env.*
+reference/*.mp4
+reference/*.MP4
+reference/frames/
+reference/contact-sheets/
+*.log
+.DS_Store
+Thumbs.db
