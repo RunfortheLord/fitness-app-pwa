@@ -54,13 +54,13 @@ describe('HomePage', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Add bodyweight' }),
     )
-    await user.type(bodyweightInput(), '188.4')
+    await user.type(await bodyweightInput(), '188.4')
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(await screen.findAllByText('188.4 lb')).not.toHaveLength(0)
 
     await user.click(screen.getByRole('button', { name: 'Edit bodyweight' }))
-    const input = bodyweightInput()
+    const input = await bodyweightInput()
     await waitFor(() => expect(input).toHaveValue('188.4'))
     await user.clear(input)
     await user.type(input, '189.2')
@@ -93,7 +93,7 @@ describe('HomePage', () => {
     await user.click(screen.getByRole('button', { name: /Log bodyweight/ }))
 
     expect(
-      screen.getByRole('dialog', { name: 'Log bodyweight' }),
+      await screen.findByRole('dialog', { name: 'Log bodyweight' }),
     ).toBeInTheDocument()
   })
 
@@ -104,7 +104,7 @@ describe('HomePage', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Add bodyweight' }),
     )
-    await user.type(bodyweightInput(), '188')
+    await user.type(await bodyweightInput(), '188')
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(await screen.findAllByText('188 lb')).not.toHaveLength(0)
@@ -119,8 +119,8 @@ describe('HomePage', () => {
   })
 })
 
-function bodyweightInput() {
+async function bodyweightInput() {
   return within(
-    screen.getByRole('dialog', { name: 'Log bodyweight' }),
-  ).getByRole('textbox', { name: 'Bodyweight' })
+    await screen.findByRole('dialog', { name: 'Log bodyweight' }),
+  ).findByRole('textbox', { name: 'Bodyweight' })
 }
