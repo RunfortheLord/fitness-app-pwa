@@ -9,7 +9,14 @@ export type SaveBodyweightInput = {
   notes?: string
 }
 
-export function createBodyweightRepository(database: TrainingLogDatabase = db) {
+export type BodyweightRepositoryTestHooks = {
+  afterBodyweightPrepared?: () => void | Promise<void>
+}
+
+export function createBodyweightRepository(
+  database: TrainingLogDatabase = db,
+  testHooks: BodyweightRepositoryTestHooks = {},
+) {
   return {
     async saveBodyweight(input: SaveBodyweightInput) {
       const now = new Date().toISOString()
@@ -38,6 +45,7 @@ export function createBodyweightRepository(database: TrainingLogDatabase = db) {
                 updatedAt: now,
               }
 
+          await testHooks.afterBodyweightPrepared?.()
           await database.bodyweightEntries.put(entry)
           return entry
         },

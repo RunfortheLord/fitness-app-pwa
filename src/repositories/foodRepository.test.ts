@@ -59,4 +59,34 @@ describe('foodRepository', () => {
       [],
     )
   })
+
+  it('rolls back a food log when the transaction fails after writing', async () => {
+    const food = await seedFood(database)
+    const repository = createFoodRepository(database, {
+      afterFoodLogAdded: () => {
+        throw new Error('forced food log failure')
+      },
+    })
+
+    await expect(
+      repository.logFood({
+        foodId: food.id,
+        localDate: testLocalDate,
+        servingMultiplier: 1,
+      }),
+    ).rejects.toThrow('forced food log failure')
+
+    await expect(database.foodLogEntries.toArray()).resolves.toEqual([])
+  })
+
+  it('archives referenced foods instead of deleting them', async () => {
+    const repository = createFoodRepository(database)
+    const food = await seedFood(database)
+    await repository.archiveFood(food.id)
+
+    await expect(repository.getFood(food.id)).resolves.toMatchObject({
+      id: food.id,
+      status: 'archived',
+    })
+  })
 })

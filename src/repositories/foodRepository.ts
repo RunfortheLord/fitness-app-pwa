@@ -17,7 +17,14 @@ export type LogFoodInput = {
   notes?: string
 }
 
-export function createFoodRepository(database: TrainingLogDatabase = db) {
+export type FoodRepositoryTestHooks = {
+  afterFoodLogAdded?: () => void | Promise<void>
+}
+
+export function createFoodRepository(
+  database: TrainingLogDatabase = db,
+  testHooks: FoodRepositoryTestHooks = {},
+) {
   return {
     async createFood(input: CreateFoodInput) {
       const now = new Date().toISOString()
@@ -86,6 +93,7 @@ export function createFoodRepository(database: TrainingLogDatabase = db) {
           }
 
           await database.foodLogEntries.add(entry)
+          await testHooks.afterFoodLogAdded?.()
           return entry
         },
       )

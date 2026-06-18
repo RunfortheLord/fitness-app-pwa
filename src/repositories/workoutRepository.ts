@@ -35,7 +35,28 @@ export type CompleteWorkoutInput = {
   >[]
 }
 
-export function createWorkoutRepository(database: TrainingLogDatabase = db) {
+export type WorkoutRepositoryTestHooks = {
+  afterWorkoutAdded?: () => void | Promise<void>
+  afterHistoryAdded?: () => void | Promise<void>
+  afterAppliedChangeAdded?: () => void | Promise<void>
+}
+
+export type StructuralChangeAppliers = {
+  applyToActiveCycle?: (
+    database: TrainingLogDatabase,
+    change: DetectedWorkoutChange,
+  ) => Promise<void>
+  applyToTemplate?: (
+    database: TrainingLogDatabase,
+    change: DetectedWorkoutChange,
+  ) => Promise<void>
+}
+
+export function createWorkoutRepository(
+  database: TrainingLogDatabase = db,
+  testHooks: WorkoutRepositoryTestHooks = {},
+  structuralChangeAppliers: StructuralChangeAppliers = {},
+) {
   return {
     async startWorkout(input: StartWorkoutInput) {
       const now = new Date().toISOString()
@@ -45,6 +66,7 @@ export function createWorkoutRepository(database: TrainingLogDatabase = db) {
           database.activeProgramCycles,
           database.activeCycleWorkoutDays,
           database.activeCycleWorkoutExercises,
+          database.programTemplates,
           database.workouts,
           database.workoutExercises,
           database.workoutSets,
@@ -54,6 +76,9 @@ export function createWorkoutRepository(database: TrainingLogDatabase = db) {
             input.activeCycleId,
           )
           const day = await database.activeCycleWorkoutDays.get(input.dayId)
+          const template = cycle?.sourceTemplateId
+            ? await database.programTemplates.get(cycle.sourceTemplateId)
+            : undefined
           if (!cycle || !day || day.activeCycleId !== cycle.id) {
             throw new Error('Active cycle workout day was not found.')
           }
@@ -67,7 +92,7 @@ export function createWorkoutRepository(database: TrainingLogDatabase = db) {
             name: day.name,
             workoutSnapshot: {
               activeCycleName: cycle.name,
-              templateName: null,
+              templateName: template?.name ?? null,
               dayName: day.name,
               dayNotes: day.notes,
             },
@@ -82,6 +107,7 @@ export function createWorkoutRepository(database: TrainingLogDatabase = db) {
             updatedAt: now,
           }
           await database.workouts.add(workout)
+          await testHooks.afterWorkoutAdded?.()
 
           const sourceExercises = await database.activeCycleWorkoutExercises
             .where({ dayId: day.id })
@@ -159,6 +185,7 @@ export function createWorkoutRepository(database: TrainingLogDatabase = db) {
             updatedAt: completedAt,
           }
           await database.workoutHistoryEntries.add(history)
+          await testHooks.afterHistoryAdded?.()
 
           const exercises = await database.workoutExercises
             .where({ workoutId: workout.id })
@@ -217,8 +244,16 @@ export function createWorkoutRepository(database: TrainingLogDatabase = db) {
       const now = new Date().toISOString()
       return database.transaction(
         'rw',
-        database.detectedWorkoutChanges,
-        database.appliedWorkoutChanges,
+        [
+          database.detectedWorkoutChanges,
+          database.appliedWorkoutChanges,
+          database.programTemplates,
+          database.templateWorkoutDays,
+          database.templateWorkoutExercises,
+          database.activeProgramCycles,
+          database.activeCycleWorkoutDays,
+          database.activeCycleWorkoutExercises,
+        ],
         async () => {
           const change = await database.detectedWorkoutChanges.get(changeId)
           if (!change) {
@@ -236,6 +271,18 @@ export function createWorkoutRepository(database: TrainingLogDatabase = db) {
             createdAt: now,
           }
           await database.appliedWorkoutChanges.add(applied)
+          await testHooks.afterAppliedChangeAdded?.()
+
+          if (destination === 'cycle_only' || destination === 'both') {
+            await structuralChangeAppliers.applyToActiveCycle?.(
+              database,
+              change,
+            )
+          }
+          if (destination === 'template_only' || destination === 'both') {
+            await structuralChangeAppliers.applyToTemplate?.(database, change)
+          }
+
           await database.detectedWorkoutChanges.put({
             ...change,
             selectedDestination: destination,
@@ -246,6 +293,32 @@ export function createWorkoutRepository(database: TrainingLogDatabase = db) {
           return applied
         },
       )
+    },
+
+    async getWorkoutHistoryStructure(workoutId: string) {
+      const workout = await database.workoutHistoryEntries.get(workoutId)
+      if (!workout) {
+        throw new Error(`Workout history ${workoutId} was not found.`)
+      }
+      const exercises = await database.workoutHistoryExercises
+        .where({ workoutId })
+        .sortBy('orderIndex')
+      const sets = await database.workoutHistorySets
+        .where({ workoutId })
+        .toArray()
+
+      return {
+        workout,
+        exercises,
+        setsByExercise: Object.fromEntries(
+          exercises.map((exercise) => [
+            exercise.id,
+            sets
+              .filter((set) => set.workoutExerciseId === exercise.id)
+              .sort((first, second) => first.setNumber - second.setNumber),
+          ]),
+        ),
+      }
     },
   }
 }

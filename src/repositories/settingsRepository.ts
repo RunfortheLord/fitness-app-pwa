@@ -19,8 +19,13 @@ export type SettingsRepository = {
   saveNutritionTargets(targets: NutritionTargetValues): Promise<NutritionTarget>
 }
 
+export type SettingsRepositoryTestHooks = {
+  afterNutritionTargetAdded?: () => void | Promise<void>
+}
+
 export function createSettingsRepository(
   database: TrainingLogDatabase = db,
+  testHooks: SettingsRepositoryTestHooks = {},
 ): SettingsRepository {
   async function ensureSettings() {
     const existing = await database.userSettings.get('settings')
@@ -65,6 +70,7 @@ export function createSettingsRepository(
         async () => {
           const settings = await ensureSettings()
           await database.nutritionTargets.add(target)
+          await testHooks.afterNutritionTargetAdded?.()
           await database.userSettings.put({
             ...settings,
             nutritionTargets: targets,

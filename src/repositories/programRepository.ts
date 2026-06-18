@@ -32,7 +32,15 @@ export type CreateProgramTemplateInput = {
   days: CreateTemplateDayInput[]
 }
 
-export function createProgramRepository(database: TrainingLogDatabase = db) {
+export type ProgramRepositoryTestHooks = {
+  afterTemplateAdded?: () => void | Promise<void>
+  afterActiveCycleAdded?: () => void | Promise<void>
+}
+
+export function createProgramRepository(
+  database: TrainingLogDatabase = db,
+  testHooks: ProgramRepositoryTestHooks = {},
+) {
   return {
     async createProgramTemplate(input: CreateProgramTemplateInput) {
       const now = new Date().toISOString()
@@ -56,6 +64,7 @@ export function createProgramRepository(database: TrainingLogDatabase = db) {
         database.exercises,
         async () => {
           await database.programTemplates.add(template)
+          await testHooks.afterTemplateAdded?.()
 
           for (const [dayIndex, dayInput] of input.days.entries()) {
             const day: ProgramTemplateDay = {
@@ -138,6 +147,7 @@ export function createProgramRepository(database: TrainingLogDatabase = db) {
             updatedAt: now,
           }
           await database.activeProgramCycles.add(cycle)
+          await testHooks.afterActiveCycleAdded?.()
 
           const sourceDays = await database.templateWorkoutDays
             .where({ templateId })
@@ -192,6 +202,83 @@ export function createProgramRepository(database: TrainingLogDatabase = db) {
 
     getTemplate(id: string) {
       return database.programTemplates.get(id)
+    },
+
+    async updateProgramTemplate(
+      id: string,
+      input: Partial<Pick<ProgramTemplate, 'name' | 'notes'>>,
+    ) {
+      const template = await database.programTemplates.get(id)
+      if (!template) {
+        throw new Error(`Program template ${id} was not found.`)
+      }
+
+      const updated: ProgramTemplate = {
+        ...template,
+        ...input,
+        updatedAt: new Date().toISOString(),
+      }
+      await database.programTemplates.put(updated)
+      return updated
+    },
+
+    archiveProgramTemplate(id: string) {
+      return database.programTemplates.update(id, {
+        status: 'archived',
+        updatedAt: new Date().toISOString(),
+      })
+    },
+
+    async getTemplateStructure(templateId: string) {
+      const template = await database.programTemplates.get(templateId)
+      if (!template) {
+        throw new Error(`Program template ${templateId} was not found.`)
+      }
+      const days = await database.templateWorkoutDays
+        .where({ templateId })
+        .sortBy('orderIndex')
+      const exercises = await database.templateWorkoutExercises
+        .where({ templateId })
+        .toArray()
+
+      return {
+        template,
+        days,
+        exercisesByDay: Object.fromEntries(
+          days.map((day) => [
+            day.id,
+            exercises
+              .filter((exercise) => exercise.dayId === day.id)
+              .sort((first, second) => first.orderIndex - second.orderIndex),
+          ]),
+        ),
+      }
+    },
+
+    async getActiveCycleStructure(activeCycleId: string) {
+      const cycle = await database.activeProgramCycles.get(activeCycleId)
+      if (!cycle) {
+        throw new Error(`Active program cycle ${activeCycleId} was not found.`)
+      }
+      const days = await database.activeCycleWorkoutDays
+        .where({ activeCycleId })
+        .sortBy('orderIndex')
+      const exercises = await database.activeCycleWorkoutExercises
+        .where({ activeCycleId })
+        .toArray()
+
+      return {
+        cycle,
+        days,
+        exercisesByDay: Object.fromEntries(
+          days.map((day) => [
+            day.id,
+            exercises
+              .filter((exercise) => exercise.dayId === day.id)
+              .sort((first, second) => first.orderIndex - second.orderIndex),
+          ]),
+        ),
+      }
     },
   }
 }

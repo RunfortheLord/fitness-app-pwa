@@ -48,15 +48,35 @@ describe('database', () => {
       createdAt: '2026-06-18T12:00:00.000Z',
       updatedAt: '2026-06-18T12:00:00.000Z',
     })
+    await oldDatabase.table('userSettings').put({
+      id: 'settings',
+      weightUnit: 'lb',
+      energyUnit: 'kcal',
+      createdAt: '2026-06-18T12:01:00.000Z',
+      updatedAt: '2026-06-18T12:01:00.000Z',
+    })
     oldDatabase.close()
 
     const migratedDatabase = new TrainingLogDatabase(name)
     const metadata = await migratedDatabase.appMetadata.get('app')
+    const settings = await migratedDatabase.userSettings.get('settings')
 
     expect(metadata).toMatchObject({
       id: 'app',
       databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
       backupSchemaVersion: BACKUP_SCHEMA_VERSION,
+    })
+    expect(settings).toMatchObject({
+      id: 'settings',
+      weightUnit: 'lb',
+      energyUnit: 'kcal',
+      nutritionTargets: {
+        calories: 0,
+        proteinGrams: 0,
+        carbohydrateGrams: 0,
+        fatGrams: 0,
+      },
+      createdAt: '2026-06-18T12:01:00.000Z',
     })
     expect(migratedDatabase.tables.map((table) => table.name)).toContain(
       'backupMetadata',

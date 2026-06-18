@@ -95,12 +95,33 @@ export class TrainingLogDatabase extends Dexie {
       })
       .upgrade(async (tx) => {
         const metadata = await tx.table<AppMetadata>('appMetadata').get('app')
+        const userSettings = await tx
+          .table<Partial<UserSettings> & { id: string }>('userSettings')
+          .get('settings')
+        const now = new Date().toISOString()
+
         if (metadata) {
           await tx.table<AppMetadata>('appMetadata').put({
             ...metadata,
             databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
             backupSchemaVersion: BACKUP_SCHEMA_VERSION,
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
+          })
+        }
+
+        if (userSettings) {
+          await tx.table<UserSettings>('userSettings').put({
+            id: 'settings',
+            weightUnit: 'lb',
+            energyUnit: 'kcal',
+            nutritionTargets: userSettings.nutritionTargets ?? {
+              calories: 0,
+              proteinGrams: 0,
+              carbohydrateGrams: 0,
+              fatGrams: 0,
+            },
+            createdAt: userSettings.createdAt ?? now,
+            updatedAt: now,
           })
         }
       })

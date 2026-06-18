@@ -38,4 +38,21 @@ describe('bodyweightRepository', () => {
       notes: 'updated',
     })
   })
+
+  it('rolls back bodyweight saves when the transaction fails', async () => {
+    const repository = createBodyweightRepository(database, {
+      afterBodyweightPrepared: () => {
+        throw new Error('forced bodyweight failure')
+      },
+    })
+
+    await expect(
+      repository.saveBodyweight({
+        localDate: testLocalDate,
+        weight: 190,
+      }),
+    ).rejects.toThrow('forced bodyweight failure')
+
+    await expect(database.bodyweightEntries.toArray()).resolves.toEqual([])
+  })
 })
