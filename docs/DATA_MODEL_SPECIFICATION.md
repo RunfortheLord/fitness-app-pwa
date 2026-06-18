@@ -25,6 +25,13 @@
 
 ## Entities
 
+Implementation note: the persisted IndexedDB schema stores child collections in
+separate queryable stores rather than only as nested arrays. The snapshot and
+immutability requirements below still apply. Program template days and
+exercises, active-cycle days and exercises, live workout exercises and sets, and
+workout-history exercises and sets each have their own stores with explicit
+foreign-key ID fields and sort indexes.
+
 ### AppMetadata
 
 - `id`: fixed value such as `app`
@@ -314,6 +321,10 @@
 - Migration failure must leave the prior database usable or surface a clear blocking error.
 - Backup imports must validate backup schema version before writing.
 - Unsupported future backup versions must not be imported.
+- Initial implementation uses IndexedDB schema version 2 because version 1
+  existed with only `appMetadata` and `userSettings`. The version 2 migration
+  adds the full local fitness model stores and updates app metadata to the
+  current schema version.
 
 ## Transaction Boundaries
 
