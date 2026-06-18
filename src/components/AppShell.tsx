@@ -10,7 +10,9 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
 import { registerServiceWorkerUpdateHandler } from '@app/pwa'
+import { BodyweightEntrySheet } from '@components/BodyweightEntrySheet'
 import { BottomNavigation } from '@components/BottomNavigation'
+import { DashboardProvider } from '@components/DashboardContext'
 import {
   AppHeader,
   BottomSheet,
@@ -18,14 +20,25 @@ import {
   OfflineIndicator,
   StatusMessage,
 } from '@components/ui'
+import { useDashboardContext } from '@hooks/useDashboardContext'
 
 type AppShellProps = {
   children: React.ReactNode
 }
 
 export function AppShell({ children }: AppShellProps) {
+  return (
+    <DashboardProvider>
+      <AppShellContent>{children}</AppShellContent>
+    </DashboardProvider>
+  )
+}
+
+function AppShellContent({ children }: AppShellProps) {
   const [isUpdateReady, setIsUpdateReady] = useState(false)
   const [isQuickActionOpen, setIsQuickActionOpen] = useState(false)
+  const { bodyweightSheetDate, closeBodyweightSheet, openBodyweightSheet } =
+    useDashboardContext()
   const location = useLocation()
 
   useEffect(() => {
@@ -73,13 +86,19 @@ export function AppShell({ children }: AppShellProps) {
               <small>Placeholder for manual food logging</small>
             </span>
           </button>
-          <button type="button">
+          <button
+            type="button"
+            onClick={() => {
+              setIsQuickActionOpen(false)
+              openBodyweightSheet()
+            }}
+          >
             <span className="quick-action-icon">
               <Scale aria-hidden="true" size={20} />
             </span>
             <span>
-              <strong>Add bodyweight</strong>
-              <small>Placeholder for daily bodyweight entry</small>
+              <strong>Log bodyweight</strong>
+              <small>Save pounds for the selected date</small>
             </span>
           </button>
           <button type="button">
@@ -109,6 +128,11 @@ export function AppShell({ children }: AppShellProps) {
           </IconButton>
         </div>
       </BottomSheet>
+      <BodyweightEntrySheet
+        isOpen={bodyweightSheetDate !== null}
+        localDate={bodyweightSheetDate}
+        onClose={closeBodyweightSheet}
+      />
     </div>
   )
 }

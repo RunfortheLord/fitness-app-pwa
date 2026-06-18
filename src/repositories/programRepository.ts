@@ -280,6 +280,18 @@ export function createProgramRepository(
         ),
       }
     },
+
+    async getCurrentActiveCycleStructure() {
+      const cycle = await database.activeProgramCycles
+        .where({ status: 'active' })
+        .last()
+
+      if (!cycle) {
+        return undefined
+      }
+
+      return this.getActiveCycleStructure(cycle.id)
+    },
   }
 }
 

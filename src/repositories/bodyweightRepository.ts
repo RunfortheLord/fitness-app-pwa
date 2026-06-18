@@ -13,12 +13,19 @@ export type BodyweightRepositoryTestHooks = {
   afterBodyweightPrepared?: () => void | Promise<void>
 }
 
+function validateBodyweight(weight: number) {
+  if (!Number.isFinite(weight) || weight <= 0) {
+    throw new Error('Bodyweight must be a finite positive value.')
+  }
+}
+
 export function createBodyweightRepository(
   database: TrainingLogDatabase = db,
   testHooks: BodyweightRepositoryTestHooks = {},
 ) {
   return {
     async saveBodyweight(input: SaveBodyweightInput) {
+      validateBodyweight(input.weight)
       const now = new Date().toISOString()
       return database.transaction(
         'rw',
@@ -54,6 +61,14 @@ export function createBodyweightRepository(
 
     getBodyweightForDate(localDate: LocalDateString) {
       return database.bodyweightEntries.where({ localDate }).first()
+    },
+
+    listBodyweightEntries() {
+      return database.bodyweightEntries.orderBy('localDate').toArray()
+    },
+
+    deleteBodyweightForDate(localDate: LocalDateString) {
+      return database.bodyweightEntries.where({ localDate }).delete()
     },
   }
 }

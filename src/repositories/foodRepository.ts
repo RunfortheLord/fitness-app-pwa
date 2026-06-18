@@ -110,6 +110,14 @@ export function createFoodRepository(
     listFoodLogsByDate(localDate: LocalDateString) {
       return database.foodLogEntries.where({ localDate }).sortBy('createdAt')
     },
+
+    listRecentFoodLogs(limit = 5) {
+      return database.foodLogEntries
+        .orderBy('createdAt')
+        .reverse()
+        .limit(limit)
+        .toArray()
+    },
   }
 }
 

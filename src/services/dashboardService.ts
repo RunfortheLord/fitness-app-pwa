@@ -1,0 +1,150 @@
+import { db, type TrainingLogDatabase } from '@db/database'
+import type { LocalDateString } from '@domain/dates'
+import { createBodyweightRepository } from '@repositories/bodyweightRepository'
+import { createFoodRepository } from '@repositories/foodRepository'
+import { createProgramRepository } from '@repositories/programRepository'
+import { createWorkoutRepository } from '@repositories/workoutRepository'
+import {
+  createNutritionSummaryService,
+  type DailyNutritionSummary,
+} from '@services/nutritionSummaryService'
+import type {
+  ActiveCycleWorkoutDay,
+  ActiveCycleWorkoutExercise,
+  ActiveProgramCycle,
+  BodyweightEntry,
+  FoodLogEntry,
+  Workout,
+  WorkoutHistoryEntry,
+} from '@shared-types/app'
+
+export type DashboardData = {
+  selectedDate: LocalDateString
+  nutrition: DailyNutritionSummary
+  bodyweight: BodyweightEntry | undefined
+  activeProgram:
+    | {
+        cycle: ActiveProgramCycle
+        days: ActiveCycleWorkoutDay[]
+        exerciseCount: number
+        exercisesByDay: Record<string, ActiveCycleWorkoutExercise[]>
+      }
+    | undefined
+  activeWorkout: Workout | undefined
+  mostRecentCompletedWorkout: WorkoutHistoryEntry | undefined
+  recentActivity: Array<
+    | {
+        id: string
+        type: 'bodyweight'
+        localDate: LocalDateString
+        label: string
+      }
+    | { id: string; type: 'food'; localDate: LocalDateString; label: string }
+    | {
+        id: string
+        type: 'workout'
+        localDate: LocalDateString
+        label: string
+      }
+  >
+}
+
+export function createDashboardService(database: TrainingLogDatabase = db) {
+  const bodyweightRepository = createBodyweightRepository(database)
+  const foodRepository = createFoodRepository(database)
+  const programRepository = createProgramRepository(database)
+  const workoutRepository = createWorkoutRepository(database)
+  const nutritionSummaryService = createNutritionSummaryService(database)
+
+  return {
+    async getDashboardData(
+      selectedDate: LocalDateString,
+    ): Promise<DashboardData> {
+      const [
+        nutrition,
+        bodyweight,
+        activeProgramStructure,
+        activeWorkout,
+        mostRecentCompletedWorkout,
+        bodyweightEntries,
+        foodLogs,
+        completedWorkouts,
+      ] = await Promise.all([
+        nutritionSummaryService.getDailySummary(selectedDate),
+        bodyweightRepository.getBodyweightForDate(selectedDate),
+        programRepository.getCurrentActiveCycleStructure(),
+        workoutRepository.getActiveWorkout(),
+        workoutRepository.getMostRecentCompletedWorkout(),
+        bodyweightRepository.listBodyweightEntries(),
+        foodRepository.listRecentFoodLogs(5),
+        workoutRepository.listRecentCompletedWorkouts(5),
+      ])
+
+      return {
+        selectedDate,
+        nutrition,
+        bodyweight,
+        activeProgram: activeProgramStructure
+          ? {
+              ...activeProgramStructure,
+              exerciseCount: Object.values(
+                activeProgramStructure.exercisesByDay,
+              ).reduce((count, exercises) => count + exercises.length, 0),
+            }
+          : undefined,
+        activeWorkout,
+        mostRecentCompletedWorkout,
+        recentActivity: buildRecentActivity(
+          bodyweightEntries,
+          foodLogs,
+          completedWorkouts,
+        ),
+      }
+    },
+  }
+}
+
+function buildRecentActivity(
+  bodyweightEntries: BodyweightEntry[],
+  foodLogs: FoodLogEntry[],
+  completedWorkouts: WorkoutHistoryEntry[],
+): DashboardData['recentActivity'] {
+  return [
+    ...bodyweightEntries.map((entry) => ({
+      id: entry.id,
+      type: 'bodyweight' as const,
+      localDate: entry.localDate,
+      label: `${entry.weight} ${entry.unit}`,
+      sortDate: entry.updatedAt,
+    })),
+    ...foodLogs.map((entry) => ({
+      id: entry.id,
+      type: 'food' as const,
+      localDate: entry.localDate,
+      label: `${entry.foodSnapshot.foodName} ${Math.round(
+        entry.computedCalories,
+      )} kcal`,
+      sortDate: entry.createdAt,
+    })),
+    ...completedWorkouts.map((workout) => ({
+      id: workout.id,
+      type: 'workout' as const,
+      localDate: workout.localDate,
+      label: workout.name,
+      sortDate: workout.completedAt,
+    })),
+  ]
+    .sort(
+      (first, second) =>
+        Date.parse(second.sortDate) - Date.parse(first.sortDate),
+    )
+    .slice(0, 5)
+    .map((activity) => ({
+      id: activity.id,
+      type: activity.type,
+      localDate: activity.localDate,
+      label: activity.label,
+    }))
+}
+
+export const dashboardService = createDashboardService()

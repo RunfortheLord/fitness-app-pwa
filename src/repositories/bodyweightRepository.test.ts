@@ -55,4 +55,44 @@ describe('bodyweightRepository', () => {
 
     await expect(database.bodyweightEntries.toArray()).resolves.toEqual([])
   })
+
+  it('rejects invalid finite positive values', async () => {
+    const repository = createBodyweightRepository(database)
+
+    await expect(
+      repository.saveBodyweight({
+        localDate: testLocalDate,
+        weight: Number.NaN,
+      }),
+    ).rejects.toThrow('finite positive')
+    await expect(
+      repository.saveBodyweight({
+        localDate: testLocalDate,
+        weight: 0,
+      }),
+    ).rejects.toThrow('finite positive')
+    await expect(database.bodyweightEntries.toArray()).resolves.toEqual([])
+  })
+
+  it('deletes only the selected local date entry', async () => {
+    const repository = createBodyweightRepository(database)
+
+    await repository.saveBodyweight({
+      localDate: testLocalDate,
+      weight: 190,
+    })
+    await repository.saveBodyweight({
+      localDate: '2026-06-19',
+      weight: 191,
+    })
+
+    await repository.deleteBodyweightForDate(testLocalDate)
+
+    await expect(repository.getBodyweightForDate(testLocalDate)).resolves.toBe(
+      undefined,
+    )
+    await expect(
+      repository.getBodyweightForDate('2026-06-19'),
+    ).resolves.toMatchObject({ weight: 191 })
+  })
 })

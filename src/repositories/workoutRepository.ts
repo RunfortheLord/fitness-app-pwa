@@ -320,6 +320,25 @@ export function createWorkoutRepository(
         ),
       }
     },
+
+    getActiveWorkout() {
+      return database.workouts.where({ status: 'active' }).first()
+    },
+
+    getMostRecentCompletedWorkout() {
+      return database.workoutHistoryEntries
+        .orderBy('completedAt')
+        .reverse()
+        .first()
+    },
+
+    listRecentCompletedWorkouts(limit = 5) {
+      return database.workoutHistoryEntries
+        .orderBy('completedAt')
+        .reverse()
+        .limit(limit)
+        .toArray()
+    },
   }
 }
 

@@ -242,6 +242,82 @@ textarea:focus-visible {
   background: var(--color-surface-strong);
 }
 
+.macro-progress-list {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.macro-progress {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.macro-progress > div:first-child {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+.macro-progress strong {
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-surface-strong);
+}
+
+.progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent);
+}
+
+.card-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  margin-bottom: var(--space-3);
+}
+
+.card-row > div {
+  min-width: 0;
+}
+
+.activity-list {
+  display: grid;
+  gap: var(--space-2);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.activity-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 54px;
+}
+
+.activity-list strong,
+.activity-list small {
+  display: block;
+}
+
+.activity-list small {
+  margin-top: 2px;
+  color: var(--color-muted);
+}
+
 .button,
 .icon-button,
 .icon-link,
@@ -282,6 +358,11 @@ textarea:focus-visible {
   color: var(--color-text);
 }
 
+.button-danger {
+  border-color: rgb(255 111 134 / 50%);
+  color: var(--color-danger);
+}
+
 .icon-button,
 .icon-link {
   border-radius: 999px;
@@ -315,6 +396,28 @@ textarea {
 
 input::placeholder {
   color: var(--color-dim);
+}
+
+.input-with-unit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.input-with-unit span {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-strong);
+  color: var(--color-muted);
+  font-weight: 800;
+}
+
+.sheet-context {
+  margin: 0 0 var(--space-4);
 }
 
 .validation-message {

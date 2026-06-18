@@ -55,3 +55,61 @@ test('opens the quick action bottom sheet from the center add button', async ({
   await expect(sheet).toBeVisible()
   await expect(sheet.getByRole('button', { name: /Log food/ })).toBeVisible()
 })
+
+test('logs, edits, deletes, switches dates, and persists bodyweight after reload', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+
+  await page.getByRole('button', { name: 'Open quick actions' }).click()
+  await page.getByRole('button', { name: /Log bodyweight/ }).click()
+  await page
+    .getByRole('dialog', { name: 'Log bodyweight' })
+    .getByRole('textbox', { name: 'Bodyweight' })
+    .fill('188.4')
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(
+    page.getByLabel('Bodyweight').getByText('188.4 lb'),
+  ).toBeVisible()
+
+  await page.reload()
+  await expect(
+    page.getByLabel('Bodyweight').getByText('188.4 lb'),
+  ).toBeVisible()
+
+  await page.getByRole('button', { name: 'Edit bodyweight' }).click()
+  const editInput = page
+    .getByRole('dialog', { name: 'Log bodyweight' })
+    .getByRole('textbox', { name: 'Bodyweight' })
+  await expect(editInput).toHaveValue('188.4')
+  await editInput.fill('189.2')
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(
+    page.getByLabel('Bodyweight').getByText('189.2 lb'),
+  ).toBeVisible()
+
+  await page.getByRole('button', { name: 'Next day' }).click()
+  await expect(
+    page.getByLabel('Bodyweight').getByText('No entry'),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Previous day' }).click()
+  await expect(
+    page.getByLabel('Bodyweight').getByText('189.2 lb'),
+  ).toBeVisible()
+
+  await page.getByRole('button', { name: 'Edit bodyweight' }).click()
+  await page.getByRole('button', { name: /Delete/ }).click()
+  await page
+    .getByRole('dialog', { name: 'Delete bodyweight?' })
+    .getByRole('button', { name: 'Delete' })
+    .click()
+  await expect(
+    page.getByLabel('Bodyweight').getByText('No entry'),
+  ).toBeVisible()
+
+  await page.reload()
+  await expect(
+    page.getByLabel('Bodyweight').getByText('No entry'),
+  ).toBeVisible()
+})

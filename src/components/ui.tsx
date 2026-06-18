@@ -252,7 +252,12 @@ export function DateSelector({
       <IconButton aria-label="Previous day" onClick={onPrevious}>
         <ChevronLeft aria-hidden="true" size={20} />
       </IconButton>
-      <button className="date-selector-current" onClick={onToday} type="button">
+      <button
+        aria-label="Return to today"
+        className="date-selector-current"
+        onClick={onToday}
+        type="button"
+      >
         <span>{dateLabel}</span>
         <small>Today</small>
       </button>
