@@ -6,7 +6,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { App } from '@app/App'
 import { db } from '@db/database'
 import { HomePage } from '@pages/HomePage'
+import { createProgramRepository } from '@repositories/programRepository'
+import { createWorkoutRepository } from '@repositories/workoutRepository'
 import { initializeAppData } from '@services/appInitializationService'
+import { seedProgram, testLocalDate } from '@test/seedFactories'
 
 beforeEach(async () => {
   await db.delete()
@@ -136,6 +139,39 @@ describe('HomePage', () => {
     await user.click(screen.getByRole('button', { name: 'Previous day' }))
 
     expect(await screen.findAllByText('188 lb')).not.toHaveLength(0)
+  })
+
+  it('shows the most recent workout from completed history', async () => {
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const repository = createWorkoutRepository(db)
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(started.sets[0].id, {
+      metricValues: { weight: 185, reps: 8 },
+      completed: true,
+    })
+    await repository.completeWorkout({
+      workoutId: started.workout.id,
+      completedAt: new Date(
+        Date.parse(started.workout.startedAt) + 20 * 60 * 1000,
+      ).toISOString(),
+    })
+
+    renderHome()
+    await waitForDashboardReady()
+
+    expect(screen.getByLabelText('Most recent workout')).toHaveTextContent(
+      'Upper',
+    )
+    expect(screen.getByLabelText('Most recent workout')).toHaveTextContent(
+      '1 exercises - 1 completed sets',
+    )
   })
 })
 

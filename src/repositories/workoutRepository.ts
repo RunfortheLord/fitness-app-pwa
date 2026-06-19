@@ -816,6 +816,69 @@ export function createWorkoutRepository(
         .sortBy('createdAt')
     },
 
+    async updateWorkoutHistoryNotes(workoutId: string, notes: string) {
+      const now = new Date().toISOString()
+      const updated = await database.workoutHistoryEntries.update(workoutId, {
+        notes,
+        updatedAt: now,
+      })
+      if (!updated) {
+        throw new Error(`Workout history ${workoutId} was not found.`)
+      }
+    },
+
+    async updateWorkoutHistoryExerciseNotes(
+      workoutExerciseId: string,
+      notes: string,
+    ) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        [database.workoutHistoryEntries, database.workoutHistoryExercises],
+        async () => {
+          const exercise =
+            await database.workoutHistoryExercises.get(workoutExerciseId)
+          if (!exercise) {
+            throw new Error(
+              `Workout history exercise ${workoutExerciseId} was not found.`,
+            )
+          }
+          await database.workoutHistoryExercises.update(workoutExerciseId, {
+            notes,
+            updatedAt: now,
+          })
+          await database.workoutHistoryEntries.update(exercise.workoutId, {
+            updatedAt: now,
+          })
+        },
+      )
+    },
+
+    async updateWorkoutHistorySet(setId: string, input: UpdateWorkoutSetInput) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        [database.workoutHistoryEntries, database.workoutHistorySets],
+        async () => {
+          const set = await database.workoutHistorySets.get(setId)
+          if (!set) {
+            throw new Error(`Workout history set ${setId} was not found.`)
+          }
+          const updated: WorkoutHistorySet = {
+            ...set,
+            metricValues: input.metricValues ?? set.metricValues,
+            rir: hasOwn(input, 'rir') ? (input.rir ?? null) : set.rir,
+            completed: input.completed ?? set.completed,
+          }
+          await database.workoutHistorySets.put(updated)
+          await database.workoutHistoryEntries.update(set.workoutId, {
+            updatedAt: now,
+          })
+          return updated
+        },
+      )
+    },
+
     async getWorkoutHistoryStructure(workoutId: string) {
       const workout = await database.workoutHistoryEntries.get(workoutId)
       if (!workout) {
@@ -853,12 +916,39 @@ export function createWorkoutRepository(
         .first()
     },
 
-    listRecentCompletedWorkouts(limit = 5) {
-      return database.workoutHistoryEntries
-        .orderBy('completedAt')
-        .reverse()
-        .limit(limit)
-        .toArray()
+    async listRecentCompletedWorkouts(limit = 5) {
+      const workouts = await database.workoutHistoryEntries.toArray()
+      return workouts
+        .sort(
+          (first, second) =>
+            second.localDate.localeCompare(first.localDate) ||
+            second.completedAt.localeCompare(first.completedAt),
+        )
+        .slice(0, limit)
+    },
+
+    async deleteWorkoutHistory(workoutId: string) {
+      await database.transaction(
+        'rw',
+        [
+          database.workoutHistoryEntries,
+          database.workoutHistoryExercises,
+          database.workoutHistorySets,
+          database.detectedWorkoutChanges,
+          database.appliedWorkoutChanges,
+        ],
+        async () => {
+          const workout = await database.workoutHistoryEntries.get(workoutId)
+          if (!workout) {
+            throw new Error(`Workout history ${workoutId} was not found.`)
+          }
+          await database.workoutHistorySets.where({ workoutId }).delete()
+          await database.workoutHistoryExercises.where({ workoutId }).delete()
+          await database.detectedWorkoutChanges.where({ workoutId }).delete()
+          await database.appliedWorkoutChanges.where({ workoutId }).delete()
+          await database.workoutHistoryEntries.delete(workoutId)
+        },
+      )
     },
   }
 }

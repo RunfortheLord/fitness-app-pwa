@@ -274,6 +274,17 @@ export function HomePage() {
                 )}{' '}
                 min
               </p>
+              {dashboard.mostRecentCompletedWorkoutSummary ? (
+                <p className="muted">
+                  {dashboard.mostRecentCompletedWorkoutSummary.exerciseCount}{' '}
+                  exercises -{' '}
+                  {
+                    dashboard.mostRecentCompletedWorkoutSummary
+                      .completedSetCount
+                  }{' '}
+                  completed sets
+                </p>
+              ) : null}
             </div>
           </div>
         ) : (

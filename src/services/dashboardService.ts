@@ -34,6 +34,12 @@ export type DashboardData = {
     | undefined
   activeWorkout: Workout | undefined
   mostRecentCompletedWorkout: WorkoutHistoryEntry | undefined
+  mostRecentCompletedWorkoutSummary:
+    | {
+        completedSetCount: number
+        exerciseCount: number
+      }
+    | undefined
   recentActivity: Array<
     | {
         id: string
@@ -84,6 +90,10 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
         workoutRepository.listRecentCompletedWorkouts(5),
       ])
 
+      const mostRecentCompletedWorkoutSummary = mostRecentCompletedWorkout
+        ? await getWorkoutSummary(database, mostRecentCompletedWorkout.id)
+        : undefined
+
       return {
         selectedDate,
         metadata,
@@ -99,6 +109,7 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
           : undefined,
         activeWorkout,
         mostRecentCompletedWorkout,
+        mostRecentCompletedWorkoutSummary,
         recentActivity: buildRecentActivity(
           bodyweightEntries,
           foodLogs,
@@ -106,6 +117,20 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
         ),
       }
     },
+  }
+}
+
+async function getWorkoutSummary(
+  database: TrainingLogDatabase,
+  workoutId: string,
+) {
+  const [exercises, sets] = await Promise.all([
+    database.workoutHistoryExercises.where({ workoutId }).toArray(),
+    database.workoutHistorySets.where({ workoutId }).toArray(),
+  ])
+  return {
+    exerciseCount: exercises.filter((exercise) => !exercise.skipped).length,
+    completedSetCount: sets.filter((set) => set.completed).length,
   }
 }
 
