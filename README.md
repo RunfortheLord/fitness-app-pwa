@@ -1,5 +1,7 @@
 # Fitness Log
 
+[![CI](https://github.com/RunfortheLord/fitness-app-pwa/actions/workflows/ci.yml/badge.svg)](https://github.com/RunfortheLord/fitness-app-pwa/actions/workflows/ci.yml)
+
 Fitness Log is a local-first fitness tracking PWA under initial development. The app uses React, TypeScript, Vite, React Router, Dexie, and `vite-plugin-pwa`.
 
 ## Requirements
