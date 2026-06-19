@@ -956,9 +956,71 @@ input::placeholder {
 .history-layout,
 .history-list,
 .history-exercise-list,
-.change-review-list {
+.change-review-list,
+.settings-list,
+.compact-list,
+.validation-list {
   display: grid;
   gap: var(--space-3);
+}
+
+.settings-list,
+.compact-list,
+.validation-list {
+  padding: 0;
+  margin: 0;
+}
+
+.settings-list div,
+.compact-list li {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.5fr) minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.settings-list dt,
+.compact-list span {
+  color: var(--color-muted);
+  font-size: 0.84rem;
+}
+
+.settings-list dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.compact-list {
+  margin-top: var(--space-3);
+  list-style: none;
+}
+
+.validation-list {
+  padding-left: var(--space-5);
+  color: var(--color-danger);
+  font-size: 0.88rem;
+}
+
+.import-preview {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  margin: var(--space-4) 0;
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-strong);
+}
+
+.import-preview h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.import-preview summary {
+  min-height: 44px;
+  cursor: pointer;
+  font-weight: 800;
 }
 
 .history-list button {

@@ -306,3 +306,38 @@ test('logs, edits, deletes, switches dates, and persists bodyweight after reload
     page.getByLabel('Bodyweight').getByText('No entry'),
   ).toBeVisible()
 })
+
+test('settings exposes local data controls and validates malformed restore files', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/settings')
+
+  await expect(page.getByText('Pounds (lb)')).toBeVisible()
+  await expect(page.getByText('Backup format version')).toBeVisible()
+  await expect(
+    page.getByText(
+      /Backups, restore files, and CSV exports stay on this device/,
+    ),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Export JSON backup' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Export CSV archive' }),
+  ).toBeVisible()
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'bad-backup.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from('{'),
+  })
+
+  await expect(page.getByLabel('Import preview')).toBeVisible()
+  await expect(page.getByText(/not valid JSON/)).toBeVisible()
+
+  await page.getByRole('button', { name: 'Clear all data' }).click()
+  await expect(
+    page.getByRole('dialog', { name: 'Clear all data?' }),
+  ).toBeVisible()
+})

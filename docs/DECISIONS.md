@@ -8,6 +8,14 @@
 - No account, backend, cloud sync, subscription, internet dependency after installation, or external food database is included in the first release.
 - JSON is the authoritative full-fidelity backup format.
 - CSV is export-only for readable spreadsheet use.
+- Backup format version `1` is separate from IndexedDB schema version `2`.
+- JSON restore supports replace mode only in this release. Merge restore remains
+  unavailable until same-ID, natural-key, duplicate historical workout,
+  source-reference, archived-record, and timestamp conflict behavior is defined.
+- CSV export is packaged as a local TAR archive with one CSV file per data
+  table. CSV import is out of scope.
+- Clear-all data removes user data transactionally and reinitializes required
+  app metadata without inserting demo data.
 - The UI uses a dark, dense, card-based mobile design adapted from the reference analysis without copying branding or proprietary assets.
 - Main navigation is fixed bottom navigation: Home, Nutrition, center Add, Training, History.
 - Settings are reachable from the header or a visible secondary action.

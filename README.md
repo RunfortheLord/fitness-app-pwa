@@ -52,3 +52,15 @@ npm run check
 - `e2e`: Playwright tests
 - `public`: PWA assets
 - `scripts`: repository scripts
+
+## Local Data Management
+
+Settings includes nutrition targets, app/schema version metadata, JSON backup,
+replace-only JSON restore with preview, CSV export, and clear-all data. JSON is
+the full-fidelity restore format. CSV export is a readable TAR archive for
+spreadsheet analysis and is not importable.
+
+All file operations remain local to the device. The app does not upload backups,
+create cloud copies, or require an account. See `docs/BACKUP_FORMAT.md` for the
+backup format, compatibility behavior, CSV file list, restore limits, and
+clear-all behavior.

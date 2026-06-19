@@ -343,3 +343,17 @@ foreign-key ID fields and sort indexes.
 - JSON backup is authoritative and full fidelity.
 - CSV export is derived from stores for readability and does not need to support restore.
 - Import preview summarizes counts, schema versions, conflicts, and whether merge or replace is selected.
+- Current backup format version is `1`, separate from IndexedDB schema version `2`.
+- Backup root fields are `backupFormatVersion`, `databaseSchemaVersion`,
+  `applicationVersion`, `exportedAt`, and `data`.
+- Restore supports backup format version `1` when the backup database schema
+  version is less than or equal to the app's current database schema version.
+  Future backup format versions and newer database schema versions are rejected
+  before any database mutation.
+- Replace is the supported restore mode. Merge restore is unavailable in this
+  release because conflict behavior is not yet deterministic enough.
+- CSV export produces a local TAR archive with one CSV file per data table.
+  CSV import is not supported.
+
+See `docs/BACKUP_FORMAT.md` for the implemented backup root, CSV file list,
+validation behavior, restore compatibility rules, and clear-all behavior.
