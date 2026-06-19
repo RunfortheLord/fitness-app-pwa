@@ -57,6 +57,9 @@ test('opens the quick action bottom sheet from the center add button', async ({
   await expect(
     sheet.getByRole('button', { name: /Create exercise/ }),
   ).toBeVisible()
+  await expect(
+    sheet.getByRole('button', { name: /Create program/ }),
+  ).toBeVisible()
 })
 
 test('creates and persists a custom exercise from the Add sheet', async ({
@@ -79,6 +82,50 @@ test('creates and persists a custom exercise from the Add sheet', async ({
 
   await page.reload()
   await expect(page.getByText('E2E Bench press')).toBeVisible()
+})
+
+test('creates, activates, manually selects, and persists a program cycle', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/training')
+
+  await page.getByRole('button', { name: 'Create exercise' }).click()
+  await page.getByRole('textbox', { name: 'Name' }).fill('E2E Squat')
+  await page.getByRole('textbox', { name: 'Default rest time' }).fill('180')
+  await page.getByRole('button', { name: 'Save exercise' }).click()
+  await expect(page.getByText('E2E Squat')).toBeVisible()
+
+  await page
+    .getByLabel('Current active cycle')
+    .getByRole('button', { name: 'Create program' })
+    .click()
+  await page.getByRole('textbox', { name: 'Name' }).fill('E2E Strength')
+  await page.getByRole('button', { name: 'Save program' }).click()
+  const builder = page.getByRole('dialog', { name: 'Edit template' })
+  await expect(builder).toBeVisible()
+  await builder.getByRole('textbox', { name: 'Add workout day' }).fill('Day A')
+  await builder.getByRole('button', { name: 'Add day' }).click()
+  await expect(builder.getByText('Day A')).toBeVisible()
+  await builder.getByRole('button', { name: 'Add exercise' }).click()
+  await builder.getByLabel('Exercise').selectOption({ label: 'E2E Squat' })
+  await builder.getByRole('button', { name: 'Save prescription' }).click()
+  await expect(builder.getByText('E2E Squat')).toBeVisible()
+  await builder.getByRole('button', { name: 'Close quick actions' }).click()
+
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: 'Activate E2E Strength' }).click()
+  await expect(page.getByText('Program activated.')).toBeVisible()
+  await page.getByRole('button', { name: /Day A/ }).click()
+  const dayDetail = page.getByRole('dialog', { name: 'Day A' })
+  await expect(dayDetail).toBeVisible()
+  await expect(dayDetail.getByText('E2E Squat')).toBeVisible()
+
+  await page.reload()
+  await expect(
+    page.getByLabel('Current active cycle').getByText('E2E Strength'),
+  ).toBeVisible()
+  await expect(page.getByRole('button', { name: /Day A/ })).toBeVisible()
 })
 
 test('creates, logs, edits, deletes, and persists nutrition entries', async ({

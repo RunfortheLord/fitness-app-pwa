@@ -3,6 +3,7 @@ import {
   NotebookPen,
   Plus,
   Scale,
+  SquarePen,
   Settings,
   Utensils,
 } from 'lucide-react'
@@ -130,6 +131,21 @@ function AppShellContent({ children }: AppShellProps) {
             <span>
               <strong>Create exercise</strong>
               <small>Add a custom exercise to the library</small>
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsQuickActionOpen(false)
+              void navigate('/training?createProgram=1')
+            }}
+          >
+            <span className="quick-action-icon">
+              <SquarePen aria-hidden="true" size={20} />
+            </span>
+            <span>
+              <strong>Create program</strong>
+              <small>Build reusable workout days</small>
             </span>
           </button>
           <IconButton

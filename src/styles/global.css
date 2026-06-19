@@ -319,13 +319,18 @@ textarea:focus-visible {
 }
 
 .nutrition-list,
-.exercise-list {
+.exercise-list,
+.program-library-list,
+.program-builder-days,
+.program-prescription-list {
   display: grid;
   gap: var(--space-2);
 }
 
 .nutrition-item,
-.exercise-item {
+.exercise-item,
+.program-template-row,
+.program-prescription-row {
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr) auto;
   align-items: center;
@@ -340,23 +345,85 @@ textarea:focus-visible {
 .nutrition-item strong,
 .nutrition-item small,
 .exercise-item strong,
-.exercise-item small {
+.exercise-item small,
+.program-template-row strong,
+.program-template-row small,
+.program-prescription-row strong,
+.program-prescription-row small {
   display: block;
 }
 
 .nutrition-item strong,
-.exercise-item strong {
+.exercise-item strong,
+.program-template-row strong,
+.program-prescription-row strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .nutrition-item small,
-.exercise-item small {
+.exercise-item small,
+.program-template-row small,
+.program-prescription-row small {
   margin-top: 2px;
   color: var(--color-muted);
   font-size: 13px;
   line-height: 1.35;
+}
+
+.program-template-row,
+.program-prescription-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.program-action-row,
+.program-builder-add {
+  margin-top: var(--space-3);
+}
+
+.program-day-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.program-day-card {
+  display: grid;
+  min-height: 74px;
+  justify-items: start;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-strong);
+  text-align: left;
+}
+
+.program-day-card small {
+  color: var(--color-muted);
+}
+
+.program-builder-day,
+.inline-editor {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-strong);
+}
+
+.inline-editor {
+  margin-top: var(--space-4);
+  background: var(--color-surface);
+}
+
+.compact-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
 }
 
 .library-filter-row {

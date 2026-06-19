@@ -40,6 +40,145 @@ describe('programRepository', () => {
     expect(activeExercise?.sourceTemplateExerciseId).toBe(sourceExercise.id)
   })
 
+  it('marks only the latest activated cycle current', async () => {
+    const first = await seedProgram(database)
+    const second = await seedProgram(database)
+    const repository = createProgramRepository(database)
+
+    const firstActive = await repository.activateTemplate(first.template.id)
+    const secondActive = await repository.activateTemplate(second.template.id)
+
+    await expect(
+      database.activeProgramCycles.get(firstActive.cycle.id),
+    ).resolves.toMatchObject({ status: 'inactive' })
+    await expect(
+      database.activeProgramCycles.get(secondActive.cycle.id),
+    ).resolves.toMatchObject({ status: 'active' })
+    await expect(
+      repository.getCurrentActiveCycleStructure(),
+    ).resolves.toMatchObject({
+      cycle: { id: secondActive.cycle.id },
+    })
+  })
+
+  it('adds, renames, reorders, duplicates, and removes template days', async () => {
+    const program = await seedProgram(database)
+    const repository = createProgramRepository(database)
+
+    const lower = await repository.addTemplateDay(program.template.id, {
+      name: 'Lower',
+    })
+    await repository.updateTemplateDay(lower.id, { name: 'Legs' })
+    await repository.reorderTemplateDays(program.template.id, [
+      lower.id,
+      program.days[0].id,
+    ])
+    const copy = await repository.duplicateTemplateDay(lower.id)
+    await repository.removeTemplateDay(program.days[0].id)
+
+    const structure = await repository.getTemplateStructure(program.template.id)
+
+    expect(structure.days.map((day) => day.name)).toEqual(['Legs', 'Legs copy'])
+    expect(structure.days.map((day) => day.orderIndex)).toEqual([0, 1])
+    expect(copy.id).not.toBe(lower.id)
+  })
+
+  it('adds, reorders, replaces, and removes prescribed exercises', async () => {
+    const program = await seedProgram(database)
+    const repository = createProgramRepository(database)
+    const exerciseRepository = createExerciseRepository(database)
+    const row = await exerciseRepository.createExercise({
+      name: 'Row',
+      defaultRestSeconds: 90,
+      trackingMethodId: 'weight_reps',
+      notes: '',
+    })
+    const pulldown = await exerciseRepository.createExercise({
+      name: 'Pulldown',
+      defaultRestSeconds: 90,
+      trackingMethodId: 'weight_reps',
+      notes: '',
+    })
+
+    const added = await repository.addTemplateExercise(program.days[0].id, {
+      exerciseId: row.id,
+      targetSetCount: 3,
+      targetRepsMin: 10,
+    })
+    await repository.reorderTemplateExercises(program.days[0].id, [
+      added.id,
+      program.exercises[0].id,
+    ])
+    await repository.updateTemplateExercise(added.id, {
+      exerciseId: pulldown.id,
+      targetRepsMin: null,
+      targetRepsMax: 12,
+    })
+    await repository.removeTemplateExercise(program.exercises[0].id)
+
+    const structure = await repository.getTemplateStructure(program.template.id)
+    const exercises = structure.exercisesByDay[program.days[0].id]
+
+    expect(exercises).toHaveLength(1)
+    expect(exercises[0]).toMatchObject({
+      exerciseId: pulldown.id,
+      orderIndex: 0,
+      targetRepsMin: null,
+      targetRepsMax: 12,
+    })
+  })
+
+  it('keeps template and active-cycle edits independent after activation', async () => {
+    const program = await seedProgram(database)
+    const repository = createProgramRepository(database)
+    const active = await repository.activateTemplate(program.template.id)
+
+    await repository.updateProgramTemplate(program.template.id, {
+      name: 'Template edited',
+    })
+    await repository.updateActiveCycle(active.cycle.id, {
+      name: 'Cycle edited',
+    })
+    await repository.updateActiveCycleDay(active.days[0].id, {
+      name: 'Cycle day',
+    })
+    await repository.updateTemplateDay(program.days[0].id, {
+      name: 'Template day',
+    })
+
+    await expect(
+      repository.getTemplateStructure(program.template.id),
+    ).resolves.toMatchObject({
+      template: { name: 'Template edited' },
+      days: [{ name: 'Template day' }],
+    })
+    await expect(
+      repository.getActiveCycleStructure(active.cycle.id),
+    ).resolves.toMatchObject({
+      cycle: { name: 'Cycle edited' },
+      days: [{ name: 'Cycle day' }],
+    })
+  })
+
+  it('clones a program template as a separate reusable template', async () => {
+    const program = await seedProgram(database)
+    const repository = createProgramRepository(database)
+
+    const clone = await repository.cloneProgramTemplate(program.template.id)
+    await repository.updateTemplateDay(program.days[0].id, { name: 'Changed' })
+
+    const cloneStructure = await repository.getTemplateStructure(
+      clone.template.id,
+    )
+
+    expect(clone.template.id).not.toBe(program.template.id)
+    expect(cloneStructure.template.name).toBe('Upper Lower copy')
+    expect(cloneStructure.days[0]).toMatchObject({ name: 'Upper' })
+    expect(
+      cloneStructure.exercisesByDay[cloneStructure.days[0].id],
+    ).toHaveLength(1)
+  })
+
   it('rolls back template creation when a prescribed exercise is invalid', async () => {
     const repository = createProgramRepository(database)
 

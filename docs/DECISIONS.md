@@ -22,6 +22,8 @@
 - Exercises referenced by history or programs should be archived instead of hard deleted.
 - Program Templates and Active Program Cycles are separate concepts.
 - Activating a template creates an independent active-cycle copy.
+- Activating a template marks any existing active cycle inactive so exactly one
+  cycle is current.
 - Programs never auto-advance or force a schedule.
 - Users manually select workout days.
 - Only one active workout is required at a time.
