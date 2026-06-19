@@ -1,5 +1,11 @@
 import { db, type TrainingLogDatabase } from '@db/database'
 import { createId } from '@domain/ids'
+import {
+  buildSetRecommendation,
+  createOriginalTargetSnapshot,
+  evaluateNextWorkoutRecommendation,
+  type NextWorkoutPerformance,
+} from '@domain/progressionRecommendations'
 import { snapshotExercise } from '@domain/snapshots'
 import { detectWorkoutStructuralChanges } from '@domain/workoutChanges'
 import type { LocalDateString } from '@domain/dates'
@@ -17,6 +23,7 @@ import type {
   WorkoutHistoryExercise,
   WorkoutHistorySet,
   WorkoutSet,
+  WorkoutSetTargetSnapshot,
 } from '@shared-types/app'
 
 export type StartWorkoutInput = {
@@ -47,6 +54,13 @@ export type UpdateWorkoutSetInput = {
   metricValues?: Record<string, WorkoutSetMetricValue>
   rir?: number | null
   completed?: boolean
+}
+
+export type UpdateWorkoutSetTargetInput = {
+  targetWeight?: number | null
+  targetRepsMin?: number | null
+  targetRepsMax?: number | null
+  restoreOriginal?: boolean
 }
 
 export type AddWorkoutExerciseInput = {
@@ -168,6 +182,11 @@ export function createWorkoutRepository(
                 workoutId: workout.id,
                 workoutExerciseId: workoutExercise.id,
                 setNumber,
+                targetSnapshot: createOriginalTargetSnapshot(
+                  sourceExercise,
+                  sourceExercise.exerciseSnapshot.trackingMethodId,
+                ),
+                targetRecommendation: null,
                 metricValues: {},
                 rir: sourceExercise.targetRir,
                 completed: false,
@@ -281,7 +300,13 @@ export function createWorkoutRepository(
       const now = new Date().toISOString()
       return database.transaction(
         'rw',
-        [database.workouts, database.workoutSets],
+        [
+          database.workouts,
+          database.workoutExercises,
+          database.workoutSets,
+          database.activeCycleWorkoutExercises,
+          database.exercises,
+        ],
         async () => {
           const set = await database.workoutSets.get(setId)
           if (!set) {
@@ -301,6 +326,66 @@ export function createWorkoutRepository(
                 : completed
                   ? set.completedAt
                   : null,
+            updatedAt: now,
+          }
+          await database.workoutSets.put(updated)
+          await recomputeWorkoutExerciseRecommendations(
+            database,
+            updated.workoutExerciseId,
+            now,
+          )
+          await database.workouts.update(set.workoutId, { updatedAt: now })
+          return updated
+        },
+      )
+    },
+
+    async updateWorkoutSetTarget(
+      setId: string,
+      input: UpdateWorkoutSetTargetInput,
+    ) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        [database.workouts, database.workoutSets],
+        async () => {
+          const set = await database.workoutSets.get(setId)
+          if (!set) {
+            throw new Error(`Workout set ${setId} was not found.`)
+          }
+          const recommendation = set.targetRecommendation
+          if (!recommendation) {
+            throw new Error('This set has no editable target recommendation.')
+          }
+          const original = recommendation.originalTarget
+          const userEditedTarget: WorkoutSetTargetSnapshot | null =
+            input.restoreOriginal
+              ? null
+              : {
+                  ...original,
+                  targetWeight:
+                    input.targetWeight === undefined
+                      ? original.targetWeight
+                      : input.targetWeight,
+                  targetRepsMin:
+                    input.targetRepsMin === undefined
+                      ? original.targetRepsMin
+                      : input.targetRepsMin,
+                  targetRepsMax:
+                    input.targetRepsMax === undefined
+                      ? original.targetRepsMax
+                      : input.targetRepsMax,
+                }
+          const updated: WorkoutSet = {
+            ...set,
+            targetRecommendation: {
+              ...recommendation,
+              userEditedTarget,
+              reason: userEditedTarget
+                ? 'manual_target_retained'
+                : recommendation.reason,
+              generatedAt: now,
+            },
             updatedAt: now,
           }
           await database.workoutSets.put(updated)
@@ -331,6 +416,8 @@ export function createWorkoutRepository(
             workoutId: exercise.workoutId,
             workoutExerciseId,
             setNumber: existing.length + 1,
+            targetSnapshot: null,
+            targetRecommendation: null,
             metricValues: {},
             rir: null,
             completed: false,
@@ -633,6 +720,7 @@ export function createWorkoutRepository(
           database.workoutHistorySets,
           database.detectedWorkoutChanges,
           database.activeCycleWorkoutExercises,
+          database.exercises,
         ],
         async () => {
           const workout = await database.workouts.get(input.workoutId)
@@ -682,6 +770,8 @@ export function createWorkoutRepository(
               workoutId: set.workoutId,
               workoutExerciseId: set.workoutExerciseId,
               setNumber: set.setNumber,
+              targetSnapshot: set.targetSnapshot ?? null,
+              targetRecommendation: set.targetRecommendation ?? null,
               metricValues: set.metricValues,
               rir: set.rir,
               completed: set.completed,
@@ -696,14 +786,27 @@ export function createWorkoutRepository(
                 .where({ dayId: workout.sourceDayId })
                 .toArray()
             : []
-          const detectedDrafts =
-            input.detectedChanges ??
-            detectWorkoutStructuralChanges({
-              sourceExercises,
-              workout,
-              performedExercises: exercises,
-              performedSetsByExercise: mapSetsByExercise(exercises, sets),
-            })
+          const detectedDrafts: NonNullable<
+            CompleteWorkoutInput['detectedChanges']
+          > = input.detectedChanges
+            ? [...input.detectedChanges]
+            : detectWorkoutStructuralChanges({
+                sourceExercises,
+                workout,
+                performedExercises: exercises,
+                performedSetsByExercise: mapSetsByExercise(exercises, sets),
+              })
+          if (!input.detectedChanges) {
+            detectedDrafts.push(
+              ...(await detectProgressionRecommendationChanges(
+                database,
+                history,
+                exercises,
+                sets,
+                sourceExercises,
+              )),
+            )
+          }
 
           const changes = detectedDrafts.map((change) => ({
             id: createId(),
@@ -763,6 +866,9 @@ export function createWorkoutRepository(
                 throw new Error(
                   `Detected workout change ${selection.changeId} was not found.`,
                 )
+              }
+              if (change.status !== 'pending') {
+                continue
               }
               await applySingleDetectedChange(
                 change,
@@ -991,6 +1097,231 @@ export function createWorkoutRepository(
   }
 }
 
+async function recomputeWorkoutExerciseRecommendations(
+  database: TrainingLogDatabase,
+  workoutExerciseId: string,
+  generatedAt: string,
+) {
+  const exercise = await database.workoutExercises.get(workoutExerciseId)
+  if (!exercise) {
+    return
+  }
+  const prescription = exercise.sourcePrescribedExerciseId
+    ? await database.activeCycleWorkoutExercises.get(
+        exercise.sourcePrescribedExerciseId,
+      )
+    : undefined
+  const exerciseRecord = exercise.exerciseId
+    ? await database.exercises.get(exercise.exerciseId)
+    : undefined
+  const sets = await database.workoutSets
+    .where({ workoutExerciseId })
+    .sortBy('setNumber')
+  const programmedSets = sets.filter(
+    (set) => prescription && set.setNumber <= prescription.targetSetCount,
+  )
+
+  for (const set of programmedSets) {
+    if (set.completed) {
+      continue
+    }
+    const sourceSet = [...programmedSets]
+      .filter((candidate) => candidate.setNumber < set.setNumber)
+      .reverse()
+      .find((candidate) => candidate.completed)
+    const userEditedTarget = set.targetRecommendation?.userEditedTarget ?? null
+    const originalTarget =
+      set.targetRecommendation?.originalTarget ??
+      set.targetSnapshot ??
+      createOriginalTargetSnapshot(
+        prescription,
+        exercise.exerciseSnapshot.trackingMethodId,
+      )
+    const targetRecommendation = sourceSet
+      ? buildSetRecommendation({
+          trackingMethodId: exercise.exerciseSnapshot.trackingMethodId,
+          exerciseName: exercise.exerciseSnapshot.exerciseName,
+          sourceSet,
+          nextSet: set,
+          originalTarget,
+          userEditedTarget,
+          increment: exerciseRecord?.defaultWeightIncrement,
+          generatedAt,
+          exerciseSkipped: exercise.skipped,
+        })
+      : userEditedTarget && originalTarget
+        ? {
+            version: 1 as const,
+            originalTarget,
+            suggestedTarget: null,
+            userEditedTarget,
+            reason: 'manual_target_retained' as const,
+            explanation:
+              'Your edited target is retained; no completed source set currently drives a suggestion.',
+            sourceSetId: null,
+            generatedAt,
+          }
+        : null
+    await database.workoutSets.update(set.id, {
+      targetRecommendation,
+      updatedAt: generatedAt,
+    })
+  }
+}
+
+async function detectProgressionRecommendationChanges(
+  database: TrainingLogDatabase,
+  workout: WorkoutHistoryEntry,
+  exercises: WorkoutExercise[],
+  sets: WorkoutSet[],
+  sourceExercises: ActiveCycleWorkoutExercise[],
+): Promise<NonNullable<CompleteWorkoutInput['detectedChanges']>> {
+  const sourceById = new Map(
+    sourceExercises.map((source) => [source.id, source]),
+  )
+  const results: NonNullable<CompleteWorkoutInput['detectedChanges']> = []
+
+  for (const exercise of exercises) {
+    if (!exercise.sourcePrescribedExerciseId || !exercise.exerciseId) {
+      continue
+    }
+    const currentPrescription = sourceById.get(
+      exercise.sourcePrescribedExerciseId,
+    )
+    if (!currentPrescription) {
+      continue
+    }
+    const exerciseRecord = await database.exercises.get(exercise.exerciseId)
+    const currentPerformance: NextWorkoutPerformance = {
+      workout,
+      exercise,
+      prescription: currentPrescription,
+      sets: sets
+        .filter((set) => set.workoutExerciseId === exercise.id)
+        .sort((left, right) => left.setNumber - right.setNumber),
+    }
+    const previousPerformance = await findPreviousComparablePerformance(
+      database,
+      currentPerformance,
+    )
+    const recommendation = evaluateNextWorkoutRecommendation({
+      current: currentPerformance,
+      previous: previousPerformance,
+      increment: exerciseRecord?.defaultWeightIncrement,
+    })
+    if (
+      !recommendation.materialChange ||
+      recommendation.recommendedTargetWeight === null
+    ) {
+      continue
+    }
+    results.push({
+      type: 'progression_recommendation',
+      description: recommendation.description,
+      sourcePath: repositorySourceExercisePath(workout, currentPrescription),
+      performedPath: `workout:${workout.id};exercise:${exercise.id};recommendedWeight:${recommendation.recommendedTargetWeight}`,
+      recommendationReason: recommendation.reason,
+      recommendationSummary: recommendation.summary,
+    })
+  }
+
+  return results
+}
+
+function repositorySourceExercisePath(
+  workout: Workout,
+  exercise: ActiveCycleWorkoutExercise,
+) {
+  return `cycle:${workout.sourceActiveCycleId ?? ''};day:${exercise.dayId};exercise:${exercise.id};template:${workout.sourceTemplateId ?? ''};templateExercise:${exercise.sourceTemplateExerciseId ?? ''}`
+}
+
+async function findPreviousComparablePerformance(
+  database: TrainingLogDatabase,
+  current: NextWorkoutPerformance,
+): Promise<NextWorkoutPerformance | undefined> {
+  const exerciseId = current.exercise.exerciseId
+  if (!exerciseId) {
+    return undefined
+  }
+  const historyExercises = await database.workoutHistoryExercises
+    .where({ exerciseId })
+    .toArray()
+  const candidates = await Promise.all(
+    historyExercises
+      .filter(
+        (exercise) =>
+          exercise.workoutId !== current.workout.id &&
+          exercise.exerciseSnapshot.trackingMethodId ===
+            current.exercise.exerciseSnapshot.trackingMethodId,
+      )
+      .map(async (exercise) => ({
+        exercise,
+        workout: await database.workoutHistoryEntries.get(exercise.workoutId),
+        sets: await database.workoutHistorySets
+          .where({ workoutExerciseId: exercise.id })
+          .sortBy('setNumber'),
+        prescription: exercise.sourcePrescribedExerciseId
+          ? await database.activeCycleWorkoutExercises.get(
+              exercise.sourcePrescribedExerciseId,
+            )
+          : undefined,
+      })),
+  )
+  return candidates
+    .filter(
+      (candidate) =>
+        candidate.workout &&
+        candidate.workout.completedAt < current.workout.completedAt,
+    )
+    .sort((left, right) => {
+      const leftContextScore = comparableContextScore(
+        current,
+        left.workout!,
+        left.exercise,
+      )
+      const rightContextScore = comparableContextScore(
+        current,
+        right.workout!,
+        right.exercise,
+      )
+      return (
+        rightContextScore - leftContextScore ||
+        right.workout!.completedAt.localeCompare(left.workout!.completedAt)
+      )
+    })
+    .map((candidate) =>
+      candidate.workout
+        ? ({
+            workout: candidate.workout,
+            exercise: candidate.exercise,
+            prescription: candidate.prescription,
+            sets: candidate.sets,
+          } satisfies NextWorkoutPerformance)
+        : undefined,
+    )[0]
+}
+
+function comparableContextScore(
+  current: NextWorkoutPerformance,
+  workout: Workout,
+  exercise: WorkoutExercise,
+) {
+  let score = 0
+  if (workout.sourceTemplateId === current.workout.sourceTemplateId) {
+    score += 3
+  }
+  if (workout.sourceDayId === current.workout.sourceDayId) {
+    score += 2
+  }
+  if (
+    exercise.sourcePrescribedExerciseId ===
+    current.exercise.sourcePrescribedExerciseId
+  ) {
+    score += 1
+  }
+  return score
+}
+
 function createWorkoutExercise(
   workoutId: string,
   sourceExercise: ActiveCycleWorkoutExercise,
@@ -1084,6 +1415,32 @@ async function applyChangeToActiveCycle(
       .map((exercise) => exercise.sourcePrescribedExerciseId)
       .filter((id): id is string => Boolean(id))
     await updateActiveExerciseOrder(database, source.day, orderedSourceIds, now)
+    return
+  }
+
+  if (change.type === 'progression_recommendation') {
+    const recommendedWeight = parseNumericPathValue(
+      change.performedPath,
+      'recommendedWeight',
+    )
+    if (recommendedWeight === null) {
+      throw new Error('Progression recommendation is missing target weight.')
+    }
+    if (!sourceExerciseId) {
+      throw new Error('Progression recommendation is missing source exercise.')
+    }
+    const sourceExercise =
+      await database.activeCycleWorkoutExercises.get(sourceExerciseId)
+    if (!sourceExercise) {
+      throw new Error('Active cycle exercise was not found.')
+    }
+    await database.activeCycleWorkoutExercises.update(sourceExercise.id, {
+      targetWeight: recommendedWeight,
+      updatedAt: now,
+    })
+    await database.activeProgramCycles.update(sourceExercise.activeCycleId, {
+      updatedAt: now,
+    })
     return
   }
 
@@ -1252,6 +1609,32 @@ async function applyChangeToTemplate(
         ?.sourceTemplateDayId
     : null
 
+  if (change.type === 'progression_recommendation') {
+    const recommendedWeight = parseNumericPathValue(
+      change.performedPath,
+      'recommendedWeight',
+    )
+    if (recommendedWeight === null) {
+      throw new Error('Progression recommendation is missing target weight.')
+    }
+    if (!templateExerciseId) {
+      throw new Error('Template exercise was not found.')
+    }
+    const templateExercise =
+      await database.templateWorkoutExercises.get(templateExerciseId)
+    if (!templateExercise) {
+      throw new Error('Template exercise was not found.')
+    }
+    await database.templateWorkoutExercises.update(templateExercise.id, {
+      targetWeight: recommendedWeight,
+      updatedAt: now,
+    })
+    await database.programTemplates.update(templateExercise.templateId, {
+      updatedAt: now,
+    })
+    return
+  }
+
   if (change.type === 'exercise_added') {
     if (!templateDayId) {
       throw new Error('Template workout day was not found.')
@@ -1365,17 +1748,16 @@ function parseChangePath(path: string) {
       .split(';')
       .map((part) => part.split(':'))
       .filter(([key]) => key),
-  ) as Partial<
-    Record<
-      | 'cycle'
-      | 'day'
-      | 'exercise'
-      | 'template'
-      | 'templateExercise'
-      | 'workout',
-      string
-    >
-  >
+  ) as Partial<Record<string, string>>
+}
+
+function parseNumericPathValue(path: string, key: string) {
+  const raw = parseChangePath(path)[key]
+  if (raw === undefined) {
+    return null
+  }
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 async function getHistorySetCount(

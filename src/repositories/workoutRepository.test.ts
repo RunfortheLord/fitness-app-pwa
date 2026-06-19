@@ -185,6 +185,55 @@ describe('workoutRepository', () => {
     ).toEqual({ weight: 185, reps: 8 })
   })
 
+  it('persists live progression suggestions and manual target edits separately from actuals', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    await database.activeCycleWorkoutExercises.update(active.exercises[0].id, {
+      targetWeight: 185,
+    })
+    const repository = createWorkoutRepository(database)
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+
+    await repository.updateWorkoutSet(started.sets[0].id, {
+      metricValues: { weight: 185, reps: 11 },
+      completed: true,
+    })
+    let reloaded = await repository.getActiveWorkoutStructure()
+    const nextSet = reloaded?.setsByExercise[started.exercises[0].id][1]
+
+    expect(nextSet?.targetRecommendation).toMatchObject({
+      reason: 'above_range_increase_difficulty',
+      originalTarget: {
+        targetWeight: 185,
+        targetRepsMin: 8,
+        targetRepsMax: 10,
+      },
+      suggestedTarget: {
+        targetWeight: 190,
+        targetRepsMin: 8,
+        targetRepsMax: 8,
+      },
+      userEditedTarget: null,
+    })
+    await repository.updateWorkoutSetTarget(nextSet!.id, {
+      targetWeight: 187.5,
+    })
+    reloaded = await repository.getActiveWorkoutStructure()
+    const edited = reloaded?.setsByExercise[started.exercises[0].id][1]
+    expect(edited?.targetRecommendation).toMatchObject({
+      reason: 'manual_target_retained',
+      suggestedTarget: { targetWeight: 190 },
+      userEditedTarget: { targetWeight: 187.5 },
+    })
+    expect(edited?.metricValues).toEqual({})
+  })
+
   it('enters every tracking metric type during a live workout', async () => {
     const exerciseRepository = createExerciseRepository(database)
     const exercises = await Promise.all([
@@ -635,6 +684,85 @@ describe('workoutRepository', () => {
     await expect(
       database.templateWorkoutExercises.get(program.exercises[0].id),
     ).resolves.toMatchObject({ exerciseId: replacement.id })
+  })
+
+  it('adds next-workout progression recommendations to detected-change review and applies both destinations once', async () => {
+    const programRepository = createProgramRepository(database)
+    const program = await seedProgram(database)
+    const active = await programRepository.activateTemplate(program.template.id)
+    await database.activeCycleWorkoutExercises.update(active.exercises[0].id, {
+      targetWeight: 185,
+    })
+    await database.templateWorkoutExercises.update(program.exercises[0].id, {
+      targetWeight: 185,
+    })
+    const repository = createWorkoutRepository(database)
+
+    const first = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(first.sets[0].id, {
+      metricValues: { weight: 185, reps: 10 },
+      completed: true,
+    })
+    await repository.updateWorkoutSet(first.sets[1].id, {
+      metricValues: { weight: 185, reps: 10 },
+      rir: 2,
+      completed: true,
+    })
+    await repository.completeWorkout({
+      workoutId: first.workout.id,
+      completedAt: new Date(
+        Date.parse(first.workout.startedAt) + 30 * 60 * 1000,
+      ).toISOString(),
+    })
+
+    const second = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(second.sets[0].id, {
+      metricValues: { weight: 185, reps: 10 },
+      completed: true,
+    })
+    await repository.updateWorkoutSet(second.sets[1].id, {
+      metricValues: { weight: 185, reps: 11 },
+      rir: 3,
+      completed: true,
+    })
+    const completed = await repository.completeWorkout({
+      workoutId: second.workout.id,
+      completedAt: new Date(
+        Date.parse(second.workout.startedAt) + 30 * 60 * 1000,
+      ).toISOString(),
+    })
+
+    expect(completed.detectedChanges).toMatchObject([
+      {
+        type: 'progression_recommendation',
+        recommendationReason: 'repeated_top_range_increase',
+        status: 'pending',
+        selectedDestination: 'neither',
+      },
+    ])
+    await repository.applyDetectedChange(
+      completed.detectedChanges[0].id,
+      'both',
+    )
+    await repository.applyDetectedChange(
+      completed.detectedChanges[0].id,
+      'both',
+    )
+
+    await expect(
+      database.activeCycleWorkoutExercises.get(active.exercises[0].id),
+    ).resolves.toMatchObject({ targetWeight: 190 })
+    await expect(
+      database.templateWorkoutExercises.get(program.exercises[0].id),
+    ).resolves.toMatchObject({ targetWeight: 190 })
   })
 
   it('records neither as an explicit rejected review result', async () => {

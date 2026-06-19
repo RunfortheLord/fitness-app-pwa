@@ -31,6 +31,7 @@ import {
   StatusMessage,
   ValidationMessage,
 } from '@components/ui'
+import { getEffectiveTarget } from '@domain/progressionRecommendations'
 import { getRestTimerRemainingSeconds } from '@domain/restTimer'
 import { exerciseRepository } from '@repositories/exerciseRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
@@ -396,6 +397,9 @@ export function LiveWorkoutPage() {
           onSetRir={(set, rir) =>
             run(workoutRepository.updateWorkoutSet(set.id, { rir }))
           }
+          onSetTarget={(set, target) =>
+            run(workoutRepository.updateWorkoutSetTarget(set.id, target))
+          }
           onSkip={(skipped) =>
             run(workoutRepository.skipExercise(activeExercise.id, skipped))
           }
@@ -550,6 +554,7 @@ function ExerciseWorkspace({
   onReplaceExercise,
   onSetMetric,
   onSetRir,
+  onSetTarget,
   onSkip,
   onUpdateNotes,
   prescription,
@@ -569,6 +574,10 @@ function ExerciseWorkspace({
   onReplaceExercise: () => void
   onSetMetric: (set: WorkoutSet, values: WorkoutSet['metricValues']) => void
   onSetRir: (set: WorkoutSet, rir: number | null) => void
+  onSetTarget: (
+    set: WorkoutSet,
+    values: Parameters<typeof workoutRepository.updateWorkoutSetTarget>[1],
+  ) => void
   onSkip: (skipped: boolean) => void
   onUpdateNotes: (notes: string) => void
   prescription: ActiveCycleWorkoutExercise | undefined
@@ -658,6 +667,7 @@ function ExerciseWorkspace({
             onDelete={() => onDeleteSet(set.id)}
             onMetricChange={(values) => onSetMetric(set, values)}
             onRirChange={(rir) => onSetRir(set, rir)}
+            onTargetChange={(target) => onSetTarget(set, target)}
             previous={previous[set.setNumber - 1]}
             prescription={prescription}
             set={set}
@@ -681,6 +691,7 @@ function SetRow({
   onDelete,
   onMetricChange,
   onRirChange,
+  onTargetChange,
   previous,
   prescription,
   set,
@@ -692,6 +703,9 @@ function SetRow({
   onDelete: () => void
   onMetricChange: (values: WorkoutSet['metricValues']) => void
   onRirChange: (rir: number | null) => void
+  onTargetChange: (
+    values: Parameters<typeof workoutRepository.updateWorkoutSetTarget>[1],
+  ) => void
   previous: WorkoutSet | undefined
   prescription: ActiveCycleWorkoutExercise | undefined
   set: WorkoutSet
@@ -699,8 +713,16 @@ function SetRow({
   const showRir =
     supportsRir(metrics) && set.setNumber === finalProgrammedSetNumber
   const repsPerSide = exerciseRecordsRepsPerSide(exercise)
+  const effectiveTarget = getEffectiveTarget(set)
+  const recommendation = set.targetRecommendation
+  const recommendationId = recommendation
+    ? `${set.id}-recommendation`
+    : undefined
   return (
-    <div className="set-row">
+    <div
+      aria-describedby={recommendationId}
+      className={recommendation ? 'set-row has-recommendation' : 'set-row'}
+    >
       <div className="set-number">
         <strong>Set {set.setNumber}</strong>
         <small>
@@ -708,8 +730,17 @@ function SetRow({
         </small>
       </div>
       <div className="set-target">
-        <span>Target</span>
-        <strong>{formatSetTarget(prescription, metrics, repsPerSide)}</strong>
+        <span>
+          Target
+          {recommendation?.userEditedTarget
+            ? ' - Edited'
+            : recommendation?.suggestedTarget
+              ? ' - Suggested'
+              : ''}
+        </span>
+        <strong>
+          {formatSetTarget(prescription, metrics, repsPerSide, effectiveTarget)}
+        </strong>
       </div>
       {metrics.map((metric) => (
         <label key={metric.key}>
@@ -741,6 +772,19 @@ function SetRow({
           />
         </label>
       ) : null}
+      <label className="failed-set-toggle">
+        <input
+          checked={set.metricValues.failed === true}
+          onChange={(event) =>
+            onMetricChange({
+              ...set.metricValues,
+              failed: event.currentTarget.checked,
+            })
+          }
+          type="checkbox"
+        />
+        <span>Failed</span>
+      </label>
       <p className="set-status">
         {set.completed
           ? 'Completed'
@@ -761,6 +805,59 @@ function SetRow({
       <IconButton aria-label={`Delete set ${set.setNumber}`} onClick={onDelete}>
         <Trash2 aria-hidden="true" size={18} />
       </IconButton>
+      {recommendation ? (
+        <div className="set-recommendation" id={recommendationId}>
+          <p aria-live="polite">{recommendation.explanation}</p>
+          {!set.completed &&
+          (recommendation.suggestedTarget ||
+            recommendation.userEditedTarget) ? (
+            <div className="target-edit-grid">
+              {effectiveTarget?.targetWeight !== null &&
+              effectiveTarget?.targetWeight !== undefined ? (
+                <label>
+                  <span>Target load</span>
+                  <NumericInput
+                    aria-label={`Set ${set.setNumber} target load`}
+                    defaultValue={String(effectiveTarget.targetWeight)}
+                    onBlur={(event) =>
+                      onTargetChange({
+                        targetWeight: parseNullableNumber(
+                          event.currentTarget.value,
+                        ),
+                      })
+                    }
+                  />
+                </label>
+              ) : null}
+              {effectiveTarget?.targetRepsMin !== null &&
+              effectiveTarget?.targetRepsMin !== undefined ? (
+                <label>
+                  <span>Target reps</span>
+                  <NumericInput
+                    aria-label={`Set ${set.setNumber} target reps`}
+                    defaultValue={String(effectiveTarget.targetRepsMin)}
+                    onBlur={(event) => {
+                      const reps = parseNullableNumber(
+                        event.currentTarget.value,
+                      )
+                      onTargetChange({
+                        targetRepsMin: reps,
+                        targetRepsMax: reps,
+                      })
+                    }}
+                  />
+                </label>
+              ) : null}
+              <SecondaryButton
+                type="button"
+                onClick={() => onTargetChange({ restoreOriginal: true })}
+              >
+                Original
+              </SecondaryButton>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -979,6 +1076,7 @@ function formatSetTarget(
   prescription: ActiveCycleWorkoutExercise | undefined,
   metrics: TrackingMetric[],
   repsPerSide: boolean,
+  effectiveTarget?: ReturnType<typeof getEffectiveTarget>,
 ) {
   if (!prescription) {
     return 'Open'
@@ -986,7 +1084,12 @@ function formatSetTarget(
   const parts = metrics
     .map((metric) => {
       if (metric.key === 'reps') {
-        const reps = formatRepTarget(prescription)
+        const reps = effectiveTarget
+          ? formatRepTargetFromValues(
+              effectiveTarget.targetRepsMin,
+              effectiveTarget.targetRepsMax,
+            )
+          : formatRepTarget(prescription)
         return reps ? (repsPerSide ? `${reps}/side` : reps) : null
       }
       if (
@@ -994,9 +1097,10 @@ function formatSetTarget(
         metric.key === 'assistedWeight' ||
         metric.key === 'addedWeight'
       ) {
-        return prescription.targetWeight !== null &&
-          prescription.targetWeight !== undefined
-          ? `${prescription.targetWeight} lb`
+        const targetWeight =
+          effectiveTarget?.targetWeight ?? prescription.targetWeight
+        return targetWeight !== null && targetWeight !== undefined
+          ? `${formatTargetLoad(metric.key, targetWeight)}`
           : null
       }
       if (metric.key === 'durationSeconds') {
@@ -1016,8 +1120,13 @@ function formatSetTarget(
 }
 
 function formatRepTarget(prescription: ActiveCycleWorkoutExercise) {
-  const min = prescription.targetRepsMin
-  const max = prescription.targetRepsMax
+  return formatRepTargetFromValues(
+    prescription.targetRepsMin,
+    prescription.targetRepsMax,
+  )
+}
+
+function formatRepTargetFromValues(min: number | null, max: number | null) {
   if (min !== null && max !== null) {
     return min === max ? `${min} reps` : `${min}-${max} reps`
   }
@@ -1028,6 +1137,16 @@ function formatRepTarget(prescription: ActiveCycleWorkoutExercise) {
     return `up to ${max} reps`
   }
   return null
+}
+
+function formatTargetLoad(metricKey: string, value: number) {
+  if (metricKey === 'assistedWeight') {
+    return `${value} lb assist`
+  }
+  if (metricKey === 'addedWeight') {
+    return `${value} lb added`
+  }
+  return `${value} lb`
 }
 
 function formatMetricLabel(metric: TrackingMetric, repsPerSide: boolean) {

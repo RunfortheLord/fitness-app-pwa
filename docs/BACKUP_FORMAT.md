@@ -26,6 +26,17 @@ Exercise snapshots may include `recordsRepsPerSide`. Older backups that do not
 include this snapshot field restore it as `false`; restore does not rewrite or
 double historical repetition values.
 
+Workout set records may include optional progression metadata:
+`targetSnapshot` and `targetRecommendation`. These preserve the original target,
+engine suggestion, user-edited target, effective-target inputs, source set,
+reason code, explanation, and generated timestamp used for explainable live
+recommendations. Older backups that omit these fields remain valid.
+
+Detected workout changes may include type `progression_recommendation` with
+optional `recommendationReason` and `recommendationSummary`. These records are
+unchecked by default in review and are applied only to selected future
+prescription destinations; completed actual workout results are not rewritten.
+
 ## Restore Behavior
 
 Restore validates the complete backup before modifying IndexedDB. Validation covers root metadata, supported backup format version, database schema compatibility, required fields, IDs, duplicate IDs, timestamps, local dates, numeric values, enum values, parent-child relationships, source references, and snapshot structure.

@@ -340,6 +340,48 @@ const restTimerStateSchema = z.object({
   accumulatedPausedSeconds: nonNegativeInteger,
   status: z.enum(['running', 'paused', 'dismissed', 'completed']),
 })
+const progressionReasonSchema = z.enum([
+  'above_range_increase_difficulty',
+  'exactly_at_maximum_hold',
+  'within_range_hold',
+  'below_minimum_without_failure_hold',
+  'below_minimum_failed_reduce_difficulty',
+  'skipped_no_progression',
+  'missing_rep_range',
+  'missing_target',
+  'invalid_increment',
+  'unsupported_tracking_method',
+  'manual_target_retained',
+])
+const nextWorkoutProgressionReasonSchema = z.enum([
+  'repeated_top_range_increase',
+  'top_range_insufficient_history_hold',
+  'insufficient_final_rir_hold',
+  'missing_final_rir_hold',
+  'normal_in_range_hold',
+  'repeated_missed_minimums_reduce',
+  'repeated_failed_performance_reduce',
+  'skipped_programmed_set_hold',
+  'no_comparable_previous_performance_hold',
+  'unsupported_tracking_method',
+  'no_material_prescription_change',
+])
+const setTargetSnapshotSchema = z.object({
+  trackingMethodId: trackingMethodIdSchema,
+  targetWeight: z.union([nonNegativeNumber, z.null()]),
+  targetRepsMin: z.union([nonNegativeInteger, z.null()]),
+  targetRepsMax: z.union([nonNegativeInteger, z.null()]),
+})
+const setTargetRecommendationSchema = z.object({
+  version: z.literal(1),
+  originalTarget: setTargetSnapshotSchema,
+  suggestedTarget: z.union([setTargetSnapshotSchema, z.null()]),
+  userEditedTarget: z.union([setTargetSnapshotSchema, z.null()]),
+  reason: progressionReasonSchema,
+  explanation: z.string(),
+  sourceSetId: nullableId,
+  generatedAt: isoTimestampSchema,
+})
 const workoutSourceSnapshotSchema = z.object({
   activeCycleName: z.union([z.string(), z.null()]),
   templateName: z.union([z.string(), z.null()]),
@@ -386,6 +428,14 @@ const workoutSetSchema = z.object({
   workoutId: idSchema,
   workoutExerciseId: idSchema,
   setNumber: nonNegativeInteger,
+  targetSnapshot: z
+    .union([setTargetSnapshotSchema, z.null()])
+    .optional()
+    .default(null),
+  targetRecommendation: z
+    .union([setTargetRecommendationSchema, z.null()])
+    .optional()
+    .default(null),
   metricValues: metricValuesSchema,
   rir: z.union([nonNegativeNumber, z.null()]),
   completed: z.boolean(),
@@ -413,10 +463,19 @@ const detectedWorkoutChangeSchema = z.object({
     'exercise_skipped_or_removed',
     'exercise_replaced',
     'exercise_order_changed',
+    'progression_recommendation',
   ]),
   description: z.string(),
   sourcePath: z.string(),
   performedPath: z.string(),
+  recommendationReason: z
+    .union([nextWorkoutProgressionReasonSchema, z.null()])
+    .optional()
+    .default(null),
+  recommendationSummary: z
+    .union([z.string(), z.null()])
+    .optional()
+    .default(null),
   selectedDestination: z.enum([
     'cycle_only',
     'template_only',

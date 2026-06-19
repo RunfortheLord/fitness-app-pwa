@@ -181,6 +181,129 @@ describe('backupService', () => {
     expect(JSON.parse(result.json)).toEqual(result.backup)
   })
 
+  it('validates backups with progression recommendation metadata', async () => {
+    const backup = (await createBackupService(database).createJsonBackup())
+      .backup
+    const withRecommendation = {
+      ...backup,
+      data: {
+        ...backup.data,
+        workoutHistorySets: [
+          {
+            id: 'set-1',
+            workoutId: 'history-1',
+            workoutExerciseId: 'history-exercise-1',
+            setNumber: 1,
+            targetSnapshot: {
+              trackingMethodId: 'weight_reps',
+              targetWeight: 185,
+              targetRepsMin: 5,
+              targetRepsMax: 10,
+            },
+            targetRecommendation: {
+              version: 1,
+              originalTarget: {
+                trackingMethodId: 'weight_reps',
+                targetWeight: 185,
+                targetRepsMin: 5,
+                targetRepsMax: 10,
+              },
+              suggestedTarget: {
+                trackingMethodId: 'weight_reps',
+                targetWeight: 190,
+                targetRepsMin: 5,
+                targetRepsMax: 5,
+              },
+              userEditedTarget: {
+                trackingMethodId: 'weight_reps',
+                targetWeight: 187.5,
+                targetRepsMin: 5,
+                targetRepsMax: 5,
+              },
+              reason: 'manual_target_retained',
+              explanation: 'Your edited target is retained.',
+              sourceSetId: 'set-0',
+              generatedAt: '2026-06-19T12:00:00.000Z',
+            },
+            metricValues: {},
+            rir: null,
+            completed: false,
+            completedAt: null,
+            restSecondsUsed: null,
+          },
+        ],
+        detectedWorkoutChanges: [
+          {
+            id: 'change-1',
+            workoutId: 'history-1',
+            type: 'progression_recommendation',
+            description: 'Progress bench',
+            sourcePath: 'cycle:cycle;day:day;exercise:source',
+            performedPath:
+              'workout:history-1;exercise:history-exercise;recommendedWeight:190',
+            recommendationReason: 'repeated_top_range_increase',
+            recommendationSummary: 'Suggested next-workout target: 190 lb.',
+            selectedDestination: 'neither',
+            appliedDestination: null,
+            status: 'pending',
+            failureReason: null,
+            createdAt: '2026-06-19T12:00:00.000Z',
+            updatedAt: '2026-06-19T12:00:00.000Z',
+          },
+        ],
+        workoutHistoryEntries: [
+          {
+            id: 'history-1',
+            sourceActiveCycleId: null,
+            sourceTemplateId: null,
+            sourceDayId: null,
+            localDate: testLocalDate,
+            name: 'History',
+            workoutSnapshot: {
+              activeCycleName: null,
+              templateName: null,
+              dayName: 'Ad hoc',
+              dayNotes: '',
+            },
+            notes: '',
+            startedAt: '2026-06-19T11:00:00.000Z',
+            completedAt: '2026-06-19T12:00:00.000Z',
+            durationSeconds: 3600,
+            elapsedPausedSeconds: 0,
+            activeRestTimer: null,
+            status: 'completed',
+            createdAt: '2026-06-19T12:00:00.000Z',
+            updatedAt: '2026-06-19T12:00:00.000Z',
+          },
+        ],
+        workoutHistoryExercises: [
+          {
+            id: 'history-exercise-1',
+            workoutId: 'history-1',
+            exerciseId: null,
+            exerciseSnapshot: {
+              exerciseName: 'Bench press',
+              notes: '',
+              defaultRestSeconds: 120,
+              trackingMethodId: 'weight_reps',
+              trackingMetrics: [],
+              recordsRepsPerSide: false,
+            },
+            sourcePrescribedExerciseId: null,
+            orderIndex: 0,
+            notes: '',
+            skipped: false,
+            replacementOfExerciseId: null,
+            createdAt: '2026-06-19T12:00:00.000Z',
+            updatedAt: '2026-06-19T12:00:00.000Z',
+          },
+        ],
+      },
+    }
+
+    expect(validateBackup(withRecommendation, 'progression.json').ok).toBe(true)
+  })
+
   it('restores replace mode transactionally while preserving stable IDs and relationships', async () => {
     const service = createBackupService(database)
     const food = await seedFood(database)

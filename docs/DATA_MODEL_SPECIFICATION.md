@@ -241,6 +241,11 @@ foreign-key ID fields and sort indexes.
 
 - `id`
 - `setNumber`
+- `targetSnapshot`: optional immutable original programmed target for progression
+  auditability
+- `targetRecommendation`: optional current-workout recommendation metadata with
+  original, suggested, user-edited, reason, explanation, source set, and
+  generated timestamp
 - `metricValues`
 - `rir`
 - `completed`
@@ -292,6 +297,9 @@ foreign-key ID fields and sort indexes.
 
 - `id`
 - `setNumber`
+- `targetSnapshot`: optional completed-workout snapshot of the original target
+- `targetRecommendation`: optional completed-workout snapshot of live
+  recommendation metadata
 - `metricValues`
 - `rir`
 - `completed`
@@ -301,15 +309,23 @@ foreign-key ID fields and sort indexes.
 ### DetectedStructuralChange
 
 - `id`
-- `type`: `set_added`, `set_removed`, `exercise_added`, `exercise_skipped_or_removed`, `exercise_replaced`, or `exercise_order_changed`
+- `type`: `set_added`, `set_removed`, `exercise_added`, `exercise_skipped_or_removed`, `exercise_replaced`, `exercise_order_changed`, or `progression_recommendation`
 - `description`
 - `sourcePath`
 - `performedPath`
+- `recommendationReason`: optional typed next-workout progression reason
+- `recommendationSummary`: optional deterministic explanation and evidence
 - `selectedDestination`: `cycle_only`, `template_only`, `both`, or `neither`
 - `appliedDestination`: nullable until applied
 - `status`: `pending`, `applied`, `rejected`, or `failed`
 - `createdAt`
 - Performed weight, reps, RIR, set completion, and duration are excluded from structural changes.
+- `progression_recommendation` changes update only future prescription targets
+  after explicit review selection. They never rewrite completed actual results.
+
+See `docs/PROGRESSION_RECOMMENDATIONS.md` for deterministic rule definitions,
+supported tracking methods, increment handling, assisted-weight direction,
+added-weight semantics, and final programmed-set RIR behavior.
 
 ## Relationships
 

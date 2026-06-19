@@ -633,6 +633,12 @@ function ChangeReview({
                 <span>{change.description}</span>
               </label>
               <dl className="history-detail-list">
+                {change.recommendationReason ? (
+                  <div>
+                    <dt>Reason</dt>
+                    <dd>{change.recommendationReason}</dd>
+                  </div>
+                ) : null}
                 <div>
                   <dt>Selected</dt>
                   <dd>{formatChangeDestination(change.selectedDestination)}</dd>
@@ -686,6 +692,9 @@ function ChangeReview({
                     ))}
                   </select>
                 </FormField>
+              ) : null}
+              {change.recommendationSummary ? (
+                <small className="muted">{change.recommendationSummary}</small>
               ) : null}
               {change.failureReason ? (
                 <small className="muted">{change.failureReason}</small>

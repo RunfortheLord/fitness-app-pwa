@@ -309,6 +309,8 @@ export type WorkoutSet = {
   workoutId: string
   workoutExerciseId: string
   setNumber: number
+  targetSnapshot?: WorkoutSetTargetSnapshot | null
+  targetRecommendation?: WorkoutSetTargetRecommendation | null
   metricValues: Record<string, number | boolean | null>
   rir: number | null
   completed: boolean
@@ -327,6 +329,50 @@ export type WorkoutHistoryEntry = Workout & {
 export type WorkoutHistoryExercise = WorkoutExercise
 export type WorkoutHistorySet = Omit<WorkoutSet, 'createdAt' | 'updatedAt'>
 
+export type WorkoutSetTargetSnapshot = {
+  trackingMethodId: TrackingMethodId
+  targetWeight: number | null
+  targetRepsMin: number | null
+  targetRepsMax: number | null
+}
+
+export type WorkoutSetTargetRecommendation = {
+  version: 1
+  originalTarget: WorkoutSetTargetSnapshot
+  suggestedTarget: WorkoutSetTargetSnapshot | null
+  userEditedTarget: WorkoutSetTargetSnapshot | null
+  reason: CurrentWorkoutProgressionReason
+  explanation: string
+  sourceSetId: string | null
+  generatedAt: IsoTimestamp
+}
+
+export type CurrentWorkoutProgressionReason =
+  | 'above_range_increase_difficulty'
+  | 'exactly_at_maximum_hold'
+  | 'within_range_hold'
+  | 'below_minimum_without_failure_hold'
+  | 'below_minimum_failed_reduce_difficulty'
+  | 'skipped_no_progression'
+  | 'missing_rep_range'
+  | 'missing_target'
+  | 'invalid_increment'
+  | 'unsupported_tracking_method'
+  | 'manual_target_retained'
+
+export type NextWorkoutProgressionReason =
+  | 'repeated_top_range_increase'
+  | 'top_range_insufficient_history_hold'
+  | 'insufficient_final_rir_hold'
+  | 'missing_final_rir_hold'
+  | 'normal_in_range_hold'
+  | 'repeated_missed_minimums_reduce'
+  | 'repeated_failed_performance_reduce'
+  | 'skipped_programmed_set_hold'
+  | 'no_comparable_previous_performance_hold'
+  | 'unsupported_tracking_method'
+  | 'no_material_prescription_change'
+
 export type DetectedStructuralChangeType =
   | 'set_added'
   | 'set_removed'
@@ -334,6 +380,7 @@ export type DetectedStructuralChangeType =
   | 'exercise_skipped_or_removed'
   | 'exercise_replaced'
   | 'exercise_order_changed'
+  | 'progression_recommendation'
 
 export type StructuralChangeDestination =
   | 'cycle_only'
@@ -348,6 +395,8 @@ export type DetectedWorkoutChange = {
   description: string
   sourcePath: string
   performedPath: string
+  recommendationReason?: NextWorkoutProgressionReason | null
+  recommendationSummary?: string | null
   selectedDestination: StructuralChangeDestination
   appliedDestination: StructuralChangeDestination | null
   status: 'pending' | 'applied' | 'rejected' | 'failed'

@@ -108,7 +108,10 @@
 - Typical weighted set rows must show set number, previous performance, weight, reps, RIR, and completed control.
 - Users must be able to add sets, delete sets, edit completed sets, complete sets, skip exercises, replace exercises, add exercises, reorder exercises where practical, change session rest time, and cancel with confirmation.
 - The rest timer must be timestamp-based so remaining time is correct after backgrounding or resuming.
-- The first release must exclude automatic weight, repetition, RIR, coaching, progression, or training recommendation decisions.
+- The first release excludes coaching, automatic program advancement, and opaque
+  recommendation services. Deterministic local progression recommendations may
+  suggest future targets, but they must remain explainable, editable, and
+  unapplied to permanent prescriptions until explicit post-workout review.
 
 ### Completion and Detected Changes
 
@@ -118,7 +121,9 @@
 - The app must not treat performed weight, reps, RIR, set completion status, or duration as template changes.
 - Detected changes must be displayed as an individual review checklist.
 - Every change must be reviewed individually.
-- Each selected change must support destination choices: active cycle only, reusable template only, both, or neither.
+- Each selected structural or progression recommendation change must support
+  destination choices: active cycle only, reusable template only, or both.
+  Unchecked items are not applied.
 - Applying changes must be transactional.
 - The user must be able to finish and save the workout without applying changes.
 
@@ -128,7 +133,10 @@
 - Users must be able to view full workout details.
 - Users must be able to safely edit notes and recorded performance values without changing original program templates.
 - Deleting a historical workout must require confirmation.
-- History must not show weekly adherence score, strength score, estimated 1RM, automated trend, training recommendation, or graphs in the first release.
+- History must not show weekly adherence score, strength score, estimated 1RM,
+  automated trend, opaque coaching recommendation, or graphs in the first
+  release. Completed workouts may show deterministic progression review reasons
+  and recommendation audit metadata.
 
 ### Backup and Portability
 

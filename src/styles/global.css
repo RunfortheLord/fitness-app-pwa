@@ -623,6 +623,10 @@ textarea:focus-visible {
   background: var(--color-surface-strong);
 }
 
+.set-row.has-recommendation {
+  border-color: rgb(143 124 255 / 60%);
+}
+
 .set-row .icon-button {
   justify-self: stretch;
 }
@@ -671,6 +675,35 @@ textarea:focus-visible {
 
 .set-status {
   margin: 0;
+}
+
+.failed-set-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+}
+
+.set-recommendation {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border-soft);
+}
+
+.set-recommendation p {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.target-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  gap: var(--space-2);
+  align-items: end;
 }
 
 .rest-timer-card {

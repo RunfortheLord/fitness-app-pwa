@@ -206,6 +206,10 @@
   per-side value and are not doubled.
 - RIR is requested only on the final programmed set. Historical RIR stored on
   other sets remains in data but is not shown in the current live UI.
+- When a deterministic progression suggestion changes an upcoming programmed
+  target, the compact row shows the effective target with a Suggested or Edited
+  text state, a concise explanation, target edit controls, and a restore-original
+  action. Suggested targets never prefill actual-result inputs.
 
 ### Rest Timer
 
@@ -228,7 +232,8 @@
 
 - Finish Workout saves the historical workout first.
 - If structural changes are detected, show a compact checklist.
-- Each item has a destination selector: active cycle only, template only, both, neither.
+- Each selected item has a destination selector: active cycle only, template
+  only, or both. Unchecked items are saved as not applied.
 - User can finish without applying any changes.
 - Failed apply operation shows an error and leaves saved workout intact.
 
