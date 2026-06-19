@@ -47,14 +47,38 @@ also runs against production preview through `npm run test:e2e`.
 
 ## Deployment
 
-1. Run `npm run build`.
-2. Deploy the contents of `dist/` to a static HTTPS host.
-3. Configure the host to serve `index.html` for app routes such as `/nutrition`,
-   `/training`, `/workout`, `/history`, and `/settings`.
-4. Serve generated assets, `manifest.webmanifest`, `sw.js`, icons, and hashed
-   JavaScript/CSS files with normal static-file caching.
-5. Do not add API, account, sync, analytics, or network-only dependencies to core
-   workflows.
+The initial static preview host is Vercel. Use `npx` for the deployment CLI;
+do not install it globally.
+
+1. Run `npm run build` and verify the output is written to `dist/`.
+2. Check authentication with `npx --yes vercel whoami`.
+3. If authentication is required, run `npx --yes vercel login` and stop until
+   login completes.
+4. Confirm the project does not require Vercel Authentication for preview URLs:
+   `npx --yes vercel project protection fitness-app-pwa`. If the preview would
+   show a Vercel Authentication interstitial, disable SSO deployment protection
+   for the preview project with
+   `npx --yes vercel project protection disable fitness-app-pwa --sso`.
+5. Create a preview deployment with
+   `npx --yes vercel deploy --target preview --yes`.
+6. Do not attach a custom domain, enable analytics, add environment secrets, or
+   add paid services for the preview deployment.
+
+`vercel.json` configures Vercel to run `npm run build`, publish `dist/`, and
+serve `index.html` for client-side routes such as `/nutrition`, `/training`,
+`/workout`, `/history`, and `/settings`.
+
+The app is deployed at the origin root to preserve PWA paths and scope:
+`/manifest.webmanifest`, `/sw.js`, `/apple-touch-icon.png`, `/icons/icon-192.png`,
+`/icons/icon-512.png`, manifest `start_url: "/"`, and manifest `scope: "/"`.
+Generated hashed JavaScript and CSS assets can use immutable static caching.
+`manifest.webmanifest`, `sw.js`, icons, and `index.html` must remain reachable
+without changing their root-relative paths.
+
+The generated Workbox service worker precaches the app shell, hashed build
+assets, manifest, and icons for offline launch, and cleans outdated Workbox
+caches during updates. User records are stored in IndexedDB, not in
+service-worker caches.
 
 ## Installing From Safari
 
