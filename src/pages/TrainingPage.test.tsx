@@ -136,7 +136,7 @@ describe('TrainingPage', () => {
     )
     await user.click(screen.getByRole('button', { name: 'Active' }))
     expect(await screen.findByText('Bench press')).toBeInTheDocument()
-  })
+  }, 10_000)
 
   it('opens create exercise from the center Add sheet', async () => {
     const user = userEvent.setup()

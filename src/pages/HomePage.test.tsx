@@ -2,9 +2,11 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { vi } from 'vitest'
 
 import { App } from '@app/App'
 import { db } from '@db/database'
+import { bodyweightRepository } from '@repositories/bodyweightRepository'
 import { HomePage } from '@pages/HomePage'
 import { createProgramRepository } from '@repositories/programRepository'
 import { createWorkoutRepository } from '@repositories/workoutRepository'
@@ -73,14 +75,14 @@ describe('HomePage', () => {
     await waitForDashboardReady()
 
     await user.click(
-      await screen.findByRole('button', { name: 'Add bodyweight' }),
+      await screen.findByRole('button', { name: 'Log bodyweight' }),
     )
     await user.type(await bodyweightInput(), '188.4')
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(await screen.findAllByText('188.4 lb')).not.toHaveLength(0)
 
-    await user.click(screen.getByRole('button', { name: 'Edit bodyweight' }))
+    await user.click(screen.getByRole('button', { name: 'Edit latest' }))
     const input = await bodyweightInput()
     await waitFor(() => expect(input).toHaveValue('188.4'))
     await user.clear(input)
@@ -88,8 +90,9 @@ describe('HomePage', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(await screen.findAllByText('189.2 lb')).not.toHaveLength(0)
+    await expect(db.bodyweightEntries.toArray()).resolves.toHaveLength(1)
 
-    await user.click(screen.getByRole('button', { name: 'Edit bodyweight' }))
+    await user.click(screen.getByRole('button', { name: 'Edit latest' }))
     await user.click(screen.getByRole('button', { name: /Delete/ }))
     await user.click(
       within(
@@ -104,6 +107,60 @@ describe('HomePage', () => {
     )
   })
 
+  it('validates bodyweight input and keeps the editor open when saving fails', async () => {
+    const user = userEvent.setup()
+    renderHome()
+    await waitForDashboardReady()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Log bodyweight' }),
+    )
+    await user.type(await bodyweightInput(), '-10')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent('positive')
+    expect(
+      screen.getByRole('dialog', { name: 'Log bodyweight' }),
+    ).toBeInTheDocument()
+
+    const saveSpy = vi
+      .spyOn(bodyweightRepository, 'saveBodyweight')
+      .mockRejectedValueOnce(new Error('forced persistence failure'))
+    const input = await bodyweightInput()
+    await user.clear(input)
+    await user.type(input, '188')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'forced persistence failure',
+    )
+    expect(
+      screen.getByRole('dialog', { name: 'Log bodyweight' }),
+    ).toBeInTheDocument()
+    saveSpy.mockRestore()
+  })
+
+  it('preserves multiple same-day entries while current weight uses the latest timestamp', async () => {
+    const user = userEvent.setup()
+    renderHome()
+    await waitForDashboardReady()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Log bodyweight' }),
+    )
+    await user.type(await bodyweightInput(), '188')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await user.click(screen.getByRole('button', { name: 'Log bodyweight' }))
+    await user.type(await bodyweightInput(), '189')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findAllByText('189 lb')).not.toHaveLength(0)
+    expect(screen.getByText('Selected date: 189 lb')).toBeInTheDocument()
+    expect(screen.getByLabelText('Bodyweight trend')).toHaveTextContent('+1 lb')
+    await expect(db.bodyweightEntries.toArray()).resolves.toHaveLength(2)
+  })
+
   it('opens bodyweight entry from the center Add sheet', async () => {
     const user = userEvent.setup()
     renderHome()
@@ -112,7 +169,12 @@ describe('HomePage', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Open quick actions' }),
     )
-    await user.click(screen.getByRole('button', { name: /Log bodyweight/ }))
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Quick actions' })).getByRole(
+        'button',
+        { name: /Log bodyweight/ },
+      ),
+    )
 
     expect(
       await screen.findByRole('dialog', { name: 'Log bodyweight' }),
@@ -125,7 +187,7 @@ describe('HomePage', () => {
     await waitForDashboardReady()
 
     await user.click(
-      await screen.findByRole('button', { name: 'Add bodyweight' }),
+      await screen.findByRole('button', { name: 'Log bodyweight' }),
     )
     await user.type(await bodyweightInput(), '188')
     await user.click(screen.getByRole('button', { name: 'Save' }))
@@ -134,7 +196,9 @@ describe('HomePage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Next day' }))
 
-    expect(await screen.findByText('No entry')).toBeInTheDocument()
+    expect(
+      await screen.findByText('Selected date: no bodyweight entry'),
+    ).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Previous day' }))
 

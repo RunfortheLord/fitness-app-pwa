@@ -3,7 +3,7 @@
 ## Current Versions
 
 - Backup format version: `1`
-- Compatible database schema versions: backups with `databaseSchemaVersion` less than or equal to the app's current IndexedDB schema version `3` can be restored after validation.
+- Compatible database schema versions: backups with `databaseSchemaVersion` less than or equal to the app's current IndexedDB schema version `4` can be restored after validation.
 - Application restore support: application version `0.0.0` can restore backup format version `1`.
 
 The backup format version is intentionally separate from the IndexedDB database schema version. A database migration does not automatically imply a backup format change, and a backup format change does not automatically imply an IndexedDB migration.
@@ -84,6 +84,10 @@ CSV export creates a local TAR archive containing one CSV file per exported tabl
 - `appliedWorkoutChanges.csv`
 
 CSV files include headers, stable IDs, parent IDs, ordering fields, timestamps, local dates, archived status, source IDs, and escaped values for commas, quotation marks, line breaks, and empty values. Nested snapshot fields are serialized as JSON inside the CSV cell.
+
+Bodyweight CSV and JSON exports include every stored bodyweight entry,
+including multiple entries for the same local date. Export does not collapse,
+average, or rewrite same-day records used by the progress graph.
 
 Nutrition CSV and JSON exports use stored historical food-log snapshots. They
 include enough snapshot information to reconstruct local date, log timestamp,

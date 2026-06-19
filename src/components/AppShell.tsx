@@ -48,7 +48,7 @@ function AppShellContent({ children }: AppShellProps) {
   )
   const [isOffline, setIsOffline] = useState(() => !navigator.onLine)
   const [isQuickActionOpen, setIsQuickActionOpen] = useState(false)
-  const { bodyweightSheetDate, closeBodyweightSheet, openBodyweightSheet } =
+  const { bodyweightSheet, closeBodyweightSheet, openBodyweightSheet } =
     useDashboardContext()
   const location = useLocation()
   const navigate = useNavigate()
@@ -258,8 +258,9 @@ function AppShellContent({ children }: AppShellProps) {
         </div>
       </BottomSheet>
       <BodyweightEntrySheet
-        isOpen={bodyweightSheetDate !== null}
-        localDate={bodyweightSheetDate}
+        entryId={bodyweightSheet?.entryId}
+        isOpen={bodyweightSheet !== null}
+        localDate={bodyweightSheet?.localDate ?? null}
         onClose={closeBodyweightSheet}
       />
     </div>

@@ -10,6 +10,7 @@ import { createProgramRepository } from '@repositories/programRepository'
 import { createWorkoutRepository } from '@repositories/workoutRepository'
 import { initializeAppData } from '@services/appInitializationService'
 import { seedProgram, testLocalDate } from '@test/seedFactories'
+import type { BodyweightEntry } from '@shared-types/app'
 import { HistoryPage } from './HistoryPage'
 
 beforeEach(async () => {
@@ -27,6 +28,93 @@ describe('HistoryPage', () => {
     renderHistory()
 
     expect(await screen.findByText('No workout history')).toBeInTheDocument()
+  })
+
+  it('shows a clear empty state for bodyweight progress', async () => {
+    renderHistory('/history?view=bodyweight')
+
+    expect(await screen.findByText('No bodyweight data')).toBeInTheDocument()
+  })
+
+  it('shows bodyweight graph one-point and accessible selected details', async () => {
+    const user = userEvent.setup()
+    await db.bodyweightEntries.add({
+      id: 'weight-1',
+      localDate: '2026-06-19',
+      weight: 188.4,
+      unit: 'lb',
+      notes: '',
+      createdAt: '2026-06-19T12:00:00.000Z',
+      updatedAt: '2026-06-19T12:00:00.000Z',
+    })
+
+    renderHistory('/history?view=bodyweight')
+
+    expect(await screen.findByText('Bodyweight progress')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Graph summary')).toHaveTextContent(
+      '188.4 lb',
+    )
+    expect(
+      screen.getAllByText(/Add another entry to show a trend/).length,
+    ).toBeGreaterThan(0)
+
+    await user.click(
+      screen.getByRole('button', { name: '2026-06-19 188.4 lb' }),
+    )
+    expect(screen.getByText('Selected')).toBeInTheDocument()
+    expect(screen.getByText(/Jun 19, 2026/)).toBeInTheDocument()
+  })
+
+  it('supports range changes, multiple same-day entries, and long history without dropping records', async () => {
+    const user = userEvent.setup()
+    const entries = Array.from({ length: 34 }, (_, index) => {
+      const day = String((index % 28) + 1).padStart(2, '0')
+      return {
+        id: `weight-${index}`,
+        localDate: `2026-05-${day}` as BodyweightEntry['localDate'],
+        weight: 180 + index,
+        unit: 'lb' as const,
+        notes: '',
+        createdAt: `2026-05-${day}T12:00:00.000Z`,
+        updatedAt: `2026-05-${day}T12:00:00.000Z`,
+      }
+    })
+    await db.bodyweightEntries.bulkAdd([
+      {
+        id: 'older',
+        localDate: '2025-12-01',
+        weight: 200,
+        unit: 'lb',
+        notes: '',
+        createdAt: '2025-12-01T12:00:00.000Z',
+        updatedAt: '2025-12-01T12:00:00.000Z',
+      },
+      ...entries,
+      {
+        id: 'same-day-late',
+        localDate: '2026-05-28',
+        weight: 215,
+        unit: 'lb',
+        notes: '',
+        createdAt: '2026-05-28T23:00:00.000Z',
+        updatedAt: '2026-05-28T23:00:00.000Z',
+      },
+    ])
+
+    renderHistory('/history?view=bodyweight')
+
+    expect(await screen.findByText('Bodyweight progress')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '3M' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+
+    await user.click(screen.getByRole('button', { name: 'All' }))
+    expect(screen.getByLabelText('Graph summary')).toHaveTextContent('200 lb')
+
+    await user.click(screen.getByRole('button', { name: '2026-05-28 215 lb' }))
+    expect(screen.getAllByText('215 lb').length).toBeGreaterThan(0)
+    await expect(db.bodyweightEntries.count()).resolves.toBe(36)
   })
 
   it('orders completed workouts by local workout date', async () => {

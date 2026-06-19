@@ -55,12 +55,28 @@
 
 1. User opens Home for a selected local date or taps Add.
 2. User chooses Log Bodyweight.
-3. App shows the existing value for that date if one exists.
+3. App opens a fast bodyweight entry sheet for the selected local date.
 4. User enters bodyweight in pounds by default.
-5. App validates a positive numeric value.
+5. App validates a positive realistic numeric value.
 6. User saves.
-7. App creates or updates the one bodyweight entry for that local date.
-8. Home displays the selected date's latest saved value.
+7. App creates a new timestamped bodyweight entry for that local date.
+8. Home immediately refreshes current bodyweight, selected-date status, recent
+   activity, and the compact trend summary.
+9. If the user needs to correct the selected date's latest entry, the user
+   chooses Edit Latest, changes the value, and saves. The app updates that
+   selected record instead of rewriting other same-day records.
+
+## Viewing Bodyweight Progress
+
+1. User opens Home.
+2. User chooses View Graph from the Bodyweight card.
+3. App opens History in the Bodyweight Progress view.
+4. User chooses 1M, 3M, 6M, or All range.
+5. App plots each retained bodyweight entry by timestamp. Multiple same-day
+   entries remain separate points.
+6. User taps or focuses a point.
+7. App shows the selected entry's bodyweight, local date, and timestamp.
+8. Empty and one-point states avoid showing a misleading trend.
 
 ## Creating an Exercise
 

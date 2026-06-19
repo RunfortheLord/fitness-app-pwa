@@ -182,6 +182,49 @@ describe('backupService', () => {
     expect(JSON.parse(result.json)).toEqual(result.backup)
   })
 
+  it('exports and restores multiple same-day bodyweight entries without collapsing them', async () => {
+    await database.bodyweightEntries.bulkAdd([
+      {
+        id: 'bodyweight-a',
+        localDate: testLocalDate,
+        weight: 188,
+        unit: 'lb',
+        notes: 'morning',
+        createdAt: '2026-06-18T12:00:00.000Z',
+        updatedAt: '2026-06-18T12:00:00.000Z',
+      },
+      {
+        id: 'bodyweight-b',
+        localDate: testLocalDate,
+        weight: 189,
+        unit: 'lb',
+        notes: 'night',
+        createdAt: '2026-06-18T23:00:00.000Z',
+        updatedAt: '2026-06-18T23:00:00.000Z',
+      },
+    ])
+
+    const service = createBackupService(database)
+    const result = await service.createJsonBackup(
+      new Date('2026-06-19T12:00:00.000Z'),
+    )
+    const bodyweightCsv = createCsvFiles(result.backup.data).find(
+      (file) => file.name === 'bodyweightEntries.csv',
+    )
+
+    expect(result.backup.data.bodyweightEntries).toHaveLength(2)
+    expect(bodyweightCsv?.content).toContain('bodyweight-a')
+    expect(bodyweightCsv?.content).toContain('bodyweight-b')
+
+    await database.bodyweightEntries.clear()
+    await service.restoreReplace(
+      result.backup,
+      new Date('2026-06-19T13:00:00.000Z'),
+    )
+
+    await expect(database.bodyweightEntries.toArray()).resolves.toHaveLength(2)
+  })
+
   it('exports provider food log snapshots in JSON and CSV without refetching providers', async () => {
     await database.foodLogEntries.add({
       id: 'provider-log-1',
@@ -414,7 +457,7 @@ describe('backupService', () => {
             updatedAt: '2026-06-18T12:00:00.000Z',
           },
           {
-            id: 'bodyweight-b',
+            id: 'bodyweight-a',
             localDate: testLocalDate,
             weight: 181,
             unit: 'lb',

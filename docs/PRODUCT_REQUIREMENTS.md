@@ -55,9 +55,11 @@
 - Home must include selected-date control, previous-day button, next-day button, and return-to-today action.
 - Home must show calories consumed, calorie target, and calories remaining.
 - Home must show protein, carbohydrate, and fat consumed and target values.
-- Home must include quick bodyweight entry and the selected date's bodyweight value.
+- Home must include quick bodyweight entry, the latest current bodyweight,
+  selected-date bodyweight status, and a compact bodyweight trend summary when
+  enough data exists.
 - Home must show current active program, start workout action, resume workout action when applicable, most recent completed workout, and compact recent activity.
-- Home must not show weekly adherence percentages, adherence graphs, estimated one-repetition maximum graphs, or bodyweight trend graphs.
+- Home must not show weekly adherence percentages, adherence graphs, estimated one-repetition maximum graphs, or a large bodyweight graph.
 
 ### Nutrition
 
@@ -84,11 +86,18 @@
 
 ### Bodyweight
 
-- Users must be able to add or edit one bodyweight entry per local calendar date.
+- Users must be able to add multiple bodyweight entries per local calendar date.
+- Users must be able to edit or delete a selected bodyweight entry for
+  correction.
 - Pounds must be the default unit.
 - Historical values must remain available in a graph-ready record format.
-- The selected date's value must appear on Home.
-- The first release must exclude trend-weight calculation, weight-change recommendations, and bodyweight graphs.
+- The latest timestamped bodyweight entry is the current bodyweight.
+- Home must show the latest entry for the selected date when one exists.
+- History must include a bodyweight graph with one-month, three-month,
+  six-month, and all-time ranges.
+- Same-day records must be retained. The graph plots each stored entry by its
+  timestamp; it does not average, delete, or rewrite source records for display.
+- The first release must exclude trend-weight calculation and weight-change recommendations.
 
 ### Exercise Library
 
@@ -146,9 +155,9 @@
 - Users must be able to safely edit notes and recorded performance values without changing original program templates.
 - Deleting a historical workout must require confirmation.
 - History must not show weekly adherence score, strength score, estimated 1RM,
-  automated trend, opaque coaching recommendation, or graphs in the first
-  release. Completed workouts may show deterministic progression review reasons
-  and recommendation audit metadata.
+  automated trend, opaque coaching recommendation, or non-bodyweight graphs in
+  the first release. Completed workouts may show deterministic progression
+  review reasons and recommendation audit metadata.
 
 ### Backup and Portability
 
@@ -174,14 +183,15 @@
 
 ## Out of Scope
 
-- Account creation, login, backend server, cloud sync, social features, friends, followers, public profiles, subscriptions, advertisements, wearable integrations, Apple Health integration, AI coaching, AI food-photo analysis, external food database, barcode scanner, micronutrients, automatic calorie adjustment, automated training progression, automatic program advancement, estimated one-repetition maximum, trend-weight calculations, weekly adherence percentage, graphs, public App Store distribution, and push-notification dependency.
+- Account creation, login, backend server, cloud sync, social features, friends, followers, public profiles, subscriptions, advertisements, wearable integrations, Apple Health integration, AI coaching, AI food-photo analysis, external food database, barcode scanner, micronutrients, automatic calorie adjustment, automated training progression, automatic program advancement, estimated one-repetition maximum, trend-weight calculations, weekly adherence percentage, non-bodyweight graphs, public App Store distribution, and push-notification dependency.
 
 ## Acceptance Criteria
 
 - A user can install the app to an iPhone home screen and open it in standalone mode.
 - A user can use Home, Nutrition, Add, Training, History, and Settings while offline after installation.
 - A user can set nutrition targets, create foods, log foods with decimal serving multipliers, and see correct daily totals from snapshotted values.
-- A user can add and edit bodyweight for a selected date.
+- A user can add bodyweight for a selected date, preserve multiple same-day
+  records, edit the latest selected-date entry, and view bodyweight progress.
 - A user can create exercises using all required tracking presets.
 - A user can create a program template, activate it into an independent active cycle, manually select a workout day, and start a workout.
 - A user can close and reopen the installed PWA and resume the active workout with preserved set entries and timer state.

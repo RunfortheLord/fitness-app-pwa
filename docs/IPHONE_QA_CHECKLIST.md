@@ -38,7 +38,13 @@ as passed from desktop emulation, Playwright, or simulator testing.
 
 ## Core Workflow
 
-- [ ] Log bodyweight.
+- [ ] Log bodyweight from Home.
+- [ ] Log a second bodyweight entry on the same local date and confirm both are retained.
+- [ ] Edit the latest selected-date bodyweight entry.
+- [ ] Confirm Home current bodyweight, selected-date status, and compact trend update immediately after save.
+- [ ] Open Bodyweight Progress from Home.
+- [ ] Change 1M, 3M, 6M, and All range controls with touch and keyboard.
+- [ ] Tap bodyweight graph points and confirm details remain readable.
 - [ ] Create food.
 - [ ] Search foods with one character and confirm remote search does not run.
 - [ ] Search foods with two or more characters and confirm loading, results, and empty states fit without horizontal scrolling.
@@ -72,7 +78,8 @@ as passed from desktop emulation, Playwright, or simulator testing.
 - [ ] Resume the workout.
 - [ ] Finish workout.
 - [ ] Review detected changes.
-- [ ] View history.
+- [ ] View workout history.
+- [ ] View bodyweight progress history.
 
 ## Persistence
 

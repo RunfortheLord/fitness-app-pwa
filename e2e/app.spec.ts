@@ -296,22 +296,26 @@ test('logs, edits, deletes, switches dates, and persists bodyweight after reload
   await page.goto('/')
 
   await page.getByRole('button', { name: 'Open quick actions' }).click()
-  await page.getByRole('button', { name: /Log bodyweight/ }).click()
+  await page
+    .getByRole('dialog', { name: 'Quick actions' })
+    .getByRole('button', { name: /Log bodyweight/ })
+    .click()
   await page
     .getByRole('dialog', { name: 'Log bodyweight' })
     .getByRole('textbox', { name: 'Bodyweight' })
     .fill('188.4')
   await page.getByRole('button', { name: 'Save' }).click()
-  await expect(page.getByLabel('Bodyweight').getByText('188.4 lb')).toBeVisible(
-    { timeout: 15_000 },
-  )
+  const bodyweightCard = page.getByLabel('Bodyweight', { exact: true })
+  await expect(
+    bodyweightCard.locator('.metric-value-small', { hasText: '188.4 lb' }),
+  ).toBeVisible({ timeout: 15_000 })
 
   await page.reload()
   await expect(
-    page.getByLabel('Bodyweight').getByText('188.4 lb'),
+    bodyweightCard.locator('.metric-value-small', { hasText: '188.4 lb' }),
   ).toBeVisible()
 
-  await page.getByRole('button', { name: 'Edit bodyweight' }).click()
+  await page.getByRole('button', { name: 'Edit latest' }).click()
   const editInput = page
     .getByRole('dialog', { name: 'Log bodyweight' })
     .getByRole('textbox', { name: 'Bodyweight' })
@@ -319,32 +323,69 @@ test('logs, edits, deletes, switches dates, and persists bodyweight after reload
   await editInput.fill('189.2')
   await page.getByRole('button', { name: 'Save' }).click()
   await expect(
-    page.getByLabel('Bodyweight').getByText('189.2 lb'),
+    bodyweightCard.locator('.metric-value-small', { hasText: '189.2 lb' }),
   ).toBeVisible()
 
   await page.getByRole('button', { name: 'Next day' }).click()
   await expect(
-    page.getByLabel('Bodyweight').getByText('No entry'),
+    bodyweightCard.getByText('Selected date: no bodyweight entry'),
   ).toBeVisible()
   await page.getByRole('button', { name: 'Previous day' }).click()
   await expect(
-    page.getByLabel('Bodyweight').getByText('189.2 lb'),
+    bodyweightCard.locator('.metric-value-small', { hasText: '189.2 lb' }),
   ).toBeVisible()
 
-  await page.getByRole('button', { name: 'Edit bodyweight' }).click()
+  await page.getByRole('button', { name: 'Edit latest' }).click()
   await page.getByRole('button', { name: /Delete/ }).click()
   await page
     .getByRole('dialog', { name: 'Delete bodyweight?' })
     .getByRole('button', { name: 'Delete' })
     .click()
   await expect(
-    page.getByLabel('Bodyweight').getByText('No entry'),
+    bodyweightCard.locator('.metric-value-small', { hasText: 'No entry' }),
   ).toBeVisible()
 
   await page.reload()
   await expect(
-    page.getByLabel('Bodyweight').getByText('No entry'),
+    bodyweightCard.locator('.metric-value-small', { hasText: 'No entry' }),
   ).toBeVisible()
+})
+
+test('shows bodyweight progress graph with range controls and tap details', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+
+  await page
+    .getByRole('button', { name: 'Log bodyweight', exact: true })
+    .click()
+  await page
+    .getByRole('dialog', { name: 'Log bodyweight' })
+    .getByRole('textbox', { name: 'Bodyweight' })
+    .fill('188')
+  await page.getByRole('button', { name: 'Save' }).click()
+  await page
+    .getByRole('button', { name: 'Log bodyweight', exact: true })
+    .click()
+  await page
+    .getByRole('dialog', { name: 'Log bodyweight' })
+    .getByRole('textbox', { name: 'Bodyweight' })
+    .fill('189')
+  await page.getByRole('button', { name: 'Save' }).click()
+
+  await page.getByRole('button', { name: 'View graph' }).click()
+  await expect(page).toHaveURL(/\/history\?view=bodyweight/)
+  await expect(
+    page.getByRole('heading', { name: 'Bodyweight progress' }),
+  ).toBeVisible()
+  await expect(page.getByRole('button', { name: '3M' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await page.getByRole('button', { name: 'All' }).click()
+  await page.getByRole('button', { name: /189 lb/ }).click()
+  await expect(page.getByText('Selected')).toBeVisible()
 })
 
 test('settings exposes local data controls and validates malformed restore files', async ({
@@ -409,14 +450,19 @@ test('completes the release workflow through backup restore', async ({
 
   await page.goto('/')
   await page.getByRole('button', { name: 'Open quick actions' }).click()
-  await page.getByRole('button', { name: /Log bodyweight/ }).click()
+  await page
+    .getByRole('dialog', { name: 'Quick actions' })
+    .getByRole('button', { name: /Log bodyweight/ })
+    .click()
   await page
     .getByRole('dialog', { name: 'Log bodyweight' })
     .getByRole('textbox', { name: 'Bodyweight' })
     .fill('188.4')
   await page.getByRole('button', { name: 'Save' }).click()
   await expect(
-    page.getByLabel('Bodyweight').getByText('188.4 lb'),
+    page
+      .getByLabel('Bodyweight', { exact: true })
+      .locator('.metric-value-small', { hasText: '188.4 lb' }),
   ).toBeVisible()
 
   await page.goto('/training')

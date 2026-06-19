@@ -314,6 +314,53 @@ describe('database', () => {
 
     await destroyTestDatabase(migratedDatabase)
   })
+
+  it('migrates bodyweight entries to allow multiple records per local date', async () => {
+    const name = `training-log-v3-bodyweight-migration-${crypto.randomUUID()}`
+    const oldDatabase = new Dexie(name)
+    oldDatabase.version(3).stores(v3Stores)
+    await oldDatabase.table('appMetadata').put({
+      id: 'app',
+      databaseSchemaVersion: 3,
+      backupSchemaVersion: 1,
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('bodyweightEntries').put({
+      id: 'bodyweight-a',
+      localDate: '2026-06-18',
+      weight: 188,
+      unit: 'lb',
+      notes: '',
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    oldDatabase.close()
+
+    const migratedDatabase = new TrainingLogDatabase(name)
+    await migratedDatabase.bodyweightEntries.add({
+      id: 'bodyweight-b',
+      localDate: '2026-06-18',
+      weight: 189,
+      unit: 'lb',
+      notes: '',
+      createdAt: '2026-06-18T23:00:00.000Z',
+      updatedAt: '2026-06-18T23:00:00.000Z',
+    })
+
+    await expect(
+      migratedDatabase.bodyweightEntries
+        .where({ localDate: '2026-06-18' })
+        .toArray(),
+    ).resolves.toHaveLength(2)
+    await expect(
+      migratedDatabase.appMetadata.get('app'),
+    ).resolves.toMatchObject({
+      databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+    })
+
+    await destroyTestDatabase(migratedDatabase)
+  })
 })
 
 const v2Stores = {
@@ -345,4 +392,10 @@ const v2Stores = {
   detectedWorkoutChanges: '&id, workoutId, status, type, createdAt',
   appliedWorkoutChanges: '&id, detectedChangeId, workoutId, appliedAt',
   backupMetadata: '&id, createdAt',
+}
+
+const v3Stores = {
+  ...v2Stores,
+  exercises:
+    '&id, status, origin, seedDataVersion, name, trackingMethodId, updatedAt',
 }

@@ -16,12 +16,14 @@ import { useDashboardContext } from '@hooks/useDashboardContext'
 import { bodyweightRepository } from '@repositories/bodyweightRepository'
 
 type BodyweightEntrySheetProps = {
+  entryId?: string
   isOpen: boolean
   localDate: LocalDateString | null
   onClose: () => void
 }
 
 export function BodyweightEntrySheet({
+  entryId,
   isOpen,
   localDate,
   onClose,
@@ -35,8 +37,10 @@ export function BodyweightEntrySheet({
       return undefined
     }
 
-    return bodyweightRepository.getBodyweightForDate(localDate)
-  }, [localDate])
+    return entryId
+      ? bodyweightRepository.getBodyweightEntry(entryId)
+      : undefined
+  }, [entryId, localDate])
 
   if (!localDate) {
     return null
@@ -55,14 +59,33 @@ export function BodyweightEntrySheet({
       setError('Enter a positive bodyweight.')
       return
     }
+    if (parsed > 1500) {
+      setError('Enter a realistic bodyweight.')
+      return
+    }
 
     setError('')
-    await bodyweightRepository.saveBodyweight({
-      localDate,
-      weight: parsed,
-    })
-    refreshDashboard()
-    onClose()
+    try {
+      if (existingEntry) {
+        await bodyweightRepository.updateBodyweight({
+          id: existingEntry.id,
+          weight: parsed,
+        })
+      } else {
+        await bodyweightRepository.saveBodyweight({
+          localDate,
+          weight: parsed,
+        })
+      }
+      refreshDashboard()
+      onClose()
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : 'Bodyweight could not be saved.',
+      )
+    }
   }
 
   async function deleteBodyweight() {
@@ -70,10 +93,23 @@ export function BodyweightEntrySheet({
       return
     }
 
-    await bodyweightRepository.deleteBodyweightForDate(localDate)
-    refreshDashboard()
-    setIsConfirmingDelete(false)
-    onClose()
+    if (!existingEntry) {
+      return
+    }
+
+    try {
+      await bodyweightRepository.deleteBodyweightEntry(existingEntry.id)
+      refreshDashboard()
+      setIsConfirmingDelete(false)
+      onClose()
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : 'Bodyweight could not be deleted.',
+      )
+      setIsConfirmingDelete(false)
+    }
   }
 
   return (
@@ -95,7 +131,7 @@ export function BodyweightEntrySheet({
                 autoComplete="off"
                 defaultValue={existingEntry ? String(existingEntry.weight) : ''}
                 id={inputId}
-                key={existingEntry?.id ?? `${localDate}-empty`}
+                key={existingEntry?.id ?? `${localDate}-new`}
                 name="weight"
                 onChange={() => setError('')}
                 placeholder="185"
@@ -129,7 +165,7 @@ export function BodyweightEntrySheet({
         onConfirm={() => void deleteBodyweight()}
         title="Delete bodyweight?"
       >
-        This removes the bodyweight entry for {localDate}.
+        This removes the selected bodyweight entry for {localDate}.
       </ModalConfirmationDialog>
     </>
   )

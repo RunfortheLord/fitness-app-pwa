@@ -48,8 +48,12 @@
   - carbohydrates consumed/target
   - fat consumed/target
 - Bodyweight card:
-  - selected date value or empty state
-  - quick entry action
+  - current value from the latest timestamped entry or empty state
+  - selected-date latest value when available
+  - compact, visually secondary trend summary
+  - quick Log Bodyweight action
+  - Edit Latest action for correcting the selected date's latest entry
+  - View Graph route to History
 - Training card:
   - current active program
   - selected workout-day entry point
@@ -65,7 +69,8 @@
 
 - No nutrition target: prompt to set targets in Settings.
 - No foods logged: show Log Food quick action.
-- No bodyweight: show Add Bodyweight action.
+- No bodyweight: show Log Bodyweight action and explain that a second entry is
+  needed before trend change is shown.
 - No active program: show Create Program and Activate Program actions.
 - No workout history: show Start Workout after program setup or Empty Workout if supported later.
 
@@ -260,6 +265,19 @@
 - Workout detail shows local date, source program/day, start and completion times, duration, exercises, sets, notes, skipped exercises, and change review results.
 - Editing is limited to notes and recorded performance values.
 - Delete requires confirmation.
+- Bodyweight progress view is reachable from Home and History query state.
+- Bodyweight graph shows local date/time on the horizontal axis through stored
+  entry timestamps and bodyweight in pounds on the vertical axis.
+- Range controls: 1M, 3M, 6M, and All.
+- Empty state explains that Home logging creates graph data.
+- One-point state shows the point, current value, and a non-misleading message
+  that more data is needed for a trend line.
+- Same-day entries are plotted as separate points by timestamp. The graph never
+  averages or removes same-day source records for visualization.
+- Point controls are keyboard and tap accessible and expose selected entry
+  details.
+- Summary text includes first value, latest value, net change, and date range
+  when enough data exists.
 
 ## Settings Screen
 

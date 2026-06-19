@@ -296,6 +296,27 @@ textarea:focus-visible {
   min-width: 0;
 }
 
+.home-trend {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-3) 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-strong);
+}
+
+.home-trend span {
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-trend small {
+  color: var(--color-muted);
+  line-height: 1.35;
+}
+
 .activity-list {
   display: grid;
   gap: var(--space-2);
@@ -1395,6 +1416,105 @@ input::placeholder {
 
 .summary-grid small {
   color: var(--color-muted);
+}
+
+.bodyweight-chart-panel {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.bodyweight-chart-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.bodyweight-chart-summary span {
+  min-width: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-strong);
+}
+
+.bodyweight-chart-summary strong,
+.bodyweight-chart-summary small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.bodyweight-chart-summary small {
+  margin-top: var(--space-1);
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.bodyweight-chart {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  min-height: 220px;
+  overflow: hidden;
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(var(--color-border-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-border-soft) 1px, transparent 1px),
+    var(--color-surface-strong);
+  background-size:
+    100% 25%,
+    25% 100%;
+}
+
+.bodyweight-chart svg {
+  position: absolute;
+  inset: var(--space-3);
+  width: calc(100% - var(--space-6));
+  height: calc(100% - var(--space-6));
+  overflow: visible;
+}
+
+.bodyweight-chart line {
+  stroke: var(--color-border);
+  stroke-width: 0.5;
+}
+
+.bodyweight-chart path {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  vector-effect: non-scaling-stroke;
+}
+
+.bodyweight-chart circle {
+  fill: var(--color-text);
+  stroke: var(--color-accent);
+  stroke-width: 0.8;
+  vector-effect: non-scaling-stroke;
+}
+
+.bodyweight-point-button {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+}
+
+.bodyweight-point-button:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -8px;
+}
+
+.bodyweight-detail {
+  margin-top: 0;
 }
 
 .change-review-item {

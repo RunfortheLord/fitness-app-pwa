@@ -1,19 +1,26 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 
-import { DashboardContext } from '@components/dashboardContextValue'
+import {
+  DashboardContext,
+  type BodyweightSheetState,
+} from '@components/dashboardContextValue'
 import { formatLocalDate, type LocalDateString } from '@domain/dates'
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const [selectedDate, setSelectedDate] = useState(() =>
     formatLocalDate(new Date()),
   )
-  const [bodyweightSheetDate, setBodyweightSheetDate] =
-    useState<LocalDateString | null>(null)
+  const [bodyweightSheet, setBodyweightSheet] =
+    useState<BodyweightSheetState | null>(null)
   const [dashboardRevision, setDashboardRevision] = useState(0)
 
   const openBodyweightSheet = useCallback(
-    (localDate?: LocalDateString) => {
-      setBodyweightSheetDate(localDate ?? selectedDate)
+    (input?: LocalDateString | BodyweightSheetState) => {
+      if (typeof input === 'object') {
+        setBodyweightSheet(input)
+        return
+      }
+      setBodyweightSheet({ localDate: input ?? selectedDate })
     },
     [selectedDate],
   )
@@ -22,13 +29,13 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     () => ({
       selectedDate,
       setSelectedDate,
-      bodyweightSheetDate,
+      bodyweightSheet,
       dashboardRevision,
       openBodyweightSheet,
-      closeBodyweightSheet: () => setBodyweightSheetDate(null),
+      closeBodyweightSheet: () => setBodyweightSheet(null),
       refreshDashboard: () => setDashboardRevision((revision) => revision + 1),
     }),
-    [bodyweightSheetDate, dashboardRevision, openBodyweightSheet, selectedDate],
+    [bodyweightSheet, dashboardRevision, openBodyweightSheet, selectedDate],
   )
 
   return (

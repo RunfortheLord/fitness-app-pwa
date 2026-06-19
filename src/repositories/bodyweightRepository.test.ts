@@ -16,7 +16,7 @@ afterEach(async () => {
 })
 
 describe('bodyweightRepository', () => {
-  it('keeps one bodyweight entry per local date', async () => {
+  it('preserves same-day entries and returns the latest timestamped entry for a local date', async () => {
     const repository = createBodyweightRepository(database)
 
     const first = await repository.saveBodyweight({
@@ -29,13 +29,45 @@ describe('bodyweightRepository', () => {
       notes: 'updated',
     })
 
-    expect(second.id).toBe(first.id)
-    await expect(database.bodyweightEntries.toArray()).resolves.toHaveLength(1)
+    expect(second.id).not.toBe(first.id)
+    await expect(database.bodyweightEntries.toArray()).resolves.toHaveLength(2)
     await expect(
       repository.getBodyweightForDate(testLocalDate),
     ).resolves.toMatchObject({
       weight: 191,
       notes: 'updated',
+    })
+  })
+
+  it('updates a selected bodyweight entry without rewriting other same-day entries', async () => {
+    const repository = createBodyweightRepository(database)
+
+    const first = await repository.saveBodyweight({
+      localDate: testLocalDate,
+      weight: 190,
+    })
+    const second = await repository.saveBodyweight({
+      localDate: testLocalDate,
+      weight: 191,
+    })
+
+    await repository.updateBodyweight({
+      id: first.id,
+      weight: 189.5,
+      notes: 'corrected',
+    })
+
+    await expect(database.bodyweightEntries.toArray()).resolves.toHaveLength(2)
+    await expect(
+      repository.getBodyweightEntry(first.id),
+    ).resolves.toMatchObject({
+      weight: 189.5,
+      notes: 'corrected',
+    })
+    await expect(
+      repository.getBodyweightEntry(second.id),
+    ).resolves.toMatchObject({
+      weight: 191,
     })
   })
 
@@ -71,13 +103,19 @@ describe('bodyweightRepository', () => {
         weight: 0,
       }),
     ).rejects.toThrow('finite positive')
+    await expect(
+      repository.saveBodyweight({
+        localDate: testLocalDate,
+        weight: 1500.1,
+      }),
+    ).rejects.toThrow('realistic')
     await expect(database.bodyweightEntries.toArray()).resolves.toEqual([])
   })
 
-  it('deletes only the selected local date entry', async () => {
+  it('deletes only the selected bodyweight entry', async () => {
     const repository = createBodyweightRepository(database)
 
-    await repository.saveBodyweight({
+    const first = await repository.saveBodyweight({
       localDate: testLocalDate,
       weight: 190,
     })
@@ -86,7 +124,7 @@ describe('bodyweightRepository', () => {
       weight: 191,
     })
 
-    await repository.deleteBodyweightForDate(testLocalDate)
+    await repository.deleteBodyweightEntry(first.id)
 
     await expect(repository.getBodyweightForDate(testLocalDate)).resolves.toBe(
       undefined,

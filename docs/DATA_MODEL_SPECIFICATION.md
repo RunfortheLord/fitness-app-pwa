@@ -6,7 +6,7 @@
 - All entities use stable app-generated IDs.
 - Use local calendar dates for date-based logs and absolute timestamps for event ordering.
 - Use schema versions for both database migrations and backup format.
-- Store graph-ready historical records even when graphs are out of scope.
+- Store graph-ready historical records for bodyweight progress.
 - Snapshot mutable reference data into historical records when needed to preserve history.
 
 ## ID Format
@@ -133,7 +133,11 @@ Provider snapshot metadata is optional so old local food logs remain readable.
 - `notes`
 - `createdAt`
 - `updatedAt`
-- Unique constraint: one active bodyweight entry per `localDate`.
+- Multiple entries may share a `localDate`.
+- Current bodyweight uses the latest timestamped entry.
+- The selected date's displayed value uses the latest entry for that local date.
+- Visualization plots every retained entry by timestamp and does not average,
+  delete, or rewrite same-day source records.
 
 ### Exercise
 
@@ -390,6 +394,10 @@ added-weight semantics, and final programmed-set RIR behavior.
   records and updates app metadata to the current schema version without
   changing existing exercise IDs, program prescriptions, active workouts, or
   completed workout history.
+- Schema version 4 relaxes the bodyweight `localDate` index so multiple
+  timestamped bodyweight entries can be retained for the same local date. The
+  migration updates app metadata and does not rewrite existing bodyweight
+  records.
 
 ## Transaction Boundaries
 
@@ -408,7 +416,7 @@ added-weight semantics, and final programmed-set RIR behavior.
 - JSON backup is authoritative and full fidelity.
 - CSV export is derived from stores for readability and does not need to support restore.
 - Import preview summarizes counts, schema versions, conflicts, and whether merge or replace is selected.
-- Current backup format version is `1`, separate from IndexedDB schema version `3`.
+- Current backup format version is `1`, separate from IndexedDB schema version `4`.
 - Backup root fields are `backupFormatVersion`, `databaseSchemaVersion`,
   `applicationVersion`, `exportedAt`, and `data`.
 - Restore supports backup format version `1` when the backup database schema

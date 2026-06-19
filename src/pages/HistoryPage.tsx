@@ -11,13 +11,23 @@ import {
   NumericInput,
   PageContainer,
   PrimaryButton,
+  SegmentedControl,
   SecondaryButton,
   SectionHeader,
   StatusMessage,
   ValidationMessage,
 } from '@components/ui'
+import { formatLocalDate } from '@domain/dates'
+import {
+  createBodyweightChartModel,
+  filterBodyweightEntriesForRange,
+  formatWeight,
+  type BodyweightRange,
+} from '@domain/bodyweightProgress'
+import { bodyweightRepository } from '@repositories/bodyweightRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
 import type {
+  BodyweightEntry,
   DetectedWorkoutChange,
   StructuralChangeDestination,
   TrackingMetric,
@@ -58,6 +68,16 @@ const destinations: Array<{
   { label: 'Both', value: 'both' },
 ]
 
+const bodyweightRangeOptions: Array<{
+  label: string
+  value: BodyweightRange
+}> = [
+  { label: '1M', value: '1m' },
+  { label: '3M', value: '3m' },
+  { label: '6M', value: '6m' },
+  { label: 'All', value: 'all' },
+]
+
 export function HistoryPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [state, setState] = useState<HistoryState>({ status: 'loading' })
@@ -71,6 +91,10 @@ export function HistoryPage() {
   const [deleteRequested, setDeleteRequested] = useState(false)
 
   useEffect(() => {
+    if (searchParams.get('view') === 'bodyweight') {
+      return
+    }
+
     let isCurrent = true
     void workoutRepository
       .listRecentCompletedWorkouts(25)
@@ -219,6 +243,17 @@ export function HistoryPage() {
             : 'Workout history could not be deleted.',
         )
       })
+  }
+
+  if (searchParams.get('view') === 'bodyweight') {
+    return (
+      <BodyweightProgressView
+        onShowWorkouts={() => {
+          setSearchParams({})
+          setRevision((current) => current + 1)
+        }}
+      />
+    )
   }
 
   if (state.status === 'loading') {
@@ -461,6 +496,204 @@ export function HistoryPage() {
         </p>
       </ModalConfirmationDialog>
     </PageContainer>
+  )
+}
+
+function BodyweightProgressView({
+  onShowWorkouts,
+}: {
+  onShowWorkouts: () => void
+}) {
+  const [range, setRange] = useState<BodyweightRange>('3m')
+  const [entries, setEntries] = useState<BodyweightEntry[]>([])
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null)
+  const today = formatLocalDate(new Date())
+
+  useEffect(() => {
+    let isCurrent = true
+    void bodyweightRepository
+      .listBodyweightEntries()
+      .then((nextEntries) => {
+        if (!isCurrent) {
+          return
+        }
+        setEntries(nextEntries)
+        setStatus('ready')
+        setSelectedEntryId(
+          (current) => current ?? nextEntries.at(-1)?.id ?? null,
+        )
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setStatus('error')
+        }
+      })
+
+    return () => {
+      isCurrent = false
+    }
+  }, [])
+
+  const rangedEntries = filterBodyweightEntriesForRange({
+    entries,
+    range,
+    today,
+  })
+  const model = createBodyweightChartModel(rangedEntries)
+  const selectedEntry =
+    rangedEntries.find((entry) => entry.id === selectedEntryId) ??
+    rangedEntries.at(-1) ??
+    null
+
+  return (
+    <PageContainer>
+      <SectionHeader
+        title="Bodyweight progress"
+        action={
+          <SecondaryButton type="button" onClick={onShowWorkouts}>
+            Workouts
+          </SecondaryButton>
+        }
+      />
+      <Card title="Bodyweight graph">
+        <SegmentedControl
+          label="Bodyweight range"
+          onChange={(value) => {
+            setRange(value as BodyweightRange)
+            setSelectedEntryId(null)
+          }}
+          options={bodyweightRangeOptions}
+          value={range}
+        />
+        {status === 'loading' ? (
+          <LoadingState label="Loading bodyweight progress" />
+        ) : null}
+        {status === 'error' ? (
+          <StatusMessage tone="warning">
+            Bodyweight progress could not load.
+          </StatusMessage>
+        ) : null}
+        {status === 'ready' ? (
+          <BodyweightChart
+            model={model}
+            onSelect={(entry) => setSelectedEntryId(entry.id)}
+            selectedEntry={selectedEntry}
+          />
+        ) : null}
+      </Card>
+    </PageContainer>
+  )
+}
+
+function BodyweightChart({
+  model,
+  onSelect,
+  selectedEntry,
+}: {
+  model: ReturnType<typeof createBodyweightChartModel>
+  onSelect: (entry: BodyweightEntry) => void
+  selectedEntry: BodyweightEntry | null
+}) {
+  if (model.status === 'empty') {
+    return (
+      <EmptyState
+        title="No bodyweight data"
+        message="Log bodyweight from Home to build a progress graph."
+      />
+    )
+  }
+
+  const path = model.points
+    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+    .join(' ')
+  const first = model.entries[0]
+  const latest = model.entries.at(-1) ?? first
+
+  return (
+    <div className="bodyweight-chart-panel">
+      {model.summary.status !== 'empty' ? (
+        <p className="visually-hidden" aria-live="polite">
+          {model.summary.text}
+        </p>
+      ) : null}
+      <div className="bodyweight-chart-summary" aria-label="Graph summary">
+        <span>
+          <strong>
+            {formatWeight(first.weight)} {first.unit}
+          </strong>
+          <small>First - {first.localDate}</small>
+        </span>
+        <span>
+          <strong>
+            {formatWeight(latest.weight)} {latest.unit}
+          </strong>
+          <small>Latest - {latest.localDate}</small>
+        </span>
+        <span>
+          <strong>
+            {formatWeight(model.minWeight)}-{formatWeight(model.maxWeight)}{' '}
+            {latest.unit}
+          </strong>
+          <small>Range</small>
+        </span>
+      </div>
+      <div className="bodyweight-chart" aria-label="Bodyweight graph">
+        <svg
+          aria-hidden="true"
+          focusable="false"
+          preserveAspectRatio="none"
+          viewBox="0 0 100 100"
+        >
+          <line x1="0" x2="100" y1="100" y2="100" />
+          {model.status === 'ready' ? <path d={path} /> : null}
+          {model.points.map((point) => (
+            <circle cx={point.x} cy={point.y} key={point.entry.id} r="1.8" />
+          ))}
+        </svg>
+        {model.points.map((point) => (
+          <button
+            aria-label={`${point.entry.localDate} ${formatWeight(
+              point.entry.weight,
+            )} ${point.entry.unit}`}
+            className="bodyweight-point-button"
+            key={point.entry.id}
+            onClick={() => onSelect(point.entry)}
+            style={{
+              left: `${point.x}%`,
+              top: `${point.y}%`,
+            }}
+            type="button"
+          />
+        ))}
+      </div>
+      {model.summary.status !== 'empty' ? (
+        <p className="muted">{model.summary.text}</p>
+      ) : null}
+      {model.status === 'single' ? (
+        <StatusMessage>
+          One bodyweight entry is saved. Add another entry to show a line.
+        </StatusMessage>
+      ) : null}
+      {selectedEntry ? (
+        <dl className="history-detail-list bodyweight-detail">
+          <div>
+            <dt>Selected</dt>
+            <dd>
+              {formatWeight(selectedEntry.weight)} {selectedEntry.unit}
+            </dd>
+          </div>
+          <div>
+            <dt>Local date</dt>
+            <dd>{selectedEntry.localDate}</dd>
+          </div>
+          <div>
+            <dt>Timestamp</dt>
+            <dd>{formatTimestamp(selectedEntry.updatedAt)}</dd>
+          </div>
+        </dl>
+      ) : null}
+    </div>
   )
 }
 

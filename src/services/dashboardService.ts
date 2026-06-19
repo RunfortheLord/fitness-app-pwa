@@ -1,5 +1,11 @@
 import { db, type TrainingLogDatabase } from '@db/database'
 import type { LocalDateString } from '@domain/dates'
+import {
+  filterBodyweightEntriesForRange,
+  latestBodyweight,
+  summarizeBodyweightTrend,
+  type BodyweightTrendSummary,
+} from '@domain/bodyweightProgress'
 import { createBodyweightRepository } from '@repositories/bodyweightRepository'
 import { createFoodRepository } from '@repositories/foodRepository'
 import { createProgramRepository } from '@repositories/programRepository'
@@ -24,6 +30,9 @@ export type DashboardData = {
   metadata: AppMetadata | undefined
   nutrition: DailyNutritionSummary
   bodyweight: BodyweightEntry | undefined
+  currentBodyweight: BodyweightEntry | undefined
+  bodyweightEntries: BodyweightEntry[]
+  bodyweightTrend: BodyweightTrendSummary
   activeProgram:
     | {
         cycle: ActiveProgramCycle
@@ -80,7 +89,7 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
         completedWorkouts,
       ] = await Promise.all([
         nutritionSummaryService.getDailySummary(selectedDate),
-        bodyweightRepository.getBodyweightForDate(selectedDate),
+        bodyweightRepository.listBodyweightEntriesForDate(selectedDate),
         programRepository.getCurrentActiveCycleStructure(),
         workoutRepository.getActiveWorkout(),
         workoutRepository.getMostRecentCompletedWorkout(),
@@ -90,6 +99,15 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
         workoutRepository.listRecentCompletedWorkouts(5),
       ])
 
+      const selectedDateBodyweight = latestBodyweight(bodyweight)
+      const currentBodyweight = latestBodyweight(bodyweightEntries)
+      const bodyweightTrend = summarizeBodyweightTrend(
+        filterBodyweightEntriesForRange({
+          entries: bodyweightEntries,
+          range: '1m',
+          today: selectedDate,
+        }),
+      )
       const mostRecentCompletedWorkoutSummary = mostRecentCompletedWorkout
         ? await getWorkoutSummary(database, mostRecentCompletedWorkout.id)
         : undefined
@@ -98,7 +116,10 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
         selectedDate,
         metadata,
         nutrition,
-        bodyweight,
+        bodyweight: selectedDateBodyweight,
+        currentBodyweight,
+        bodyweightEntries,
+        bodyweightTrend,
         activeProgram: activeProgramStructure
           ? {
               ...activeProgramStructure,

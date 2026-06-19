@@ -20,6 +20,11 @@ import {
   formatSelectedDateLabel,
   type LocalDateString,
 } from '@domain/dates'
+import {
+  formatBodyweightChange,
+  formatWeight,
+  type BodyweightTrendSummary,
+} from '@domain/bodyweightProgress'
 import { useDashboardContext } from '@hooks/useDashboardContext'
 import {
   dashboardService,
@@ -174,30 +179,59 @@ export function HomePage() {
             <Scale aria-hidden="true" size={20} />
           </span>
           <div>
-            {dashboard?.bodyweight ? (
+            {dashboard?.currentBodyweight ? (
               <>
                 <p className="metric-value metric-value-small">
-                  {dashboard.bodyweight.weight} {dashboard.bodyweight.unit}
+                  {formatWeight(dashboard.currentBodyweight.weight)}{' '}
+                  {dashboard.currentBodyweight.unit}
                 </p>
-                <p className="muted">Saved for {selectedDate}</p>
+                <p className="muted">
+                  Current from {dashboard.currentBodyweight.localDate}
+                </p>
               </>
             ) : (
               <>
                 <p className="metric-value metric-value-small">No entry</p>
-                <p className="muted">
-                  Add one bodyweight record for this date.
-                </p>
+                <p className="muted">Log bodyweight to start a trend.</p>
               </>
             )}
           </div>
         </div>
+        {dashboard?.bodyweight ? (
+          <p className="muted">
+            Selected date: {formatWeight(dashboard.bodyweight.weight)}{' '}
+            {dashboard.bodyweight.unit}
+          </p>
+        ) : (
+          <p className="muted">Selected date: no bodyweight entry</p>
+        )}
+        <HomeBodyweightTrend trend={dashboard?.bodyweightTrend} />
         <div className="button-row">
           <PrimaryButton
             type="button"
             onClick={() => openBodyweightSheet(selectedDate)}
           >
-            {dashboard?.bodyweight ? 'Edit bodyweight' : 'Add bodyweight'}
+            Log bodyweight
           </PrimaryButton>
+          {dashboard?.bodyweight ? (
+            <SecondaryButton
+              type="button"
+              onClick={() =>
+                openBodyweightSheet({
+                  entryId: dashboard.bodyweight?.id,
+                  localDate: selectedDate,
+                })
+              }
+            >
+              Edit latest
+            </SecondaryButton>
+          ) : null}
+          <SecondaryButton
+            type="button"
+            onClick={() => void navigate('/history?view=bodyweight')}
+          >
+            View graph
+          </SecondaryButton>
         </div>
       </Card>
 
@@ -323,6 +357,37 @@ export function HomePage() {
         )}
       </Card>
     </PageContainer>
+  )
+}
+
+function HomeBodyweightTrend({
+  trend,
+}: {
+  trend: BodyweightTrendSummary | undefined
+}) {
+  if (!trend || trend.status === 'empty') {
+    return (
+      <div className="home-trend" aria-label="Bodyweight trend">
+        <span>No trend yet</span>
+        <small>Add at least two entries to show change.</small>
+      </div>
+    )
+  }
+
+  if (trend.status === 'single') {
+    return (
+      <div className="home-trend" aria-label="Bodyweight trend">
+        <span>One entry</span>
+        <small>{trend.text}</small>
+      </div>
+    )
+  }
+
+  return (
+    <div className="home-trend" aria-label="Bodyweight trend">
+      <span>{formatBodyweightChange(trend.change)}</span>
+      <small>{trend.text}</small>
+    </div>
   )
 }
 
