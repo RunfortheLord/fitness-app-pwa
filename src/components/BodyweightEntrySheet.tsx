@@ -12,6 +12,7 @@ import {
   SecondaryButton,
 } from '@components/ui'
 import { type LocalDateString } from '@domain/dates'
+import { useDashboardContext } from '@hooks/useDashboardContext'
 import { bodyweightRepository } from '@repositories/bodyweightRepository'
 
 type BodyweightEntrySheetProps = {
@@ -28,6 +29,7 @@ export function BodyweightEntrySheet({
   const inputId = useId()
   const [error, setError] = useState('')
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
+  const { refreshDashboard } = useDashboardContext()
   const existingEntry = useLiveQuery(async () => {
     if (!localDate) {
       return undefined
@@ -59,6 +61,7 @@ export function BodyweightEntrySheet({
       localDate,
       weight: parsed,
     })
+    refreshDashboard()
     onClose()
   }
 
@@ -68,6 +71,7 @@ export function BodyweightEntrySheet({
     }
 
     await bodyweightRepository.deleteBodyweightForDate(localDate)
+    refreshDashboard()
     setIsConfirmingDelete(false)
     onClose()
   }

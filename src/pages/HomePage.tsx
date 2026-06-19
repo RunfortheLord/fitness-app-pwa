@@ -1,5 +1,5 @@
-import { useLiveQuery } from 'dexie-react-hooks'
 import { Activity, Dumbbell, Scale } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 import {
   Card,
@@ -17,20 +17,74 @@ import {
   addLocalDays,
   formatLocalDate,
   formatSelectedDateLabel,
+  type LocalDateString,
 } from '@domain/dates'
-import { useAppMetadata } from '@hooks/useAppMetadata'
 import { useDashboardContext } from '@hooks/useDashboardContext'
-import { dashboardService } from '@services/dashboardService'
+import {
+  dashboardService,
+  type DashboardData,
+} from '@services/dashboardService'
+
+type DashboardLoadState =
+  | { status: 'loading'; selectedDate: null }
+  | { status: 'error'; selectedDate: LocalDateString }
+  | {
+      status: 'ready'
+      selectedDate: LocalDateString
+      dashboard: DashboardData
+    }
 
 export function HomePage() {
-  const metadata = useAppMetadata()
-  const { openBodyweightSheet, selectedDate, setSelectedDate } =
-    useDashboardContext()
+  const {
+    dashboardRevision,
+    openBodyweightSheet,
+    selectedDate,
+    setSelectedDate,
+  } = useDashboardContext()
   const today = formatLocalDate(new Date())
-  const dashboard = useLiveQuery(
-    () => dashboardService.getDashboardData(selectedDate),
-    [selectedDate],
-  )
+  const [dashboardState, setDashboardState] = useState<DashboardLoadState>({
+    status: 'loading',
+    selectedDate: null,
+  })
+
+  useEffect(() => {
+    let isCurrent = true
+
+    void dashboardService
+      .getDashboardData(selectedDate)
+      .then((dashboard) => {
+        if (!isCurrent) {
+          return
+        }
+
+        setDashboardState({
+          status: 'ready',
+          selectedDate,
+          dashboard,
+        })
+      })
+      .catch(() => {
+        if (!isCurrent) {
+          return
+        }
+
+        setDashboardState({
+          status: 'error',
+          selectedDate,
+        })
+      })
+
+    return () => {
+      isCurrent = false
+    }
+  }, [dashboardRevision, selectedDate])
+
+  const dashboard =
+    dashboardState.status === 'ready' &&
+    dashboardState.selectedDate === selectedDate
+      ? dashboardState.dashboard
+      : undefined
+  const isDashboardLoading = !dashboard
 
   const caloriesConsumed = Math.round(dashboard?.nutrition.totals.calories ?? 0)
   const calorieTarget = Math.round(dashboard?.nutrition.targets.calories ?? 0)
@@ -46,6 +100,22 @@ export function HomePage() {
         onPrevious={() => setSelectedDate(addLocalDays(selectedDate, -1))}
         onToday={() => setSelectedDate(today)}
       />
+
+      {isDashboardLoading ? <LoadingState label="Loading dashboard" /> : null}
+      {dashboard ? (
+        <div
+          aria-label="Dashboard ready"
+          className="visually-hidden"
+          role="status"
+        >
+          Dashboard ready
+        </div>
+      ) : null}
+      {dashboardState.status === 'error' ? (
+        <StatusMessage tone="warning">
+          Dashboard data could not be loaded.
+        </StatusMessage>
+      ) : null}
 
       <section className="metric-grid" aria-label="Daily summary">
         <MetricCard
@@ -217,10 +287,10 @@ export function HomePage() {
               </li>
             ))}
           </ol>
-        ) : metadata ? (
+        ) : dashboard?.metadata ? (
           <StatusMessage tone="success">
-            Local database schema {metadata.databaseSchemaVersion}; backup
-            schema {metadata.backupSchemaVersion}.
+            Local database schema {dashboard.metadata.databaseSchemaVersion};
+            backup schema {dashboard.metadata.backupSchemaVersion}.
           </StatusMessage>
         ) : (
           <LoadingState label="Loading local metadata" />

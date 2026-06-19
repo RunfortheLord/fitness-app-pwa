@@ -12,6 +12,7 @@ import type {
   ActiveCycleWorkoutDay,
   ActiveCycleWorkoutExercise,
   ActiveProgramCycle,
+  AppMetadata,
   BodyweightEntry,
   FoodLogEntry,
   Workout,
@@ -20,6 +21,7 @@ import type {
 
 export type DashboardData = {
   selectedDate: LocalDateString
+  metadata: AppMetadata | undefined
   nutrition: DailyNutritionSummary
   bodyweight: BodyweightEntry | undefined
   activeProgram:
@@ -66,6 +68,7 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
         activeProgramStructure,
         activeWorkout,
         mostRecentCompletedWorkout,
+        metadata,
         bodyweightEntries,
         foodLogs,
         completedWorkouts,
@@ -75,6 +78,7 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
         programRepository.getCurrentActiveCycleStructure(),
         workoutRepository.getActiveWorkout(),
         workoutRepository.getMostRecentCompletedWorkout(),
+        database.appMetadata.get('app'),
         bodyweightRepository.listBodyweightEntries(),
         foodRepository.listRecentFoodLogs(5),
         workoutRepository.listRecentCompletedWorkouts(5),
@@ -82,6 +86,7 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
 
       return {
         selectedDate,
+        metadata,
         nutrition,
         bodyweight,
         activeProgram: activeProgramStructure

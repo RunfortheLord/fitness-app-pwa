@@ -9,6 +9,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   )
   const [bodyweightSheetDate, setBodyweightSheetDate] =
     useState<LocalDateString | null>(null)
+  const [dashboardRevision, setDashboardRevision] = useState(0)
 
   const openBodyweightSheet = useCallback(
     (localDate?: LocalDateString) => {
@@ -22,10 +23,12 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       selectedDate,
       setSelectedDate,
       bodyweightSheetDate,
+      dashboardRevision,
       openBodyweightSheet,
       closeBodyweightSheet: () => setBodyweightSheetDate(null),
+      refreshDashboard: () => setDashboardRevision((revision) => revision + 1),
     }),
-    [bodyweightSheetDate, openBodyweightSheet, selectedDate],
+    [bodyweightSheetDate, dashboardRevision, openBodyweightSheet, selectedDate],
   )
 
   return (

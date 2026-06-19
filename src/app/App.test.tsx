@@ -24,8 +24,6 @@ describe('App', () => {
     expect(
       screen.getByRole('navigation', { name: 'Primary' }),
     ).toBeInTheDocument()
-    expect(
-      await screen.findByText('Loading local metadata'),
-    ).toBeInTheDocument()
+    expect(await screen.findByText('Loading dashboard')).toBeInTheDocument()
   })
 })

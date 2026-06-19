@@ -37,8 +37,10 @@ describe('HomePage', () => {
   it('renders empty dashboard cards from local services', async () => {
     renderHome()
 
+    await waitForDashboardReady()
+
     expect(
-      await screen.findByRole('button', { name: 'Return to today' }),
+      screen.getByRole('button', { name: 'Return to today' }),
     ).toBeInTheDocument()
     expect(screen.getByText('Calories consumed')).toBeInTheDocument()
     expect(screen.getByText('Calories remaining')).toBeInTheDocument()
@@ -47,9 +49,25 @@ describe('HomePage', () => {
     expect(screen.getByText('No completed workouts')).toBeInTheDocument()
   })
 
+  it('waits for initial dashboard initialization before stable empty-state assertions', async () => {
+    renderHome()
+
+    expect(await screen.findByText('Loading dashboard')).toBeInTheDocument()
+
+    await waitForDashboardReady()
+
+    expect(screen.queryByText('Loading dashboard')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('status', { name: 'Dashboard ready' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('No entry')).toBeInTheDocument()
+    expect(screen.getByText('No active program')).toBeInTheDocument()
+  })
+
   it('creates, edits, and deletes bodyweight through the dashboard sheet', async () => {
     const user = userEvent.setup()
     renderHome()
+    await waitForDashboardReady()
 
     await user.click(
       await screen.findByRole('button', { name: 'Add bodyweight' }),
@@ -86,6 +104,7 @@ describe('HomePage', () => {
   it('opens bodyweight entry from the center Add sheet', async () => {
     const user = userEvent.setup()
     renderHome()
+    await waitForDashboardReady()
 
     await user.click(
       await screen.findByRole('button', { name: 'Open quick actions' }),
@@ -100,6 +119,7 @@ describe('HomePage', () => {
   it('keeps entries scoped to the selected local date', async () => {
     const user = userEvent.setup()
     renderHome()
+    await waitForDashboardReady()
 
     await user.click(
       await screen.findByRole('button', { name: 'Add bodyweight' }),
@@ -123,4 +143,8 @@ async function bodyweightInput() {
   return within(
     await screen.findByRole('dialog', { name: 'Log bodyweight' }),
   ).findByRole('textbox', { name: 'Bodyweight' })
+}
+
+async function waitForDashboardReady() {
+  await screen.findByRole('status', { name: 'Dashboard ready' })
 }
