@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 const routes = [
   { path: '/', title: 'Home', nav: 'Home' },
@@ -371,3 +371,193 @@ test('settings exposes local data controls and validates malformed restore files
     page.getByRole('dialog', { name: 'Clear all data?' }),
   ).toBeVisible()
 })
+
+test('completes the release workflow through backup restore', async ({
+  page,
+}, testInfo) => {
+  testInfo.setTimeout(90_000)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/nutrition')
+
+  await page.getByRole('button', { name: 'Create food' }).click()
+  await page.getByRole('textbox', { name: 'Name' }).fill('Audit oats')
+  await page.getByRole('textbox', { name: 'Serving quantity' }).fill('1')
+  await page.getByRole('textbox', { name: 'Serving unit' }).fill('cup')
+  await page.getByRole('textbox', { name: 'Calories per serving' }).fill('200')
+  await page.getByRole('textbox', { name: 'Protein per serving' }).fill('8')
+  await page
+    .getByRole('textbox', { name: 'Carbohydrates per serving' })
+    .fill('30')
+  await page.getByRole('textbox', { name: 'Fat per serving' }).fill('4')
+  await page.getByRole('button', { name: 'Save food' }).click()
+  await page.getByRole('searchbox', { name: 'Search foods' }).fill('audit')
+  await page.getByRole('button', { name: 'Log Audit oats' }).click()
+  await page.getByRole('textbox', { name: 'Serving multiplier' }).fill('1.25')
+  await expect(page.getByText(/Preview: 250 kcal/)).toBeVisible()
+  await page.getByRole('button', { name: 'Log food', exact: true }).click()
+  await expect(page.getByText(/1.25x 1 cup .* 250 kcal/)).toBeVisible()
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Open quick actions' }).click()
+  await page.getByRole('button', { name: /Log bodyweight/ }).click()
+  await page
+    .getByRole('dialog', { name: 'Log bodyweight' })
+    .getByRole('textbox', { name: 'Bodyweight' })
+    .fill('188.4')
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(
+    page.getByLabel('Bodyweight').getByText('188.4 lb'),
+  ).toBeVisible()
+
+  await page.goto('/training')
+  await createExercise(page, 'Audit squat', '180')
+  await createExercise(page, 'Audit curl', '60')
+  await createExercise(page, 'Audit row', '90')
+
+  await page
+    .getByLabel('Current active cycle')
+    .getByRole('button', { name: 'Create program' })
+    .click()
+  await page.getByRole('textbox', { name: 'Name' }).fill('Audit program')
+  await page.getByRole('button', { name: 'Save program' }).click()
+  const builder = page.getByRole('dialog', { name: 'Edit template' })
+  await builder
+    .getByRole('textbox', { name: 'Add workout day' })
+    .fill('Audit A')
+  await builder.getByRole('button', { name: 'Add day' }).click()
+  await builder.getByRole('button', { name: 'Add exercise' }).click()
+  await builder.getByLabel('Exercise').selectOption({ label: 'Audit squat' })
+  await builder.getByRole('textbox', { name: 'Target sets' }).fill('3')
+  await builder.getByRole('button', { name: 'Save prescription' }).click()
+  await builder.getByRole('button', { name: 'Add exercise' }).click()
+  await builder.getByLabel('Exercise').selectOption({ label: 'Audit curl' })
+  await builder.getByRole('textbox', { name: 'Target sets' }).fill('1')
+  await builder.getByRole('button', { name: 'Save prescription' }).click()
+  await builder.getByRole('button', { name: /Close/ }).click()
+
+  await page.getByRole('button', { name: 'Activate Audit program' }).click()
+  await page
+    .getByRole('dialog', { name: 'Activate program?' })
+    .getByRole('button', { name: 'Activate' })
+    .click()
+  await page.getByRole('button', { name: /Audit A/ }).click()
+  await page
+    .getByRole('dialog', { name: 'Audit A' })
+    .getByRole('button', { name: 'Start Workout' })
+    .click()
+
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Live Workout' }),
+  ).toBeVisible()
+  await page.getByRole('textbox', { name: 'Set 1 Weight' }).first().fill('185')
+  await page.getByRole('textbox', { name: 'Set 1 Reps' }).first().fill('8')
+  await page.getByRole('button', { name: 'Complete set 1' }).first().click()
+  await page.getByRole('textbox', { name: 'Set 2 Weight' }).fill('190')
+  await page.getByRole('textbox', { name: 'Set 2 Reps' }).fill('7')
+  await page.getByRole('button', { name: 'Complete set 2' }).click()
+  await page.getByRole('textbox', { name: 'Set 3 Weight' }).fill('195')
+  await page.getByRole('textbox', { name: 'Set 3 Reps' }).fill('6')
+  await page.getByRole('button', { name: 'Complete set 3' }).click()
+  await page.getByRole('button', { name: 'Add Set' }).first().click()
+  await page.getByRole('textbox', { name: 'Set 4 Weight' }).fill('200')
+  await page.getByRole('textbox', { name: 'Set 4 Reps' }).fill('5')
+  await page.getByRole('button', { name: 'Complete set 4' }).click()
+  await page.getByRole('button', { name: 'Replace Exercise' }).first().click()
+  await page
+    .getByRole('dialog', { name: 'Replace Exercise' })
+    .getByLabel('Exercise', { exact: true })
+    .selectOption({ label: 'Audit row' })
+  await page
+    .getByRole('dialog', { name: 'Replace Exercise' })
+    .getByRole('button', { name: 'Replace Exercise', exact: true })
+    .click()
+  await page.getByRole('button', { name: 'Skip Exercise' }).nth(1).click()
+  await expect(page.getByRole('button', { name: 'Unskip' })).toBeVisible()
+
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Audit row' })).toBeVisible()
+  await expect(page.getByText('Audit curl')).toBeVisible()
+  await expect(page.getByText('Skipped')).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Set 4 Weight' })).toHaveValue(
+    '200',
+  )
+
+  await page.getByRole('button', { name: 'Finish Workout' }).click()
+  await expect(page).toHaveURL(/\/history\?workout=/)
+  await expect(page.getByText('Added 4th Audit squat set')).toBeVisible()
+  await expect(
+    page.getByText('Replaced Audit squat with Audit row'),
+  ).toBeVisible()
+  await expect(page.getByText('Skipped Audit curl')).toBeVisible()
+  await page
+    .locator('.change-review-item', {
+      hasText: 'Added 4th Audit squat set',
+    })
+    .locator('input[type="checkbox"]')
+    .check()
+  await page
+    .locator('.change-review-item', {
+      hasText: 'Added 4th Audit squat set',
+    })
+    .getByLabel('Destination')
+    .selectOption('cycle_only')
+  await page
+    .locator('.change-review-item', {
+      hasText: 'Replaced Audit squat with Audit row',
+    })
+    .locator('input[type="checkbox"]')
+    .check()
+  await page
+    .locator('.change-review-item', {
+      hasText: 'Replaced Audit squat with Audit row',
+    })
+    .getByLabel('Destination')
+    .selectOption('template_only')
+  await page.getByRole('button', { name: 'Apply selected' }).click()
+  await expect(page.getByText('Reviewed')).toBeVisible()
+
+  await page.goto('/settings')
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export JSON backup' }).click()
+  const download = await downloadPromise
+  const backupPath = testInfo.outputPath(download.suggestedFilename())
+  await download.saveAs(backupPath)
+
+  await page.getByRole('button', { name: 'Clear all data' }).click()
+  const clearDialog = page.getByRole('dialog', { name: 'Clear all data?' })
+  await clearDialog.getByLabel('Confirmation').fill('DELETE')
+  await Promise.all([
+    page.waitForEvent('framenavigated'),
+    clearDialog.getByRole('button', { name: 'Delete local data' }).click(),
+  ])
+  await page.goto('/nutrition')
+  await expect(page.getByText('No recent foods')).toBeVisible()
+
+  await page.goto('/settings')
+  await page.locator('input[type="file"]').setInputFiles(backupPath)
+  await expect(page.getByLabel('Import preview')).toBeVisible()
+  const restoreDialog = page.getByRole('dialog', {
+    name: 'Replace local data?',
+  })
+  await restoreDialog.getByLabel('Confirmation').fill('REPLACE')
+  await Promise.all([
+    page.waitForEvent('framenavigated'),
+    restoreDialog.getByRole('button', { name: 'Replace data' }).click(),
+  ])
+  await page.goto('/history')
+  await expect(page.getByRole('button', { name: /Audit A/ })).toBeVisible()
+  await page.getByRole('button', { name: /Audit A/ }).click()
+  await expect(page.getByRole('heading', { name: 'Audit row' })).toBeVisible()
+  await expect(page.getByText('Added 4th Audit squat set')).toBeVisible()
+  await page.goto('/nutrition')
+  await expect(page.getByText(/1.25x 1 cup .* 250 kcal/)).toBeVisible()
+})
+
+async function createExercise(page: Page, name: string, rest: string) {
+  await page.getByLabel('Create exercise').click()
+  await page.getByRole('textbox', { name: 'Name' }).fill(name)
+  await page.getByRole('textbox', { name: 'Default rest time' }).fill(rest)
+  await page.getByLabel('Tracking preset').selectOption('weight_reps')
+  await page.getByRole('button', { name: 'Save exercise' }).click()
+  await expect(page.getByText(name)).toBeVisible()
+}
