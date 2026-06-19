@@ -234,6 +234,7 @@ const exerciseSnapshotSchema = z.object({
   defaultRestSeconds: nonNegativeInteger,
   trackingMethodId: trackingMethodIdSchema,
   trackingMetrics: z.array(trackingMetricSchema),
+  recordsRepsPerSide: z.boolean().default(false),
 })
 const exerciseSchema = z.object({
   id: idSchema,

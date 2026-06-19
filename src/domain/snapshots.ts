@@ -26,5 +26,6 @@ export function snapshotExercise(exercise: Exercise): ExerciseSnapshot {
     defaultRestSeconds: exercise.defaultRestSeconds,
     trackingMethodId: exercise.trackingMethodId,
     trackingMetrics: exercise.trackingMetrics,
+    recordsRepsPerSide: exercise.recordsRepsPerSide,
   }
 }

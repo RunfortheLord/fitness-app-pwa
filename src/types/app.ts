@@ -170,6 +170,7 @@ export type ExerciseSnapshot = {
   defaultRestSeconds: number
   trackingMethodId: TrackingMethodId
   trackingMetrics: TrackingMetric[]
+  recordsRepsPerSide?: boolean
 }
 
 export type ProgramTemplate = {

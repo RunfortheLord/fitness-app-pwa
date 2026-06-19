@@ -1,6 +1,7 @@
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
+  HTMLAttributes,
   RefObject,
   ReactNode,
 } from 'react'
@@ -38,19 +39,23 @@ export function PageContainer({ children, labelledBy }: PageContainerProps) {
   )
 }
 
-type CardProps = {
+type CardProps = HTMLAttributes<HTMLElement> & {
   children: ReactNode
   className?: string
   title?: string
 }
 
-export function Card({ children, className = '', title }: CardProps) {
+export function Card({ children, className = '', title, ...props }: CardProps) {
   const titleId = title
     ? `${title.toLowerCase().replaceAll(' ', '-')}-title`
     : undefined
 
   return (
-    <section className={`card ${className}`.trim()} aria-labelledby={titleId}>
+    <section
+      className={`card ${className}`.trim()}
+      aria-labelledby={titleId}
+      {...props}
+    >
       {title ? <h2 id={titleId}>{title}</h2> : null}
       {children}
     </section>

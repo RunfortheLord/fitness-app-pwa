@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -10,8 +16,10 @@ import { HomePage } from '@pages/HomePage'
 import { LiveWorkoutPage } from '@pages/LiveWorkoutPage'
 import { TrainingPage } from '@pages/TrainingPage'
 import { createProgramRepository } from '@repositories/programRepository'
+import { createExerciseRepository } from '@repositories/exerciseRepository'
+import { workoutRepository } from '@repositories/workoutRepository'
 import { initializeAppData } from '@services/appInitializationService'
-import { seedExercise, seedProgram } from '@test/seedFactories'
+import { seedExercise, seedProgram, testLocalDate } from '@test/seedFactories'
 
 beforeEach(async () => {
   await db.delete()
@@ -328,6 +336,97 @@ describe('TrainingPage', () => {
     expect(await screen.findByDisplayValue('Good warmup')).toBeInTheDocument()
     expect(await screen.findByDisplayValue('185')).toBeInTheDocument()
     expect(screen.getByDisplayValue('8')).toBeInTheDocument()
+  })
+
+  it('shows one live exercise workspace and keeps the active exercise stable after edits, swipes, and reload', async () => {
+    const user = userEvent.setup()
+    const exerciseRepository = createExerciseRepository(db)
+    const press = await exerciseRepository.createExercise({
+      name: 'Live press',
+      defaultRestSeconds: 60,
+      trackingMethodId: 'weight_reps',
+      notes: '',
+    })
+    const row = await exerciseRepository.createExercise({
+      name: 'Live row',
+      defaultRestSeconds: 60,
+      trackingMethodId: 'reps_only',
+      notes: '',
+    })
+    const program = await createProgramRepository(db).createProgramTemplate({
+      name: 'Live split',
+      days: [
+        {
+          name: 'Day',
+          exercises: [
+            {
+              exerciseId: press.id,
+              targetSetCount: 2,
+              targetRepsMin: 6,
+              targetRepsMax: 8,
+              targetRir: 1,
+              restSecondsOverride: null,
+            },
+            {
+              exerciseId: row.id,
+              targetSetCount: 1,
+              targetRepsMin: 10,
+              targetRepsMax: 12,
+              targetRir: null,
+              restSecondsOverride: null,
+            },
+          ],
+        },
+      ],
+    })
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+
+    const rendered = renderTraining(['/workout'])
+
+    expect(await screen.findByText('Exercise 1 of 2')).toBeInTheDocument()
+    expect(
+      rendered.container.querySelectorAll('.exercise-workspace'),
+    ).toHaveLength(1)
+    expect(
+      screen.getByRole('heading', { name: 'Live press' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Live row' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('textbox', { name: 'Set 2 final RIR' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('textbox', { name: 'Set 1 final RIR' }),
+    ).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    expect(await screen.findByText('Exercise 2 of 2')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Live row' }),
+    ).toBeInTheDocument()
+    await user.type(screen.getByRole('textbox', { name: 'Set 1 Reps' }), '12')
+    await user.tab()
+    expect(screen.getByText('Exercise 2 of 2')).toBeInTheDocument()
+
+    const workspace = rendered.container.querySelector('.exercise-workspace')
+    expect(workspace).toBeTruthy()
+    fireEvent.pointerDown(workspace!, { clientX: 24, clientY: 100 })
+    fireEvent.pointerUp(workspace!, { clientX: 140, clientY: 104 })
+    expect(await screen.findByText('Exercise 1 of 2')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    rendered.unmount()
+    renderTraining(['/workout'])
+    expect(await screen.findByText('Exercise 2 of 2')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('12')).toBeInTheDocument()
   })
 
   it('hides archived templates from the library', async () => {

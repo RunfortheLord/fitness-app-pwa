@@ -158,7 +158,9 @@ test('creates, activates, manually selects, and persists a program cycle', async
   await expect(page.getByRole('button', { name: /Day A/ })).toBeVisible()
 })
 
-test('starts, resumes, edits, and cancels a live workout', async ({ page }) => {
+test('starts, resumes, edits, and cancels a live workout', async ({
+  page,
+}, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/training')
   await waitForExerciseLibrary(page)
@@ -204,6 +206,10 @@ test('starts, resumes, edits, and cancels a live workout', async ({ page }) => {
   await page.getByRole('textbox', { name: 'Set 1 Reps' }).fill('10')
   await page.getByRole('button', { name: 'Complete set 1' }).click()
   await expect(page.getByText('Rest timer')).toBeVisible()
+  await page.screenshot({
+    fullPage: true,
+    path: testInfo.outputPath('live-workout-390.png'),
+  })
 
   await page.reload()
   await expect(
@@ -472,13 +478,15 @@ test('completes the release workflow through backup restore', async ({
     .getByRole('dialog', { name: 'Replace Exercise' })
     .getByRole('button', { name: 'Replace Exercise', exact: true })
     .click()
-  await page.getByRole('button', { name: 'Skip Exercise' }).nth(1).click()
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.getByRole('button', { name: 'Skip Exercise' }).click()
   await expect(page.getByRole('button', { name: 'Unskip' })).toBeVisible()
 
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Audit row' })).toBeVisible()
-  await expect(page.getByText('Audit curl')).toBeVisible()
-  await expect(page.getByText('Skipped')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Audit curl' })).toBeVisible()
+  await expect(page.getByText('Audit row')).toBeVisible()
+  await expect(page.getByText('Skipped', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Previous' }).click()
   await expect(page.getByRole('textbox', { name: 'Set 4 Weight' })).toHaveValue(
     '200',
   )

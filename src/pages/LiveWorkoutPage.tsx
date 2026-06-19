@@ -1,5 +1,7 @@
 import {
   Check,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   MoreHorizontal,
   Pause,
@@ -11,7 +13,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import {
@@ -34,6 +36,7 @@ import { exerciseRepository } from '@repositories/exerciseRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
 import type {
   Exercise,
+  ActiveCycleWorkoutExercise,
   TrackingMetric,
   Workout,
   WorkoutExercise,
@@ -48,6 +51,7 @@ type LiveWorkoutState =
       workout: Workout
       exercises: WorkoutExercise[]
       setsByExercise: Record<string, WorkoutSet[]>
+      sourcePrescriptionsByExercise: Record<string, ActiveCycleWorkoutExercise>
       previousByExercise: Record<string, WorkoutSet[]>
     }
   | { status: 'error'; message: string }
@@ -56,6 +60,12 @@ type ExercisePickerState =
   | { mode: 'add' }
   | { mode: 'replace'; workoutExerciseId: string }
   | null
+
+declare global {
+  interface Window {
+    webkitAudioContext?: typeof AudioContext
+  }
+}
 
 export function LiveWorkoutPage() {
   const navigate = useNavigate()
@@ -66,6 +76,8 @@ export function LiveWorkoutPage() {
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [actionsOpen, setActionsOpen] = useState(false)
   const [picker, setPicker] = useState<ExercisePickerState>(null)
+  const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null)
+  const alertedTimerIds = useRef(new Set<string>())
 
   useEffect(() => {
     let isCurrent = true
@@ -94,11 +106,24 @@ export function LiveWorkoutPage() {
         if (!isCurrent) {
           return
         }
+        setActiveExerciseId((current) => {
+          if (loaded.exercises.some((exercise) => exercise.id === current)) {
+            return current
+          }
+          const storedId = window.localStorage.getItem(
+            activeExerciseStorageKey(loaded.workout.id),
+          )
+          if (loaded.exercises.some((exercise) => exercise.id === storedId)) {
+            return storedId
+          }
+          return loaded.exercises[0]?.id ?? null
+        })
         setState({
           status: 'ready',
           workout: loaded.workout,
           exercises: loaded.exercises,
           setsByExercise: loaded.setsByExercise,
+          sourcePrescriptionsByExercise: loaded.sourcePrescriptionsByExercise,
           previousByExercise: Object.fromEntries(previousEntries),
         })
       })
@@ -140,6 +165,85 @@ export function LiveWorkoutPage() {
       })
   }
 
+  const readyState = state.status === 'ready' ? state : null
+  const elapsedSeconds = readyState
+    ? Math.max(
+        0,
+        Math.floor(
+          (now.getTime() - Date.parse(readyState.workout.startedAt)) / 1000,
+        ) - readyState.workout.elapsedPausedSeconds,
+      )
+    : 0
+  const restRemaining = getRestTimerRemainingSeconds(
+    readyState?.workout.activeRestTimer ?? null,
+    now.toISOString(),
+  )
+  const activeIndex = readyState
+    ? getActiveExerciseIndex(readyState.exercises, activeExerciseId)
+    : 0
+  const activeExercise = readyState?.exercises[activeIndex]
+  const activeSets =
+    readyState && activeExercise
+      ? (readyState.setsByExercise[activeExercise.id] ?? [])
+      : []
+  const activePrescription =
+    readyState && activeExercise
+      ? readyState.sourcePrescriptionsByExercise[activeExercise.id]
+      : undefined
+  const canGoPrevious = activeIndex > 0
+  const canGoNext = readyState
+    ? activeIndex < readyState.exercises.length - 1
+    : false
+  const announcement =
+    readyState && activeExercise
+      ? `${activeExercise.exerciseSnapshot.exerciseName}, exercise ${
+          activeIndex + 1
+        } of ${readyState.exercises.length}`
+      : ''
+
+  function selectExercise(index: number) {
+    const next = readyState?.exercises[index]
+    if (!next) {
+      return
+    }
+    setActiveExerciseId(next.id)
+  }
+
+  useEffect(() => {
+    if (!readyState || !activeExercise) {
+      return
+    }
+    window.localStorage.setItem(
+      activeExerciseStorageKey(readyState.workout.id),
+      activeExercise.id,
+    )
+  }, [activeExercise, readyState])
+
+  useEffect(() => {
+    const timer = readyState?.workout.activeRestTimer
+    if (
+      !readyState ||
+      !timer ||
+      timer.status !== 'running' ||
+      restRemaining > 0 ||
+      alertedTimerIds.current.has(timer.id)
+    ) {
+      return
+    }
+    alertedTimerIds.current.add(timer.id)
+    announceRestComplete()
+    void workoutRepository
+      .completeRestTimer(readyState.workout.id)
+      .then(() => setRevision((current) => current + 1))
+      .catch((caught: unknown) => {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : 'Rest timer could not be completed.',
+        )
+      })
+  }, [readyState, restRemaining])
+
   if (state.status === 'loading') {
     return (
       <PageContainer>
@@ -177,18 +281,11 @@ export function LiveWorkoutPage() {
     )
   }
 
-  const elapsedSeconds = Math.max(
-    0,
-    Math.floor((now.getTime() - Date.parse(state.workout.startedAt)) / 1000) -
-      state.workout.elapsedPausedSeconds,
-  )
-  const restRemaining = getRestTimerRemainingSeconds(
-    state.workout.activeRestTimer,
-    now.toISOString(),
-  )
-
   return (
     <PageContainer>
+      <div aria-live="polite" className="visually-hidden">
+        {announcement}
+      </div>
       <Card className="live-workout-hero">
         <div className="live-workout-title-row">
           <div>
@@ -237,6 +334,9 @@ export function LiveWorkoutPage() {
         onAddTime={() =>
           run(workoutRepository.addRestTimerSeconds(state.workout.id, 30))
         }
+        onSubtractTime={() =>
+          run(workoutRepository.addRestTimerSeconds(state.workout.id, -30))
+        }
         onDismiss={() =>
           run(workoutRepository.dismissRestTimer(state.workout.id))
         }
@@ -249,15 +349,24 @@ export function LiveWorkoutPage() {
         timer={state.workout.activeRestTimer}
       />
 
-      {state.exercises.map((exercise) => (
-        <ExerciseCard
-          exercise={exercise}
-          key={exercise.id}
-          onAddSet={() => run(workoutRepository.addSet(exercise.id))}
+      <ExerciseNavigator
+        activeExerciseId={activeExercise?.id ?? null}
+        exercises={state.exercises}
+        onSelect={(id) => setActiveExerciseId(id)}
+      />
+
+      {activeExercise ? (
+        <ExerciseWorkspace
+          canGoNext={canGoNext}
+          canGoPrevious={canGoPrevious}
+          exercise={activeExercise}
+          exerciseCount={state.exercises.length}
+          exerciseIndex={activeIndex}
+          onAddSet={() => run(workoutRepository.addSet(activeExercise.id))}
           onCompleteSet={(set, completed) => {
             const restSeconds =
               set.restSecondsUsed ??
-              exercise.exerciseSnapshot.defaultRestSeconds ??
+              activeExercise.exerciseSnapshot.defaultRestSeconds ??
               0
             run(
               workoutRepository
@@ -273,8 +382,13 @@ export function LiveWorkoutPage() {
             )
           }}
           onDeleteSet={(setId) => run(workoutRepository.deleteSet(setId))}
+          onNext={() => selectExercise(activeIndex + 1)}
+          onPrevious={() => selectExercise(activeIndex - 1)}
           onReplaceExercise={() =>
-            setPicker({ mode: 'replace', workoutExerciseId: exercise.id })
+            setPicker({
+              mode: 'replace',
+              workoutExerciseId: activeExercise.id,
+            })
           }
           onSetMetric={(set, metricValues) =>
             run(workoutRepository.updateWorkoutSet(set.id, { metricValues }))
@@ -283,17 +397,28 @@ export function LiveWorkoutPage() {
             run(workoutRepository.updateWorkoutSet(set.id, { rir }))
           }
           onSkip={(skipped) =>
-            run(workoutRepository.skipExercise(exercise.id, skipped))
+            run(workoutRepository.skipExercise(activeExercise.id, skipped))
           }
           onUpdateNotes={(notes) =>
             run(
-              workoutRepository.updateWorkoutExerciseNotes(exercise.id, notes),
+              workoutRepository.updateWorkoutExerciseNotes(
+                activeExercise.id,
+                notes,
+              ),
             )
           }
-          previous={state.previousByExercise[exercise.id] ?? []}
-          sets={state.setsByExercise[exercise.id] ?? []}
+          prescription={activePrescription}
+          previous={state.previousByExercise[activeExercise.id] ?? []}
+          sets={activeSets}
         />
-      ))}
+      ) : (
+        <Card>
+          <EmptyState
+            title="No exercises"
+            message="Add an exercise to begin logging this workout."
+          />
+        </Card>
+      )}
 
       <div className="live-workout-finish">
         <SecondaryButton
@@ -350,8 +475,9 @@ export function LiveWorkoutPage() {
       <ExercisePickerSheet
         currentWorkoutId={state.workout.id}
         onClose={() => setPicker(null)}
-        onSelected={() => {
+        onSelected={(selectedExerciseId) => {
           setPicker(null)
+          setActiveExerciseId(selectedExerciseId)
           reload()
         }}
         picker={picker}
@@ -378,41 +504,109 @@ export function LiveWorkoutPage() {
   )
 }
 
-function ExerciseCard({
+function ExerciseNavigator({
+  activeExerciseId,
+  exercises,
+  onSelect,
+}: {
+  activeExerciseId: string | null
+  exercises: WorkoutExercise[]
+  onSelect: (id: string) => void
+}) {
+  if (exercises.length <= 1) {
+    return null
+  }
+
+  return (
+    <Card className="exercise-navigator" title="Exercise navigator">
+      <div className="exercise-tab-list" role="list">
+        {exercises.map((exercise, index) => (
+          <button
+            aria-current={exercise.id === activeExerciseId ? 'true' : undefined}
+            key={exercise.id}
+            onClick={() => onSelect(exercise.id)}
+            type="button"
+          >
+            <span>{index + 1}</span>
+            <small>{exercise.exerciseSnapshot.exerciseName}</small>
+          </button>
+        ))}
+      </div>
+    </Card>
+  )
+}
+
+function ExerciseWorkspace({
+  canGoNext,
+  canGoPrevious,
   exercise,
+  exerciseCount,
+  exerciseIndex,
   onAddSet,
   onCompleteSet,
   onDeleteSet,
+  onNext,
+  onPrevious,
   onReplaceExercise,
   onSetMetric,
   onSetRir,
   onSkip,
   onUpdateNotes,
+  prescription,
   previous,
   sets,
 }: {
+  canGoNext: boolean
+  canGoPrevious: boolean
   exercise: WorkoutExercise
+  exerciseCount: number
+  exerciseIndex: number
   onAddSet: () => void
   onCompleteSet: (set: WorkoutSet, completed: boolean) => void
   onDeleteSet: (setId: string) => void
+  onNext: () => void
+  onPrevious: () => void
   onReplaceExercise: () => void
   onSetMetric: (set: WorkoutSet, values: WorkoutSet['metricValues']) => void
   onSetRir: (set: WorkoutSet, rir: number | null) => void
   onSkip: (skipped: boolean) => void
   onUpdateNotes: (notes: string) => void
+  prescription: ActiveCycleWorkoutExercise | undefined
   previous: WorkoutSet[]
   sets: WorkoutSet[]
 }) {
   const metrics = exercise.exerciseSnapshot.trackingMetrics
+  const swipe = useSwipeNavigation({ onNext, onPrevious })
 
   return (
     <Card
-      className={exercise.skipped ? 'exercise-card skipped' : 'exercise-card'}
+      className={
+        exercise.skipped ? 'exercise-workspace skipped' : 'exercise-workspace'
+      }
+      onKeyDown={(event) => {
+        if (isInteractiveElement(event.target)) {
+          return
+        }
+        if (event.key === 'ArrowLeft' && canGoPrevious) {
+          event.preventDefault()
+          onPrevious()
+        }
+        if (event.key === 'ArrowRight' && canGoNext) {
+          event.preventDefault()
+          onNext()
+        }
+      }}
+      tabIndex={0}
+      {...swipe}
     >
       <div className="exercise-card-header">
         <div>
+          <p className="eyebrow">
+            Exercise {exerciseIndex + 1} of {exerciseCount}
+          </p>
           <h2>{exercise.exerciseSnapshot.exerciseName}</h2>
           {exercise.skipped ? <p className="muted">Skipped</p> : null}
+          <p className="muted">{formatPrescriptionSummary(prescription)}</p>
         </div>
         <div className="row-actions">
           <SecondaryButton type="button" onClick={onReplaceExercise}>
@@ -428,6 +622,21 @@ function ExerciseCard({
         </div>
       </div>
 
+      <div className="exercise-stepper" aria-label="Exercise navigation">
+        <SecondaryButton
+          disabled={!canGoPrevious}
+          type="button"
+          onClick={onPrevious}
+        >
+          <ChevronLeft aria-hidden="true" size={18} />
+          Previous
+        </SecondaryButton>
+        <SecondaryButton disabled={!canGoNext} type="button" onClick={onNext}>
+          Next
+          <ChevronRight aria-hidden="true" size={18} />
+        </SecondaryButton>
+      </div>
+
       <FormField id={`${exercise.id}-notes`} label="Exercise notes">
         <textarea
           id={`${exercise.id}-notes`}
@@ -439,6 +648,10 @@ function ExerciseCard({
       <div className="set-list">
         {sets.map((set) => (
           <SetRow
+            exercise={exercise}
+            finalProgrammedSetNumber={
+              prescription?.targetSetCount ?? sets.length
+            }
             key={set.id}
             metrics={metrics}
             onComplete={(completed) => onCompleteSet(set, completed)}
@@ -446,6 +659,7 @@ function ExerciseCard({
             onMetricChange={(values) => onSetMetric(set, values)}
             onRirChange={(rir) => onSetRir(set, rir)}
             previous={previous[set.setNumber - 1]}
+            prescription={prescription}
             set={set}
           />
         ))}
@@ -460,35 +674,51 @@ function ExerciseCard({
 }
 
 function SetRow({
+  exercise,
+  finalProgrammedSetNumber,
   metrics,
   onComplete,
   onDelete,
   onMetricChange,
   onRirChange,
   previous,
+  prescription,
   set,
 }: {
+  exercise: WorkoutExercise
+  finalProgrammedSetNumber: number
   metrics: TrackingMetric[]
   onComplete: (completed: boolean) => void
   onDelete: () => void
   onMetricChange: (values: WorkoutSet['metricValues']) => void
   onRirChange: (rir: number | null) => void
   previous: WorkoutSet | undefined
+  prescription: ActiveCycleWorkoutExercise | undefined
   set: WorkoutSet
 }) {
+  const showRir =
+    supportsRir(metrics) && set.setNumber === finalProgrammedSetNumber
+  const repsPerSide = exerciseRecordsRepsPerSide(exercise)
   return (
     <div className="set-row">
       <div className="set-number">
-        <strong>{set.setNumber}</strong>
+        <strong>Set {set.setNumber}</strong>
         <small>
           {previous ? formatSetPerformance(previous, metrics) : 'No previous'}
         </small>
       </div>
+      <div className="set-target">
+        <span>Target</span>
+        <strong>{formatSetTarget(prescription, metrics, repsPerSide)}</strong>
+      </div>
       {metrics.map((metric) => (
         <label key={metric.key}>
-          <span>{metric.label}</span>
+          <span>{formatMetricLabel(metric, repsPerSide)}</span>
           <NumericInput
-            aria-label={`Set ${set.setNumber} ${metric.label}`}
+            aria-label={`Set ${set.setNumber} ${formatMetricLabel(
+              metric,
+              repsPerSide,
+            )}`}
             onBlur={(event) =>
               onMetricChange({
                 ...set.metricValues,
@@ -499,11 +729,11 @@ function SetRow({
           />
         </label>
       ))}
-      {usesRir(metrics) ? (
+      {showRir ? (
         <label>
-          <span>RIR</span>
+          <span>Final RIR</span>
           <NumericInput
-            aria-label={`Set ${set.setNumber} RIR`}
+            aria-label={`Set ${set.setNumber} final RIR`}
             onBlur={(event) =>
               onRirChange(parseNullableNumber(event.currentTarget.value))
             }
@@ -511,6 +741,13 @@ function SetRow({
           />
         </label>
       ) : null}
+      <p className="set-status">
+        {set.completed
+          ? 'Completed'
+          : exercise.skipped
+            ? 'Exercise skipped'
+            : 'Not complete'}
+      </p>
       <IconButton
         aria-label={`${set.completed ? 'Mark incomplete' : 'Complete'} set ${set.setNumber}`}
         onClick={() => onComplete(!set.completed)}
@@ -534,6 +771,7 @@ function RestTimerCard({
   onPause,
   onResume,
   onSkip,
+  onSubtractTime,
   remainingSeconds,
   timer,
 }: {
@@ -542,6 +780,7 @@ function RestTimerCard({
   onPause: () => void
   onResume: () => void
   onSkip: () => void
+  onSubtractTime: () => void
   remainingSeconds: number
   timer: Workout['activeRestTimer']
 }) {
@@ -551,11 +790,18 @@ function RestTimerCard({
 
   return (
     <Card className="rest-timer-card" title="Rest timer">
-      <p className="metric-value metric-value-small">
+      <p aria-live="polite" className="metric-value metric-value-small">
         {formatDuration(remainingSeconds)}
       </p>
+      <p className="muted">
+        {timer.status === 'completed'
+          ? 'Rest complete'
+          : timer.status === 'paused'
+            ? 'Timer paused'
+            : 'Timer running'}
+      </p>
       <div className="button-row">
-        {timer.status === 'paused' ? (
+        {timer.status === 'completed' ? null : timer.status === 'paused' ? (
           <SecondaryButton type="button" onClick={onResume}>
             <Play aria-hidden="true" size={18} />
             Resume
@@ -569,12 +815,21 @@ function RestTimerCard({
         <SecondaryButton type="button" onClick={onAddTime}>
           +30s
         </SecondaryButton>
-        <SecondaryButton type="button" onClick={onSkip}>
-          <TimerOff aria-hidden="true" size={18} />
-          Skip
+        <SecondaryButton
+          disabled={remainingSeconds === 0}
+          type="button"
+          onClick={onSubtractTime}
+        >
+          -30s
         </SecondaryButton>
+        {timer.status === 'completed' ? null : (
+          <SecondaryButton type="button" onClick={onSkip}>
+            <TimerOff aria-hidden="true" size={18} />
+            Stop
+          </SecondaryButton>
+        )}
         <SecondaryButton type="button" onClick={onDismiss}>
-          Dismiss
+          Clear
         </SecondaryButton>
       </div>
     </Card>
@@ -589,7 +844,7 @@ function ExercisePickerSheet({
 }: {
   currentWorkoutId: string
   onClose: () => void
-  onSelected: () => void
+  onSelected: (selectedExerciseId: string) => void
   picker: ExercisePickerState
 }) {
   const [exercises, setExercises] = useState<Exercise[]>([])
@@ -628,11 +883,13 @@ function ExercisePickerSheet({
             keepCompatibleSetValues: keepCompatible,
           })
 
-    void action.then(onSelected).catch((caught: unknown) => {
-      setError(
-        caught instanceof Error ? caught.message : 'Exercise change failed.',
-      )
-    })
+    void action
+      .then((selected) => onSelected(selected.id))
+      .catch((caught: unknown) => {
+        setError(
+          caught instanceof Error ? caught.message : 'Exercise change failed.',
+        )
+      })
   }
 
   return (
@@ -674,6 +931,121 @@ function formatDuration(totalSeconds: number) {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
 
+function activeExerciseStorageKey(workoutId: string) {
+  return `fitness-log.active-exercise.${workoutId}`
+}
+
+function getActiveExerciseIndex(
+  exercises: WorkoutExercise[],
+  activeId: string | null,
+) {
+  const index = exercises.findIndex((exercise) => exercise.id === activeId)
+  return index >= 0 ? index : 0
+}
+
+function formatPrescriptionSummary(
+  prescription: ActiveCycleWorkoutExercise | undefined,
+) {
+  if (!prescription) {
+    return 'Added during workout'
+  }
+  const parts = [`${prescription.targetSetCount} sets`]
+  const reps = formatRepTarget(prescription)
+  if (reps) {
+    parts.push(reps)
+  }
+  if (
+    prescription.targetWeight !== null &&
+    prescription.targetWeight !== undefined
+  ) {
+    parts.push(`${prescription.targetWeight} lb`)
+  }
+  if (
+    prescription.targetDurationSeconds !== null &&
+    prescription.targetDurationSeconds !== undefined
+  ) {
+    parts.push(formatDuration(prescription.targetDurationSeconds))
+  }
+  if (
+    prescription.targetDistance !== null &&
+    prescription.targetDistance !== undefined
+  ) {
+    parts.push(`${prescription.targetDistance} ft`)
+  }
+  return parts.join(' - ')
+}
+
+function formatSetTarget(
+  prescription: ActiveCycleWorkoutExercise | undefined,
+  metrics: TrackingMetric[],
+  repsPerSide: boolean,
+) {
+  if (!prescription) {
+    return 'Open'
+  }
+  const parts = metrics
+    .map((metric) => {
+      if (metric.key === 'reps') {
+        const reps = formatRepTarget(prescription)
+        return reps ? (repsPerSide ? `${reps}/side` : reps) : null
+      }
+      if (
+        metric.key === 'weight' ||
+        metric.key === 'assistedWeight' ||
+        metric.key === 'addedWeight'
+      ) {
+        return prescription.targetWeight !== null &&
+          prescription.targetWeight !== undefined
+          ? `${prescription.targetWeight} lb`
+          : null
+      }
+      if (metric.key === 'durationSeconds') {
+        return prescription.targetDurationSeconds
+          ? formatDuration(prescription.targetDurationSeconds)
+          : null
+      }
+      if (metric.key === 'distance') {
+        return prescription.targetDistance
+          ? `${prescription.targetDistance} ft`
+          : null
+      }
+      return null
+    })
+    .filter(Boolean)
+  return parts.length ? parts.join(' / ') : 'Open'
+}
+
+function formatRepTarget(prescription: ActiveCycleWorkoutExercise) {
+  const min = prescription.targetRepsMin
+  const max = prescription.targetRepsMax
+  if (min !== null && max !== null) {
+    return min === max ? `${min} reps` : `${min}-${max} reps`
+  }
+  if (min !== null) {
+    return `${min}+ reps`
+  }
+  if (max !== null) {
+    return `up to ${max} reps`
+  }
+  return null
+}
+
+function formatMetricLabel(metric: TrackingMetric, repsPerSide: boolean) {
+  if (metric.key === 'reps' && repsPerSide) {
+    return 'Reps/side'
+  }
+  if (metric.key === 'assistedWeight') {
+    return 'Assist'
+  }
+  if (metric.key === 'addedWeight') {
+    return 'Added'
+  }
+  if (metric.key === 'durationSeconds') {
+    return 'Duration'
+  }
+  return metric.label
+}
+
 function parseMetricValue(value: string) {
   const trimmed = value.trim()
   if (!trimmed) {
@@ -705,8 +1077,108 @@ function formatSetPerformance(set: WorkoutSet, metrics: TrackingMetric[]) {
   return values.length ? values.join(' / ') : 'Previous logged'
 }
 
-function usesRir(metrics: TrackingMetric[]) {
-  return metrics.some((metric) =>
-    ['weight', 'reps', 'assistedWeight'].includes(metric.key),
+function supportsRir(metrics: TrackingMetric[]) {
+  return metrics.some((metric) => metric.key === 'reps')
+}
+
+function exerciseRecordsRepsPerSide(exercise: WorkoutExercise) {
+  return Boolean(
+    'recordsRepsPerSide' in exercise.exerciseSnapshot &&
+    exercise.exerciseSnapshot.recordsRepsPerSide,
   )
+}
+
+function useSwipeNavigation({
+  onNext,
+  onPrevious,
+}: {
+  onNext: () => void
+  onPrevious: () => void
+}) {
+  const pointerStart = useRef<{
+    x: number
+    y: number
+    time: number
+    ignore: boolean
+  } | null>(null)
+
+  return {
+    onPointerDown(event: PointerEvent<HTMLElement>) {
+      pointerStart.current = {
+        x: event.clientX,
+        y: event.clientY,
+        time: performance.now(),
+        ignore: isInteractiveElement(event.target),
+      }
+    },
+    onPointerUp(event: PointerEvent<HTMLElement>) {
+      const start = pointerStart.current
+      pointerStart.current = null
+      if (!start || start.ignore || isInteractiveElement(event.target)) {
+        return
+      }
+      const dx = event.clientX - start.x
+      const dy = event.clientY - start.y
+      const elapsed = Math.max(1, performance.now() - start.time)
+      const velocity = Math.abs(dx) / elapsed
+      const intentional =
+        Math.abs(dx) >= 64 &&
+        Math.abs(dx) > Math.abs(dy) * 1.35 &&
+        velocity >= 0.25
+      if (!intentional) {
+        return
+      }
+      if (dx < 0) {
+        onNext()
+      } else {
+        onPrevious()
+      }
+    },
+    onPointerCancel() {
+      pointerStart.current = null
+    },
+  }
+}
+
+function isInteractiveElement(target: EventTarget | null) {
+  if (!(target instanceof Element)) {
+    return false
+  }
+  return Boolean(
+    target.closest(
+      'button, input, select, textarea, a, [contenteditable="true"], [role="slider"]',
+    ),
+  )
+}
+
+function announceRestComplete() {
+  if ('vibrate' in navigator) {
+    navigator.vibrate?.([160, 80, 160])
+  }
+  playCompletionTone()
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification('Rest timer complete')
+  }
+}
+
+function playCompletionTone() {
+  const AudioContextConstructor =
+    window.AudioContext ?? window.webkitAudioContext
+  if (!AudioContextConstructor) {
+    return
+  }
+  try {
+    const context = new AudioContextConstructor()
+    const oscillator = context.createOscillator()
+    const gain = context.createGain()
+    oscillator.frequency.value = 880
+    gain.gain.value = 0.04
+    oscillator.connect(gain)
+    gain.connect(context.destination)
+    oscillator.start()
+    oscillator.stop(context.currentTime + 0.18)
+    oscillator.addEventListener('ended', () => void context.close())
+  } catch {
+    // Browser autoplay policies can reject workout timer audio; vibration and UI still work.
+  }
 }

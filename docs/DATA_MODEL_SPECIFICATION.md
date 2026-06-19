@@ -131,6 +131,17 @@ foreign-key ID fields and sort indexes.
 - `createdAt`
 - `updatedAt`
 
+### ExerciseSnapshot
+
+- `exerciseName`
+- `notes`
+- `defaultRestSeconds`
+- `trackingMethodId`
+- `trackingMetrics`
+- `recordsRepsPerSide`: optional on older snapshots and treated as `false`
+  when absent. New snapshots include it so live workout rep labels preserve
+  unilateral exercise semantics without changing historical rep values.
+
 ### TrackingMethod
 
 - `id`
@@ -247,6 +258,8 @@ foreign-key ID fields and sort indexes.
 - `accumulatedPausedSeconds`
 - `status`: `running`, `paused`, `dismissed`, or `completed`
 - Remaining time is derived from timestamps.
+- Live workout completion alerts are keyed by the timer record and completed
+  status so alerts are not duplicated by rerenders or reloads.
 
 ### WorkoutHistoryEntry
 

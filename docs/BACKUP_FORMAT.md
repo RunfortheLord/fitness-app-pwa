@@ -22,6 +22,10 @@ JSON is the authoritative full-fidelity backup format. A backup root contains:
 
 Stable IDs, parent IDs, ordering fields, local dates, timestamps, archived or hidden status, source IDs, built-in exercise metadata, custom exercise metadata, and snapshots are preserved.
 
+Exercise snapshots may include `recordsRepsPerSide`. Older backups that do not
+include this snapshot field restore it as `false`; restore does not rewrite or
+double historical repetition values.
+
 ## Restore Behavior
 
 Restore validates the complete backup before modifying IndexedDB. Validation covers root metadata, supported backup format version, database schema compatibility, required fields, IDs, duplicate IDs, timestamps, local dates, numeric values, enum values, parent-child relationships, source references, and snapshot structure.

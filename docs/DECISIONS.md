@@ -1,5 +1,15 @@
 # Decisions
 
+## Live Workout Final-Set RIR
+
+- Current live-workout UI requests RIR only on the final programmed set for an
+  exercise.
+- Added unprogrammed sets do not become the final programmed RIR set. This
+  matches existing data semantics where added sets are created with `rir: null`
+  and are detected later as structural set additions.
+- Historical RIR values on non-final sets are preserved in storage and backups
+  even when the current UI does not render an input for them.
+
 ## Architecture and Scope Decisions
 
 - The app is a single-user, local-first Progressive Web App.

@@ -205,11 +205,27 @@ export function createWorkoutRepository(
         .where({ workoutId })
         .sortBy('orderIndex')
       const sets = await database.workoutSets.where({ workoutId }).toArray()
+      const sourcePrescriptions = await Promise.all(
+        exercises.map(async (exercise) => [
+          exercise.id,
+          exercise.sourcePrescribedExerciseId
+            ? await database.activeCycleWorkoutExercises.get(
+                exercise.sourcePrescribedExerciseId,
+              )
+            : undefined,
+        ]),
+      )
 
       return {
         workout,
         exercises,
         setsByExercise: mapSetsByExercise(exercises, sets),
+        sourcePrescriptionsByExercise: Object.fromEntries(
+          sourcePrescriptions.filter(
+            (entry): entry is [string, ActiveCycleWorkoutExercise] =>
+              Boolean(entry[1]),
+          ),
+        ),
       }
     },
 
@@ -554,10 +570,30 @@ export function createWorkoutRepository(
     },
 
     async addRestTimerSeconds(workoutId: string, seconds: number) {
-      return updateRestTimer(database, workoutId, (timer) => ({
-        ...timer,
-        durationSeconds: Math.max(0, timer.durationSeconds + seconds),
-      }))
+      return updateRestTimer(database, workoutId, (timer, now) => {
+        if (timer.status === 'completed' && seconds > 0) {
+          return {
+            ...timer,
+            startedAt: now,
+            durationSeconds: seconds,
+            pausedAt: null,
+            accumulatedPausedSeconds: 0,
+            status: 'running',
+          }
+        }
+        return {
+          ...timer,
+          durationSeconds: Math.max(0, timer.durationSeconds + seconds),
+        }
+      })
+    },
+
+    async completeRestTimer(workoutId: string) {
+      return updateRestTimer(database, workoutId, (timer) =>
+        timer.status === 'running'
+          ? { ...timer, pausedAt: null, status: 'completed' }
+          : timer,
+      )
     },
 
     async dismissRestTimer(workoutId: string) {

@@ -161,11 +161,21 @@
 - Cancel action behind confirmation.
 - Workout notes action.
 
-### Exercise Cards
+### Exercise Workspace
 
-- Exercise name.
+- The live workout shows one active exercise workspace at a time instead of a
+  full vertical stack of exercise cards.
+- Exercise position is visible as "Exercise N of M".
+- Previous and Next buttons are always available when another exercise exists,
+  and horizontal swipe navigation is supported with thresholds that avoid
+  numeric-input gestures.
+- A compact exercise navigator lists the workout exercises and lets the user
+  jump directly to another exercise.
+- The active exercise is restored from local UI state for the active workout
+  after reload or route return when possible. If that UI state is unavailable,
+  the first exercise is selected without mutating workout data.
 - Source prescription summary.
-- Previous performance.
+- Previous performance in compact set rows.
 - Exercise-level notes.
 - Skip exercise action.
 - Replace exercise action.
@@ -175,19 +185,44 @@
 
 ### Set Rows
 
-- Weight + reps: set number, previous, weight, reps, RIR, complete.
-- Bodyweight + reps: set number, previous, reps, RIR, complete.
-- Assisted weight + reps: set number, previous, assistance weight, reps, RIR, complete.
-- Reps only: set number, previous, reps, RIR, complete.
-- Duration: set number, previous, duration, RIR if applicable, complete.
-- Distance + duration: set number, previous, distance, duration, RIR if applicable, complete.
+- Set rows are compact rows inside the active exercise workspace, not separate
+  large cards.
+- Weight + reps: set number, previous, target weight/reps when present, actual
+  weight, actual reps, final-programmed-set RIR, complete.
+- Bodyweight + reps and reps only: set number, previous, target reps when
+  present, actual reps, final-programmed-set RIR when applicable, complete.
+- Assisted weight + reps: set number, previous, target assistance/reps when
+  present, actual assistance, actual reps, final-programmed-set RIR, complete.
+  Assistance is displayed as assistance, not added load.
+- Added weight + reps: set number, previous, target added weight/reps when
+  present, actual external added weight, actual reps, final-programmed-set RIR,
+  complete.
+- Duration: set number, previous, target duration when present, actual duration,
+  complete.
+- Distance + duration: set number, previous, target distance/duration when
+  present, actual distance and duration, complete.
+- Exercises that record repetitions per side label rep targets and actual rep
+  fields as per-side values. Stored rep counts remain the canonical entered
+  per-side value and are not doubled.
+- RIR is requested only on the final programmed set. Historical RIR stored on
+  other sets remains in data but is not shown in the current live UI.
 
 ### Rest Timer
 
 - Appears after completing a set when rest is configured.
+- Uses a legacy set or prescription rest override when one exists in the active
+  workout snapshot; otherwise uses the exercise default rest duration.
 - Shows remaining time calculated from start timestamp and duration.
-- Controls: pause, skip, extend, dismiss.
+- Controls: pause/resume, add 30 seconds, subtract 30 seconds without going
+  negative, stop, and clear.
 - On resume from background, recalculates remaining time instead of trusting an interval count.
+- Timer state is stored on the active workout and continues while navigating
+  between exercises or returning to the workout route.
+- Completion feedback uses UI status, vibration when supported, a short audible
+  tone when browser autoplay policy allows it, and browser notifications only
+  when permission has already been granted. The app does not repeatedly request
+  notification permission and does not claim alerts work while the browser or
+  installed PWA is fully suspended.
 
 ## Completion and Change Review
 

@@ -46,11 +46,21 @@ as passed from desktop emulation, Playwright, or simulator testing.
 - [ ] Activate program.
 - [ ] Choose a workout day.
 - [ ] Start workout.
+- [ ] Confirm only one exercise workspace is visible at a time.
+- [ ] Navigate exercises with Previous, Next, the exercise navigator, and horizontal swipes.
 - [ ] Enter weight, reps, RIR, and completed status.
+- [ ] Confirm RIR appears only on the final programmed set.
+- [ ] Confirm per-side exercises label rep values per side and do not double the stored value.
 - [ ] Add a set.
+- [ ] Confirm an added unprogrammed set does not move the final-set RIR prompt.
 - [ ] Replace an exercise.
 - [ ] Skip an exercise.
+- [ ] Add an exercise during the workout and confirm it appears in exercise navigation.
 - [ ] Use the rest timer.
+- [ ] Use +30 seconds, -30 seconds, stop, and clear.
+- [ ] Confirm subtracting time never creates a negative remaining time.
+- [ ] Confirm the timer continues while navigating between exercises.
+- [ ] Confirm timer completion feedback appears when browser capabilities allow it.
 - [ ] Close the app.
 - [ ] Reopen the app.
 - [ ] Resume the workout.
@@ -80,6 +90,7 @@ as passed from desktop emulation, Playwright, or simulator testing.
 ## Input and Layout
 
 - [ ] Test every numeric keyboard.
+- [ ] Drag while editing a numeric set field and confirm it does not accidentally navigate exercises.
 - [ ] Test long exercise names.
 - [ ] Test scrolling during a workout.
 - [ ] Test bottom sheets.

@@ -330,6 +330,19 @@ describe('workoutRepository', () => {
       status: 'running',
     })
 
+    await repository.addRestTimerSeconds(started.workout.id, -150)
+    reloaded = await repository.getActiveWorkoutStructure()
+    expect(reloaded?.workout.activeRestTimer).toMatchObject({
+      durationSeconds: 0,
+      status: 'running',
+    })
+
+    await repository.completeRestTimer(started.workout.id)
+    reloaded = await repository.getActiveWorkoutStructure()
+    expect(reloaded?.workout.activeRestTimer).toMatchObject({
+      status: 'completed',
+    })
+
     await repository.dismissRestTimer(started.workout.id)
     reloaded = await repository.getActiveWorkoutStructure()
     expect(reloaded?.workout.activeRestTimer).toMatchObject({
