@@ -274,7 +274,9 @@ export function createWorkoutRepository(
           const completed = input.completed ?? set.completed
           const updated: WorkoutSet = {
             ...set,
-            metricValues: input.metricValues ?? set.metricValues,
+            metricValues: input.metricValues
+              ? { ...set.metricValues, ...input.metricValues }
+              : set.metricValues,
             rir: hasOwn(input, 'rir') ? (input.rir ?? null) : set.rir,
             completed,
             completedAt:

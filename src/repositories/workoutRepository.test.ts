@@ -156,6 +156,35 @@ describe('workoutRepository', () => {
     ])
   })
 
+  it('merges partial live metric edits with stored set values', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    const repository = createWorkoutRepository(database)
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+
+    await repository.updateWorkoutSet(started.sets[0].id, {
+      metricValues: { weight: 185 },
+    })
+    await repository.updateWorkoutSet(started.sets[0].id, {
+      metricValues: { reps: 8 },
+    })
+    await repository.updateWorkoutSet(started.sets[0].id, {
+      completed: true,
+    })
+
+    const reloaded = await repository.getActiveWorkoutStructure()
+
+    expect(
+      reloaded?.setsByExercise[started.exercises[0].id][0].metricValues,
+    ).toEqual({ weight: 185, reps: 8 })
+  })
+
   it('enters every tracking metric type during a live workout', async () => {
     const exerciseRepository = createExerciseRepository(database)
     const exercises = await Promise.all([
