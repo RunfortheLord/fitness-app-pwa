@@ -1,4 +1,5 @@
 import { db, type TrainingLogDatabase } from '@db/database'
+import type { NormalizedFoodResult } from '@domain/foodProviderModels'
 import type { LocalDateString } from '@domain/dates'
 import { createId } from '@domain/ids'
 import { snapshotFood } from '@domain/snapshots'
@@ -12,6 +13,13 @@ export type UpdateFoodInput = Partial<CreateFoodInput>
 
 export type LogFoodInput = {
   foodId: string
+  localDate: LocalDateString
+  servingMultiplier: number
+  notes?: string
+}
+
+export type LogExternalFoodInput = {
+  food: NormalizedFoodResult
   localDate: LocalDateString
   servingMultiplier: number
   notes?: string
@@ -86,7 +94,7 @@ export function createFoodRepository(
     }
   }
 
-  return {
+  const repository = {
     async createFood(input: CreateFoodInput) {
       validateFoodInput(input)
       const now = new Date().toISOString()
@@ -101,10 +109,59 @@ export function createFoodRepository(
       return food
     },
 
+    async upsertProviderFood(input: NormalizedFoodResult) {
+      const macros = input.macrosPerServing ?? input.macrosPer100Grams
+      if (!macros) {
+        throw new Error('Provider food is missing required macros.')
+      }
+
+      const now = new Date().toISOString()
+      const existing = await database.foods.get(input.id)
+      const food: Food = {
+        id: input.id,
+        name: input.name,
+        brandName: input.brandName,
+        servingQuantity: input.serving.quantity,
+        servingUnit: input.serving.unit,
+        servingDescription: input.serving.description,
+        gramsPerServing: input.serving.gramsPerServing,
+        ouncesPerServing: input.serving.ouncesPerServing,
+        servingConversionReliable: input.serving.conversionReliable,
+        servingConversionSource: input.serving.conversionSource,
+        caloriesPerServing: macros.calories,
+        proteinGramsPerServing: macros.proteinGrams,
+        carbohydrateGramsPerServing: macros.carbohydrateGrams,
+        fatGramsPerServing: macros.fatGrams,
+        sourceType: 'provider',
+        provider: input.source.provider,
+        providerRecordId: input.source.providerRecordId,
+        providerDataType: input.source.providerDataType,
+        sourceName: input.source.sourceName,
+        sourceUrl: input.source.sourceUrl,
+        barcode: input.source.barcode,
+        sourceUpdatedAt: input.source.sourceUpdatedAt,
+        providerIngestedAt: input.source.ingestedAt,
+        normalizerVersion: input.normalizerVersion,
+        rawCookedStatus: input.rawCookedStatus,
+        macroBasis: input.macroBasis,
+        notes: existing?.notes ?? '',
+        status: 'active',
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      }
+
+      validateFoodInput(food)
+      await database.foods.put(food)
+      return food
+    },
+
     async updateFood(id: string, input: UpdateFoodInput) {
       const food = await database.foods.get(id)
       if (!food) {
         throw new Error(`Food ${id} was not found.`)
+      }
+      if (food.sourceType === 'provider') {
+        throw new Error('Imported provider foods cannot be edited directly.')
       }
       const updated: Food = {
         ...food,
@@ -117,6 +174,16 @@ export function createFoodRepository(
       validateFoodInput(updated)
       await database.foods.put(updated)
       return updated
+    },
+
+    async logExternalFood(input: LogExternalFoodInput) {
+      const food = await repository.upsertProviderFood(input.food)
+      return repository.logFood({
+        foodId: food.id,
+        localDate: input.localDate,
+        servingMultiplier: input.servingMultiplier,
+        notes: input.notes,
+      })
     },
 
     async archiveFood(id: string) {
@@ -266,6 +333,8 @@ export function createFoodRepository(
       return Array.from(foods.values())
     },
   }
+
+  return repository
 }
 
 export const foodRepository = createFoodRepository()

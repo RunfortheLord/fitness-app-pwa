@@ -66,7 +66,22 @@ do not install it globally.
 
 `vercel.json` configures Vercel to run `npm run build`, publish `dist/`, and
 serve `index.html` for client-side routes such as `/nutrition`, `/training`,
-`/workout`, `/history`, and `/settings`.
+`/workout`, `/history`, and `/settings`. `/api/*` routes are excluded from the
+SPA rewrite so Vercel functions remain reachable.
+
+Food provider routes are:
+
+- `GET /api/foods/search`
+- `GET /api/foods/resolve`
+
+Set `USDA_FDC_API_KEY` as a server-only environment variable for local
+development, Vercel Preview, and Vercel Production. Do not use a `VITE_` prefix
+for this secret. `.env.example` contains a placeholder only; real `.env*` files
+remain ignored. If the key is missing, provider routes return a structured
+server-configuration error and existing local nutrition logging remains usable.
+
+Provider architecture, licensing, fallback behavior, cache limits, normalized
+schema, and security details are documented in `docs/FOOD_PROVIDERS.md`.
 
 The app is deployed at the origin root to preserve PWA paths and scope:
 `/manifest.webmanifest`, `/sw.js`, `/apple-touch-icon.png`, `/icons/icon-192.png`,

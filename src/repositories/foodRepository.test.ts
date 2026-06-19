@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { createFoodRepository } from '@repositories/foodRepository'
+import {
+  FOOD_NORMALIZER_VERSION,
+  gramsToOunces,
+  normalizeFoodText,
+  type NormalizedFoodResult,
+} from '@domain/foodProviderModels'
 import { createTestDatabase, destroyTestDatabase } from '@test/database'
 import { seedFood, testLocalDate } from '@test/seedFactories'
 import type { TrainingLogDatabase } from '@db/database'
@@ -231,4 +237,114 @@ describe('foodRepository', () => {
       status: 'archived',
     })
   })
+
+  it('creates immutable external-food snapshots that render without provider access', async () => {
+    const repository = createFoodRepository(database)
+    const providerFood = makeProviderFood()
+
+    const log = await repository.logExternalFood({
+      food: providerFood,
+      localDate: testLocalDate,
+      servingMultiplier: 2,
+    })
+    await repository.upsertProviderFood({
+      ...providerFood,
+      macrosPerServing: {
+        calories: 300,
+        proteinGrams: 99,
+        carbohydrateGrams: 1,
+        fatGrams: 2,
+      },
+    })
+
+    const [storedLog] = await repository.listFoodLogsByDate(testLocalDate)
+    expect(storedLog).toMatchObject({
+      id: log.id,
+      foodId: providerFood.id,
+      computedCalories: 400,
+      computedProteinGrams: 20,
+      foodSnapshot: {
+        foodName: 'Provider Rice',
+        brandName: 'Provider Brand',
+        sourceType: 'provider',
+        provider: 'usda',
+        providerRecordId: '123',
+        providerDataType: 'Branded',
+        caloriesPerServing: 200,
+        proteinGramsPerServing: 10,
+        carbohydrateGramsPerServing: 45,
+        fatGramsPerServing: 1,
+        gramsPerServing: 100,
+        ouncesPerServing: gramsToOunces(100),
+        macroBasis: 'both',
+        rawCookedStatus: 'unknown',
+        normalizerVersion: FOOD_NORMALIZER_VERSION,
+      },
+    })
+    expect(storedLog.foodSnapshot.snapshotId).toBeTruthy()
+  })
+
+  it('prevents imported provider foods from being directly edited', async () => {
+    const repository = createFoodRepository(database)
+    const food = await repository.upsertProviderFood(makeProviderFood())
+
+    await expect(
+      repository.updateFood(food.id, { name: 'Edited provider food' }),
+    ).rejects.toThrow('Imported provider foods cannot be edited directly.')
+  })
 })
+
+function makeProviderFood(): NormalizedFoodResult {
+  return {
+    id: 'usda:123',
+    source: {
+      provider: 'usda',
+      providerRecordId: '123',
+      providerDataType: 'Branded',
+      sourceName: 'USDA FoodData Central',
+      sourceUrl:
+        'https://fdc.nal.usda.gov/fdc-app.html#/food-details/123/nutrients',
+      barcode: '000123',
+      sourceUpdatedAt: '2026-01-01T00:00:00.000Z',
+      ingestedAt: '2026-06-19T00:00:00.000Z',
+    },
+    name: 'Provider Rice',
+    brandName: 'Provider Brand',
+    foodCategory: 'Grains',
+    descriptionQualifiers: [],
+    rawCookedStatus: 'unknown',
+    rawCookedBasis: null,
+    serving: {
+      quantity: 1,
+      unit: 'cup',
+      description: '1 cup',
+      gramsPerServing: 100,
+      ouncesPerServing: gramsToOunces(100),
+      conversionReliable: true,
+      conversionSource: 'provider_serving_weight',
+      sourcePortions: [],
+    },
+    macrosPerServing: {
+      calories: 200,
+      proteinGrams: 10,
+      carbohydrateGrams: 45,
+      fatGrams: 1,
+    },
+    macrosPer100Grams: {
+      calories: 200,
+      proteinGrams: 10,
+      carbohydrateGrams: 45,
+      fatGrams: 1,
+    },
+    macroBasis: 'both',
+    sourcePrecision: {},
+    normalizedSearchName: normalizeFoodText('Provider Rice'),
+    normalizedBrand: normalizeFoodText('Provider Brand'),
+    providerPriority: 85,
+    relevanceScore: 0,
+    duplicateGroupId: 'usda:123',
+    alternateResultIds: [],
+    groupingReasons: [],
+    normalizerVersion: FOOD_NORMALIZER_VERSION,
+  }
+}

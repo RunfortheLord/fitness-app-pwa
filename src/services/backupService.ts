@@ -152,6 +152,16 @@ const muscleGroupSchema = z.enum([
 ])
 const weightUnitSchema = z.literal('lb')
 const energyUnitSchema = z.literal('kcal')
+const foodSourceTypeSchema = z.enum(['local', 'provider'])
+const foodProviderSchema = z.enum(['usda', 'open_food_facts'])
+const rawCookedStatusSchema = z.enum(['raw', 'cooked', 'unknown'])
+const foodMacroBasisSchema = z.enum(['per_serving', 'per_100g', 'both'])
+const foodConversionSourceSchema = z.enum([
+  'provider_serving_weight',
+  'provider_portion_weight',
+  'per_100g',
+  'none',
+])
 const trackingMethodIdSchema = z.enum([
   'weight_reps',
   'bodyweight_reps',
@@ -188,19 +198,59 @@ const nutritionTargetSchema = nutritionTargetValuesSchema.extend({
   updatedAt: isoTimestampSchema,
 })
 const foodSnapshotSchema = z.object({
+  snapshotId: idSchema.optional(),
   foodName: z.string(),
+  brandName: z.union([z.string(), z.null()]).optional().default(null),
+  sourceType: foodSourceTypeSchema.optional().default('local'),
+  provider: z.union([foodProviderSchema, z.null()]).optional().default(null),
+  providerRecordId: z.union([z.string(), z.null()]).optional().default(null),
+  providerDataType: z.union([z.string(), z.null()]).optional().default(null),
   servingQuantity: nonNegativeNumber,
   servingUnit: z.string(),
   servingDescription: z.string(),
+  gramsPerServing: z
+    .union([nonNegativeNumber, z.null()])
+    .optional()
+    .default(null),
+  ouncesPerServing: z
+    .union([nonNegativeNumber, z.null()])
+    .optional()
+    .default(null),
+  servingConversionReliable: z.boolean().optional().default(false),
+  servingConversionSource: foodConversionSourceSchema
+    .optional()
+    .default('none'),
   caloriesPerServing: nonNegativeNumber,
   proteinGramsPerServing: nonNegativeNumber,
   carbohydrateGramsPerServing: nonNegativeNumber,
   fatGramsPerServing: nonNegativeNumber,
+  macroBasis: foodMacroBasisSchema.optional().default('per_serving'),
+  rawCookedStatus: rawCookedStatusSchema.optional().default('unknown'),
+  sourceUpdatedAt: z
+    .union([isoTimestampSchema, z.null()])
+    .optional()
+    .default(null),
+  providerIngestedAt: z
+    .union([isoTimestampSchema, z.null()])
+    .optional()
+    .default(null),
+  normalizerVersion: z
+    .union([z.number().int().positive(), z.null()])
+    .optional()
+    .default(null),
   notes: z.string(),
 })
 const foodSchema = foodSnapshotSchema.omit({ foodName: true }).extend({
   id: idSchema,
   name: z.string().min(1),
+  brandName: z.union([z.string(), z.null()]).optional().default(null),
+  sourceType: foodSourceTypeSchema.optional().default('local'),
+  provider: z.union([foodProviderSchema, z.null()]).optional().default(null),
+  providerRecordId: z.union([z.string(), z.null()]).optional().default(null),
+  providerDataType: z.union([z.string(), z.null()]).optional().default(null),
+  sourceName: z.union([z.string(), z.null()]).optional().default(null),
+  sourceUrl: z.union([z.string(), z.null()]).optional().default(null),
+  barcode: z.union([z.string(), z.null()]).optional().default(null),
   status: entityStatusSchema,
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,

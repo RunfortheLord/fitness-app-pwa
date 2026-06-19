@@ -1,5 +1,17 @@
 # Decisions
 
+## 2026-06-19 Food Provider Sources
+
+- USDA FoodData Central is the primary external food provider because its
+  official API, data type documentation, and CC0/public-domain licensing support
+  server-side use for this app.
+- Open Food Facts is accepted only as a controlled branded-product fallback. It
+  is not used for search-as-you-type, the app does not write records, and images
+  and nutrition scores are ignored.
+- No additional free provider was added in this prompt. Restaurant and fast-food
+  coverage is limited to records supplied by USDA or the controlled fallback;
+  the app will not scrape menus or fabricate restaurant coverage.
+
 ## Live Workout Final-Set RIR
 
 - Current live-workout UI requests RIR only on the final programmed set for an

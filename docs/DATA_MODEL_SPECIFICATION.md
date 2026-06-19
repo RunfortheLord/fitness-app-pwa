@@ -69,10 +69,19 @@ foreign-key ID fields and sort indexes.
 - `proteinGramsPerServing`
 - `carbohydrateGramsPerServing`
 - `fatGramsPerServing`
+- Optional provider metadata: `brandName`, `sourceType`, `provider`,
+  `providerRecordId`, `providerDataType`, `sourceName`, `sourceUrl`, `barcode`,
+  `sourceUpdatedAt`, `providerIngestedAt`, and `normalizerVersion`
+- Optional serving conversion metadata: `gramsPerServing`, `ouncesPerServing`,
+  `servingConversionReliable`, and `servingConversionSource`
+- Optional classification metadata: `macroBasis` and `rawCookedStatus`
 - `notes`
 - `status`: `active` or `archived`
 - `createdAt`
 - `updatedAt`
+
+Imported provider foods are not directly editable. A corrected imported food is
+represented as a separate private custom food in a later workflow.
 
 ### FoodLogEntry
 
@@ -89,6 +98,10 @@ foreign-key ID fields and sort indexes.
 - `createdAt`
 - `updatedAt`
 
+External-food logs use immutable snapshots. Historical totals are calculated
+from `foodSnapshot`, not from a provider fetch or mutable cached provider
+record.
+
 ### FoodSnapshot
 
 - `foodName`
@@ -99,7 +112,14 @@ foreign-key ID fields and sort indexes.
 - `proteinGramsPerServing`
 - `carbohydrateGramsPerServing`
 - `fatGramsPerServing`
+- Optional provider snapshot metadata: `snapshotId`, `brandName`, `sourceType`,
+  `provider`, `providerRecordId`, `providerDataType`, `gramsPerServing`,
+  `ouncesPerServing`, `servingConversionReliable`, `servingConversionSource`,
+  `macroBasis`, `rawCookedStatus`, `sourceUpdatedAt`, `providerIngestedAt`, and
+  `normalizerVersion`
 - `notes`
+
+Provider snapshot metadata is optional so old local food logs remain readable.
 
 ### BodyweightEntry
 

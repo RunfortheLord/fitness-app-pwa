@@ -5,6 +5,15 @@ export type EntityStatus = 'active' | 'archived'
 export type ExerciseStatus = EntityStatus | 'hidden'
 export type WeightUnit = 'lb'
 export type EnergyUnit = 'kcal'
+export type FoodSourceType = 'local' | 'provider'
+export type FoodProviderId = 'usda' | 'open_food_facts'
+export type RawCookedStatus = 'raw' | 'cooked' | 'unknown'
+export type FoodMacroBasis = 'per_serving' | 'per_100g' | 'both'
+export type FoodConversionSource =
+  | 'provider_serving_weight'
+  | 'provider_portion_weight'
+  | 'per_100g'
+  | 'none'
 export type ExerciseOrigin = 'built_in' | 'custom'
 export type ExerciseEquipmentType =
   | 'barbell'
@@ -65,13 +74,30 @@ export type NutritionTargetValues = {
 export type Food = {
   id: string
   name: string
+  brandName?: string | null
   servingQuantity: number
   servingUnit: string
   servingDescription: string
+  gramsPerServing?: number | null
+  ouncesPerServing?: number | null
+  servingConversionReliable?: boolean
+  servingConversionSource?: FoodConversionSource
   caloriesPerServing: number
   proteinGramsPerServing: number
   carbohydrateGramsPerServing: number
   fatGramsPerServing: number
+  sourceType?: FoodSourceType
+  provider?: FoodProviderId | null
+  providerRecordId?: string | null
+  providerDataType?: string | null
+  sourceName?: string | null
+  sourceUrl?: string | null
+  barcode?: string | null
+  sourceUpdatedAt?: IsoTimestamp | null
+  providerIngestedAt?: IsoTimestamp | null
+  normalizerVersion?: number | null
+  rawCookedStatus?: RawCookedStatus
+  macroBasis?: FoodMacroBasis
   notes: string
   status: EntityStatus
   createdAt: IsoTimestamp
@@ -79,14 +105,29 @@ export type Food = {
 }
 
 export type FoodSnapshot = {
+  snapshotId?: string
   foodName: string
+  brandName?: string | null
+  sourceType?: FoodSourceType
+  provider?: FoodProviderId | null
+  providerRecordId?: string | null
+  providerDataType?: string | null
   servingQuantity: number
   servingUnit: string
   servingDescription: string
+  gramsPerServing?: number | null
+  ouncesPerServing?: number | null
+  servingConversionReliable?: boolean
+  servingConversionSource?: FoodConversionSource
   caloriesPerServing: number
   proteinGramsPerServing: number
   carbohydrateGramsPerServing: number
   fatGramsPerServing: number
+  macroBasis?: FoodMacroBasis
+  rawCookedStatus?: RawCookedStatus
+  sourceUpdatedAt?: IsoTimestamp | null
+  providerIngestedAt?: IsoTimestamp | null
+  normalizerVersion?: number | null
   notes: string
 }
 

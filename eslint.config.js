@@ -32,5 +32,14 @@ export default defineConfig([
       },
     },
   },
+  {
+    files: ['api/**/*.ts'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.es2023,
+      },
+    },
+  },
   prettierConfig,
 ])

@@ -68,7 +68,17 @@
 - A food log entry must snapshot food nutrition values at the time of logging.
 - Users must be able to edit and delete logged foods.
 - The app must show daily nutrition totals and recent foods.
-- The first release must exclude barcode scanning, AI food-photo analysis, automatic calorie adjustments, external food APIs, bundled food databases, micronutrients, and meal recommendations.
+- External food data must use USDA FoodData Central as the primary provider and
+  Open Food Facts only as a controlled branded-product fallback.
+- External provider foods are eligible only when calories, protein, total
+  carbohydrates, and fat are all present and usable. Numeric zero is valid.
+- Logging an external provider food must store an immutable nutrition snapshot
+  so historical logs work offline and do not change when provider data changes.
+- The app must display calories, protein, total carbohydrates, and fat only.
+- The first release must exclude barcode scanning, barcode submission, AI
+  food-photo analysis, automatic calorie adjustments, bundled bulk food
+  databases, micronutrients, broad external-food search UI redesign,
+  search-as-you-type Open Food Facts calls, and meal recommendations.
 
 ### Bodyweight
 

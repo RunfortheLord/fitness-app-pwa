@@ -37,6 +37,17 @@ optional `recommendationReason` and `recommendationSummary`. These records are
 unchecked by default in review and are applied only to selected future
 prescription destinations; completed actual workout results are not rewritten.
 
+Food and food-log snapshot records may include optional external-provider
+metadata for normalized USDA or Open Food Facts records: provider identity,
+provider record ID, provider data type, source reference, barcode metadata,
+source update timestamp, ingestion timestamp, normalizer version, serving weight
+conversion metadata, macro basis, and raw/cooked status. Older backups that omit
+these fields restore as local or legacy food records where appropriate.
+
+Food-log nutrition history remains snapshot based. Restored historical food logs
+do not require a live provider call and are not recalculated from future
+provider data.
+
 ## Restore Behavior
 
 Restore validates the complete backup before modifying IndexedDB. Validation covers root metadata, supported backup format version, database schema compatibility, required fields, IDs, duplicate IDs, timestamps, local dates, numeric values, enum values, parent-child relationships, source references, and snapshot structure.
