@@ -276,4 +276,8 @@ async function createActiveWorkout(page: Page) {
   await page.getByRole('textbox', { name: 'Set 1 Weight' }).fill('105')
   await page.getByRole('textbox', { name: 'Set 1 Reps' }).fill('8')
   await page.getByRole('button', { name: 'Complete set 1' }).click()
+  await expect(page.getByText('Rest timer')).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Set 1 Reps' })).toHaveValue(
+    '8',
+  )
 }
