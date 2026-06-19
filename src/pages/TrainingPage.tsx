@@ -899,10 +899,6 @@ function ProgramBuilderSheet({
               setEditingPrescription(null)
               refresh()
             }}
-            onExerciseCreated={(exercise) => {
-              exercises.push(exercise)
-              onChanged()
-            }}
             target={editingPrescription}
           />
         ) : null}
@@ -1125,12 +1121,14 @@ function ProgramBuilderSheet({
 }
 
 function PrescriptionEditor({
+  exerciseUsage,
   exercises,
   mode,
   onClose,
-  onSaved,
   target,
+  onSaved,
 }: {
+  exerciseUsage: ExerciseUsageSummary
   exercises: Exercise[]
   mode: BuilderMode
   onClose: () => void
@@ -1140,28 +1138,61 @@ function PrescriptionEditor({
     exercise: TemplateWorkoutExercise | ActiveCycleWorkoutExercise | null
   }
 }) {
+  const [availableExercises, setAvailableExercises] = useState(exercises)
+  const [step, setStep] = useState<'search' | 'edit' | 'create'>(
+    target.exercise ? 'edit' : 'search',
+  )
+  const [searchQuery, setSearchQuery] = useState('')
   const [form, setForm] = useState<PrescriptionFormState>(() =>
     target.exercise
       ? {
           exerciseId: target.exercise.exerciseId,
           targetSetCount: String(target.exercise.targetSetCount),
+          targetWeight: target.exercise.targetWeight?.toString() ?? '',
+          targetDurationSeconds:
+            target.exercise.targetDurationSeconds?.toString() ?? '',
+          targetDistance: target.exercise.targetDistance?.toString() ?? '',
           targetRepsMin: target.exercise.targetRepsMin?.toString() ?? '',
           targetRepsMax: target.exercise.targetRepsMax?.toString() ?? '',
           targetRir: target.exercise.targetRir?.toString() ?? '',
-          restSecondsOverride:
-            target.exercise.restSecondsOverride?.toString() ?? '',
           notes: target.exercise.notes,
         }
-      : {
-          ...emptyPrescriptionForm,
-          exerciseId: exercises[0]?.id ?? '',
-        },
+      : emptyPrescriptionForm,
   )
   const [error, setError] = useState<string | null>(null)
-  const parsed = parsePrescriptionForm(form)
+  const [createForm, setCreateForm] = useState(emptyExerciseForm)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const selectedExercise =
+    availableExercises.find((exercise) => exercise.id === form.exerciseId) ??
+    null
+  const parsed = parsePrescriptionForm(form, selectedExercise)
+  const searchable = hasSearchableQuery(searchQuery)
+  const results = searchable
+    ? searchExercises(availableExercises, searchQuery, exerciseUsage)
+    : []
+  const defaultResults = defaultExerciseResults(
+    availableExercises,
+    exerciseUsage,
+  )
+  const isDirty = formIsDirty(form, target.exercise) || step === 'create'
 
   function update(field: keyof PrescriptionFormState, value: string) {
     setForm((current) => ({ ...current, [field]: value }))
+  }
+
+  function selectExercise(exercise: Exercise) {
+    setForm((current) => ({ ...current, exerciseId: exercise.id }))
+    setStep('edit')
+    setError(null)
+  }
+
+  function requestClose() {
+    if (isDirty) {
+      setConfirmDiscard(true)
+      return
+    }
+    onClose()
   }
 
   function save() {
@@ -1192,78 +1223,312 @@ function PrescriptionEditor({
     })
   }
 
+  function saveCustomExercise() {
+    const parsedExercise = parseExerciseForm(createForm)
+    if (!parsedExercise.ok) {
+      setCreateError(parsedExercise.error)
+      return
+    }
+
+    void exerciseRepository
+      .createExercise(parsedExercise.value)
+      .then((created) => {
+        setAvailableExercises((current) => [...current, created])
+        selectExercise(created)
+        setCreateForm(emptyExerciseForm)
+        setCreateError(null)
+      })
+      .catch((caught: unknown) => {
+        setCreateError(
+          caught instanceof Error ? caught.message : 'Exercise could not save.',
+        )
+      })
+  }
+
   return (
-    <div className="inline-editor" aria-label="Prescription editor">
-      <FormField id="prescription-exercise" label="Exercise">
-        <select
-          id="prescription-exercise"
-          onChange={(event) => update('exerciseId', event.target.value)}
-          value={form.exerciseId}
-        >
-          <option value="">Select exercise</option>
-          {exercises.map((exercise) => (
-            <option key={exercise.id} value={exercise.id}>
-              {exercise.name}
-            </option>
-          ))}
-        </select>
-      </FormField>
-      <div className="compact-field-grid">
-        <FormField id="target-sets" label="Target sets">
-          <NumericInput
-            id="target-sets"
-            onChange={(event) => update('targetSetCount', event.target.value)}
-            value={form.targetSetCount}
-          />
-        </FormField>
-        <FormField id="target-reps-min" label="Reps min">
-          <NumericInput
-            id="target-reps-min"
-            onChange={(event) => update('targetRepsMin', event.target.value)}
-            value={form.targetRepsMin}
-          />
-        </FormField>
-        <FormField id="target-reps-max" label="Reps max">
-          <NumericInput
-            id="target-reps-max"
-            onChange={(event) => update('targetRepsMax', event.target.value)}
-            value={form.targetRepsMax}
-          />
-        </FormField>
-        <FormField id="target-rir" label="RIR">
-          <NumericInput
-            id="target-rir"
-            onChange={(event) => update('targetRir', event.target.value)}
-            value={form.targetRir}
-          />
-        </FormField>
-        <FormField id="rest-override" label="Rest override">
-          <NumericInput
-            id="rest-override"
-            onChange={(event) =>
-              update('restSecondsOverride', event.target.value)
-            }
-            value={form.restSecondsOverride}
-          />
-        </FormField>
+    <>
+      <div className="prescription-workflow" aria-label="Prescription editor">
+        <div className="nested-screen-header">
+          <IconButton
+            aria-label="Back to program editor"
+            onClick={requestClose}
+          >
+            <ArrowLeft aria-hidden="true" size={18} />
+          </IconButton>
+          <div>
+            <h3>{target.exercise ? 'Edit prescription' : 'Add exercise'}</h3>
+            <p className="muted">Choose an exercise, then set the target.</p>
+          </div>
+        </div>
+
+        {step === 'search' ? (
+          <div className="exercise-picker">
+            <FormField
+              id="prescription-exercise-search"
+              label="Search exercises"
+            >
+              <div className="input-icon-row">
+                <Search aria-hidden="true" size={18} />
+                <input
+                  autoFocus
+                  id="prescription-exercise-search"
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search at least 2 characters"
+                  type="search"
+                  value={searchQuery}
+                />
+              </div>
+            </FormField>
+            <p className="visually-hidden" role="status">
+              {searchable
+                ? `${results.length} exercise results`
+                : 'Enter at least two characters to search exercises'}
+            </p>
+            <div className="exercise-result-list">
+              {(searchable
+                ? results.map((result) => result.exercise)
+                : defaultResults
+              ).map((exercise) => (
+                <ExerciseResultButton
+                  exercise={exercise}
+                  key={exercise.id}
+                  onSelect={() => selectExercise(exercise)}
+                />
+              ))}
+            </div>
+            {!searchable && !defaultResults.length ? (
+              <EmptyState
+                title="Search exercise library"
+                message="Type at least two characters to search built-in and custom exercises."
+              />
+            ) : null}
+            {searchable && !results.length ? (
+              <EmptyState
+                title="No exercises found"
+                message="Create a custom exercise if this movement is not in the library."
+              />
+            ) : null}
+            <SecondaryButton type="button" onClick={() => setStep('create')}>
+              <Plus aria-hidden="true" size={18} />
+              Create custom exercise
+            </SecondaryButton>
+          </div>
+        ) : null}
+
+        {step === 'create' ? (
+          <div className="compact-create-exercise">
+            <SecondaryButton type="button" onClick={() => setStep('search')}>
+              <ArrowLeft aria-hidden="true" size={18} />
+              Back to search
+            </SecondaryButton>
+            <FormField id="picker-exercise-name" label="Name">
+              <input
+                autoFocus
+                id="picker-exercise-name"
+                onChange={(event) =>
+                  setCreateForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+                value={createForm.name}
+              />
+            </FormField>
+            <div className="compact-field-grid">
+              <FormField id="picker-rest-minutes" label="Rest minutes">
+                <NumericInput
+                  id="picker-rest-minutes"
+                  onChange={(event) =>
+                    setCreateForm((current) => ({
+                      ...current,
+                      restMinutes: event.target.value,
+                    }))
+                  }
+                  pattern="[0-9]*"
+                  value={createForm.restMinutes}
+                />
+              </FormField>
+              <FormField id="picker-rest-seconds" label="Rest seconds">
+                <NumericInput
+                  id="picker-rest-seconds"
+                  onChange={(event) =>
+                    setCreateForm((current) => ({
+                      ...current,
+                      restSeconds: event.target.value,
+                    }))
+                  }
+                  pattern="[0-9]*"
+                  value={createForm.restSeconds}
+                />
+              </FormField>
+            </div>
+            <FormField id="picker-tracking-method" label="Tracking preset">
+              <select
+                id="picker-tracking-method"
+                onChange={(event) => {
+                  const trackingMethodId = parseTrackingMethodId(
+                    event.target.value,
+                  )
+                  if (trackingMethodId) {
+                    setCreateForm((current) => ({
+                      ...current,
+                      trackingMethodId,
+                    }))
+                  }
+                }}
+                value={createForm.trackingMethodId}
+              >
+                {TRACKING_METHODS.map((method) => (
+                  <option key={method.id} value={method.id}>
+                    {method.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+            {createError ? <ValidationMessage message={createError} /> : null}
+            <PrimaryButton type="button" onClick={saveCustomExercise}>
+              Save and select
+            </PrimaryButton>
+          </div>
+        ) : null}
+
+        {step === 'edit' && selectedExercise ? (
+          <div className="compact-prescription-form">
+            {!target.exercise ? (
+              <SecondaryButton type="button" onClick={() => setStep('search')}>
+                <ArrowLeft aria-hidden="true" size={18} />
+                Back to search
+              </SecondaryButton>
+            ) : null}
+            <div className="selected-exercise-summary">
+              <strong>{selectedExercise.name}</strong>
+              <small>{exerciseMetadata(selectedExercise)}</small>
+              <small>
+                {selectedExercise.defaultRestSeconds}s rest
+                {selectedExercise.defaultWeightIncrement !== null
+                  ? ` - ${selectedExercise.defaultWeightIncrement} lb increment`
+                  : ''}
+              </small>
+            </div>
+            <div className="compact-field-grid">
+              <FormField id="target-sets" label="Sets">
+                <NumericInput
+                  autoFocus
+                  id="target-sets"
+                  onChange={(event) =>
+                    update('targetSetCount', event.target.value)
+                  }
+                  value={form.targetSetCount}
+                />
+              </FormField>
+              {showsWeightTarget(selectedExercise) ? (
+                <FormField
+                  id="target-weight"
+                  label={
+                    selectedExercise.trackingMethodId === 'assisted_weight_reps'
+                      ? 'Assistance target'
+                      : selectedExercise.trackingMethodId ===
+                          'added_weight_reps'
+                        ? 'Added-weight target'
+                        : 'Weight target'
+                  }
+                >
+                  <NumericInput
+                    id="target-weight"
+                    onChange={(event) =>
+                      update('targetWeight', event.target.value)
+                    }
+                    value={form.targetWeight}
+                  />
+                </FormField>
+              ) : null}
+              {selectedExercise.trackingMethodId === 'duration' ? (
+                <FormField
+                  id="target-duration"
+                  label="Duration target (seconds)"
+                >
+                  <NumericInput
+                    id="target-duration"
+                    onChange={(event) =>
+                      update('targetDurationSeconds', event.target.value)
+                    }
+                    value={form.targetDurationSeconds}
+                  />
+                </FormField>
+              ) : null}
+              {selectedExercise.trackingMethodId === 'distance_duration' ? (
+                <FormField id="target-distance" label="Distance target (ft)">
+                  <NumericInput
+                    id="target-distance"
+                    onChange={(event) =>
+                      update('targetDistance', event.target.value)
+                    }
+                    value={form.targetDistance}
+                  />
+                </FormField>
+              ) : null}
+            </div>
+            {isRepetitionBased(selectedExercise) ? (
+              <div className="rep-range-grid">
+                <FormField id="target-reps-min" label="Min reps">
+                  <NumericInput
+                    id="target-reps-min"
+                    onChange={(event) =>
+                      update('targetRepsMin', event.target.value)
+                    }
+                    value={form.targetRepsMin}
+                  />
+                </FormField>
+                <FormField id="target-reps-max" label="Max reps">
+                  <NumericInput
+                    id="target-reps-max"
+                    onChange={(event) =>
+                      update('targetRepsMax', event.target.value)
+                    }
+                    value={form.targetRepsMax}
+                  />
+                </FormField>
+              </div>
+            ) : null}
+            <FormField id="target-rir" label="RIR">
+              <NumericInput
+                id="target-rir"
+                onChange={(event) => update('targetRir', event.target.value)}
+                value={form.targetRir}
+              />
+            </FormField>
+            <FormField id="prescription-notes" label="Notes">
+              <textarea
+                id="prescription-notes"
+                onChange={(event) => update('notes', event.target.value)}
+                value={form.notes}
+              />
+            </FormField>
+            {error ? <ValidationMessage message={error} /> : null}
+            <div className="button-row">
+              <PrimaryButton disabled={!parsed.ok} type="button" onClick={save}>
+                Save prescription
+              </PrimaryButton>
+              <SecondaryButton type="button" onClick={requestClose}>
+                Cancel
+              </SecondaryButton>
+            </div>
+          </div>
+        ) : null}
       </div>
-      <FormField id="prescription-notes" label="Notes">
-        <textarea
-          id="prescription-notes"
-          onChange={(event) => update('notes', event.target.value)}
-          value={form.notes}
-        />
-      </FormField>
-      {error ? <ValidationMessage message={error} /> : null}
-      <div className="button-row">
-        <PrimaryButton disabled={!parsed.ok} type="button" onClick={save}>
-          Save prescription
-        </PrimaryButton>
-        <SecondaryButton type="button" onClick={onClose}>
-          Cancel
-        </SecondaryButton>
-      </div>
-    </div>
+      <ModalConfirmationDialog
+        confirmLabel="Discard"
+        isOpen={confirmDiscard}
+        onCancel={() => setConfirmDiscard(false)}
+        onConfirm={() => {
+          setConfirmDiscard(false)
+          onClose()
+        }}
+        title="Discard prescription changes?"
+      >
+        <p>Entered prescription values will be discarded.</p>
+      </ModalConfirmationDialog>
+    </>
   )
 }
 
@@ -1788,16 +2053,19 @@ function parseExerciseForm(
 
 function parsePrescriptionForm(
   form: PrescriptionFormState,
+  exercise: Exercise | null,
 ):
   | { ok: true; value: CreateTemplateExerciseInput }
   | { ok: false; error: string } {
   const targetSetCount = Number(form.targetSetCount)
+  const targetWeight = parseOptionalNumber(form.targetWeight)
+  const targetDurationSeconds = parseOptionalNumber(form.targetDurationSeconds)
+  const targetDistance = parseOptionalNumber(form.targetDistance)
   const targetRepsMin = parseOptionalInteger(form.targetRepsMin)
   const targetRepsMax = parseOptionalInteger(form.targetRepsMax)
   const targetRir = parseOptionalInteger(form.targetRir)
-  const restSecondsOverride = parseOptionalInteger(form.restSecondsOverride)
 
-  if (!form.exerciseId) {
+  if (!form.exerciseId || !exercise) {
     return { ok: false, error: 'Exercise selection is required.' }
   }
 
@@ -1809,15 +2077,46 @@ function parsePrescriptionForm(
     return { ok: false, error: 'Target sets must be a positive whole number.' }
   }
 
-  for (const parsed of [
-    targetRepsMin,
-    targetRepsMax,
-    targetRir,
-    restSecondsOverride,
-  ]) {
-    if (!parsed.ok) {
-      return { ok: false, error: 'Optional targets must be whole numbers.' }
+  if (!targetRepsMin.ok || !targetRepsMax.ok || !targetRir.ok) {
+    return { ok: false, error: 'Optional targets must be whole numbers.' }
+  }
+
+  if (!targetWeight.ok || !targetDurationSeconds.ok || !targetDistance.ok) {
+    return { ok: false, error: 'Targets must be valid positive numbers.' }
+  }
+  const targetWeightValue = targetWeight.value
+  const targetDurationSecondsValue = targetDurationSeconds.value
+  const targetDistanceValue = targetDistance.value
+
+  if (isRepetitionBased(exercise)) {
+    if (targetRepsMin.value === null || targetRepsMax.value === null) {
+      return { ok: false, error: 'Minimum and maximum reps are required.' }
     }
+    if (targetRepsMin.value <= 0 || targetRepsMax.value <= 0) {
+      return { ok: false, error: 'Reps must be positive whole numbers.' }
+    }
+  }
+
+  if (
+    showsWeightTarget(exercise) &&
+    targetWeightValue !== null &&
+    targetWeightValue < 0
+  ) {
+    return { ok: false, error: 'Weight target cannot be negative.' }
+  }
+
+  if (
+    exercise.trackingMethodId === 'duration' &&
+    (targetDurationSecondsValue === null || targetDurationSecondsValue <= 0)
+  ) {
+    return { ok: false, error: 'Duration target must be positive.' }
+  }
+
+  if (
+    exercise.trackingMethodId === 'distance_duration' &&
+    (targetDistanceValue === null || targetDistanceValue <= 0)
+  ) {
+    return { ok: false, error: 'Distance target must be positive.' }
   }
 
   if (
@@ -1835,16 +2134,23 @@ function parsePrescriptionForm(
     value: {
       exerciseId: form.exerciseId,
       targetSetCount,
+      targetWeight: targetWeightValue,
+      targetDurationSeconds: targetDurationSecondsValue,
+      targetDistance: targetDistanceValue,
       targetRepsMin: targetRepsMin.value,
       targetRepsMax: targetRepsMax.value,
       targetRir: targetRir.value,
-      restSecondsOverride: restSecondsOverride.value,
+      // Existing stored overrides are still honored in summaries and workout
+      // creation, but new prescription edits normalize to the exercise default.
+      restSecondsOverride: null,
       notes: form.notes.trim(),
     },
   }
 }
 
-function parseOptionalInteger(value: string) {
+function parseOptionalInteger(
+  value: string,
+): { ok: true; value: number | null } | { ok: false } {
   if (!value.trim()) {
     return { ok: true, value: null } as const
   }
@@ -1857,10 +2163,43 @@ function parseOptionalInteger(value: string) {
   return { ok: true, value: parsed } as const
 }
 
+function parseOptionalNumber(
+  value: string,
+): { ok: true; value: number | null } | { ok: false } {
+  if (!value.trim()) {
+    return { ok: true, value: null } as const
+  }
+
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || Number.isNaN(parsed)) {
+    return { ok: false } as const
+  }
+
+  return { ok: true, value: parsed } as const
+}
+
 function prescriptionSummary(
   prescribed: TemplateWorkoutExercise | ActiveCycleWorkoutExercise,
 ) {
   const parts = [`${prescribed.targetSetCount} sets`]
+  if (
+    prescribed.targetWeight !== null &&
+    prescribed.targetWeight !== undefined
+  ) {
+    parts.push(`${prescribed.targetWeight} lb`)
+  }
+  if (
+    prescribed.targetDurationSeconds !== null &&
+    prescribed.targetDurationSeconds !== undefined
+  ) {
+    parts.push(`${prescribed.targetDurationSeconds}s`)
+  }
+  if (
+    prescribed.targetDistance !== null &&
+    prescribed.targetDistance !== undefined
+  ) {
+    parts.push(`${prescribed.targetDistance} ft`)
+  }
   if (
     prescribed.targetRepsMin !== null &&
     prescribed.targetRepsMax !== null &&
@@ -1888,6 +2227,78 @@ function parseTrackingMethodId(value: string) {
 function metricSummary(exercise: Exercise) {
   const metricLabels = exercise.trackingMetrics.map((metric) => metric.label)
   return [...metricLabels, 'RIR', 'Completed'].join(' - ')
+}
+
+function exerciseMetadata(exercise: Exercise) {
+  const trackingMethod = getTrackingMethod(exercise.trackingMethodId)
+  const muscles = exercise.primaryMuscleGroups.join(', ') || 'No muscle group'
+  return `${formatEquipment(exercise.equipmentType)} - ${muscles} - ${
+    trackingMethod?.name ?? exercise.trackingMethodId
+  }${exercise.origin === 'custom' ? ' - Custom' : ''}`
+}
+
+function isRepetitionBased(exercise: Exercise) {
+  return exercise.trackingMetrics.some((metric) => metric.key === 'reps')
+}
+
+function showsWeightTarget(exercise: Exercise) {
+  return exercise.trackingMetrics.some((metric) =>
+    ['weight', 'assistedWeight', 'addedWeight'].includes(metric.key),
+  )
+}
+
+function formatEquipment(equipment: Exercise['equipmentType']) {
+  return equipment
+    .split('_')
+    .map((part) => part.charAt(0).toLocaleUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function formIsDirty(
+  form: PrescriptionFormState,
+  exercise: TemplateWorkoutExercise | ActiveCycleWorkoutExercise | null,
+) {
+  if (!exercise) {
+    return (
+      form.exerciseId !== '' ||
+      form.targetSetCount !== emptyPrescriptionForm.targetSetCount ||
+      form.targetWeight !== '' ||
+      form.targetDurationSeconds !== '' ||
+      form.targetDistance !== '' ||
+      form.targetRepsMin !== '' ||
+      form.targetRepsMax !== '' ||
+      form.targetRir !== '' ||
+      form.notes !== ''
+    )
+  }
+
+  return (
+    form.exerciseId !== exercise.exerciseId ||
+    form.targetSetCount !== String(exercise.targetSetCount) ||
+    form.targetWeight !== (exercise.targetWeight?.toString() ?? '') ||
+    form.targetDurationSeconds !==
+      (exercise.targetDurationSeconds?.toString() ?? '') ||
+    form.targetDistance !== (exercise.targetDistance?.toString() ?? '') ||
+    form.targetRepsMin !== (exercise.targetRepsMin?.toString() ?? '') ||
+    form.targetRepsMax !== (exercise.targetRepsMax?.toString() ?? '') ||
+    form.targetRir !== (exercise.targetRir?.toString() ?? '') ||
+    form.notes !== exercise.notes
+  )
+}
+
+function ExerciseResultButton({
+  exercise,
+  onSelect,
+}: {
+  exercise: Exercise
+  onSelect: () => void
+}) {
+  return (
+    <button className="exercise-result-row" onClick={onSelect} type="button">
+      <strong>{exercise.name}</strong>
+      <small>{exerciseMetadata(exercise)}</small>
+    </button>
+  )
 }
 
 function formatTimestamp(timestamp: string) {

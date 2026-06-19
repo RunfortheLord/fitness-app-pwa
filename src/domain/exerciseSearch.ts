@@ -7,13 +7,7 @@ export type ExerciseUsageSummary = Record<
 
 export type ExerciseSearchResult = {
   exercise: Exercise
-  reason:
-    | 'exact'
-    | 'prefix'
-    | 'word'
-    | 'recent'
-    | 'common'
-    | 'substring'
+  reason: 'exact' | 'prefix' | 'word' | 'recent' | 'common' | 'substring'
 }
 
 const commonBuiltInIds = new Set([
@@ -37,6 +31,7 @@ export function normalizeExerciseSearchText(value: string) {
     .toLocaleLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .replace(/\s+/g, ' ')
+    .trim()
 }
 
 export function hasSearchableQuery(query: string) {
@@ -133,5 +128,11 @@ export function defaultExerciseResults(
 }
 
 function uniqueById(exercises: Exercise[]) {
-  return Array.from(new Map(exercises.map((exercise) => [exercise.id, exercise])).values())
+  const byId = new Map<string, Exercise>()
+  for (const exercise of exercises) {
+    if (!byId.has(exercise.id)) {
+      byId.set(exercise.id, exercise)
+    }
+  }
+  return Array.from(byId.values())
 }

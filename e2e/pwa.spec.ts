@@ -1,4 +1,10 @@
-import { expect, test, type BrowserContext, type Page } from '@playwright/test'
+import {
+  expect,
+  test,
+  type BrowserContext,
+  type Locator,
+  type Page,
+} from '@playwright/test'
 
 test('production manifest exposes install metadata and icons', async ({
   page,
@@ -257,12 +263,8 @@ async function createActiveWorkout(page: Page) {
     .fill('Offline A')
   await builder.getByRole('button', { name: 'Add day' }).click()
   await builder.getByRole('button', { name: 'Add exercise' }).click()
-  await builder
-    .getByLabel('Exercise')
-    .selectOption({ label: 'Offline recovery press' })
-  await builder.getByRole('textbox', { name: 'Target sets' }).fill('1')
-  await builder.getByRole('button', { name: 'Save prescription' }).click()
-  await builder.getByRole('button', { name: /Close/ }).click()
+  await addPrescription(builder, 'Offline recovery press', '1')
+  await closeBuilder(builder)
 
   await page
     .getByRole('button', { name: 'Activate Offline recovery program' })
@@ -295,6 +297,29 @@ async function waitForExerciseLibrary(page: Page) {
   ).toBeVisible({
     timeout: 30_000,
   })
+}
+
+async function addPrescription(
+  builder: Locator,
+  exerciseName: string,
+  sets = '3',
+) {
+  await builder
+    .getByRole('searchbox', { name: 'Search exercises' })
+    .fill(exerciseName)
+  await builder.getByRole('button', { name: new RegExp(exerciseName) }).click()
+  await builder.getByRole('textbox', { name: 'Sets' }).fill(sets)
+  const minReps = builder.getByRole('textbox', { name: 'Min reps' })
+  if (await minReps.isVisible()) {
+    await minReps.fill('5')
+    await builder.getByRole('textbox', { name: 'Max reps' }).fill('10')
+  }
+  await builder.getByRole('button', { name: 'Save prescription' }).click()
+}
+
+async function closeBuilder(builder: Locator) {
+  await builder.getByRole('button', { name: /Save (template|cycle)/ }).click()
+  await expect(builder).not.toBeVisible()
 }
 
 async function fillRestInputs(page: Page, rest: string) {

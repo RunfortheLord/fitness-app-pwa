@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
 const routes = [
   { path: '/', title: 'Home', nav: 'Home' },
@@ -136,10 +136,9 @@ test('creates, activates, manually selects, and persists a program cycle', async
   await builder.getByRole('button', { name: 'Add day' }).click()
   await expect(builder.getByText('Day A')).toBeVisible()
   await builder.getByRole('button', { name: 'Add exercise' }).click()
-  await builder.getByLabel('Exercise').selectOption({ label: 'E2E Squat' })
-  await builder.getByRole('button', { name: 'Save prescription' }).click()
+  await addPrescription(builder, 'E2E Squat')
   await expect(builder.getByText('E2E Squat')).toBeVisible()
-  await builder.getByRole('button', { name: /Close/ }).click()
+  await closeBuilder(builder)
 
   await page.getByRole('button', { name: 'Activate E2E Strength' }).click()
   await page
@@ -183,10 +182,8 @@ test('starts, resumes, edits, and cancels a live workout', async ({ page }) => {
   await builder.getByRole('textbox', { name: 'Add workout day' }).fill('Live A')
   await builder.getByRole('button', { name: 'Add day' }).click()
   await builder.getByRole('button', { name: 'Add exercise' }).click()
-  await builder.getByLabel('Exercise').selectOption({ label: 'E2E Live press' })
-  await builder.getByRole('textbox', { name: 'Target sets' }).fill('1')
-  await builder.getByRole('button', { name: 'Save prescription' }).click()
-  await builder.getByRole('button', { name: /Close/ }).click()
+  await addPrescription(builder, 'E2E Live press', '1')
+  await closeBuilder(builder)
 
   await page.getByRole('button', { name: 'Activate E2E Live program' }).click()
   await page
@@ -434,14 +431,10 @@ test('completes the release workflow through backup restore', async ({
     .fill('Audit A')
   await builder.getByRole('button', { name: 'Add day' }).click()
   await builder.getByRole('button', { name: 'Add exercise' }).click()
-  await builder.getByLabel('Exercise').selectOption({ label: 'Audit squat' })
-  await builder.getByRole('textbox', { name: 'Target sets' }).fill('3')
-  await builder.getByRole('button', { name: 'Save prescription' }).click()
+  await addPrescription(builder, 'Audit squat', '3')
   await builder.getByRole('button', { name: 'Add exercise' }).click()
-  await builder.getByLabel('Exercise').selectOption({ label: 'Audit curl' })
-  await builder.getByRole('textbox', { name: 'Target sets' }).fill('1')
-  await builder.getByRole('button', { name: 'Save prescription' }).click()
-  await builder.getByRole('button', { name: /Close/ }).click()
+  await addPrescription(builder, 'Audit curl', '1')
+  await closeBuilder(builder)
 
   await page.getByRole('button', { name: 'Activate Audit program' }).click()
   await page
@@ -569,6 +562,29 @@ async function createExercise(page: Page, name: string, rest: string) {
   await page.getByLabel('Tracking preset').selectOption('weight_reps')
   await page.getByRole('button', { name: 'Save exercise' }).click()
   await expect(page.getByText(name)).toBeVisible({ timeout: 15_000 })
+}
+
+async function addPrescription(
+  builder: Locator,
+  exerciseName: string,
+  sets = '3',
+) {
+  await builder
+    .getByRole('searchbox', { name: 'Search exercises' })
+    .fill(exerciseName)
+  await builder.getByRole('button', { name: new RegExp(exerciseName) }).click()
+  await builder.getByRole('textbox', { name: 'Sets' }).fill(sets)
+  const minReps = builder.getByRole('textbox', { name: 'Min reps' })
+  if (await minReps.isVisible()) {
+    await minReps.fill('5')
+    await builder.getByRole('textbox', { name: 'Max reps' }).fill('10')
+  }
+  await builder.getByRole('button', { name: 'Save prescription' }).click()
+}
+
+async function closeBuilder(builder: Locator) {
+  await builder.getByRole('button', { name: /Save (template|cycle)/ }).click()
+  await expect(builder).not.toBeVisible()
 }
 
 async function waitForExerciseLibrary(page: Page) {

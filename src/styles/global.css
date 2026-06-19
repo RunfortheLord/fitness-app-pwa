@@ -430,6 +430,74 @@ textarea:focus-visible {
   background: var(--color-surface-strong);
 }
 
+.prescription-workflow {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.nested-screen-header {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-3);
+}
+
+.nested-screen-header h3 {
+  margin: 0;
+  font-size: 19px;
+}
+
+.exercise-picker,
+.compact-prescription-form,
+.compact-create-exercise {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.exercise-result-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.exercise-result-row {
+  display: grid;
+  justify-items: start;
+  gap: 3px;
+  min-height: 64px;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-strong);
+  text-align: left;
+}
+
+.exercise-result-row strong {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.exercise-result-row small,
+.selected-exercise-summary small {
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.selected-exercise-summary {
+  display: grid;
+  gap: 3px;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-strong);
+}
+
+.rep-range-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
 .live-workout-hero h2,
 .exercise-card h2 {
   margin: 0;
@@ -1218,6 +1286,10 @@ input::placeholder {
   .bottom-nav-add {
     width: 54px;
     height: 54px;
+  }
+
+  .rep-range-grid {
+    grid-template-columns: 1fr;
   }
 }
 

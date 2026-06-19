@@ -54,7 +54,10 @@ describe('TrainingPage', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
     )
-    expect(await screen.findByText('Bench press')).toBeInTheDocument()
+    await waitFor(async () => {
+      const created = await db.exercises.where({ name: 'Bench press' }).first()
+      expect(created).toBeTruthy()
+    })
 
     await user.type(
       screen.getByRole('searchbox', { name: 'Search exercises' }),
@@ -117,7 +120,9 @@ describe('TrainingPage', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'Hidden' }))
-    expect(await screen.findByText('Bench press')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: 'Restore Bench press' }),
+    ).toBeInTheDocument()
     await user.click(
       screen.getByRole('button', { name: 'Restore Bench press' }),
     )
@@ -198,7 +203,30 @@ describe('TrainingPage', () => {
     })
 
     await user.click(screen.getAllByRole('button', { name: 'Add exercise' })[0])
-    await user.selectOptions(screen.getByLabelText('Exercise'), 'Bench press')
+    const picker = screen.getByRole('dialog', { name: 'Edit template' })
+    const search = await within(picker).findByRole('searchbox', {
+      name: 'Search exercises',
+    })
+    expect(search).toHaveFocus()
+    await user.type(search, 'bench')
+    await user.keyboard('{Enter}')
+    await user.click(
+      within(picker).getByRole('button', { name: /Bench press/ }),
+    )
+    expect(
+      within(picker).getByRole('textbox', { name: 'Min reps' }),
+    ).toBeInTheDocument()
+    expect(
+      within(picker).getByRole('textbox', { name: 'Max reps' }),
+    ).toBeInTheDocument()
+    await user.type(
+      within(picker).getByRole('textbox', { name: 'Min reps' }),
+      '5',
+    )
+    await user.type(
+      within(picker).getByRole('textbox', { name: 'Max reps' }),
+      '10',
+    )
     await user.click(screen.getByRole('button', { name: 'Save prescription' }))
     expect(await screen.findByText('Bench press')).toBeInTheDocument()
     await user.click(within(builder).getByRole('button', { name: /Close/ }))
@@ -215,6 +243,52 @@ describe('TrainingPage', () => {
       await screen.findByRole('dialog', { name: 'Pull' }),
     ).toBeInTheDocument()
     expect(screen.getByText(/stays on this day/)).toBeInTheDocument()
+  }, 10_000)
+
+  it('searches built-in and visible custom exercises while excluding hidden custom exercises', async () => {
+    const user = userEvent.setup()
+    const visible = await seedExercise(db)
+    const hidden = await seedExercise(db)
+    await db.exercises.update(hidden.id, {
+      name: 'Hidden Bench Press',
+      status: 'hidden',
+    })
+    await db.exercises.update(visible.id, { name: 'Visible Bench Press' })
+    renderTraining()
+
+    await user.click(
+      screen.getAllByRole('button', { name: 'Create program' })[0],
+    )
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Search')
+    await user.click(screen.getByRole('button', { name: 'Save program' }))
+    const builder = await screen.findByRole('dialog', { name: 'Edit template' })
+    await user.type(
+      await within(builder).findByRole('textbox', { name: 'Add workout day' }),
+      'Day',
+    )
+    await user.click(within(builder).getByRole('button', { name: 'Add day' }))
+    await within(builder).findByText('Day')
+    await user.click(
+      within(builder).getByRole('button', { name: 'Add exercise' }),
+    )
+
+    const search = within(builder).getByRole('searchbox', {
+      name: 'Search exercises',
+    })
+    await user.type(search, '   ')
+    expect(
+      screen.getByText('Enter at least two characters to search exercises'),
+    ).toBeInTheDocument()
+    await user.clear(search)
+    await user.type(search, 'bench')
+
+    expect(
+      await within(builder).findByText('Barbell Bench Press'),
+    ).toBeInTheDocument()
+    expect(within(builder).getByText('Visible Bench Press')).toBeInTheDocument()
+    expect(
+      within(builder).queryByText('Hidden Bench Press'),
+    ).not.toBeInTheDocument()
   })
 
   it('starts a selected workout day, logs a set, and recovers after remount', async () => {
