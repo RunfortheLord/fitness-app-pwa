@@ -313,6 +313,7 @@ export type DetectedWorkoutChange = {
   selectedDestination: StructuralChangeDestination
   appliedDestination: StructuralChangeDestination | null
   status: 'pending' | 'applied' | 'rejected' | 'failed'
+  failureReason: string | null
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }

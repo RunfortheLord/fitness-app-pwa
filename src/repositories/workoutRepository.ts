@@ -1,6 +1,7 @@
 import { db, type TrainingLogDatabase } from '@db/database'
 import { createId } from '@domain/ids'
 import { snapshotExercise } from '@domain/snapshots'
+import { detectWorkoutStructuralChanges } from '@domain/workoutChanges'
 import type { LocalDateString } from '@domain/dates'
 import type {
   ActiveCycleWorkoutExercise,
@@ -9,6 +10,7 @@ import type {
   Exercise,
   RestTimerState,
   StructuralChangeDestination,
+  TemplateWorkoutExercise,
   Workout,
   WorkoutExercise,
   WorkoutHistoryEntry,
@@ -33,6 +35,7 @@ export type CompleteWorkoutInput = {
     | 'selectedDestination'
     | 'appliedDestination'
     | 'status'
+    | 'failureReason'
     | 'createdAt'
     | 'updatedAt'
   >[]
@@ -62,6 +65,7 @@ export type WorkoutRepositoryTestHooks = {
   afterWorkoutAdded?: () => void | Promise<void>
   afterHistoryAdded?: () => void | Promise<void>
   afterAppliedChangeAdded?: () => void | Promise<void>
+  afterStructuralDestinationApplied?: () => void | Promise<void>
 }
 
 export type StructuralChangeAppliers = {
@@ -469,6 +473,40 @@ export function createWorkoutRepository(
       )
     },
 
+    async reorderWorkoutExercises(
+      workoutId: string,
+      orderedWorkoutExerciseIds: string[],
+    ) {
+      const now = new Date().toISOString()
+      await database.transaction(
+        'rw',
+        [database.workouts, database.workoutExercises],
+        async () => {
+          const workout = await database.workouts.get(workoutId)
+          if (!workout || workout.status !== 'active') {
+            throw new Error(`Active workout ${workoutId} was not found.`)
+          }
+          const exercises = await database.workoutExercises
+            .where({ workoutId })
+            .toArray()
+          assertSameIds(
+            exercises.map((exercise) => exercise.id),
+            orderedWorkoutExerciseIds,
+            'Workout exercise order did not match existing exercises.',
+          )
+          await Promise.all(
+            orderedWorkoutExerciseIds.map((id, orderIndex) =>
+              database.workoutExercises.update(id, {
+                orderIndex,
+                updatedAt: now,
+              }),
+            ),
+          )
+          await database.workouts.update(workoutId, { updatedAt: now })
+        },
+      )
+    },
+
     async setRestTimer(workoutId: string, durationSeconds: number) {
       const now = new Date().toISOString()
       const timer: RestTimerState = {
@@ -556,6 +594,7 @@ export function createWorkoutRepository(
           database.workoutHistoryExercises,
           database.workoutHistorySets,
           database.detectedWorkoutChanges,
+          database.activeCycleWorkoutExercises,
         ],
         async () => {
           const workout = await database.workouts.get(input.workoutId)
@@ -614,13 +653,28 @@ export function createWorkoutRepository(
             await database.workoutHistorySets.add(historySet)
           }
 
-          const changes = (input.detectedChanges ?? []).map((change) => ({
+          const sourceExercises = workout.sourceDayId
+            ? await database.activeCycleWorkoutExercises
+                .where({ dayId: workout.sourceDayId })
+                .toArray()
+            : []
+          const detectedDrafts =
+            input.detectedChanges ??
+            detectWorkoutStructuralChanges({
+              sourceExercises,
+              workout,
+              performedExercises: exercises,
+              performedSetsByExercise: mapSetsByExercise(exercises, sets),
+            })
+
+          const changes = detectedDrafts.map((change) => ({
             id: createId(),
             workoutId: workout.id,
             ...change,
             selectedDestination: 'neither' as const,
             appliedDestination: null,
             status: 'pending' as const,
+            failureReason: null,
             createdAt: completedAt,
             updatedAt: completedAt,
           }))
@@ -637,62 +691,129 @@ export function createWorkoutRepository(
       )
     },
 
+    async applyDetectedChanges(
+      selections: Array<{
+        changeId: string
+        destination: StructuralChangeDestination
+      }>,
+    ) {
+      const now = new Date().toISOString()
+      try {
+        return await database.transaction(
+          'rw',
+          [
+            database.detectedWorkoutChanges,
+            database.appliedWorkoutChanges,
+            database.programTemplates,
+            database.templateWorkoutDays,
+            database.templateWorkoutExercises,
+            database.activeProgramCycles,
+            database.activeCycleWorkoutDays,
+            database.activeCycleWorkoutExercises,
+            database.workoutHistoryEntries,
+            database.workoutHistoryExercises,
+            database.workoutHistorySets,
+            database.exercises,
+          ],
+          async () => {
+            const appliedRecords: AppliedWorkoutChange[] = []
+            for (const selection of selections) {
+              const change = await database.detectedWorkoutChanges.get(
+                selection.changeId,
+              )
+              if (!change) {
+                throw new Error(
+                  `Detected workout change ${selection.changeId} was not found.`,
+                )
+              }
+              await applySingleDetectedChange(
+                change,
+                selection.destination,
+                now,
+              )
+              const applied: AppliedWorkoutChange = {
+                id: createId(),
+                detectedChangeId: change.id,
+                workoutId: change.workoutId,
+                destination: selection.destination,
+                appliedAt: now,
+                createdAt: now,
+              }
+              await database.appliedWorkoutChanges.add(applied)
+              await testHooks.afterAppliedChangeAdded?.()
+              await database.detectedWorkoutChanges.put({
+                ...change,
+                selectedDestination: selection.destination,
+                appliedDestination: selection.destination,
+                status:
+                  selection.destination === 'neither' ? 'rejected' : 'applied',
+                failureReason: null,
+                updatedAt: now,
+              })
+              appliedRecords.push(applied)
+            }
+            return appliedRecords
+          },
+        )
+      } catch (caught) {
+        const failureReason =
+          caught instanceof Error
+            ? caught.message
+            : 'Change application failed.'
+        await Promise.all(
+          selections.map((selection) =>
+            database.detectedWorkoutChanges.update(selection.changeId, {
+              selectedDestination: selection.destination,
+              status: 'failed',
+              failureReason,
+              updatedAt: now,
+            }),
+          ),
+        )
+        throw caught
+      }
+
+      async function applySingleDetectedChange(
+        change: DetectedWorkoutChange,
+        destination: StructuralChangeDestination,
+        appliedAt: string,
+      ) {
+        if (destination === 'neither') {
+          return
+        }
+        if (destination === 'cycle_only' || destination === 'both') {
+          if (structuralChangeAppliers.applyToActiveCycle) {
+            await structuralChangeAppliers.applyToActiveCycle(database, change)
+          } else {
+            await applyChangeToActiveCycle(database, change, appliedAt)
+          }
+          await testHooks.afterStructuralDestinationApplied?.()
+        }
+        if (destination === 'template_only' || destination === 'both') {
+          if (structuralChangeAppliers.applyToTemplate) {
+            await structuralChangeAppliers.applyToTemplate(database, change)
+          } else {
+            await applyChangeToTemplate(database, change, appliedAt)
+          }
+          await testHooks.afterStructuralDestinationApplied?.()
+        }
+      }
+    },
+
     async applyDetectedChange(
       changeId: string,
       destination: StructuralChangeDestination,
     ) {
-      const now = new Date().toISOString()
-      return database.transaction(
-        'rw',
-        [
-          database.detectedWorkoutChanges,
-          database.appliedWorkoutChanges,
-          database.programTemplates,
-          database.templateWorkoutDays,
-          database.templateWorkoutExercises,
-          database.activeProgramCycles,
-          database.activeCycleWorkoutDays,
-          database.activeCycleWorkoutExercises,
-        ],
-        async () => {
-          const change = await database.detectedWorkoutChanges.get(changeId)
-          if (!change) {
-            throw new Error(
-              `Detected workout change ${changeId} was not found.`,
-            )
-          }
+      const applied = await this.applyDetectedChanges([
+        { changeId, destination },
+      ])
+      return applied[0]
+    },
 
-          const applied: AppliedWorkoutChange = {
-            id: createId(),
-            detectedChangeId: change.id,
-            workoutId: change.workoutId,
-            destination,
-            appliedAt: now,
-            createdAt: now,
-          }
-          await database.appliedWorkoutChanges.add(applied)
-          await testHooks.afterAppliedChangeAdded?.()
-
-          if (destination === 'cycle_only' || destination === 'both') {
-            await structuralChangeAppliers.applyToActiveCycle?.(
-              database,
-              change,
-            )
-          }
-          if (destination === 'template_only' || destination === 'both') {
-            await structuralChangeAppliers.applyToTemplate?.(database, change)
-          }
-
-          await database.detectedWorkoutChanges.put({
-            ...change,
-            selectedDestination: destination,
-            appliedDestination: destination,
-            status: destination === 'neither' ? 'rejected' : 'applied',
-            updatedAt: now,
-          })
-          return applied
-        },
-      )
+    async listDetectedChanges(workoutId: string) {
+      return database.detectedWorkoutChanges
+        .where({ workoutId })
+        .sortBy('createdAt')
     },
 
     async getWorkoutHistoryStructure(workoutId: string) {
@@ -800,6 +921,463 @@ function hasOwn<T extends object, K extends PropertyKey>(
   key: K,
 ): value is T & Record<K, unknown> {
   return Object.prototype.hasOwnProperty.call(value, key)
+}
+
+function assertSameIds(
+  existingIds: string[],
+  orderedIds: string[],
+  message: string,
+) {
+  const existing = [...existingIds].sort()
+  const ordered = [...orderedIds].sort()
+  if (
+    existing.length !== ordered.length ||
+    existing.some((id, index) => id !== ordered[index])
+  ) {
+    throw new Error(message)
+  }
+}
+
+async function applyChangeToActiveCycle(
+  database: TrainingLogDatabase,
+  change: DetectedWorkoutChange,
+  now: string,
+) {
+  const source = parseChangePath(change.sourcePath)
+  const performed = parseChangePath(change.performedPath)
+  const sourceExerciseId = source.exercise
+  const performedExerciseId = performed.exercise
+
+  if (change.type === 'exercise_order_changed') {
+    const historyExercises = await database.workoutHistoryExercises
+      .where({ workoutId: change.workoutId })
+      .sortBy('orderIndex')
+    const orderedSourceIds = historyExercises
+      .map((exercise) => exercise.sourcePrescribedExerciseId)
+      .filter((id): id is string => Boolean(id))
+    await updateActiveExerciseOrder(database, source.day, orderedSourceIds, now)
+    return
+  }
+
+  if (!source.day) {
+    throw new Error('Detected change is missing the source workout day.')
+  }
+
+  if (change.type === 'exercise_added') {
+    if (!performedExerciseId) {
+      throw new Error(
+        'Detected exercise addition is missing performed exercise.',
+      )
+    }
+    const performedExercise =
+      await database.workoutHistoryExercises.get(performedExerciseId)
+    if (!performedExercise?.exerciseId) {
+      throw new Error('Performed exercise was not found.')
+    }
+    const day = await database.activeCycleWorkoutDays.get(source.day)
+    if (!day) {
+      throw new Error('Active cycle day was not found.')
+    }
+    const existing = await database.activeCycleWorkoutExercises
+      .where({ dayId: day.id })
+      .toArray()
+    await database.activeCycleWorkoutExercises.add({
+      id: createId(),
+      activeCycleId: day.activeCycleId,
+      dayId: day.id,
+      sourceTemplateExerciseId: null,
+      exerciseId: performedExercise.exerciseId,
+      exerciseSnapshot: performedExercise.exerciseSnapshot,
+      orderIndex: performedExercise.orderIndex,
+      targetSetCount: await getHistorySetCount(database, performedExercise.id),
+      targetRepsMin: null,
+      targetRepsMax: null,
+      targetRir: null,
+      restSecondsOverride: null,
+      notes: performedExercise.notes,
+      createdAt: now,
+      updatedAt: now,
+    })
+    await normalizeActiveExerciseOrder(
+      database,
+      day.id,
+      existing.length + 1,
+      now,
+    )
+    await database.activeProgramCycles.update(day.activeCycleId, {
+      updatedAt: now,
+    })
+    return
+  }
+
+  if (!sourceExerciseId) {
+    throw new Error('Detected change is missing the source exercise.')
+  }
+
+  if (change.type === 'exercise_skipped_or_removed') {
+    const sourceExercise =
+      await database.activeCycleWorkoutExercises.get(sourceExerciseId)
+    if (!sourceExercise) {
+      throw new Error('Active cycle exercise was not found.')
+    }
+    await database.activeCycleWorkoutExercises.delete(sourceExerciseId)
+    await normalizeActiveExerciseOrder(
+      database,
+      sourceExercise.dayId,
+      undefined,
+      now,
+    )
+    await database.activeProgramCycles.update(sourceExercise.activeCycleId, {
+      updatedAt: now,
+    })
+    return
+  }
+
+  const sourceExercise =
+    await database.activeCycleWorkoutExercises.get(sourceExerciseId)
+  if (!sourceExercise) {
+    throw new Error('Active cycle exercise was not found.')
+  }
+
+  if (change.type === 'set_added' || change.type === 'set_removed') {
+    if (!performedExerciseId) {
+      throw new Error('Detected set change is missing performed exercise.')
+    }
+    await database.activeCycleWorkoutExercises.update(sourceExercise.id, {
+      targetSetCount: await getHistorySetCount(database, performedExerciseId),
+      updatedAt: now,
+    })
+    await database.activeProgramCycles.update(sourceExercise.activeCycleId, {
+      updatedAt: now,
+    })
+    return
+  }
+
+  if (change.type === 'exercise_replaced') {
+    if (!performedExerciseId) {
+      throw new Error('Detected replacement is missing performed exercise.')
+    }
+    const performedExercise =
+      await database.workoutHistoryExercises.get(performedExerciseId)
+    if (!performedExercise?.exerciseId) {
+      throw new Error('Replacement exercise was not found.')
+    }
+    await database.activeCycleWorkoutExercises.update(sourceExercise.id, {
+      exerciseId: performedExercise.exerciseId,
+      exerciseSnapshot: performedExercise.exerciseSnapshot,
+      updatedAt: now,
+    })
+    await database.activeProgramCycles.update(sourceExercise.activeCycleId, {
+      updatedAt: now,
+    })
+  }
+}
+
+async function applyChangeToTemplate(
+  database: TrainingLogDatabase,
+  change: DetectedWorkoutChange,
+  now: string,
+) {
+  const source = parseChangePath(change.sourcePath)
+  const performed = parseChangePath(change.performedPath)
+  if (!source.template) {
+    throw new Error('This workout has no reusable template destination.')
+  }
+
+  if (change.type === 'exercise_order_changed') {
+    if (!source.day) {
+      throw new Error('Detected order change is missing the source day.')
+    }
+    const sourceDay = await database.activeCycleWorkoutDays.get(source.day)
+    if (!sourceDay?.sourceTemplateDayId) {
+      throw new Error('Template workout day was not found.')
+    }
+    const historyExercises = await database.workoutHistoryExercises
+      .where({ workoutId: change.workoutId })
+      .sortBy('orderIndex')
+    const orderedTemplateIds = historyExercises
+      .map((exercise) => exercise.sourcePrescribedExerciseId)
+      .filter((id): id is string => Boolean(id))
+      .map((activeExerciseId) =>
+        sourceTemplateExerciseIdFromActivePath(database, activeExerciseId),
+      )
+    await updateTemplateExerciseOrder(
+      database,
+      sourceDay.sourceTemplateDayId,
+      await Promise.all(orderedTemplateIds),
+      now,
+    )
+    return
+  }
+
+  const templateExerciseId =
+    source.templateExercise ||
+    (source.exercise
+      ? (await database.activeCycleWorkoutExercises.get(source.exercise))
+          ?.sourceTemplateExerciseId
+      : null)
+  const templateDayId = source.day
+    ? (await database.activeCycleWorkoutDays.get(source.day))
+        ?.sourceTemplateDayId
+    : null
+
+  if (change.type === 'exercise_added') {
+    if (!templateDayId) {
+      throw new Error('Template workout day was not found.')
+    }
+    const performedExerciseId = performed.exercise
+    const performedExercise = performedExerciseId
+      ? await database.workoutHistoryExercises.get(performedExerciseId)
+      : undefined
+    if (!performedExercise?.exerciseId) {
+      throw new Error('Performed exercise was not found.')
+    }
+    const existing = await database.templateWorkoutExercises
+      .where({ dayId: templateDayId })
+      .toArray()
+    await database.templateWorkoutExercises.add({
+      id: createId(),
+      templateId: source.template,
+      dayId: templateDayId,
+      exerciseId: performedExercise.exerciseId,
+      exerciseSnapshot: performedExercise.exerciseSnapshot,
+      orderIndex: performedExercise.orderIndex,
+      targetSetCount: await getHistorySetCount(database, performedExercise.id),
+      targetRepsMin: null,
+      targetRepsMax: null,
+      targetRir: null,
+      restSecondsOverride: null,
+      notes: performedExercise.notes,
+      createdAt: now,
+      updatedAt: now,
+    })
+    await normalizeTemplateExerciseOrder(
+      database,
+      templateDayId,
+      existing.length + 1,
+      now,
+    )
+    await database.programTemplates.update(source.template, { updatedAt: now })
+    return
+  }
+
+  if (!templateExerciseId) {
+    throw new Error('Template exercise was not found.')
+  }
+
+  if (change.type === 'exercise_skipped_or_removed') {
+    const templateExercise =
+      await database.templateWorkoutExercises.get(templateExerciseId)
+    if (!templateExercise) {
+      throw new Error('Template exercise was not found.')
+    }
+    await database.templateWorkoutExercises.delete(templateExerciseId)
+    await normalizeTemplateExerciseOrder(
+      database,
+      templateExercise.dayId,
+      undefined,
+      now,
+    )
+    await database.programTemplates.update(templateExercise.templateId, {
+      updatedAt: now,
+    })
+    return
+  }
+
+  const templateExercise =
+    await database.templateWorkoutExercises.get(templateExerciseId)
+  if (!templateExercise) {
+    throw new Error('Template exercise was not found.')
+  }
+
+  if (change.type === 'set_added' || change.type === 'set_removed') {
+    if (!performed.exercise) {
+      throw new Error('Detected set change is missing performed exercise.')
+    }
+    await database.templateWorkoutExercises.update(templateExercise.id, {
+      targetSetCount: await getHistorySetCount(database, performed.exercise),
+      updatedAt: now,
+    })
+    await database.programTemplates.update(templateExercise.templateId, {
+      updatedAt: now,
+    })
+    return
+  }
+
+  if (change.type === 'exercise_replaced') {
+    if (!performed.exercise) {
+      throw new Error('Detected replacement is missing performed exercise.')
+    }
+    const performedExercise = await database.workoutHistoryExercises.get(
+      performed.exercise,
+    )
+    if (!performedExercise?.exerciseId) {
+      throw new Error('Replacement exercise was not found.')
+    }
+    await database.templateWorkoutExercises.update(templateExercise.id, {
+      exerciseId: performedExercise.exerciseId,
+      exerciseSnapshot: performedExercise.exerciseSnapshot,
+      updatedAt: now,
+    })
+    await database.programTemplates.update(templateExercise.templateId, {
+      updatedAt: now,
+    })
+  }
+}
+
+function parseChangePath(path: string) {
+  return Object.fromEntries(
+    path
+      .split(';')
+      .map((part) => part.split(':'))
+      .filter(([key]) => key),
+  ) as Partial<
+    Record<
+      | 'cycle'
+      | 'day'
+      | 'exercise'
+      | 'template'
+      | 'templateExercise'
+      | 'workout',
+      string
+    >
+  >
+}
+
+async function getHistorySetCount(
+  database: TrainingLogDatabase,
+  workoutExerciseId: string,
+) {
+  return database.workoutHistorySets
+    .where({ workoutExerciseId })
+    .count()
+    .then((count) => Math.max(0, count))
+}
+
+async function updateActiveExerciseOrder(
+  database: TrainingLogDatabase,
+  dayId: string | undefined,
+  orderedSourceIds: string[],
+  now: string,
+) {
+  if (!dayId) {
+    throw new Error('Detected order change is missing the source day.')
+  }
+  const exercises = await database.activeCycleWorkoutExercises
+    .where({ dayId })
+    .toArray()
+  const orderedSet = new Set(orderedSourceIds)
+  const ordered = [
+    ...orderedSourceIds
+      .map((id) => exercises.find((exercise) => exercise.id === id))
+      .filter((exercise): exercise is ActiveCycleWorkoutExercise =>
+        Boolean(exercise),
+      ),
+    ...exercises
+      .filter((exercise) => !orderedSet.has(exercise.id))
+      .sort((first, second) => first.orderIndex - second.orderIndex),
+  ]
+  await Promise.all(
+    ordered.map((exercise, orderIndex) =>
+      database.activeCycleWorkoutExercises.update(exercise.id, {
+        orderIndex,
+        updatedAt: now,
+      }),
+    ),
+  )
+  if (ordered[0]) {
+    await database.activeProgramCycles.update(ordered[0].activeCycleId, {
+      updatedAt: now,
+    })
+  }
+}
+
+async function updateTemplateExerciseOrder(
+  database: TrainingLogDatabase,
+  dayId: string,
+  orderedTemplateExerciseIds: string[],
+  now: string,
+) {
+  const exercises = await database.templateWorkoutExercises
+    .where({ dayId })
+    .toArray()
+  const orderedSet = new Set(orderedTemplateExerciseIds)
+  const ordered = [
+    ...orderedTemplateExerciseIds
+      .map((id) => exercises.find((exercise) => exercise.id === id))
+      .filter((exercise): exercise is TemplateWorkoutExercise =>
+        Boolean(exercise),
+      ),
+    ...exercises
+      .filter((exercise) => !orderedSet.has(exercise.id))
+      .sort((first, second) => first.orderIndex - second.orderIndex),
+  ]
+  await Promise.all(
+    ordered.map((exercise, orderIndex) =>
+      database.templateWorkoutExercises.update(exercise.id, {
+        orderIndex,
+        updatedAt: now,
+      }),
+    ),
+  )
+  if (ordered[0]) {
+    await database.programTemplates.update(ordered[0].templateId, {
+      updatedAt: now,
+    })
+  }
+}
+
+async function sourceTemplateExerciseIdFromActivePath(
+  database: TrainingLogDatabase,
+  activeExerciseId: string,
+) {
+  const activeExercise =
+    await database.activeCycleWorkoutExercises.get(activeExerciseId)
+  return activeExercise?.sourceTemplateExerciseId ?? ''
+}
+
+async function normalizeActiveExerciseOrder(
+  database: TrainingLogDatabase,
+  dayId: string,
+  expectedLength: number | undefined,
+  now: string,
+) {
+  const exercises = await database.activeCycleWorkoutExercises
+    .where({ dayId })
+    .sortBy('orderIndex')
+  await Promise.all(
+    exercises.map((exercise, orderIndex) =>
+      database.activeCycleWorkoutExercises.update(exercise.id, {
+        orderIndex,
+        updatedAt: now,
+      }),
+    ),
+  )
+  if (expectedLength !== undefined && exercises.length !== expectedLength) {
+    throw new Error('Active cycle exercise order could not be normalized.')
+  }
+}
+
+async function normalizeTemplateExerciseOrder(
+  database: TrainingLogDatabase,
+  dayId: string,
+  expectedLength: number | undefined,
+  now: string,
+) {
+  const exercises = await database.templateWorkoutExercises
+    .where({ dayId })
+    .sortBy('orderIndex')
+  await Promise.all(
+    exercises.map((exercise, orderIndex) =>
+      database.templateWorkoutExercises.update(exercise.id, {
+        orderIndex,
+        updatedAt: now,
+      }),
+    ),
+  )
+  if (expectedLength !== undefined && exercises.length !== expectedLength) {
+    throw new Error('Template exercise order could not be normalized.')
+  }
 }
 
 async function updateRestTimer(

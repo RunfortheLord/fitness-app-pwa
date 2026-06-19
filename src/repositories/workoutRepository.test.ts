@@ -411,7 +411,7 @@ describe('workoutRepository', () => {
         {
           type: 'exercise_order_changed',
           description: 'Moved exercise',
-          sourcePath: 'cycle.days[0]',
+          sourcePath: `cycle:${active.cycle.id};day:${active.days[0].id};template:${program.template.id}`,
           performedPath: 'workout',
         },
       ],
@@ -431,6 +431,236 @@ describe('workoutRepository', () => {
     ).resolves.toMatchObject([
       {
         status: 'applied',
+        appliedDestination: 'cycle_only',
+      },
+    ])
+  })
+
+  it('detects no structural changes for an unchanged completed workout', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    const repository = createWorkoutRepository(database)
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(started.sets[0].id, {
+      metricValues: { weight: 185, reps: 8 },
+      rir: 1,
+      completed: true,
+    })
+
+    const completed = await repository.completeWorkout({
+      workoutId: started.workout.id,
+    })
+
+    expect(completed.detectedChanges).toEqual([])
+    await expect(
+      database.workoutHistoryEntries.toArray(),
+    ).resolves.toHaveLength(1)
+  })
+
+  it('saves history and leaves detected changes pending without applying them', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    const repository = createWorkoutRepository(database)
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(started.sets[0].id, { completed: true })
+    await repository.addSet(started.exercises[0].id)
+
+    const completed = await repository.completeWorkout({
+      workoutId: started.workout.id,
+    })
+    const reloadedChanges = await repository.listDetectedChanges(
+      completed.history.id,
+    )
+
+    expect(completed.detectedChanges).toMatchObject([{ type: 'set_added' }])
+    expect(reloadedChanges).toMatchObject([
+      { type: 'set_added', status: 'pending', selectedDestination: 'neither' },
+    ])
+    await expect(database.workouts.toArray()).resolves.toEqual([])
+    await expect(
+      database.workoutHistoryEntries.toArray(),
+    ).resolves.toHaveLength(1)
+  })
+
+  it('applies a selected change to the active cycle only', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    const repository = createWorkoutRepository(database)
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(started.sets[0].id, { completed: true })
+    await repository.addSet(started.exercises[0].id)
+    const completed = await repository.completeWorkout({
+      workoutId: started.workout.id,
+    })
+
+    await repository.applyDetectedChange(
+      completed.detectedChanges[0].id,
+      'cycle_only',
+    )
+
+    await expect(
+      database.activeCycleWorkoutExercises.get(active.exercises[0].id),
+    ).resolves.toMatchObject({ targetSetCount: 3 })
+    await expect(
+      database.templateWorkoutExercises.get(program.exercises[0].id),
+    ).resolves.toMatchObject({ targetSetCount: 2 })
+  })
+
+  it('applies a selected change to the reusable template only', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    const repository = createWorkoutRepository(database)
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(started.sets[0].id, { completed: true })
+    await repository.addSet(started.exercises[0].id)
+    const completed = await repository.completeWorkout({
+      workoutId: started.workout.id,
+    })
+
+    await repository.applyDetectedChange(
+      completed.detectedChanges[0].id,
+      'template_only',
+    )
+
+    await expect(
+      database.activeCycleWorkoutExercises.get(active.exercises[0].id),
+    ).resolves.toMatchObject({ targetSetCount: 2 })
+    await expect(
+      database.templateWorkoutExercises.get(program.exercises[0].id),
+    ).resolves.toMatchObject({ targetSetCount: 3 })
+  })
+
+  it('applies selected replacement changes to both destinations', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    const replacement = await createExerciseRepository(database).createExercise(
+      {
+        name: 'Chest-supported row',
+        defaultRestSeconds: 75,
+        trackingMethodId: 'weight_reps',
+      },
+    )
+    const repository = createWorkoutRepository(database)
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.replaceExercise({
+      workoutExerciseId: started.exercises[0].id,
+      exerciseId: replacement.id,
+      keepCompatibleSetValues: true,
+    })
+    await repository.updateWorkoutSet(started.sets[0].id, { completed: true })
+    const completed = await repository.completeWorkout({
+      workoutId: started.workout.id,
+    })
+
+    await repository.applyDetectedChange(
+      completed.detectedChanges[0].id,
+      'both',
+    )
+
+    await expect(
+      database.activeCycleWorkoutExercises.get(active.exercises[0].id),
+    ).resolves.toMatchObject({ exerciseId: replacement.id })
+    await expect(
+      database.templateWorkoutExercises.get(program.exercises[0].id),
+    ).resolves.toMatchObject({ exerciseId: replacement.id })
+  })
+
+  it('records neither as an explicit rejected review result', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    const repository = createWorkoutRepository(database)
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(started.sets[0].id, { completed: true })
+    await repository.addSet(started.exercises[0].id)
+    const completed = await repository.completeWorkout({
+      workoutId: started.workout.id,
+    })
+
+    await repository.applyDetectedChange(
+      completed.detectedChanges[0].id,
+      'neither',
+    )
+
+    await expect(
+      database.detectedWorkoutChanges.get(completed.detectedChanges[0].id),
+    ).resolves.toMatchObject({
+      status: 'rejected',
+      selectedDestination: 'neither',
+      appliedDestination: 'neither',
+    })
+    await expect(
+      database.activeCycleWorkoutExercises.get(active.exercises[0].id),
+    ).resolves.toMatchObject({ targetSetCount: 2 })
+  })
+
+  it('keeps history with review results after reloading', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    const repository = createWorkoutRepository(database)
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(started.sets[0].id, { completed: true })
+    await repository.addSet(started.exercises[0].id)
+    const completed = await repository.completeWorkout({
+      workoutId: started.workout.id,
+    })
+    await repository.applyDetectedChange(
+      completed.detectedChanges[0].id,
+      'cycle_only',
+    )
+
+    const reloadedRepository = createWorkoutRepository(database)
+    const [history, changes] = await Promise.all([
+      reloadedRepository.getWorkoutHistoryStructure(completed.history.id),
+      reloadedRepository.listDetectedChanges(completed.history.id),
+    ])
+
+    expect(history.workout.id).toBe(completed.history.id)
+    expect(changes).toMatchObject([
+      {
+        status: 'applied',
+        selectedDestination: 'cycle_only',
         appliedDestination: 'cycle_only',
       },
     ])
@@ -632,7 +862,11 @@ describe('workoutRepository', () => {
     await expect(database.appliedWorkoutChanges.toArray()).resolves.toEqual([])
     await expect(
       database.detectedWorkoutChanges.get(completed.detectedChanges[0].id),
-    ).resolves.toMatchObject({ status: 'pending' })
+    ).resolves.toMatchObject({
+      status: 'failed',
+      selectedDestination: 'cycle_only',
+      failureReason: 'forced structural failure',
+    })
     await expect(
       database.activeProgramCycles.get(active.cycle.id),
     ).resolves.toMatchObject({ notes: '' })
@@ -689,6 +923,13 @@ describe('workoutRepository', () => {
     ).rejects.toThrow('forced both-destination failure')
 
     await expect(database.appliedWorkoutChanges.toArray()).resolves.toEqual([])
+    await expect(
+      database.detectedWorkoutChanges.get(completed.detectedChanges[0].id),
+    ).resolves.toMatchObject({
+      status: 'failed',
+      selectedDestination: 'both',
+      failureReason: 'forced both-destination failure',
+    })
     await expect(
       database.activeProgramCycles.get(active.cycle.id),
     ).resolves.toMatchObject({ notes: '' })

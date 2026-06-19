@@ -309,7 +309,9 @@ export function LiveWorkoutPage() {
             run(
               workoutRepository
                 .completeWorkout({ workoutId: state.workout.id })
-                .then(() => navigate('/history')),
+                .then((completed) =>
+                  navigate(`/history?workout=${completed.history.id}`),
+                ),
               'Workout could not finish.',
             )
           }
