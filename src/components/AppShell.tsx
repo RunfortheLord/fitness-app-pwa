@@ -7,7 +7,7 @@ import {
   Utensils,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { registerServiceWorkerUpdateHandler } from '@app/pwa'
 import { BodyweightEntrySheet } from '@components/BodyweightEntrySheet'
@@ -40,6 +40,7 @@ function AppShellContent({ children }: AppShellProps) {
   const { bodyweightSheetDate, closeBodyweightSheet, openBodyweightSheet } =
     useDashboardContext()
   const location = useLocation()
+  const navigate = useNavigate()
 
   useEffect(() => {
     registerServiceWorkerUpdateHandler(() => {
@@ -77,13 +78,19 @@ function AppShellContent({ children }: AppShellProps) {
         title="Quick actions"
       >
         <div className="quick-action-list">
-          <button type="button">
+          <button
+            type="button"
+            onClick={() => {
+              setIsQuickActionOpen(false)
+              void navigate('/nutrition?logFood=1')
+            }}
+          >
             <span className="quick-action-icon">
               <Utensils aria-hidden="true" size={20} />
             </span>
             <span>
               <strong>Log food</strong>
-              <small>Placeholder for manual food logging</small>
+              <small>Search recent foods or create a food</small>
             </span>
           </button>
           <button

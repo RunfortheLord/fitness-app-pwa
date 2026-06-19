@@ -1,5 +1,6 @@
 import { Activity, Dumbbell, Scale } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import {
   Card,
@@ -41,6 +42,7 @@ export function HomePage() {
     selectedDate,
     setSelectedDate,
   } = useDashboardContext()
+  const navigate = useNavigate()
   const today = formatLocalDate(new Date())
   const [dashboardState, setDashboardState] = useState<DashboardLoadState>({
     status: 'loading',
@@ -154,7 +156,14 @@ export function HomePage() {
           <EmptyState
             title="No foods logged"
             message="Daily totals are ready for manual nutrition logs."
-            action={<SecondaryButton type="button">Log food</SecondaryButton>}
+            action={
+              <SecondaryButton
+                type="button"
+                onClick={() => void navigate('/nutrition?logFood=1')}
+              >
+                Log food
+              </SecondaryButton>
+            }
           />
         ) : null}
       </Card>

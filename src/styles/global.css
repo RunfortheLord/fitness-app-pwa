@@ -318,6 +318,50 @@ textarea:focus-visible {
   color: var(--color-muted);
 }
 
+.nutrition-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.nutrition-item {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 64px;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-strong);
+}
+
+.nutrition-item strong,
+.nutrition-item small {
+  display: block;
+}
+
+.nutrition-item strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nutrition-item small {
+  margin-top: 2px;
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.row-actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.nutrition-row {
+  margin-top: var(--space-4);
+}
+
 .button,
 .icon-button,
 .icon-link,
@@ -414,6 +458,22 @@ input::placeholder {
   background: var(--color-surface-strong);
   color: var(--color-muted);
   font-weight: 800;
+}
+
+.input-icon-row {
+  position: relative;
+}
+
+.input-icon-row svg {
+  position: absolute;
+  top: 50%;
+  left: var(--space-3);
+  color: var(--color-muted);
+  transform: translateY(-50%);
+}
+
+.input-icon-row input {
+  padding-left: 40px;
 }
 
 .sheet-context {

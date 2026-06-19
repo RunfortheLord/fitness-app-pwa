@@ -1,5 +1,5 @@
 import { db, type TrainingLogDatabase } from '@db/database'
-import type { LocalDateString } from '@domain/dates'
+import { parseLocalDate, type LocalDateString } from '@domain/dates'
 import type { NutritionTargetValues } from '@shared-types/app'
 
 export type DailyNutritionSummary = {
@@ -22,8 +22,9 @@ export function createNutritionSummaryService(
     async getDailySummary(
       localDate: LocalDateString,
     ): Promise<DailyNutritionSummary> {
-      const [settings, logs] = await Promise.all([
+      const [settings, targetHistory, logs] = await Promise.all([
         database.userSettings.get('settings'),
+        database.nutritionTargets.toArray(),
         database.foodLogEntries.where({ localDate }).toArray(),
       ])
 
@@ -37,12 +38,22 @@ export function createNutritionSummaryService(
         }),
         { ...zeroTargets },
       )
-      const targets = settings?.nutritionTargets ?? zeroTargets
+      const targetDate = parseLocalDate(localDate)
+      targetDate.setHours(23, 59, 59, 999)
+      const historicalTarget = targetHistory
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+        .filter(
+          (target) =>
+            new Date(target.createdAt).getTime() <= targetDate.getTime(),
+        )
+        .at(-1)
+      const targets =
+        historicalTarget ?? settings?.nutritionTargets ?? zeroTargets
 
       return {
         totals,
         targets,
-        remainingCalories: Math.max(0, targets.calories - totals.calories),
+        remainingCalories: targets.calories - totals.calories,
       }
     },
   }
