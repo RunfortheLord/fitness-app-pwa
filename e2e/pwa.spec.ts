@@ -255,11 +255,14 @@ async function createActiveWorkout(page: Page) {
     .selectOption({ label: 'Offline recovery press' })
   await builder.getByRole('textbox', { name: 'Target sets' }).fill('1')
   await builder.getByRole('button', { name: 'Save prescription' }).click()
-  await builder.getByRole('button', { name: 'Close quick actions' }).click()
+  await builder.getByRole('button', { name: /Close/ }).click()
 
-  page.once('dialog', (dialog) => dialog.accept())
   await page
     .getByRole('button', { name: 'Activate Offline recovery program' })
+    .click()
+  await page
+    .getByRole('dialog', { name: 'Activate program?' })
+    .getByRole('button', { name: 'Activate' })
     .click()
   await page.getByRole('button', { name: /Offline A/ }).click()
   await page

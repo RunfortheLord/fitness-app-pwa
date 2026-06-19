@@ -282,6 +282,7 @@ export function SettingsPage() {
         </div>
         <input
           ref={fileInputRef}
+          aria-label="Restore JSON backup file"
           accept="application/json,.json"
           className="visually-hidden"
           type="file"

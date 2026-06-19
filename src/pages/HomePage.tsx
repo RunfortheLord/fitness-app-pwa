@@ -268,7 +268,7 @@ export function HomePage() {
                 {dashboard.mostRecentCompletedWorkout.name}
               </p>
               <p className="muted">
-                {dashboard.mostRecentCompletedWorkout.localDate} ·{' '}
+                {dashboard.mostRecentCompletedWorkout.localDate} -{' '}
                 {Math.round(
                   dashboard.mostRecentCompletedWorkout.durationSeconds / 60,
                 )}{' '}
@@ -307,7 +307,7 @@ export function HomePage() {
                 <div>
                   <strong>{activity.label}</strong>
                   <small>
-                    {activity.type} · {activity.localDate}
+                    {activity.type} - {activity.localDate}
                   </small>
                 </div>
               </li>

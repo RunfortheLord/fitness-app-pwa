@@ -18,6 +18,7 @@ import {
   FormField,
   IconButton,
   LoadingState,
+  ModalConfirmationDialog,
   NumericInput,
   PageContainer,
   PrimaryButton,
@@ -63,6 +64,10 @@ type SheetState =
   | { type: 'createProgram' }
   | { type: 'builder'; target: ProgramSheetTarget }
   | { type: 'selectedDay'; selectedDay: NonNullable<SelectedDay> }
+  | null
+type ProgramConfirmation =
+  | { type: 'activate'; template: ProgramTemplate }
+  | { type: 'archive'; template: ProgramTemplate }
   | null
 
 type ExerciseFormState = {
@@ -128,6 +133,8 @@ export function TrainingPage() {
   const [query, setQuery] = useState('')
   const [view, setView] = useState<ExerciseView>('active')
   const [sheet, setSheet] = useState<SheetState>(null)
+  const [programConfirmation, setProgramConfirmation] =
+    useState<ProgramConfirmation>(null)
   const [revision, setRevision] = useState(0)
   const [message, setMessage] = useState<string | null>(null)
   const [loadState, setLoadState] = useState<LoadState>({
@@ -210,28 +217,12 @@ export function TrainingPage() {
 
       <ProgramLibrary
         loadStatus={loadState.status}
-        onActivate={(templateId) => {
-          if (
-            !window.confirm(
-              'Activate this program as an independent current cycle?',
-            )
-          ) {
-            return
-          }
-          void programRepository.activateTemplate(templateId).then(() => {
-            setMessage('Program activated.')
-            reload()
-          })
-        }}
-        onArchive={(templateId) => {
-          if (!window.confirm('Archive this program template?')) {
-            return
-          }
-          void programRepository.archiveProgramTemplate(templateId).then(() => {
-            setMessage('Program archived.')
-            reload()
-          })
-        }}
+        onActivate={(template) =>
+          setProgramConfirmation({ type: 'activate', template })
+        }
+        onArchive={(template) =>
+          setProgramConfirmation({ type: 'archive', template })
+        }
         onClone={(templateId) => {
           void programRepository.cloneProgramTemplate(templateId).then(() => {
             setMessage('Program cloned.')
@@ -349,6 +340,46 @@ export function TrainingPage() {
           selectedDay={activeSheet.selectedDay}
         />
       ) : null}
+      <ModalConfirmationDialog
+        confirmLabel={
+          programConfirmation?.type === 'archive' ? 'Archive' : 'Activate'
+        }
+        isOpen={programConfirmation !== null}
+        onCancel={() => setProgramConfirmation(null)}
+        onConfirm={() => {
+          if (!programConfirmation) {
+            return
+          }
+
+          if (programConfirmation.type === 'activate') {
+            const { id } = programConfirmation.template
+            setProgramConfirmation(null)
+            void programRepository.activateTemplate(id).then(() => {
+              setMessage('Program activated.')
+              reload()
+            })
+            return
+          }
+
+          const { id } = programConfirmation.template
+          setProgramConfirmation(null)
+          void programRepository.archiveProgramTemplate(id).then(() => {
+            setMessage('Program archived.')
+            reload()
+          })
+        }}
+        title={
+          programConfirmation?.type === 'archive'
+            ? 'Archive program?'
+            : 'Activate program?'
+        }
+      >
+        <p>
+          {programConfirmation?.type === 'archive'
+            ? `Archive ${programConfirmation.template.name}. Completed workout history is preserved.`
+            : `Activate ${programConfirmation?.template.name ?? 'this program'} as an independent current cycle.`}
+        </p>
+      </ModalConfirmationDialog>
     </PageContainer>
   )
 }
@@ -445,8 +476,8 @@ function ProgramLibrary({
   templates,
 }: {
   loadStatus: LoadState['status']
-  onActivate: (templateId: string) => void
-  onArchive: (templateId: string) => void
+  onActivate: (template: ProgramTemplate) => void
+  onArchive: (template: ProgramTemplate) => void
   onClone: (templateId: string) => void
   onCreateProgram: () => void
   onEdit: (templateId: string) => void
@@ -494,7 +525,7 @@ function ProgramLibrary({
                   </IconButton>
                   <IconButton
                     aria-label={`Activate ${template.name}`}
-                    onClick={() => onActivate(template.id)}
+                    onClick={() => onActivate(template)}
                   >
                     <Dumbbell aria-hidden="true" size={18} />
                   </IconButton>
@@ -506,7 +537,7 @@ function ProgramLibrary({
                   </IconButton>
                   <IconButton
                     aria-label={`Archive ${template.name}`}
-                    onClick={() => onArchive(template.id)}
+                    onClick={() => onArchive(template)}
                   >
                     <Archive aria-hidden="true" size={18} />
                   </IconButton>
@@ -609,6 +640,11 @@ function ProgramBuilderSheet({
     dayId: string
     exercise: TemplateWorkoutExercise | ActiveCycleWorkoutExercise | null
   } | null>(null)
+  const [removeConfirmation, setRemoveConfirmation] = useState<
+    | { type: 'day'; id: string; name: string }
+    | { type: 'exercise'; id: string; name: string }
+    | null
+  >(null)
 
   const mode: BuilderMode = target.mode
 
@@ -723,6 +759,29 @@ function ProgramBuilderSheet({
     )
   }
 
+  function removeConfirmed() {
+    if (!removeConfirmation) {
+      return
+    }
+
+    const target = removeConfirmation
+    setRemoveConfirmation(null)
+    if (target.type === 'day') {
+      run(
+        mode === 'template'
+          ? programRepository.removeTemplateDay(target.id)
+          : programRepository.removeActiveCycleDay(target.id),
+      )
+      return
+    }
+
+    run(
+      mode === 'template'
+        ? programRepository.removeTemplateExercise(target.id)
+        : programRepository.removeActiveCycleExercise(target.id),
+    )
+  }
+
   function addDay() {
     if (!structure || !dayName.trim()) {
       setError('Workout day name is required.')
@@ -786,224 +845,240 @@ function ProgramBuilderSheet({
   }
 
   return (
-    <BottomSheet
-      isOpen={isOpen}
-      onClose={onClose}
-      title={mode === 'template' ? 'Edit template' : 'Edit current cycle'}
-    >
-      {!structure ? <LoadingState label="Loading program" /> : null}
-      {structure ? (
-        <>
-          <FormField id="builder-program-name" label="Name">
-            <input
-              id="builder-program-name"
-              onChange={(event) =>
-                setNameForm((current) => ({
-                  ...current,
-                  name: event.target.value,
-                }))
-              }
-              value={nameForm.name}
-            />
-          </FormField>
-          <FormField id="builder-program-notes" label="Notes">
-            <textarea
-              id="builder-program-notes"
-              onChange={(event) =>
-                setNameForm((current) => ({
-                  ...current,
-                  notes: event.target.value,
-                }))
-              }
-              value={nameForm.notes}
-            />
-          </FormField>
-          <PrimaryButton type="button" onClick={saveName}>
-            Save {mode === 'template' ? 'template' : 'cycle'}
-          </PrimaryButton>
-
-          <div className="program-builder-add">
-            <FormField id="new-day-name" label="Add workout day">
+    <>
+      <BottomSheet
+        isOpen={isOpen}
+        onClose={onClose}
+        title={mode === 'template' ? 'Edit template' : 'Edit current cycle'}
+      >
+        {!structure ? <LoadingState label="Loading program" /> : null}
+        {structure ? (
+          <>
+            <FormField id="builder-program-name" label="Name">
               <input
-                id="new-day-name"
-                onChange={(event) => setDayName(event.target.value)}
-                placeholder="Upper, Lower, Day 1"
-                value={dayName}
+                id="builder-program-name"
+                onChange={(event) =>
+                  setNameForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+                value={nameForm.name}
               />
             </FormField>
-            <SecondaryButton type="button" onClick={addDay}>
-              Add day
-            </SecondaryButton>
-          </div>
+            <FormField id="builder-program-notes" label="Notes">
+              <textarea
+                id="builder-program-notes"
+                onChange={(event) =>
+                  setNameForm((current) => ({
+                    ...current,
+                    notes: event.target.value,
+                  }))
+                }
+                value={nameForm.notes}
+              />
+            </FormField>
+            <PrimaryButton type="button" onClick={saveName}>
+              Save {mode === 'template' ? 'template' : 'cycle'}
+            </PrimaryButton>
 
-          <div className="program-builder-days">
-            {structure.days.map((day, dayIndex) => (
-              <div className="program-builder-day" key={day.id}>
-                <div>
-                  <strong>{day.name}</strong>
-                  {day.notes ? <small>{day.notes}</small> : null}
-                </div>
-                <div className="button-row">
-                  <SecondaryButton
-                    type="button"
-                    onClick={() => {
-                      const name = window.prompt('Workout day name', day.name)
-                      if (name?.trim()) {
+            <div className="program-builder-add">
+              <FormField id="new-day-name" label="Add workout day">
+                <input
+                  id="new-day-name"
+                  onChange={(event) => setDayName(event.target.value)}
+                  placeholder="Upper, Lower, Day 1"
+                  value={dayName}
+                />
+              </FormField>
+              <SecondaryButton type="button" onClick={addDay}>
+                Add day
+              </SecondaryButton>
+            </div>
+
+            <div className="program-builder-days">
+              {structure.days.map((day, dayIndex) => (
+                <div className="program-builder-day" key={day.id}>
+                  <div>
+                    <strong>{day.name}</strong>
+                    {day.notes ? <small>{day.notes}</small> : null}
+                  </div>
+                  <div className="button-row">
+                    <SecondaryButton
+                      type="button"
+                      onClick={() => {
+                        const name = window.prompt('Workout day name', day.name)
+                        if (name?.trim()) {
+                          run(
+                            mode === 'template'
+                              ? programRepository.updateTemplateDay(day.id, {
+                                  name: name.trim(),
+                                })
+                              : programRepository.updateActiveCycleDay(day.id, {
+                                  name: name.trim(),
+                                }),
+                          )
+                        }
+                      }}
+                    >
+                      Rename
+                    </SecondaryButton>
+                    <SecondaryButton
+                      disabled={dayIndex === 0}
+                      type="button"
+                      onClick={() => moveDay(day.id, -1)}
+                    >
+                      Up
+                    </SecondaryButton>
+                    <SecondaryButton
+                      disabled={dayIndex === structure.days.length - 1}
+                      type="button"
+                      onClick={() => moveDay(day.id, 1)}
+                    >
+                      Down
+                    </SecondaryButton>
+                    <SecondaryButton
+                      type="button"
+                      onClick={() =>
                         run(
                           mode === 'template'
-                            ? programRepository.updateTemplateDay(day.id, {
-                                name: name.trim(),
-                              })
-                            : programRepository.updateActiveCycleDay(day.id, {
-                                name: name.trim(),
-                              }),
+                            ? programRepository.duplicateTemplateDay(day.id)
+                            : programRepository.duplicateActiveCycleDay(day.id),
                         )
                       }
-                    }}
-                  >
-                    Rename
-                  </SecondaryButton>
-                  <SecondaryButton
-                    disabled={dayIndex === 0}
-                    type="button"
-                    onClick={() => moveDay(day.id, -1)}
-                  >
-                    Up
-                  </SecondaryButton>
-                  <SecondaryButton
-                    disabled={dayIndex === structure.days.length - 1}
-                    type="button"
-                    onClick={() => moveDay(day.id, 1)}
-                  >
-                    Down
-                  </SecondaryButton>
+                    >
+                      Duplicate
+                    </SecondaryButton>
+                    <SecondaryButton
+                      className="button-danger"
+                      type="button"
+                      onClick={() =>
+                        setRemoveConfirmation({
+                          type: 'day',
+                          id: day.id,
+                          name: day.name,
+                        })
+                      }
+                    >
+                      <Trash2 aria-hidden="true" size={16} />
+                      Remove
+                    </SecondaryButton>
+                  </div>
+
+                  <div className="program-prescription-list">
+                    {(structure.exercisesByDay[day.id] ?? []).map(
+                      (prescribed, exerciseIndex, dayExercises) => (
+                        <div
+                          className="program-prescription-row"
+                          key={prescribed.id}
+                        >
+                          <div>
+                            <strong>
+                              {prescribed.exerciseSnapshot.exerciseName}
+                            </strong>
+                            <small>{prescriptionSummary(prescribed)}</small>
+                            {prescribed.notes ? (
+                              <small>{prescribed.notes}</small>
+                            ) : null}
+                          </div>
+                          <div className="row-actions">
+                            <IconButton
+                              aria-label={`Edit ${prescribed.exerciseSnapshot.exerciseName} prescription`}
+                              onClick={() =>
+                                setEditingPrescription({
+                                  dayId: day.id,
+                                  exercise: prescribed,
+                                })
+                              }
+                            >
+                              <Edit2 aria-hidden="true" size={18} />
+                            </IconButton>
+                            <IconButton
+                              aria-label={`Move ${prescribed.exerciseSnapshot.exerciseName} up`}
+                              disabled={exerciseIndex === 0}
+                              onClick={() =>
+                                moveExercise(day.id, prescribed.id, -1)
+                              }
+                            >
+                              <RotateCcw aria-hidden="true" size={18} />
+                            </IconButton>
+                            <IconButton
+                              aria-label={`Move ${prescribed.exerciseSnapshot.exerciseName} down`}
+                              disabled={
+                                exerciseIndex === dayExercises.length - 1
+                              }
+                              onClick={() =>
+                                moveExercise(day.id, prescribed.id, 1)
+                              }
+                            >
+                              <RotateCcw aria-hidden="true" size={18} />
+                            </IconButton>
+                            <IconButton
+                              aria-label={`Remove ${prescribed.exerciseSnapshot.exerciseName} prescription`}
+                              onClick={() =>
+                                setRemoveConfirmation({
+                                  type: 'exercise',
+                                  id: prescribed.id,
+                                  name: prescribed.exerciseSnapshot
+                                    .exerciseName,
+                                })
+                              }
+                            >
+                              <Trash2 aria-hidden="true" size={18} />
+                            </IconButton>
+                          </div>
+                        </div>
+                      ),
+                    )}
+                    {!(structure.exercisesByDay[day.id] ?? []).length ? (
+                      <p className="muted">No prescribed exercises.</p>
+                    ) : null}
+                  </div>
                   <SecondaryButton
                     type="button"
                     onClick={() =>
-                      run(
-                        mode === 'template'
-                          ? programRepository.duplicateTemplateDay(day.id)
-                          : programRepository.duplicateActiveCycleDay(day.id),
-                      )
+                      setEditingPrescription({ dayId: day.id, exercise: null })
                     }
                   >
-                    Duplicate
-                  </SecondaryButton>
-                  <SecondaryButton
-                    className="button-danger"
-                    type="button"
-                    onClick={() => {
-                      if (window.confirm(`Remove ${day.name}?`)) {
-                        run(
-                          mode === 'template'
-                            ? programRepository.removeTemplateDay(day.id)
-                            : programRepository.removeActiveCycleDay(day.id),
-                        )
-                      }
-                    }}
-                  >
-                    <Trash2 aria-hidden="true" size={16} />
-                    Remove
+                    Add exercise
                   </SecondaryButton>
                 </div>
-
-                <div className="program-prescription-list">
-                  {(structure.exercisesByDay[day.id] ?? []).map(
-                    (prescribed, exerciseIndex, dayExercises) => (
-                      <div
-                        className="program-prescription-row"
-                        key={prescribed.id}
-                      >
-                        <div>
-                          <strong>
-                            {prescribed.exerciseSnapshot.exerciseName}
-                          </strong>
-                          <small>{prescriptionSummary(prescribed)}</small>
-                          {prescribed.notes ? (
-                            <small>{prescribed.notes}</small>
-                          ) : null}
-                        </div>
-                        <div className="row-actions">
-                          <IconButton
-                            aria-label={`Edit ${prescribed.exerciseSnapshot.exerciseName} prescription`}
-                            onClick={() =>
-                              setEditingPrescription({
-                                dayId: day.id,
-                                exercise: prescribed,
-                              })
-                            }
-                          >
-                            <Edit2 aria-hidden="true" size={18} />
-                          </IconButton>
-                          <IconButton
-                            aria-label={`Move ${prescribed.exerciseSnapshot.exerciseName} up`}
-                            disabled={exerciseIndex === 0}
-                            onClick={() =>
-                              moveExercise(day.id, prescribed.id, -1)
-                            }
-                          >
-                            <RotateCcw aria-hidden="true" size={18} />
-                          </IconButton>
-                          <IconButton
-                            aria-label={`Move ${prescribed.exerciseSnapshot.exerciseName} down`}
-                            disabled={exerciseIndex === dayExercises.length - 1}
-                            onClick={() =>
-                              moveExercise(day.id, prescribed.id, 1)
-                            }
-                          >
-                            <RotateCcw aria-hidden="true" size={18} />
-                          </IconButton>
-                          <IconButton
-                            aria-label={`Remove ${prescribed.exerciseSnapshot.exerciseName} prescription`}
-                            onClick={() =>
-                              run(
-                                mode === 'template'
-                                  ? programRepository.removeTemplateExercise(
-                                      prescribed.id,
-                                    )
-                                  : programRepository.removeActiveCycleExercise(
-                                      prescribed.id,
-                                    ),
-                              )
-                            }
-                          >
-                            <Trash2 aria-hidden="true" size={18} />
-                          </IconButton>
-                        </div>
-                      </div>
-                    ),
-                  )}
-                  {!(structure.exercisesByDay[day.id] ?? []).length ? (
-                    <p className="muted">No prescribed exercises.</p>
-                  ) : null}
-                </div>
-                <SecondaryButton
-                  type="button"
-                  onClick={() =>
-                    setEditingPrescription({ dayId: day.id, exercise: null })
-                  }
-                >
-                  Add exercise
-                </SecondaryButton>
-              </div>
-            ))}
-          </div>
-        </>
-      ) : null}
-      {error ? <ValidationMessage message={error} /> : null}
-      {editingPrescription ? (
-        <PrescriptionEditor
-          exercises={exercises}
-          mode={mode}
-          onClose={() => setEditingPrescription(null)}
-          onSaved={() => {
-            setEditingPrescription(null)
-            refresh()
-          }}
-          target={editingPrescription}
-        />
-      ) : null}
-    </BottomSheet>
+              ))}
+            </div>
+          </>
+        ) : null}
+        {error ? <ValidationMessage message={error} /> : null}
+        {editingPrescription ? (
+          <PrescriptionEditor
+            exercises={exercises}
+            mode={mode}
+            onClose={() => setEditingPrescription(null)}
+            onSaved={() => {
+              setEditingPrescription(null)
+              refresh()
+            }}
+            target={editingPrescription}
+          />
+        ) : null}
+      </BottomSheet>
+      <ModalConfirmationDialog
+        confirmLabel="Remove"
+        isOpen={removeConfirmation !== null}
+        onCancel={() => setRemoveConfirmation(null)}
+        onConfirm={removeConfirmed}
+        title={
+          removeConfirmation?.type === 'day'
+            ? 'Remove workout day?'
+            : 'Remove exercise?'
+        }
+      >
+        <p>
+          {removeConfirmation?.type === 'day'
+            ? `Remove ${removeConfirmation.name} from this ${mode}.`
+            : `Remove ${removeConfirmation?.name ?? 'this exercise'} from this workout day.`}
+        </p>
+      </ModalConfirmationDialog>
+    </>
   )
 }
 
@@ -1165,6 +1240,7 @@ function WorkoutDayDetailSheet({
   const [existingWorkoutId, setExistingWorkoutId] = useState<string | null>(
     null,
   )
+  const [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState(false)
 
   function startWorkout() {
     void workoutRepository
@@ -1190,12 +1266,10 @@ function WorkoutDayDetailSheet({
     if (!existingWorkoutId) {
       return
     }
-    if (!window.confirm('Cancel the current active workout?')) {
-      return
-    }
     void workoutRepository
       .cancelWorkout(existingWorkoutId)
       .then(() => {
+        setIsCancelConfirmOpen(false)
         setExistingWorkoutId(null)
         setError(null)
         startWorkout()
@@ -1210,55 +1284,74 @@ function WorkoutDayDetailSheet({
   }
 
   return (
-    <BottomSheet isOpen={isOpen} onClose={onClose} title={selectedDay.day.name}>
-      <p className="sheet-context">
-        {selectedDay.cycle.name} stays on this day until you choose another one.
-      </p>
-      {selectedDay.day.notes ? (
-        <p className="muted">{selectedDay.day.notes}</p>
-      ) : null}
-      {selectedDay.exercises.length ? (
-        <div className="program-prescription-list">
-          {selectedDay.exercises.map((exercise) => (
-            <div className="program-prescription-row" key={exercise.id}>
-              <div>
-                <strong>{exercise.exerciseSnapshot.exerciseName}</strong>
-                <small>{prescriptionSummary(exercise)}</small>
-                {exercise.notes ? <small>{exercise.notes}</small> : null}
+    <>
+      <BottomSheet
+        isOpen={isOpen}
+        onClose={onClose}
+        title={selectedDay.day.name}
+      >
+        <p className="sheet-context">
+          {selectedDay.cycle.name} stays on this day until you choose another
+          one.
+        </p>
+        {selectedDay.day.notes ? (
+          <p className="muted">{selectedDay.day.notes}</p>
+        ) : null}
+        {selectedDay.exercises.length ? (
+          <div className="program-prescription-list">
+            {selectedDay.exercises.map((exercise) => (
+              <div className="program-prescription-row" key={exercise.id}>
+                <div>
+                  <strong>{exercise.exerciseSnapshot.exerciseName}</strong>
+                  <small>{prescriptionSummary(exercise)}</small>
+                  {exercise.notes ? <small>{exercise.notes}</small> : null}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <EmptyState
-          title="No prescribed exercises"
-          message="Edit the current cycle to add exercises before starting a future live workout."
-        />
-      )}
-      {error ? <ValidationMessage message={error} /> : null}
-      {existingWorkoutId ? (
-        <div className="button-row">
-          <PrimaryButton type="button" onClick={onStarted}>
-            Resume
-          </PrimaryButton>
-          <SecondaryButton
-            className="button-danger"
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            title="No prescribed exercises"
+            message="Edit the current cycle to add exercises before starting a future live workout."
+          />
+        )}
+        {error ? <ValidationMessage message={error} /> : null}
+        {existingWorkoutId ? (
+          <div className="button-row">
+            <PrimaryButton type="button" onClick={onStarted}>
+              Resume
+            </PrimaryButton>
+            <SecondaryButton
+              className="button-danger"
+              type="button"
+              onClick={() => setIsCancelConfirmOpen(true)}
+            >
+              Cancel Current Workout
+            </SecondaryButton>
+          </div>
+        ) : (
+          <PrimaryButton
+            disabled={!selectedDay.exercises.length}
             type="button"
-            onClick={cancelCurrentWorkout}
+            onClick={startWorkout}
           >
-            Cancel Current Workout
-          </SecondaryButton>
-        </div>
-      ) : (
-        <PrimaryButton
-          disabled={!selectedDay.exercises.length}
-          type="button"
-          onClick={startWorkout}
-        >
-          Start Workout
-        </PrimaryButton>
-      )}
-    </BottomSheet>
+            Start Workout
+          </PrimaryButton>
+        )}
+      </BottomSheet>
+      <ModalConfirmationDialog
+        confirmLabel="Cancel current workout"
+        isOpen={isCancelConfirmOpen}
+        onCancel={() => setIsCancelConfirmOpen(false)}
+        onConfirm={cancelCurrentWorkout}
+        title="Cancel current workout?"
+      >
+        <p>
+          This discards the active workout so the selected day can start. No
+          completed workout history is removed.
+        </p>
+      </ModalConfirmationDialog>
+    </>
   )
 }
 

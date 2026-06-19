@@ -89,7 +89,9 @@ export function BodyweightEntrySheet({
           >
             <div className="input-with-unit">
               <NumericInput
-                aria-describedby={error ? undefined : `${inputId}-help`}
+                aria-describedby={
+                  error ? `${inputId}-error` : `${inputId}-help`
+                }
                 autoComplete="off"
                 defaultValue={existingEntry ? String(existingEntry.weight) : ''}
                 id={inputId}

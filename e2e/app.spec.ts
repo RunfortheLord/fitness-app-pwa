@@ -10,7 +10,9 @@ const routes = [
 
 for (const viewport of [
   { width: 390, height: 844 },
+  { width: 393, height: 852 },
   { width: 430, height: 932 },
+  { width: 1024, height: 768 },
 ]) {
   test.describe(`${viewport.width} by ${viewport.height}`, () => {
     test.use({ viewport, isMobile: true, hasTouch: true })
@@ -62,6 +64,28 @@ test('opens the quick action bottom sheet from the center add button', async ({
   ).toBeVisible()
 })
 
+test('quick action sheet traps focus and closes with Escape', async ({
+  browserName,
+  page,
+}) => {
+  await page.setViewportSize({ width: 393, height: 852 })
+  await page.goto('/')
+
+  await page.getByRole('button', { name: 'Open quick actions' }).click()
+  const sheet = page.getByRole('dialog', { name: 'Quick actions' })
+  await expect(sheet).toBeVisible()
+
+  await page.keyboard.press('Tab')
+  await expect(sheet.getByRole('button', { name: /Log food/ })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(sheet).not.toBeVisible()
+  if (browserName !== 'webkit') {
+    await expect(
+      page.getByRole('button', { name: 'Open quick actions' }),
+    ).toBeFocused()
+  }
+})
+
 test('creates and persists a custom exercise from the Add sheet', async ({
   page,
 }) => {
@@ -111,10 +135,13 @@ test('creates, activates, manually selects, and persists a program cycle', async
   await builder.getByLabel('Exercise').selectOption({ label: 'E2E Squat' })
   await builder.getByRole('button', { name: 'Save prescription' }).click()
   await expect(builder.getByText('E2E Squat')).toBeVisible()
-  await builder.getByRole('button', { name: 'Close quick actions' }).click()
+  await builder.getByRole('button', { name: /Close/ }).click()
 
-  page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'Activate E2E Strength' }).click()
+  await page
+    .getByRole('dialog', { name: 'Activate program?' })
+    .getByRole('button', { name: 'Activate' })
+    .click()
   await expect(page.getByText('Program activated.')).toBeVisible()
   await page.getByRole('button', { name: /Day A/ }).click()
   const dayDetail = page.getByRole('dialog', { name: 'Day A' })
@@ -152,10 +179,13 @@ test('starts, resumes, edits, and cancels a live workout', async ({ page }) => {
   await builder.getByLabel('Exercise').selectOption({ label: 'E2E Live press' })
   await builder.getByRole('textbox', { name: 'Target sets' }).fill('1')
   await builder.getByRole('button', { name: 'Save prescription' }).click()
-  await builder.getByRole('button', { name: 'Close quick actions' }).click()
+  await builder.getByRole('button', { name: /Close/ }).click()
 
-  page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'Activate E2E Live program' }).click()
+  await page
+    .getByRole('dialog', { name: 'Activate program?' })
+    .getByRole('button', { name: 'Activate' })
+    .click()
   await page.getByRole('button', { name: /Live A/ }).click()
   await page
     .getByRole('dialog', { name: 'Live A' })
@@ -214,7 +244,7 @@ test('creates, logs, edits, deletes, and persists nutrition entries', async ({
   await page.getByRole('button', { name: 'Log E2E Rice' }).click()
   await page.getByRole('textbox', { name: 'Serving multiplier' }).fill('1.5')
   await expect(page.getByText(/Preview: 300 kcal/)).toBeVisible()
-  await page.getByRole('button', { name: 'Log food' }).click()
+  await page.getByRole('button', { name: 'Log food', exact: true }).click()
   await expect(
     page.locator('.metric-value').filter({ hasText: '300 kcal' }),
   ).toBeVisible()

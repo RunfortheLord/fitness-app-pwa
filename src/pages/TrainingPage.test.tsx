@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { App } from '@app/App'
 import { db } from '@db/database'
@@ -71,7 +71,7 @@ describe('TrainingPage', () => {
     await user.click(
       within(screen.getByRole('dialog', { name: 'Create exercise' })).getByRole(
         'button',
-        { name: 'Close quick actions' },
+        { name: /Close/ },
       ),
     )
 
@@ -180,19 +180,20 @@ describe('TrainingPage', () => {
     await user.selectOptions(screen.getByLabelText('Exercise'), 'Bench press')
     await user.click(screen.getByRole('button', { name: 'Save prescription' }))
     expect(await screen.findByText('Bench press')).toBeInTheDocument()
-    await user.click(
-      within(builder).getByRole('button', { name: 'Close quick actions' }),
-    )
+    await user.click(within(builder).getByRole('button', { name: /Close/ }))
 
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     await user.click(screen.getByRole('button', { name: 'Activate PPL' }))
+    await user.click(
+      within(
+        screen.getByRole('dialog', { name: 'Activate program?' }),
+      ).getByRole('button', { name: 'Activate' }),
+    )
     expect(await screen.findByText('Program activated.')).toBeInTheDocument()
     await user.click(await screen.findByRole('button', { name: /Pull/ }))
     expect(
       await screen.findByRole('dialog', { name: 'Pull' }),
     ).toBeInTheDocument()
     expect(screen.getByText(/stays on this day/)).toBeInTheDocument()
-    confirm.mockRestore()
   })
 
   it('starts a selected workout day, logs a set, and recovers after remount', async () => {
@@ -242,16 +243,19 @@ describe('TrainingPage', () => {
     await waitFor(() =>
       expect(screen.getAllByText('Upper Lower').length).toBeGreaterThan(0),
     )
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     await user.click(
       screen.getByRole('button', { name: 'Archive Upper Lower' }),
+    )
+    await user.click(
+      within(
+        screen.getByRole('dialog', { name: 'Archive program?' }),
+      ).getByRole('button', { name: 'Archive' }),
     )
 
     await waitFor(() =>
       expect(screen.queryByText('Upper Lower')).not.toBeInTheDocument(),
     )
     expect(screen.getByText('No program templates')).toBeInTheDocument()
-    vi.restoreAllMocks()
   })
 
   it('persists the active cycle after remount', async () => {

@@ -1,9 +1,10 @@
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
+  RefObject,
   ReactNode,
 } from 'react'
-import { useEffect, useId } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import { Check, ChevronLeft, ChevronRight, X } from 'lucide-react'
 
 type AppHeaderProps = {
@@ -100,21 +101,13 @@ export function BottomSheet({
   title,
 }: BottomSheetProps) {
   const titleId = useId()
+  const sheetRef = useRef<HTMLElement>(null)
 
-  useEffect(() => {
-    if (!isOpen) {
-      return
-    }
-
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        onClose()
-      }
-    }
-
-    document.addEventListener('keydown', closeOnEscape)
-    return () => document.removeEventListener('keydown', closeOnEscape)
-  }, [isOpen, onClose])
+  useDialogFocusManagement({
+    containerRef: sheetRef,
+    isOpen,
+    onClose,
+  })
 
   if (!isOpen) {
     return null
@@ -126,13 +119,18 @@ export function BottomSheet({
         aria-modal="true"
         aria-labelledby={titleId}
         className="bottom-sheet"
+        ref={sheetRef}
         role="dialog"
+        tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="sheet-handle" aria-hidden="true" />
         <div className="sheet-header">
           <h2 id={titleId}>{title}</h2>
-          <IconButton aria-label="Close quick actions" onClick={onClose}>
+          <IconButton
+            aria-label={`Close ${title.toLowerCase()}`}
+            onClick={onClose}
+          >
             <X aria-hidden="true" size={20} />
           </IconButton>
         </div>
@@ -162,21 +160,13 @@ export function ModalConfirmationDialog({
   title,
 }: ModalConfirmationDialogProps) {
   const titleId = useId()
+  const dialogRef = useRef<HTMLElement>(null)
 
-  useEffect(() => {
-    if (!isOpen) {
-      return
-    }
-
-    function cancelOnEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        onCancel()
-      }
-    }
-
-    document.addEventListener('keydown', cancelOnEscape)
-    return () => document.removeEventListener('keydown', cancelOnEscape)
-  }, [isOpen, onCancel])
+  useDialogFocusManagement({
+    containerRef: dialogRef,
+    isOpen,
+    onClose: onCancel,
+  })
 
   if (!isOpen) {
     return null
@@ -188,7 +178,9 @@ export function ModalConfirmationDialog({
         aria-modal="true"
         aria-labelledby={titleId}
         className="confirmation-dialog"
+        ref={dialogRef}
         role="dialog"
+        tabIndex={-1}
       >
         <h2 id={titleId}>{title}</h2>
         <div className="dialog-body">{children}</div>
@@ -320,12 +312,19 @@ export function FormField({
   id,
   label,
 }: FormFieldProps) {
+  const helpId = helpText ? `${id}-help` : undefined
+  const errorId = error ? `${id}-error` : undefined
+
   return (
     <div className="form-field">
       <label htmlFor={id}>{label}</label>
       {children}
-      {helpText ? <p className="field-help">{helpText}</p> : null}
-      {error ? <ValidationMessage message={error} /> : null}
+      {helpText ? (
+        <p className="field-help" id={helpId}>
+          {helpText}
+        </p>
+      ) : null}
+      {error ? <ValidationMessage id={errorId} message={error} /> : null}
     </div>
   )
 }
@@ -358,9 +357,15 @@ export function EmptyState({ action, message, title }: EmptyStateProps) {
   )
 }
 
-export function ValidationMessage({ message }: { message: string }) {
+export function ValidationMessage({
+  id,
+  message,
+}: {
+  id?: string
+  message: string
+}) {
   return (
-    <p className="validation-message" role="alert">
+    <p className="validation-message" id={id} role="alert">
       {message}
     </p>
   )
@@ -398,5 +403,99 @@ export function StatusMessage({
     <aside className={`status-message status-message-${tone}`} role="status">
       {children}
     </aside>
+  )
+}
+
+function useDialogFocusManagement({
+  containerRef,
+  isOpen,
+  onClose,
+}: {
+  containerRef: RefObject<HTMLElement | null>
+  isOpen: boolean
+  onClose: () => void
+}) {
+  const onCloseRef = useRef(onClose)
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
+
+  useEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
+    const previouslyFocused =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null
+
+    window.setTimeout(() => {
+      const container = containerRef.current
+      const firstFocusable = getFocusableElements(container)[0]
+      ;(firstFocusable ?? container)?.focus()
+    }, 0)
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onCloseRef.current()
+        return
+      }
+
+      if (event.key !== 'Tab') {
+        return
+      }
+
+      const focusable = getFocusableElements(containerRef.current)
+      if (!focusable.length) {
+        event.preventDefault()
+        containerRef.current?.focus()
+        return
+      }
+
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      if (previouslyFocused?.isConnected) {
+        previouslyFocused.focus()
+      }
+    }
+  }, [containerRef, isOpen])
+}
+
+function getFocusableElements(container: HTMLElement | null) {
+  if (!container) {
+    return []
+  }
+
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      [
+        'a[href]',
+        'button:not([disabled])',
+        'input:not([disabled])',
+        'select:not([disabled])',
+        'textarea:not([disabled])',
+        '[tabindex]:not([tabindex="-1"])',
+      ].join(','),
+    ),
+  ).filter(
+    (element) =>
+      !element.hasAttribute('hidden') &&
+      element.getAttribute('aria-hidden') !== 'true' &&
+      element.offsetParent !== null,
   )
 }

@@ -396,7 +396,7 @@ function FoodLibraryRow({
       <div>
         <strong>{food.name}</strong>
         <small>
-          {servingLabel(food)} · {roundMacro(food.caloriesPerServing)} kcal · P{' '}
+          {servingLabel(food)} - {roundMacro(food.caloriesPerServing)} kcal - P{' '}
           {roundMacro(food.proteinGramsPerServing)} C{' '}
           {roundMacro(food.carbohydrateGramsPerServing)} F{' '}
           {roundMacro(food.fatGramsPerServing)}
@@ -437,8 +437,8 @@ function LoggedFoodsCard({
               <div>
                 <strong>{entry.foodSnapshot.foodName}</strong>
                 <small>
-                  {entry.servingMultiplier}x {snapshotServingLabel(entry)} ·{' '}
-                  {roundMacro(entry.computedCalories)} kcal · P{' '}
+                  {entry.servingMultiplier}x {snapshotServingLabel(entry)} -{' '}
+                  {roundMacro(entry.computedCalories)} kcal - P{' '}
                   {roundMacro(entry.computedProteinGrams)} C{' '}
                   {roundMacro(entry.computedCarbohydrateGrams)} F{' '}
                   {roundMacro(entry.computedFatGrams)}
@@ -720,7 +720,7 @@ function LogFoodSheet({
       </FormField>
       {preview ? (
         <p className="muted">
-          Preview: {roundMacro(preview.calories)} kcal · P{' '}
+          Preview: {roundMacro(preview.calories)} kcal - P{' '}
           {roundMacro(preview.protein)} C {roundMacro(preview.carbs)} F{' '}
           {roundMacro(preview.fat)}
         </p>
@@ -789,7 +789,7 @@ function EditFoodLogSheet({
       </FormField>
       {preview ? (
         <p className="muted">
-          Preview: {roundMacro(preview.calories)} kcal · P{' '}
+          Preview: {roundMacro(preview.calories)} kcal - P{' '}
           {roundMacro(preview.protein)} C {roundMacro(preview.carbs)} F{' '}
           {roundMacro(preview.fat)}
         </p>
