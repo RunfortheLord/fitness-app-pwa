@@ -73,7 +73,8 @@ type ProgramConfirmation =
 type ExerciseFormState = {
   name: string
   notes: string
-  defaultRestSeconds: string
+  restMinutes: string
+  restSeconds: string
   trackingMethodId: TrackingMethodId
 }
 
@@ -108,7 +109,8 @@ type PrescriptionFormState = {
 const emptyExerciseForm: ExerciseFormState = {
   name: '',
   notes: '',
-  defaultRestSeconds: '120',
+  restMinutes: '2',
+  restSeconds: '0',
   trackingMethodId: 'weight_reps',
 }
 
@@ -195,11 +197,6 @@ export function TrainingPage() {
 
   return (
     <PageContainer>
-      <StatusMessage>
-        Programs never advance automatically. Choose workout days manually when
-        program workflows are available.
-      </StatusMessage>
-
       <ProgramOverview
         currentCycle={loadState.currentCycle}
         loadStatus={loadState.status}
@@ -280,13 +277,9 @@ export function TrainingPage() {
               setSearchParams({}, { replace: true })
             }
           }}
-          onSaved={(action) => {
+          onSaved={() => {
             setMessage(
-              action === 'archived'
-                ? 'Exercise archived.'
-                : activeSheet.exercise
-                  ? 'Exercise updated.'
-                  : 'Exercise created.',
+              activeSheet.exercise ? 'Exercise updated.' : 'Exercise created.',
             )
             setSheet(null)
             if (searchParams.get('createExercise') === '1') {
@@ -752,11 +745,22 @@ function ProgramBuilderSheet({
       return
     }
     const input = { name: nameForm.name.trim(), notes: nameForm.notes.trim() }
-    run(
+    const action =
       mode === 'template'
         ? programRepository.updateProgramTemplate(structure.record.id, input)
-        : programRepository.updateActiveCycle(structure.record.id, input),
-    )
+        : programRepository.updateActiveCycle(structure.record.id, input)
+
+    void action
+      .then(() => {
+        setError(null)
+        onChanged()
+        onClose()
+      })
+      .catch((caught: unknown) => {
+        setError(
+          caught instanceof Error ? caught.message : 'Program change failed.',
+        )
+      })
   }
 
   function removeConfirmed() {
@@ -1312,7 +1316,7 @@ function WorkoutDayDetailSheet({
         ) : (
           <EmptyState
             title="No prescribed exercises"
-            message="Edit the current cycle to add exercises before starting a future live workout."
+            message="Edit the current cycle to add exercises before starting a workout."
           />
         )}
         {error ? <ValidationMessage message={error} /> : null}
@@ -1441,7 +1445,7 @@ function ExerciseLibraryCard({
           }
           message={
             view === 'active'
-              ? 'Create a custom exercise to use in future programs and workouts.'
+              ? 'Create a custom exercise to use in programs and workouts.'
               : 'Archived exercises stay available for restore when needed.'
           }
           action={
@@ -1508,14 +1512,15 @@ function ExerciseFormSheet({
   exercise: Exercise | null
   isOpen: boolean
   onClose: () => void
-  onSaved: (action: 'saved' | 'archived') => void
+  onSaved: () => void
 }) {
   const [form, setForm] = useState(() =>
     exercise
       ? {
           name: exercise.name,
           notes: exercise.notes,
-          defaultRestSeconds: String(exercise.defaultRestSeconds),
+          restMinutes: String(Math.floor(exercise.defaultRestSeconds / 60)),
+          restSeconds: String(exercise.defaultRestSeconds % 60),
           trackingMethodId: exercise.trackingMethodId,
         }
       : emptyExerciseForm,
@@ -1545,6 +1550,26 @@ function ExerciseFormSheet({
     setForm((current) => ({ ...current, [field]: value }))
   }
 
+  function normalizeRestDuration() {
+    const restMinutes = Number(form.restMinutes)
+    const restSeconds = Number(form.restSeconds)
+    if (
+      !Number.isInteger(restMinutes) ||
+      restMinutes < 0 ||
+      !Number.isInteger(restSeconds) ||
+      restSeconds < 0
+    ) {
+      return
+    }
+
+    const totalSeconds = restMinutes * 60 + restSeconds
+    setForm((current) => ({
+      ...current,
+      restMinutes: String(Math.floor(totalSeconds / 60)),
+      restSeconds: String(totalSeconds % 60),
+    }))
+  }
+
   function saveExercise() {
     if (!parsed.ok) {
       setError(parsed.error)
@@ -1555,30 +1580,11 @@ function ExerciseFormSheet({
       ? exerciseRepository.updateExercise(exercise.id, parsed.value)
       : exerciseRepository.createExercise(parsed.value)
 
-    void action
-      .then(() => onSaved('saved'))
-      .catch((caught: unknown) => {
-        setError(
-          caught instanceof Error ? caught.message : 'Exercise could not save.',
-        )
-      })
-  }
-
-  function archiveExercise() {
-    if (!exercise) {
-      return
-    }
-
-    void exerciseRepository
-      .archiveExercise(exercise.id)
-      .then(() => onSaved('archived'))
-      .catch((caught: unknown) => {
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : 'Exercise could not archive.',
-        )
-      })
+    void action.then(onSaved).catch((caught: unknown) => {
+      setError(
+        caught instanceof Error ? caught.message : 'Exercise could not save.',
+      )
+    })
   }
 
   return (
@@ -1600,17 +1606,26 @@ function ExerciseFormSheet({
           if it is intentional.
         </StatusMessage>
       ) : null}
-      <FormField
-        id="exercise-rest"
-        label="Default rest time"
-        helpText="Seconds. Set 0 when no rest timer is needed."
-      >
-        <NumericInput
-          id="exercise-rest"
-          onChange={(event) => update('defaultRestSeconds', event.target.value)}
-          value={form.defaultRestSeconds}
-        />
-      </FormField>
+      <div className="compact-field-grid">
+        <FormField id="exercise-rest-minutes" label="Rest minutes">
+          <NumericInput
+            id="exercise-rest-minutes"
+            onBlur={normalizeRestDuration}
+            onChange={(event) => update('restMinutes', event.target.value)}
+            pattern="[0-9]*"
+            value={form.restMinutes}
+          />
+        </FormField>
+        <FormField id="exercise-rest-seconds" label="Rest seconds">
+          <NumericInput
+            id="exercise-rest-seconds"
+            onBlur={normalizeRestDuration}
+            onChange={(event) => update('restSeconds', event.target.value)}
+            pattern="[0-9]*"
+            value={form.restSeconds}
+          />
+        </FormField>
+      </div>
       <FormField id="tracking-method" label="Tracking preset">
         <select
           id="tracking-method"
@@ -1666,16 +1681,6 @@ function ExerciseFormSheet({
         >
           Save exercise
         </PrimaryButton>
-        {exercise?.status === 'active' ? (
-          <SecondaryButton
-            className="button-danger"
-            type="button"
-            onClick={archiveExercise}
-          >
-            <Archive aria-hidden="true" size={18} />
-            Archive
-          </SecondaryButton>
-        ) : null}
       </div>
     </BottomSheet>
   )
@@ -1685,7 +1690,8 @@ function parseExerciseForm(
   form: ExerciseFormState,
 ): { ok: true; value: CreateExerciseInput } | { ok: false; error: string } {
   const name = form.name.trim()
-  const defaultRestSeconds = Number(form.defaultRestSeconds)
+  const restMinutes = Number(form.restMinutes)
+  const restSeconds = Number(form.restSeconds)
   const trackingMethod = getTrackingMethod(form.trackingMethodId)
 
   if (!name) {
@@ -1693,13 +1699,16 @@ function parseExerciseForm(
   }
 
   if (
-    !Number.isFinite(defaultRestSeconds) ||
-    defaultRestSeconds < 0 ||
-    !Number.isInteger(defaultRestSeconds)
+    !Number.isFinite(restMinutes) ||
+    !Number.isInteger(restMinutes) ||
+    restMinutes < 0 ||
+    !Number.isFinite(restSeconds) ||
+    !Number.isInteger(restSeconds) ||
+    restSeconds < 0
   ) {
     return {
       ok: false,
-      error: 'Default rest time must be a whole number of seconds.',
+      error: 'Default rest time must use whole minutes and seconds.',
     }
   }
 
@@ -1712,7 +1721,7 @@ function parseExerciseForm(
     value: {
       name,
       notes: form.notes.trim(),
-      defaultRestSeconds,
+      defaultRestSeconds: restMinutes * 60 + restSeconds,
       trackingMethodId: trackingMethod.id,
     },
   }

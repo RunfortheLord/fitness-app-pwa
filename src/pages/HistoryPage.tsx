@@ -53,10 +53,9 @@ const destinations: Array<{
   label: string
   value: StructuralChangeDestination
 }> = [
-  { label: 'Active cycle only', value: 'cycle_only' },
-  { label: 'Template only', value: 'template_only' },
+  { label: 'Active Cycle Only', value: 'cycle_only' },
+  { label: 'Template Only', value: 'template_only' },
   { label: 'Both', value: 'both' },
-  { label: 'Neither', value: 'neither' },
 ]
 
 export function HistoryPage() {
@@ -636,7 +635,7 @@ function ChangeReview({
               <dl className="history-detail-list">
                 <div>
                   <dt>Selected</dt>
-                  <dd>{change.selectedDestination}</dd>
+                  <dd>{formatChangeDestination(change.selectedDestination)}</dd>
                 </div>
                 <div>
                   <dt>Result</dt>
@@ -644,7 +643,11 @@ function ChangeReview({
                 </div>
                 <div>
                   <dt>Applied</dt>
-                  <dd>{change.appliedDestination ?? 'Not applied'}</dd>
+                  <dd>
+                    {change.appliedDestination
+                      ? formatChangeDestination(change.appliedDestination)
+                      : 'Not applied'}
+                  </dd>
                 </div>
               </dl>
               {selected ? (
@@ -713,6 +716,19 @@ function formatSourceLabel(workout: WorkoutHistoryEntry) {
   return program
     ? `${program} - ${workout.workoutSnapshot.dayName}`
     : 'No program source'
+}
+
+function formatChangeDestination(destination: StructuralChangeDestination) {
+  if (destination === 'cycle_only') {
+    return 'Active Cycle Only'
+  }
+  if (destination === 'template_only') {
+    return 'Template Only'
+  }
+  if (destination === 'both') {
+    return 'Both'
+  }
+  return 'Not applied'
 }
 
 function formatTimestamp(timestamp: string) {

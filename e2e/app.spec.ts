@@ -96,7 +96,7 @@ test('creates and persists a custom exercise from the Add sheet', async ({
   await page.getByRole('button', { name: /Create exercise/ }).click()
   await expect(page).toHaveURL(/\/training/)
   await page.getByRole('textbox', { name: 'Name' }).fill('E2E Bench press')
-  await page.getByRole('textbox', { name: 'Default rest time' }).fill('150')
+  await fillRestInputs(page, '150')
   await page.getByLabel('Tracking preset').selectOption('weight_reps')
   await expect(page.getByText(/external weight and repetitions/)).toBeVisible()
   await page.getByRole('button', { name: 'Save exercise' }).click()
@@ -116,7 +116,7 @@ test('creates, activates, manually selects, and persists a program cycle', async
 
   await page.getByLabel('Create exercise').click()
   await page.getByRole('textbox', { name: 'Name' }).fill('E2E Squat')
-  await page.getByRole('textbox', { name: 'Default rest time' }).fill('180')
+  await fillRestInputs(page, '180')
   await page.getByRole('button', { name: 'Save exercise' }).click()
   await expect(page.getByText('E2E Squat')).toBeVisible()
 
@@ -161,7 +161,7 @@ test('starts, resumes, edits, and cancels a live workout', async ({ page }) => {
 
   await page.getByLabel('Create exercise').click()
   await page.getByRole('textbox', { name: 'Name' }).fill('E2E Live press')
-  await page.getByRole('textbox', { name: 'Default rest time' }).fill('45')
+  await fillRestInputs(page, '45')
   await page.getByLabel('Tracking preset').selectOption('weight_reps')
   await page.getByRole('button', { name: 'Save exercise' }).click()
   await expect(page.getByText('E2E Live press')).toBeVisible()
@@ -556,8 +556,18 @@ test('completes the release workflow through backup restore', async ({
 async function createExercise(page: Page, name: string, rest: string) {
   await page.getByLabel('Create exercise').click()
   await page.getByRole('textbox', { name: 'Name' }).fill(name)
-  await page.getByRole('textbox', { name: 'Default rest time' }).fill(rest)
+  await fillRestInputs(page, rest)
   await page.getByLabel('Tracking preset').selectOption('weight_reps')
   await page.getByRole('button', { name: 'Save exercise' }).click()
   await expect(page.getByText(name)).toBeVisible()
+}
+
+async function fillRestInputs(page: Page, rest: string) {
+  const totalSeconds = Number(rest)
+  await page
+    .getByRole('textbox', { name: 'Rest minutes' })
+    .fill(String(Math.floor(totalSeconds / 60)))
+  await page
+    .getByRole('textbox', { name: 'Rest seconds' })
+    .fill(String(totalSeconds % 60))
 }

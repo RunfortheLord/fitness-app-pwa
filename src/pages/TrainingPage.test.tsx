@@ -24,7 +24,7 @@ afterEach(async () => {
 })
 
 describe('TrainingPage', () => {
-  it('creates, searches, edits, archives, restores, and warns on duplicate exercise names', async () => {
+  it('creates, searches, edits, normalizes rest inputs, and warns on duplicate exercise names', async () => {
     const user = userEvent.setup()
     renderTraining()
 
@@ -76,32 +76,27 @@ describe('TrainingPage', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'Edit Bench press' }))
-    await user.clear(screen.getByRole('textbox', { name: 'Default rest time' }))
-    await user.type(
-      screen.getByRole('textbox', { name: 'Default rest time' }),
-      '150',
+    await user.clear(screen.getByRole('textbox', { name: 'Rest minutes' }))
+    await user.type(screen.getByRole('textbox', { name: 'Rest minutes' }), '1')
+    await user.clear(screen.getByRole('textbox', { name: 'Rest seconds' }))
+    await user.type(screen.getByRole('textbox', { name: 'Rest seconds' }), '90')
+    await user.tab()
+    expect(screen.getByRole('textbox', { name: 'Rest minutes' })).toHaveValue(
+      '2',
+    )
+    expect(screen.getByRole('textbox', { name: 'Rest seconds' })).toHaveValue(
+      '30',
     )
     await user.selectOptions(
       screen.getByLabelText('Tracking preset'),
       'reps_only',
     )
     expect(screen.getByText(/repetitions are the only/)).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Archive' }),
+    ).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Save exercise' }))
     expect(await screen.findByText(/Reps only - 150s rest/)).toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: 'Edit Bench press' }))
-    await user.click(screen.getByRole('button', { name: 'Archive' }))
-    await waitFor(() =>
-      expect(screen.queryByText('Bench press')).not.toBeInTheDocument(),
-    )
-
-    await user.click(screen.getByRole('button', { name: 'Archived' }))
-    expect(await screen.findByText('Bench press')).toBeInTheDocument()
-    await user.click(
-      screen.getByRole('button', { name: 'Restore Bench press' }),
-    )
-    await user.click(screen.getByRole('button', { name: 'Active' }))
-    expect(await screen.findByText('Bench press')).toBeInTheDocument()
   })
 
   it('opens create exercise from the center Add sheet', async () => {
@@ -259,6 +254,7 @@ describe('TrainingPage', () => {
   })
 
   it('persists the active cycle after remount', async () => {
+    const user = userEvent.setup()
     const program = await seedProgram(db)
     await createProgramRepository(db).activateTemplate(program.template.id)
     const firstRender = renderTraining()
@@ -277,6 +273,34 @@ describe('TrainingPage', () => {
         name: /Upper/,
       }),
     ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Edit current cycle' }))
+    const cycleEditor = await screen.findByRole('dialog', {
+      name: 'Edit current cycle',
+    })
+    await user.clear(within(cycleEditor).getByRole('textbox', { name: 'Name' }))
+    await user.click(
+      within(cycleEditor).getByRole('button', { name: 'Save cycle' }),
+    )
+    expect(screen.getByText('Program name is required.')).toBeInTheDocument()
+    expect(cycleEditor).toBeInTheDocument()
+    await user.type(
+      within(cycleEditor).getByRole('textbox', { name: 'Name' }),
+      'Upper Lower',
+    )
+    await user.type(
+      within(cycleEditor).getByRole('textbox', { name: 'Notes' }),
+      'Block A',
+    )
+    await user.click(
+      within(cycleEditor).getByRole('button', { name: 'Save cycle' }),
+    )
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    )
+
+    const activeCycle = await db.activeProgramCycles.toCollection().first()
+    expect(activeCycle?.notes).toBe('Block A')
   })
 })
 
@@ -318,10 +342,16 @@ async function fillExerciseForm(
   },
 ) {
   await user.type(screen.getByRole('textbox', { name: 'Name' }), values.name)
-  await user.clear(screen.getByRole('textbox', { name: 'Default rest time' }))
+  const totalRestSeconds = Number(values.rest)
+  await user.clear(screen.getByRole('textbox', { name: 'Rest minutes' }))
   await user.type(
-    screen.getByRole('textbox', { name: 'Default rest time' }),
-    values.rest,
+    screen.getByRole('textbox', { name: 'Rest minutes' }),
+    String(Math.floor(totalRestSeconds / 60)),
+  )
+  await user.clear(screen.getByRole('textbox', { name: 'Rest seconds' }))
+  await user.type(
+    screen.getByRole('textbox', { name: 'Rest seconds' }),
+    String(totalRestSeconds % 60),
   )
   await user.selectOptions(
     screen.getByLabelText('Tracking preset'),

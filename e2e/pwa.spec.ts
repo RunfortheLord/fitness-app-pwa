@@ -106,7 +106,7 @@ test('persists IndexedDB records created while offline', async ({
   await page.goto('/training')
   await page.getByLabel('Create exercise').click()
   await page.getByRole('textbox', { name: 'Name' }).fill('Offline DB press')
-  await page.getByRole('textbox', { name: 'Default rest time' }).fill('90')
+  await fillRestInputs(page, '90')
   await page.getByRole('button', { name: 'Save exercise' }).click()
   await expect(page.getByText('Offline DB press')).toBeVisible()
 
@@ -231,7 +231,7 @@ async function createActiveWorkout(page: Page) {
   await page
     .getByRole('textbox', { name: 'Name' })
     .fill('Offline recovery press')
-  await page.getByRole('textbox', { name: 'Default rest time' }).fill('45')
+  await fillRestInputs(page, '45')
   await page.getByLabel('Tracking preset').selectOption('weight_reps')
   await page.getByRole('button', { name: 'Save exercise' }).click()
 
@@ -280,4 +280,14 @@ async function createActiveWorkout(page: Page) {
   await expect(page.getByRole('textbox', { name: 'Set 1 Reps' })).toHaveValue(
     '8',
   )
+}
+
+async function fillRestInputs(page: Page, rest: string) {
+  const totalSeconds = Number(rest)
+  await page
+    .getByRole('textbox', { name: 'Rest minutes' })
+    .fill(String(Math.floor(totalSeconds / 60)))
+  await page
+    .getByRole('textbox', { name: 'Rest seconds' })
+    .fill(String(totalSeconds % 60))
 }

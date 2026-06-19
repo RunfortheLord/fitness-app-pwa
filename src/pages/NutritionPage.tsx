@@ -181,7 +181,6 @@ export function NutritionPage() {
             entries={loadState.logs}
             onDelete={setDeleteEntry}
             onEdit={(entry) => setSheet({ type: 'entry', entry })}
-            selectedDate={selectedDate}
           />
         </>
       ) : null}
@@ -418,15 +417,13 @@ function LoggedFoodsCard({
   entries,
   onDelete,
   onEdit,
-  selectedDate,
 }: {
   entries: FoodLogEntry[]
   onDelete: (entry: FoodLogEntry) => void
   onEdit: (entry: FoodLogEntry) => void
-  selectedDate: LocalDateString
 }) {
   return (
-    <Card title={`Logged foods for ${selectedDate}`}>
+    <Card title="Logged foods">
       {entries.length ? (
         <div className="nutrition-list">
           {entries.map((entry) => (
