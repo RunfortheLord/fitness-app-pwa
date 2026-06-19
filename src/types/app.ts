@@ -199,6 +199,9 @@ export type TemplateWorkoutExercise = {
   exerciseSnapshot: ExerciseSnapshot
   orderIndex: number
   targetSetCount: number
+  targetWeight: number | null
+  targetDurationSeconds: number | null
+  targetDistance: number | null
   targetRepsMin: number | null
   targetRepsMax: number | null
   targetRir: number | null
@@ -239,6 +242,9 @@ export type ActiveCycleWorkoutExercise = {
   exerciseSnapshot: ExerciseSnapshot
   orderIndex: number
   targetSetCount: number
+  targetWeight: number | null
+  targetDurationSeconds: number | null
+  targetDistance: number | null
   targetRepsMin: number | null
   targetRepsMax: number | null
   targetRir: number | null

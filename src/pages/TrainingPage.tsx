@@ -1,5 +1,6 @@
 import {
   Archive,
+  ArrowLeft,
   Copy,
   Dumbbell,
   Edit2,
@@ -30,6 +31,12 @@ import {
 } from '@components/ui'
 import { TRACKING_METHODS, getTrackingMethod } from '@domain/trackingMethods'
 import { formatLocalDate } from '@domain/dates'
+import {
+  defaultExerciseResults,
+  hasSearchableQuery,
+  searchExercises,
+  type ExerciseUsageSummary,
+} from '@domain/exerciseSearch'
 import {
   exerciseRepository,
   type CreateExerciseInput,
@@ -82,6 +89,7 @@ type ExerciseFormState = {
 type LoadState = {
   exercises: Exercise[]
   templates: ProgramTemplate[]
+  exerciseUsage: ExerciseUsageSummary
   currentCycle:
     | {
         cycle: ActiveProgramCycle
@@ -100,10 +108,12 @@ type ProgramFormState = {
 type PrescriptionFormState = {
   exerciseId: string
   targetSetCount: string
+  targetWeight: string
+  targetDurationSeconds: string
+  targetDistance: string
   targetRepsMin: string
   targetRepsMax: string
   targetRir: string
-  restSecondsOverride: string
   notes: string
 }
 
@@ -123,10 +133,12 @@ const emptyProgramForm: ProgramFormState = {
 const emptyPrescriptionForm: PrescriptionFormState = {
   exerciseId: '',
   targetSetCount: '3',
+  targetWeight: '',
+  targetDurationSeconds: '',
+  targetDistance: '',
   targetRepsMin: '',
   targetRepsMax: '',
   targetRir: '',
-  restSecondsOverride: '',
   notes: '',
 }
 
@@ -143,6 +155,7 @@ export function TrainingPage() {
   const [loadState, setLoadState] = useState<LoadState>({
     exercises: [],
     templates: [],
+    exerciseUsage: {},
     currentCycle: undefined,
     status: 'loading',
   })
@@ -165,8 +178,9 @@ export function TrainingPage() {
       ),
       programRepository.listProgramTemplates(),
       programRepository.getCurrentActiveCycleStructure(),
+      programRepository.getExerciseUsageSummary(),
     ])
-      .then(([exercises, templates, currentCycle]) => {
+      .then(([exercises, templates, currentCycle, exerciseUsage]) => {
         if (!isCurrent) {
           return
         }
@@ -177,6 +191,7 @@ export function TrainingPage() {
               ? exercises.filter((exercise) => exercise.status !== 'active')
               : exercises,
           templates,
+          exerciseUsage,
           currentCycle,
           status: 'ready',
         })
@@ -322,6 +337,7 @@ export function TrainingPage() {
       ) : null}
       {activeSheet?.type === 'builder' ? (
         <ProgramBuilderSheet
+          exerciseUsage={loadState.exerciseUsage}
           exercises={loadState.exercises.filter(
             (exercise) => exercise.status === 'active',
           )}
@@ -615,12 +631,14 @@ function ProgramCreateSheet({
 }
 
 function ProgramBuilderSheet({
+  exerciseUsage,
   exercises,
   isOpen,
   onChanged,
   onClose,
   target,
 }: {
+  exerciseUsage: ExerciseUsageSummary
   exercises: Exercise[]
   isOpen: boolean
   onChanged: () => void
@@ -861,11 +879,34 @@ function ProgramBuilderSheet({
     <>
       <BottomSheet
         isOpen={isOpen}
-        onClose={onClose}
+        onClose={() => {
+          if (editingPrescription) {
+            setEditingPrescription(null)
+            return
+          }
+          onClose()
+        }}
         title={mode === 'template' ? 'Edit template' : 'Edit current cycle'}
       >
         {!structure ? <LoadingState label="Loading program" /> : null}
-        {structure ? (
+        {structure && editingPrescription ? (
+          <PrescriptionEditor
+            exerciseUsage={exerciseUsage}
+            exercises={exercises}
+            mode={mode}
+            onClose={() => setEditingPrescription(null)}
+            onSaved={() => {
+              setEditingPrescription(null)
+              refresh()
+            }}
+            onExerciseCreated={(exercise) => {
+              exercises.push(exercise)
+              onChanged()
+            }}
+            target={editingPrescription}
+          />
+        ) : null}
+        {structure && !editingPrescription ? (
           <>
             <FormField id="builder-program-name" label="Name">
               <input
@@ -1061,18 +1102,6 @@ function ProgramBuilderSheet({
           </>
         ) : null}
         {error ? <ValidationMessage message={error} /> : null}
-        {editingPrescription ? (
-          <PrescriptionEditor
-            exercises={exercises}
-            mode={mode}
-            onClose={() => setEditingPrescription(null)}
-            onSaved={() => {
-              setEditingPrescription(null)
-              refresh()
-            }}
-            target={editingPrescription}
-          />
-        ) : null}
       </BottomSheet>
       <ModalConfirmationDialog
         confirmLabel="Remove"

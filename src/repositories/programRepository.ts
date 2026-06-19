@@ -1,6 +1,7 @@
 import { db, type TrainingLogDatabase } from '@db/database'
 import { createId } from '@domain/ids'
 import { snapshotExercise } from '@domain/snapshots'
+import type { ExerciseUsageSummary } from '@domain/exerciseSearch'
 import type {
   ActiveCycleWorkoutDay,
   ActiveCycleWorkoutExercise,
@@ -13,6 +14,9 @@ import type {
 export type CreateTemplateExerciseInput = {
   exerciseId: string
   targetSetCount: number
+  targetWeight?: number | null
+  targetDurationSeconds?: number | null
+  targetDistance?: number | null
   targetRepsMin?: number | null
   targetRepsMax?: number | null
   targetRir?: number | null
@@ -36,6 +40,9 @@ export type UpdatePrescribedExerciseInput = Partial<
   Pick<
     TemplateWorkoutExercise,
     | 'targetSetCount'
+    | 'targetWeight'
+    | 'targetDurationSeconds'
+    | 'targetDistance'
     | 'targetRepsMin'
     | 'targetRepsMax'
     | 'targetRir'
@@ -112,6 +119,10 @@ export function createProgramRepository(
                 exerciseSnapshot: snapshotExercise(exercise),
                 orderIndex: exerciseIndex,
                 targetSetCount: exerciseInput.targetSetCount,
+                targetWeight: exerciseInput.targetWeight ?? null,
+                targetDurationSeconds:
+                  exerciseInput.targetDurationSeconds ?? null,
+                targetDistance: exerciseInput.targetDistance ?? null,
                 targetRepsMin: exerciseInput.targetRepsMin ?? null,
                 targetRepsMax: exerciseInput.targetRepsMax ?? null,
                 targetRir: exerciseInput.targetRir ?? null,
@@ -209,6 +220,10 @@ export function createProgramRepository(
                 exerciseSnapshot: sourceExercise.exerciseSnapshot,
                 orderIndex: sourceExercise.orderIndex,
                 targetSetCount: sourceExercise.targetSetCount,
+                targetWeight: sourceExercise.targetWeight ?? null,
+                targetDurationSeconds:
+                  sourceExercise.targetDurationSeconds ?? null,
+                targetDistance: sourceExercise.targetDistance ?? null,
                 targetRepsMin: sourceExercise.targetRepsMin,
                 targetRepsMax: sourceExercise.targetRepsMax,
                 targetRir: sourceExercise.targetRir,
@@ -279,6 +294,9 @@ export function createProgramRepository(
           exercises: source.exercisesByDay[day.id].map((exercise) => ({
             exerciseId: exercise.exerciseId,
             targetSetCount: exercise.targetSetCount,
+            targetWeight: exercise.targetWeight ?? null,
+            targetDurationSeconds: exercise.targetDurationSeconds ?? null,
+            targetDistance: exercise.targetDistance ?? null,
             targetRepsMin: exercise.targetRepsMin,
             targetRepsMax: exercise.targetRepsMax,
             targetRir: exercise.targetRir,
@@ -476,6 +494,9 @@ export function createProgramRepository(
             exerciseSnapshot: snapshotExercise(exercise),
             orderIndex: existing.length,
             targetSetCount: input.targetSetCount,
+            targetWeight: input.targetWeight ?? null,
+            targetDurationSeconds: input.targetDurationSeconds ?? null,
+            targetDistance: input.targetDistance ?? null,
             targetRepsMin: input.targetRepsMin ?? null,
             targetRepsMax: input.targetRepsMax ?? null,
             targetRir: input.targetRir ?? null,
@@ -530,6 +551,15 @@ export function createProgramRepository(
             targetRepsMax: hasField(input, 'targetRepsMax')
               ? (input.targetRepsMax ?? null)
               : prescribed.targetRepsMax,
+            targetWeight: hasField(input, 'targetWeight')
+              ? (input.targetWeight ?? null)
+              : (prescribed.targetWeight ?? null),
+            targetDurationSeconds: hasField(input, 'targetDurationSeconds')
+              ? (input.targetDurationSeconds ?? null)
+              : (prescribed.targetDurationSeconds ?? null),
+            targetDistance: hasField(input, 'targetDistance')
+              ? (input.targetDistance ?? null)
+              : (prescribed.targetDistance ?? null),
             targetRir: hasField(input, 'targetRir')
               ? (input.targetRir ?? null)
               : prescribed.targetRir,
@@ -670,6 +700,66 @@ export function createProgramRepository(
       }
 
       return this.getActiveCycleStructure(cycle.id)
+    },
+
+    async getExerciseUsageSummary(): Promise<ExerciseUsageSummary> {
+      const usage: ExerciseUsageSummary = {}
+      const noteUsage = (exerciseId: string | null, timestamp: string) => {
+        if (!exerciseId) {
+          return
+        }
+        const current = usage[exerciseId] ?? { count: 0, lastUsedAt: null }
+        usage[exerciseId] = {
+          count: current.count + 1,
+          lastUsedAt:
+            current.lastUsedAt && current.lastUsedAt > timestamp
+              ? current.lastUsedAt
+              : timestamp,
+        }
+      }
+
+      const [
+        templateExercises,
+        activeExercises,
+        workoutExercises,
+        historyExercises,
+        workouts,
+        historyWorkouts,
+      ] = await Promise.all([
+        database.templateWorkoutExercises.toArray(),
+        database.activeCycleWorkoutExercises.toArray(),
+        database.workoutExercises.toArray(),
+        database.workoutHistoryExercises.toArray(),
+        database.workouts.toArray(),
+        database.workoutHistoryEntries.toArray(),
+      ])
+      const workoutTimes = new Map(
+        workouts.map((workout) => [workout.id, workout.updatedAt]),
+      )
+      const historyTimes = new Map(
+        historyWorkouts.map((workout) => [workout.id, workout.completedAt]),
+      )
+
+      for (const exercise of templateExercises) {
+        noteUsage(exercise.exerciseId, exercise.updatedAt)
+      }
+      for (const exercise of activeExercises) {
+        noteUsage(exercise.exerciseId, exercise.updatedAt)
+      }
+      for (const exercise of workoutExercises) {
+        noteUsage(
+          exercise.exerciseId,
+          workoutTimes.get(exercise.workoutId) ?? exercise.updatedAt,
+        )
+      }
+      for (const exercise of historyExercises) {
+        noteUsage(
+          exercise.exerciseId,
+          historyTimes.get(exercise.workoutId) ?? exercise.updatedAt,
+        )
+      }
+
+      return usage
     },
 
     async updateActiveCycle(
@@ -889,6 +979,9 @@ export function createProgramRepository(
             exerciseSnapshot: snapshotExercise(exercise),
             orderIndex: existing.length,
             targetSetCount: input.targetSetCount,
+            targetWeight: input.targetWeight ?? null,
+            targetDurationSeconds: input.targetDurationSeconds ?? null,
+            targetDistance: input.targetDistance ?? null,
             targetRepsMin: input.targetRepsMin ?? null,
             targetRepsMax: input.targetRepsMax ?? null,
             targetRir: input.targetRir ?? null,
@@ -943,6 +1036,15 @@ export function createProgramRepository(
             targetRepsMax: hasField(input, 'targetRepsMax')
               ? (input.targetRepsMax ?? null)
               : prescribed.targetRepsMax,
+            targetWeight: hasField(input, 'targetWeight')
+              ? (input.targetWeight ?? null)
+              : (prescribed.targetWeight ?? null),
+            targetDurationSeconds: hasField(input, 'targetDurationSeconds')
+              ? (input.targetDurationSeconds ?? null)
+              : (prescribed.targetDurationSeconds ?? null),
+            targetDistance: hasField(input, 'targetDistance')
+              ? (input.targetDistance ?? null)
+              : (prescribed.targetDistance ?? null),
             targetRir: hasField(input, 'targetRir')
               ? (input.targetRir ?? null)
               : prescribed.targetRir,
