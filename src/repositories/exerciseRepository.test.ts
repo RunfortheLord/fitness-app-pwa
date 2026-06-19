@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { TrainingLogDatabase } from '@db/database'
+import { BUILT_IN_EXERCISES } from '@domain/exerciseLibrary'
 import { TRACKING_METHODS } from '@domain/trackingMethods'
 import { createExerciseRepository } from '@repositories/exerciseRepository'
 import { createProgramRepository } from '@repositories/programRepository'
@@ -19,6 +20,28 @@ afterEach(async () => {
 })
 
 describe('exerciseRepository', () => {
+  it('seeds built-in exercises idempotently with stable metadata', async () => {
+    const repository = createExerciseRepository(database)
+
+    await repository.seedBuiltInExercises()
+    await repository.seedBuiltInExercises()
+
+    await expect(database.exercises.count()).resolves.toBe(
+      BUILT_IN_EXERCISES.length,
+    )
+    await expect(
+      repository.getExercise('builtin:barbell-bench-press'),
+    ).resolves.toMatchObject({
+      id: 'builtin:barbell-bench-press',
+      name: 'Barbell Bench Press',
+      origin: 'built_in',
+      equipmentType: 'barbell',
+      primaryMuscleGroups: ['chest'],
+      defaultRestSeconds: 180,
+      defaultWeightIncrement: 5,
+    })
+  })
+
   it('creates every configured tracking preset with its supported metrics', async () => {
     const repository = createExerciseRepository(database)
 
@@ -101,7 +124,7 @@ describe('exerciseRepository', () => {
     })
   })
 
-  it('archives referenced exercises instead of permanently deleting them', async () => {
+  it('hides referenced custom exercises instead of permanently deleting them', async () => {
     const repository = createExerciseRepository(database)
     const program = await seedProgram(database)
     const exercise = await database.exercises.get(
@@ -112,13 +135,55 @@ describe('exerciseRepository', () => {
       throw new Error('Seed exercise was not created.')
     }
 
-    await expect(repository.deleteExercise(exercise.id)).resolves.toBe(
-      'archived',
-    )
+    await expect(repository.deleteExercise(exercise.id)).resolves.toBe('hidden')
     await expect(repository.getExercise(exercise.id)).resolves.toMatchObject({
       id: exercise.id,
-      status: 'archived',
+      status: 'hidden',
     })
+  })
+
+  it('hides and restores custom exercises while preserving history references', async () => {
+    const repository = createExerciseRepository(database)
+    const program = await seedProgram(database)
+    const exercise = await database.exercises.get(
+      program.exercises[0].exerciseId,
+    )
+    if (!exercise) {
+      throw new Error('Seed exercise was not created.')
+    }
+
+    await repository.hideExercise(exercise.id)
+
+    await expect(
+      repository.searchExercises({ query: 'bench' }),
+    ).resolves.toEqual([])
+    await expect(
+      database.templateWorkoutExercises.get(program.exercises[0].id),
+    ).resolves.toMatchObject({ exerciseId: exercise.id })
+
+    await repository.restoreExercise(exercise.id)
+    await expect(repository.getExercise(exercise.id)).resolves.toMatchObject({
+      status: 'active',
+    })
+  })
+
+  it('prevents ordinary built-in editing, hiding, archiving, and deletion', async () => {
+    const repository = createExerciseRepository(database)
+    await repository.seedBuiltInExercises()
+    const id = 'builtin:barbell-bench-press'
+
+    await expect(
+      repository.updateExercise(id, { name: 'Changed' }),
+    ).rejects.toThrow('Built-in exercises cannot be edited.')
+    await expect(repository.hideExercise(id)).rejects.toThrow(
+      'Built-in exercises cannot be hidden.',
+    )
+    await expect(repository.archiveExercise(id)).rejects.toThrow(
+      'Built-in exercises cannot be archived.',
+    )
+    await expect(repository.deleteExercise(id)).rejects.toThrow(
+      'Built-in exercises cannot be deleted.',
+    )
   })
 
   it('deletes unreferenced exercises only when there are no stored references', async () => {

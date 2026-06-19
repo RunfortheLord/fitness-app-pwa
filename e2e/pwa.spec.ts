@@ -83,6 +83,9 @@ test('loads cached app shell and navigates while offline', async ({
   await expect(
     page.getByRole('heading', { level: 1, name: 'Training' }),
   ).toBeVisible()
+  await expect(
+    page.getByText('Barbell Bench Press', { exact: true }),
+  ).toBeVisible()
 
   await page.goto('/history')
   await expect(
@@ -104,11 +107,14 @@ test('persists IndexedDB records created while offline', async ({
   await context.setOffline(true)
 
   await page.goto('/training')
+  await waitForExerciseLibrary(page)
   await page.getByLabel('Create exercise').click()
   await page.getByRole('textbox', { name: 'Name' }).fill('Offline DB press')
   await fillRestInputs(page, '90')
   await page.getByRole('button', { name: 'Save exercise' }).click()
-  await expect(page.getByText('Offline DB press')).toBeVisible()
+  await expect(page.getByText('Offline DB press')).toBeVisible({
+    timeout: 15_000,
+  })
 
   await page.reload()
   await expect(page.getByText('Offline DB press')).toBeVisible()
@@ -227,6 +233,7 @@ async function expectCachedShell(page: Page) {
 
 async function createActiveWorkout(page: Page) {
   await page.goto('/training')
+  await waitForExerciseLibrary(page)
   await page.getByLabel('Create exercise').click()
   await page
     .getByRole('textbox', { name: 'Name' })
@@ -280,6 +287,14 @@ async function createActiveWorkout(page: Page) {
   await expect(page.getByRole('textbox', { name: 'Set 1 Reps' })).toHaveValue(
     '8',
   )
+}
+
+async function waitForExerciseLibrary(page: Page) {
+  await expect(
+    page.getByText('Barbell Bench Press', { exact: true }),
+  ).toBeVisible({
+    timeout: 30_000,
+  })
 }
 
 async function fillRestInputs(page: Page, rest: string) {

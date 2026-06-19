@@ -84,4 +84,265 @@ describe('database', () => {
 
     await destroyTestDatabase(migratedDatabase)
   })
+
+  it('migrates v2 exercises without changing program, active-workout, or history references', async () => {
+    const name = `training-log-v2-exercise-migration-${crypto.randomUUID()}`
+    const oldDatabase = new Dexie(name)
+    oldDatabase.version(2).stores(v2Stores)
+    await oldDatabase.table('appMetadata').put({
+      id: 'app',
+      databaseSchemaVersion: 2,
+      backupSchemaVersion: 1,
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('exercises').put({
+      id: 'custom-bench',
+      name: 'Custom Bench',
+      notes: '',
+      defaultRestSeconds: 120,
+      trackingMethodId: 'weight_reps',
+      trackingMetrics: [
+        {
+          key: 'weight',
+          label: 'Weight',
+          valueType: 'number',
+          unit: 'lb',
+          requiredForCompletion: true,
+        },
+        {
+          key: 'reps',
+          label: 'Reps',
+          valueType: 'integer',
+          unit: null,
+          requiredForCompletion: true,
+        },
+      ],
+      status: 'active',
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('programTemplates').put({
+      id: 'template-1',
+      name: 'Program',
+      notes: '',
+      status: 'active',
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('templateWorkoutDays').put({
+      id: 'template-day-1',
+      templateId: 'template-1',
+      name: 'Day',
+      notes: '',
+      orderIndex: 0,
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('templateWorkoutExercises').put({
+      id: 'template-exercise-1',
+      templateId: 'template-1',
+      dayId: 'template-day-1',
+      exerciseId: 'custom-bench',
+      exerciseSnapshot: {
+        exerciseName: 'Custom Bench',
+        notes: '',
+        defaultRestSeconds: 120,
+        trackingMethodId: 'weight_reps',
+        trackingMetrics: [],
+      },
+      orderIndex: 0,
+      targetSetCount: 3,
+      targetRepsMin: null,
+      targetRepsMax: null,
+      targetRir: null,
+      restSecondsOverride: null,
+      notes: '',
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('activeProgramCycles').put({
+      id: 'cycle-1',
+      sourceTemplateId: 'template-1',
+      name: 'Program',
+      notes: '',
+      status: 'active',
+      activatedAt: '2026-06-18T12:00:00.000Z',
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('activeCycleWorkoutDays').put({
+      id: 'active-day-1',
+      activeCycleId: 'cycle-1',
+      sourceTemplateDayId: 'template-day-1',
+      name: 'Day',
+      notes: '',
+      orderIndex: 0,
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('activeCycleWorkoutExercises').put({
+      id: 'active-exercise-1',
+      activeCycleId: 'cycle-1',
+      dayId: 'active-day-1',
+      sourceTemplateExerciseId: 'template-exercise-1',
+      exerciseId: 'custom-bench',
+      exerciseSnapshot: {
+        exerciseName: 'Custom Bench',
+        notes: '',
+        defaultRestSeconds: 120,
+        trackingMethodId: 'weight_reps',
+        trackingMetrics: [],
+      },
+      orderIndex: 0,
+      targetSetCount: 3,
+      targetRepsMin: null,
+      targetRepsMax: null,
+      targetRir: null,
+      restSecondsOverride: null,
+      notes: '',
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('workouts').put({
+      id: 'workout-1',
+      sourceActiveCycleId: 'cycle-1',
+      sourceTemplateId: 'template-1',
+      sourceDayId: 'active-day-1',
+      localDate: '2026-06-18',
+      name: 'Day',
+      workoutSnapshot: {
+        activeCycleName: 'Program',
+        templateName: 'Program',
+        dayName: 'Day',
+        dayNotes: '',
+      },
+      notes: '',
+      startedAt: '2026-06-18T12:00:00.000Z',
+      completedAt: null,
+      durationSeconds: null,
+      elapsedPausedSeconds: 0,
+      activeRestTimer: null,
+      status: 'active',
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('workoutExercises').put({
+      id: 'workout-exercise-1',
+      workoutId: 'workout-1',
+      exerciseId: 'custom-bench',
+      exerciseSnapshot: {
+        exerciseName: 'Custom Bench',
+        notes: '',
+        defaultRestSeconds: 120,
+        trackingMethodId: 'weight_reps',
+        trackingMetrics: [],
+      },
+      sourcePrescribedExerciseId: 'active-exercise-1',
+      orderIndex: 0,
+      notes: '',
+      skipped: false,
+      replacementOfExerciseId: null,
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('workoutHistoryEntries').put({
+      id: 'history-1',
+      sourceActiveCycleId: 'cycle-1',
+      sourceTemplateId: 'template-1',
+      sourceDayId: 'active-day-1',
+      localDate: '2026-06-18',
+      name: 'Day',
+      workoutSnapshot: {
+        activeCycleName: 'Program',
+        templateName: 'Program',
+        dayName: 'Day',
+        dayNotes: '',
+      },
+      notes: '',
+      startedAt: '2026-06-18T12:00:00.000Z',
+      completedAt: '2026-06-18T13:00:00.000Z',
+      durationSeconds: 3600,
+      elapsedPausedSeconds: 0,
+      activeRestTimer: null,
+      status: 'completed',
+      createdAt: '2026-06-18T13:00:00.000Z',
+      updatedAt: '2026-06-18T13:00:00.000Z',
+    })
+    await oldDatabase.table('workoutHistoryExercises').put({
+      id: 'history-exercise-1',
+      workoutId: 'history-1',
+      exerciseId: 'custom-bench',
+      exerciseSnapshot: {
+        exerciseName: 'Custom Bench',
+        notes: '',
+        defaultRestSeconds: 120,
+        trackingMethodId: 'weight_reps',
+        trackingMetrics: [],
+      },
+      sourcePrescribedExerciseId: 'active-exercise-1',
+      orderIndex: 0,
+      notes: '',
+      skipped: false,
+      replacementOfExerciseId: null,
+      createdAt: '2026-06-18T13:00:00.000Z',
+      updatedAt: '2026-06-18T13:00:00.000Z',
+    })
+    oldDatabase.close()
+
+    const migratedDatabase = new TrainingLogDatabase(name)
+
+    await expect(
+      migratedDatabase.exercises.get('custom-bench'),
+    ).resolves.toMatchObject({
+      id: 'custom-bench',
+      origin: 'custom',
+      seedDataVersion: null,
+      equipmentType: 'barbell',
+      defaultWeightIncrement: 5,
+      recordsRepsPerSide: false,
+    })
+    await expect(
+      migratedDatabase.templateWorkoutExercises.get('template-exercise-1'),
+    ).resolves.toMatchObject({ exerciseId: 'custom-bench' })
+    await expect(
+      migratedDatabase.workoutExercises.get('workout-exercise-1'),
+    ).resolves.toMatchObject({ exerciseId: 'custom-bench' })
+    await expect(
+      migratedDatabase.workoutHistoryExercises.get('history-exercise-1'),
+    ).resolves.toMatchObject({ exerciseId: 'custom-bench' })
+
+    await destroyTestDatabase(migratedDatabase)
+  })
 })
+
+const v2Stores = {
+  appMetadata: '&id',
+  userSettings: '&id',
+  nutritionTargets: '&id, updatedAt',
+  foods: '&id, status, name, updatedAt',
+  foodLogEntries: '&id, localDate, foodId, createdAt',
+  bodyweightEntries: '&id, &localDate, createdAt',
+  exercises: '&id, status, name, trackingMethodId, updatedAt',
+  programTemplates: '&id, status, name, updatedAt',
+  templateWorkoutDays: '&id, templateId, [templateId+orderIndex]',
+  templateWorkoutExercises:
+    '&id, templateId, dayId, exerciseId, [dayId+orderIndex]',
+  activeProgramCycles: '&id, sourceTemplateId, status, activatedAt',
+  activeCycleWorkoutDays:
+    '&id, activeCycleId, sourceTemplateDayId, [activeCycleId+orderIndex]',
+  activeCycleWorkoutExercises:
+    '&id, activeCycleId, dayId, exerciseId, sourceTemplateExerciseId, [dayId+orderIndex]',
+  workouts: '&id, status, localDate, sourceActiveCycleId, startedAt',
+  workoutExercises: '&id, workoutId, exerciseId, [workoutId+orderIndex]',
+  workoutSets:
+    '&id, workoutId, workoutExerciseId, [workoutExerciseId+setNumber]',
+  workoutHistoryEntries:
+    '&id, localDate, sourceActiveCycleId, sourceTemplateId, completedAt',
+  workoutHistoryExercises: '&id, workoutId, exerciseId, [workoutId+orderIndex]',
+  workoutHistorySets:
+    '&id, workoutId, workoutExerciseId, [workoutExerciseId+setNumber]',
+  detectedWorkoutChanges: '&id, workoutId, status, type, createdAt',
+  appliedWorkoutChanges: '&id, detectedChangeId, workoutId, appliedAt',
+  backupMetadata: '&id, createdAt',
+}

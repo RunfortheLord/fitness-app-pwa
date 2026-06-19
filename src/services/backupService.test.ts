@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { DATABASE_SCHEMA_VERSION, type TrainingLogDatabase } from '@db/database'
+import { BUILT_IN_EXERCISES } from '@domain/exerciseLibrary'
 import { createSettingsRepository } from '@repositories/settingsRepository'
 import {
   createBackupService,
@@ -191,7 +192,10 @@ describe('backupService', () => {
     await service.restoreReplace(backup, new Date('2026-06-19T16:00:00.000Z'))
 
     expect(await database.foods.get(food.id)).toMatchObject({ id: food.id })
-    expect(await database.exercises.count()).toBe(0)
+    expect(await database.exercises.count()).toBe(BUILT_IN_EXERCISES.length)
+    expect(
+      await database.exercises.get('builtin:barbell-bench-press'),
+    ).toMatchObject({ origin: 'built_in' })
     await expect(
       database.backupMetadata
         .toArray()
@@ -310,6 +314,48 @@ describe('backupService', () => {
     ).toMatch(/Invalid local date/)
   })
 
+  it('normalizes older exercise backups with missing built-in library fields', async () => {
+    const exercise = await seedExercise(database)
+    const backup = (await createBackupService(database).createJsonBackup())
+      .backup
+    const legacyExercise = {
+      id: exercise.id,
+      name: exercise.name,
+      notes: exercise.notes,
+      defaultRestSeconds: exercise.defaultRestSeconds,
+      trackingMethodId: exercise.trackingMethodId,
+      trackingMetrics: exercise.trackingMetrics,
+      status: exercise.status,
+      createdAt: exercise.createdAt,
+      updatedAt: exercise.updatedAt,
+    }
+
+    const result = validateBackup(
+      {
+        ...backup,
+        databaseSchemaVersion: 2,
+        data: {
+          ...backup.data,
+          exercises: [legacyExercise],
+        },
+      },
+      'legacy.json',
+    )
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) {
+      throw new Error('Expected legacy backup to validate.')
+    }
+    expect(result.backup.data.exercises[0]).toMatchObject({
+      id: exercise.id,
+      origin: 'custom',
+      seedDataVersion: null,
+      defaultWeightIncrement: 5,
+      equipmentType: 'barbell',
+      recordsRepsPerSide: false,
+    })
+  })
+
   it('clears all user data transactionally and leaves app metadata', async () => {
     await seedFood(database)
     await seedExercise(database)
@@ -319,7 +365,12 @@ describe('backupService', () => {
     )
 
     await expect(database.foods.count()).resolves.toBe(0)
-    await expect(database.exercises.count()).resolves.toBe(0)
+    await expect(database.exercises.count()).resolves.toBe(
+      BUILT_IN_EXERCISES.length,
+    )
+    await expect(
+      database.exercises.get('builtin:barbell-bench-press'),
+    ).resolves.toMatchObject({ origin: 'built_in' })
     await expect(database.workouts.count()).resolves.toBe(0)
     await expect(database.workoutHistoryEntries.count()).resolves.toBe(0)
     await expect(database.appMetadata.get('app')).resolves.toMatchObject({

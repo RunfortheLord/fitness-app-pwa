@@ -28,7 +28,10 @@ describe('TrainingPage', () => {
     const user = userEvent.setup()
     renderTraining()
 
-    await screen.findByText('No exercises yet')
+    expect(await screen.findByText('Barbell Bench Press')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Edit Barbell Bench Press' }),
+    ).not.toBeInTheDocument()
     await user.click(
       screen.getAllByRole('button', { name: 'Create exercise' })[0],
     )
@@ -97,6 +100,29 @@ describe('TrainingPage', () => {
     ).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Save exercise' }))
     expect(await screen.findByText(/Reps only - 150s rest/)).toBeInTheDocument()
+  })
+
+  it('hides and restores custom exercises without offering hide for built-ins', async () => {
+    const user = userEvent.setup()
+    await seedExercise(db)
+    renderTraining()
+
+    expect(await screen.findByText('Barbell Bench Press')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Hide Barbell Bench Press' }),
+    ).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Hide Bench press' }))
+    await waitFor(() =>
+      expect(screen.queryByText('Bench press')).not.toBeInTheDocument(),
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Hidden' }))
+    expect(await screen.findByText('Bench press')).toBeInTheDocument()
+    await user.click(
+      screen.getByRole('button', { name: 'Restore Bench press' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Active' }))
+    expect(await screen.findByText('Bench press')).toBeInTheDocument()
   })
 
   it('opens create exercise from the center Add sheet', async () => {
@@ -278,7 +304,10 @@ describe('TrainingPage', () => {
     const cycleEditor = await screen.findByRole('dialog', {
       name: 'Edit current cycle',
     })
-    await user.clear(within(cycleEditor).getByRole('textbox', { name: 'Name' }))
+    const cycleNameInput = await within(cycleEditor).findByRole('textbox', {
+      name: 'Name',
+    })
+    await user.clear(cycleNameInput)
     await user.click(
       within(cycleEditor).getByRole('button', { name: 'Save cycle' }),
     )

@@ -118,9 +118,16 @@ foreign-key ID fields and sort indexes.
 - `name`
 - `notes`
 - `defaultRestSeconds`
+- `defaultWeightIncrement`: nullable for non-weight tracking methods
 - `trackingMethodId`
 - `trackingMetrics`
-- `status`: `active` or `archived`
+- `primaryMuscleGroups`
+- `secondaryMuscleGroups`
+- `equipmentType`: `barbell`, `dumbbell`, `machine`, `cable`, or `bodyweight`
+- `recordsRepsPerSide`
+- `origin`: `built_in` or `custom`
+- `seedDataVersion`: nullable for custom exercises
+- `status`: `active`, `archived`, or `hidden`
 - `createdAt`
 - `updatedAt`
 
@@ -133,6 +140,7 @@ foreign-key ID fields and sort indexes.
   - `weight_reps`
   - `bodyweight_reps`
   - `assisted_weight_reps`
+  - `added_weight_reps`
   - `reps_only`
   - `duration`
   - `distance_duration`
@@ -309,8 +317,10 @@ foreign-key ID fields and sort indexes.
 
 ## Archive Behavior
 
-- `Food`, `Exercise`, and `ProgramTemplate` support `active` and `archived`.
-- Archive hides records from default pickers but keeps references valid.
+- `Food` and `ProgramTemplate` support `active` and `archived`.
+- Custom `Exercise` records support `active`, `archived`, and `hidden`.
+- Built-in exercises are seeded with `origin: built_in` and remain active.
+- Archive or hidden status hides records from default pickers but keeps references valid.
 - Hard delete is allowed only when no log, program, active workout, or history references exist.
 - Historical workouts can be deleted only with confirmation.
 
@@ -321,10 +331,13 @@ foreign-key ID fields and sort indexes.
 - Migration failure must leave the prior database usable or surface a clear blocking error.
 - Backup imports must validate backup schema version before writing.
 - Unsupported future backup versions must not be imported.
-- Initial implementation uses IndexedDB schema version 2 because version 1
+- Initial implementation used IndexedDB schema version 2 because version 1
   existed with only `appMetadata` and `userSettings`. The version 2 migration
-  adds the full local fitness model stores and updates app metadata to the
-  current schema version.
+  added the full local fitness model stores.
+- Schema version 3 adds built-in exercise library metadata to existing exercise
+  records and updates app metadata to the current schema version without
+  changing existing exercise IDs, program prescriptions, active workouts, or
+  completed workout history.
 
 ## Transaction Boundaries
 
@@ -343,7 +356,7 @@ foreign-key ID fields and sort indexes.
 - JSON backup is authoritative and full fidelity.
 - CSV export is derived from stores for readability and does not need to support restore.
 - Import preview summarizes counts, schema versions, conflicts, and whether merge or replace is selected.
-- Current backup format version is `1`, separate from IndexedDB schema version `2`.
+- Current backup format version is `1`, separate from IndexedDB schema version `3`.
 - Backup root fields are `backupFormatVersion`, `databaseSchemaVersion`,
   `applicationVersion`, `exportedAt`, and `data`.
 - Restore supports backup format version `1` when the backup database schema

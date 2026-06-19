@@ -6,6 +6,8 @@ import {
   db,
   type TrainingLogDatabase,
 } from '@db/database'
+import { getTrackingMethod } from '@domain/trackingMethods'
+import { createExerciseRepository } from '@repositories/exerciseRepository'
 import type {
   ActiveCycleWorkoutDay,
   ActiveCycleWorkoutExercise,
@@ -123,12 +125,38 @@ const nonNegativeNumber = z.number().finite().min(0)
 const nonNegativeInteger = z.number().int().min(0)
 const nullableId = z.union([idSchema, z.null()])
 const entityStatusSchema = z.enum(['active', 'archived'])
+const exerciseStatusSchema = z.enum(['active', 'archived', 'hidden'])
+const exerciseOriginSchema = z.enum(['built_in', 'custom'])
+const exerciseEquipmentTypeSchema = z.enum([
+  'barbell',
+  'dumbbell',
+  'machine',
+  'cable',
+  'bodyweight',
+])
+const muscleGroupSchema = z.enum([
+  'chest',
+  'back',
+  'shoulders',
+  'biceps',
+  'triceps',
+  'forearms',
+  'quadriceps',
+  'hamstrings',
+  'glutes',
+  'calves',
+  'core',
+  'traps',
+  'hip abductors',
+  'hip adductors',
+])
 const weightUnitSchema = z.literal('lb')
 const energyUnitSchema = z.literal('kcal')
 const trackingMethodIdSchema = z.enum([
   'weight_reps',
   'bodyweight_reps',
   'assisted_weight_reps',
+  'added_weight_reps',
   'reps_only',
   'duration',
   'distance_duration',
@@ -212,9 +240,18 @@ const exerciseSchema = z.object({
   name: z.string().min(1),
   notes: z.string(),
   defaultRestSeconds: nonNegativeInteger,
+  defaultWeightIncrement: z
+    .union([z.number().finite().positive(), z.null()])
+    .default(null),
   trackingMethodId: trackingMethodIdSchema,
   trackingMetrics: z.array(trackingMetricSchema),
-  status: entityStatusSchema,
+  primaryMuscleGroups: z.array(muscleGroupSchema).default([]),
+  secondaryMuscleGroups: z.array(muscleGroupSchema).default([]),
+  equipmentType: exerciseEquipmentTypeSchema.default('barbell'),
+  recordsRepsPerSide: z.boolean().default(false),
+  origin: exerciseOriginSchema.default('custom'),
+  seedDataVersion: z.union([nonNegativeInteger, z.null()]).default(null),
+  status: exerciseStatusSchema,
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })
@@ -526,6 +563,7 @@ export function createBackupService(database: TrainingLogDatabase = db) {
           updatedAt: importedAt,
         })
       })
+      await createExerciseRepository(database).seedBuiltInExercises()
     },
 
     async clearAllData(now = new Date()) {
@@ -542,6 +580,7 @@ export function createBackupService(database: TrainingLogDatabase = db) {
           updatedAt: clearedAt,
         })
       })
+      await createExerciseRepository(database).seedBuiltInExercises()
     },
 
     async createCsvArchive(now = new Date()) {
@@ -572,7 +611,7 @@ export function validateBackup(
     return invalidPreview(filename, parsed.error.issues.map(formatZodIssue))
   }
 
-  const backup = parsed.data as JsonBackup
+  const backup = normalizeBackup(parsed.data as JsonBackup)
   const errors: string[] = []
   const warnings: string[] = []
 
@@ -896,6 +935,54 @@ function validateRelationshipIntegrity(data: BackupData) {
   }
 
   return errors
+}
+
+function normalizeBackup(backup: JsonBackup): JsonBackup {
+  return {
+    ...backup,
+    data: {
+      ...backup.data,
+      exercises: backup.data.exercises.map((exercise) => {
+        const trackingMethod = getTrackingMethod(exercise.trackingMethodId)
+        return {
+          ...exercise,
+          defaultWeightIncrement:
+            exercise.defaultWeightIncrement ??
+            defaultWeightIncrementForTracking(exercise.trackingMethodId),
+          trackingMetrics: exercise.trackingMetrics.length
+            ? exercise.trackingMetrics
+            : (trackingMethod?.metrics ?? []),
+          equipmentType:
+            exercise.equipmentType ??
+            defaultEquipmentForTracking(exercise.trackingMethodId),
+          origin: exercise.origin ?? 'custom',
+          seedDataVersion: exercise.seedDataVersion ?? null,
+        }
+      }),
+    },
+  }
+}
+
+function defaultWeightIncrementForTracking(trackingMethodId: string) {
+  if (
+    trackingMethodId === 'weight_reps' ||
+    trackingMethodId === 'assisted_weight_reps' ||
+    trackingMethodId === 'added_weight_reps'
+  ) {
+    return 5
+  }
+  return null
+}
+
+function defaultEquipmentForTracking(trackingMethodId: string) {
+  if (
+    trackingMethodId === 'reps_only' ||
+    trackingMethodId === 'bodyweight_reps' ||
+    trackingMethodId === 'added_weight_reps'
+  ) {
+    return 'bodyweight'
+  }
+  return 'barbell'
 }
 
 function findDuplicateIds(records: Array<{ id: string }>, tableName: string) {

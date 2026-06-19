@@ -246,7 +246,7 @@ describe('HistoryPage', () => {
       completed: true,
     })
     await repository.updateWorkoutSet(started.sets[1].id, {
-      metricValues: { distance: 0.25, durationSeconds: 90 },
+      metricValues: { distance: 0.25 },
       completed: true,
     })
     const completed = await repository.completeWorkout({
@@ -259,7 +259,6 @@ describe('HistoryPage', () => {
     expect(screen.getByText('Carry')).toBeInTheDocument()
     expect(screen.getAllByLabelText('Set 1 Duration')[0]).toHaveValue('45')
     expect(screen.getByLabelText('Set 1 Distance')).toHaveValue('0.25')
-    expect(screen.getAllByLabelText('Set 1 Duration')[1]).toHaveValue('90')
   })
 
   it('reviews detected changes without applying any destination', async () => {

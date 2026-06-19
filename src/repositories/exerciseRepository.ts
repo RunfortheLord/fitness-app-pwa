@@ -1,4 +1,9 @@
 import { db, type TrainingLogDatabase } from '@db/database'
+import {
+  BUILT_IN_EXERCISES,
+  BUILT_IN_EXERCISE_SEED_VERSION,
+  validateBuiltInExercises,
+} from '@domain/exerciseLibrary'
 import { createId } from '@domain/ids'
 import { getTrackingMethod } from '@domain/trackingMethods'
 import type { Exercise, TrackingMethodId } from '@shared-types/app'
@@ -17,6 +22,8 @@ export type ExerciseSearchOptions = {
   query?: string
   limit?: number
 }
+
+const seedPromises = new WeakMap<TrainingLogDatabase, Promise<void>>()
 
 export function createExerciseRepository(database: TrainingLogDatabase = db) {
   function validateExerciseInput(input: CreateExerciseInput) {
@@ -64,6 +71,22 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
   }
 
   return {
+    async seedBuiltInExercises() {
+      const existingSeed = seedPromises.get(database)
+      if (existingSeed) {
+        await existingSeed
+        return
+      }
+
+      const seedPromise = seedBuiltInExerciseRecords(database)
+      seedPromises.set(database, seedPromise)
+      try {
+        await seedPromise
+      } finally {
+        seedPromises.delete(database)
+      }
+    },
+
     async createExercise(input: CreateExerciseInput) {
       const trackingMethod = validateExerciseInput(input)
 
@@ -73,8 +96,20 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
         name: input.name.trim(),
         notes: input.notes?.trim() ?? '',
         defaultRestSeconds: input.defaultRestSeconds,
+        defaultWeightIncrement:
+          input.trackingMethodId === 'weight_reps' ||
+          input.trackingMethodId === 'assisted_weight_reps' ||
+          input.trackingMethodId === 'added_weight_reps'
+            ? 5
+            : null,
         trackingMethodId: input.trackingMethodId,
         trackingMetrics: trackingMethod.metrics,
+        primaryMuscleGroups: [],
+        secondaryMuscleGroups: [],
+        equipmentType: defaultEquipmentForTracking(input.trackingMethodId),
+        recordsRepsPerSide: false,
+        origin: 'custom',
+        seedDataVersion: null,
         status: 'active',
         createdAt: now,
         updatedAt: now,
@@ -88,6 +123,9 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
       const exercise = await database.exercises.get(id)
       if (!exercise) {
         throw new Error(`Exercise ${id} was not found.`)
+      }
+      if (exercise.origin === 'built_in') {
+        throw new Error('Built-in exercises cannot be edited.')
       }
 
       const trackingMethod = input.trackingMethodId
@@ -113,6 +151,13 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
     },
 
     async archiveExercise(id: string) {
+      const exercise = await database.exercises.get(id)
+      if (!exercise) {
+        throw new Error(`Exercise ${id} was not found.`)
+      }
+      if (exercise.origin === 'built_in') {
+        throw new Error('Built-in exercises cannot be archived.')
+      }
       const updatedCount = await database.exercises.update(id, {
         status: 'archived',
         updatedAt: new Date().toISOString(),
@@ -123,6 +168,13 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
     },
 
     async restoreExercise(id: string) {
+      const exercise = await database.exercises.get(id)
+      if (!exercise) {
+        throw new Error(`Exercise ${id} was not found.`)
+      }
+      if (exercise.origin === 'built_in') {
+        throw new Error('Built-in exercises are always active.')
+      }
       const updatedCount = await database.exercises.update(id, {
         status: 'active',
         updatedAt: new Date().toISOString(),
@@ -137,17 +189,21 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
       if (!exercise) {
         throw new Error(`Exercise ${id} was not found.`)
       }
+      if (exercise.origin === 'built_in') {
+        throw new Error('Built-in exercises cannot be deleted.')
+      }
 
       if (await hasExerciseReferences(id)) {
-        await database.exercises.update(id, {
-          status: 'archived',
-          updatedAt: new Date().toISOString(),
-        })
-        return 'archived' as const
+        await hideExerciseRecord(id)
+        return 'hidden' as const
       }
 
       await database.exercises.delete(id)
       return 'deleted' as const
+    },
+
+    async hideExercise(id: string) {
+      await hideExerciseRecord(id)
     },
 
     getExercise(id: string) {
@@ -155,7 +211,7 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
     },
 
     async searchExercises(options: ExerciseSearchOptions = {}) {
-      const { includeArchived = false, query = '', limit = 50 } = options
+      const { includeArchived = false, query = '', limit = 300 } = options
       const normalizedQuery = query.trim().toLocaleLowerCase()
       const exercises = includeArchived
         ? await database.exercises.toArray()
@@ -210,6 +266,65 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
         .sort((left, right) => left.name.localeCompare(right.name))
     },
   }
+
+  async function hideExerciseRecord(id: string) {
+    const exercise = await database.exercises.get(id)
+    if (!exercise) {
+      throw new Error(`Exercise ${id} was not found.`)
+    }
+    if (exercise.origin === 'built_in') {
+      throw new Error('Built-in exercises cannot be hidden.')
+    }
+    await database.exercises.update(id, {
+      status: 'hidden',
+      updatedAt: new Date().toISOString(),
+    })
+  }
 }
 
 export const exerciseRepository = createExerciseRepository()
+
+async function seedBuiltInExerciseRecords(database: TrainingLogDatabase) {
+  validateBuiltInExercises()
+  await database.transaction('rw', database.exercises, async () => {
+    const existingRecords = await database.exercises.bulkGet(
+      BUILT_IN_EXERCISES.map((seed) => seed.id),
+    )
+    const recordsToPut: Exercise[] = []
+
+    for (const [index, seed] of BUILT_IN_EXERCISES.entries()) {
+      const existing = existingRecords[index]
+      if (!existing) {
+        recordsToPut.push(seed)
+        continue
+      }
+      if (existing.origin !== 'built_in') {
+        continue
+      }
+      if ((existing.seedDataVersion ?? 0) < BUILT_IN_EXERCISE_SEED_VERSION) {
+        recordsToPut.push({
+          ...seed,
+          createdAt: existing.createdAt,
+          status: 'active',
+        })
+      }
+    }
+
+    if (recordsToPut.length) {
+      await database.exercises.bulkPut(recordsToPut)
+    }
+  })
+}
+
+function defaultEquipmentForTracking(
+  trackingMethodId: TrackingMethodId,
+): Exercise['equipmentType'] {
+  if (
+    trackingMethodId === 'reps_only' ||
+    trackingMethodId === 'bodyweight_reps' ||
+    trackingMethodId === 'added_weight_reps'
+  ) {
+    return 'bodyweight'
+  }
+  return 'barbell'
+}

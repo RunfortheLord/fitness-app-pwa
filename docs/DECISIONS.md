@@ -8,7 +8,7 @@
 - No account, backend, cloud sync, subscription, internet dependency after installation, or external food database is included in the first release.
 - JSON is the authoritative full-fidelity backup format.
 - CSV is export-only for readable spreadsheet use.
-- Backup format version `1` is separate from IndexedDB schema version `2`.
+- Backup format version `1` is separate from IndexedDB schema version `3`.
 - JSON restore supports replace mode only in this release. Merge restore remains
   unavailable until same-ID, natural-key, duplicate historical workout,
   source-reference, archived-record, and timestamp conflict behavior is defined.
@@ -27,7 +27,14 @@
 - Food log entries snapshot nutrition values at logging time.
 - Bodyweight is one manual entry per local calendar date, pounds by default.
 - Exercise tracking uses metric-driven presets to allow future expansion.
+- The built-in offline exercise library is an original curated seed list. No
+  third-party exercise database, third-party application code, images, videos,
+  instructions, or descriptions are imported.
+- Built-in exercise IDs use stable `builtin:` identifiers and seed metadata so
+  future library updates can add or correct built-in records idempotently.
 - Exercises referenced by history or programs should be archived instead of hard deleted.
+- Custom exercises can be hidden from future selection while preserving
+  program, active-workout, and completed-history references.
 - Program Templates and Active Program Cycles are separate concepts.
 - Activating a template creates an independent active-cycle copy.
 - Activating a template marks any existing active cycle inactive so exactly one

@@ -3,6 +3,7 @@ import {
   Copy,
   Dumbbell,
   Edit2,
+  EyeOff,
   Plus,
   RotateCcw,
   Search,
@@ -49,7 +50,7 @@ import type {
   TrackingMethodId,
 } from '@shared-types/app'
 
-type ExerciseView = 'active' | 'archived'
+type ExerciseView = 'active' | 'hidden'
 type BuilderMode = 'template' | 'cycle'
 type ProgramSheetTarget =
   | { mode: 'template'; templateId: string }
@@ -156,10 +157,12 @@ export function TrainingPage() {
     let isCurrent = true
 
     void Promise.all([
-      exerciseRepository.searchExercises({
-        includeArchived: view === 'archived',
-        query,
-      }),
+      exerciseRepository.seedBuiltInExercises().then(() =>
+        exerciseRepository.searchExercises({
+          includeArchived: view === 'hidden',
+          query,
+        }),
+      ),
       programRepository.listProgramTemplates(),
       programRepository.getCurrentActiveCycleStructure(),
     ])
@@ -170,8 +173,8 @@ export function TrainingPage() {
 
         setLoadState({
           exercises:
-            view === 'archived'
-              ? exercises.filter((exercise) => exercise.status === 'archived')
+            view === 'hidden'
+              ? exercises.filter((exercise) => exercise.status !== 'active')
               : exercises,
           templates,
           currentCycle,
@@ -255,6 +258,12 @@ export function TrainingPage() {
         loadStatus={loadState.status}
         onCreateExercise={() => setSheet({ type: 'exercise', exercise: null })}
         onEditExercise={(exercise) => setSheet({ type: 'exercise', exercise })}
+        onHideExercise={(exercise) => {
+          void exerciseRepository.hideExercise(exercise.id).then(() => {
+            setMessage('Exercise hidden.')
+            reload()
+          })
+        }}
         onRestoreExercise={(exercise) => {
           void exerciseRepository.restoreExercise(exercise.id).then(() => {
             setMessage('Exercise restored.')
@@ -1364,6 +1373,7 @@ function ExerciseLibraryCard({
   loadStatus,
   onCreateExercise,
   onEditExercise,
+  onHideExercise,
   onRestoreExercise,
   query,
   setQuery,
@@ -1374,6 +1384,7 @@ function ExerciseLibraryCard({
   loadStatus: LoadState['status']
   onCreateExercise: () => void
   onEditExercise: (exercise: Exercise) => void
+  onHideExercise: (exercise: Exercise) => void
   onRestoreExercise: (exercise: Exercise) => void
   query: string
   setQuery: (query: string) => void
@@ -1381,7 +1392,7 @@ function ExerciseLibraryCard({
   view: ExerciseView
 }) {
   return (
-    <Card title={view === 'active' ? 'Active exercises' : 'Archived exercises'}>
+    <Card title={view === 'active' ? 'Active exercises' : 'Hidden exercises'}>
       <div className="button-row library-filter-row" role="group">
         <SecondaryButton
           aria-pressed={view === 'active'}
@@ -1391,11 +1402,11 @@ function ExerciseLibraryCard({
           Active
         </SecondaryButton>
         <SecondaryButton
-          aria-pressed={view === 'archived'}
+          aria-pressed={view === 'hidden'}
           type="button"
-          onClick={() => setView('archived')}
+          onClick={() => setView('hidden')}
         >
-          Archived
+          Hidden
         </SecondaryButton>
       </div>
 
@@ -1428,6 +1439,7 @@ function ExerciseLibraryCard({
               exercise={exercise}
               key={exercise.id}
               onEdit={() => onEditExercise(exercise)}
+              onHide={() => onHideExercise(exercise)}
               onRestore={() => onRestoreExercise(exercise)}
             />
           ))}
@@ -1441,12 +1453,12 @@ function ExerciseLibraryCard({
               ? 'No exercises found'
               : view === 'active'
                 ? 'No exercises yet'
-                : 'No archived exercises'
+                : 'No hidden exercises'
           }
           message={
             view === 'active'
               ? 'Create a custom exercise to use in programs and workouts.'
-              : 'Archived exercises stay available for restore when needed.'
+              : 'Hidden custom exercises stay available for restore when needed.'
           }
           action={
             view === 'active' ? (
@@ -1464,10 +1476,12 @@ function ExerciseLibraryCard({
 function ExerciseLibraryRow({
   exercise,
   onEdit,
+  onHide,
   onRestore,
 }: {
   exercise: Exercise
   onEdit: () => void
+  onHide: () => void
   onRestore: () => void
 }) {
   const trackingMethod = getTrackingMethod(exercise.trackingMethodId)
@@ -1481,7 +1495,8 @@ function ExerciseLibraryRow({
         <strong>{exercise.name}</strong>
         <small>
           {trackingMethod?.name ?? exercise.trackingMethodId} -{' '}
-          {exercise.defaultRestSeconds}s rest
+          {exercise.defaultRestSeconds}s rest -{' '}
+          {exercise.origin === 'built_in' ? 'Built-in' : 'Custom'}
         </small>
         <small>{metricSummary(exercise)}</small>
         {exercise.notes ? <small>{exercise.notes}</small> : null}
@@ -1495,9 +1510,24 @@ function ExerciseLibraryRow({
             <RotateCcw aria-hidden="true" size={18} />
           </IconButton>
         ) : null}
-        <IconButton aria-label={`Edit ${exercise.name}`} onClick={onEdit}>
-          <Edit2 aria-hidden="true" size={18} />
-        </IconButton>
+        {exercise.status === 'hidden' ? (
+          <IconButton
+            aria-label={`Restore ${exercise.name}`}
+            onClick={onRestore}
+          >
+            <RotateCcw aria-hidden="true" size={18} />
+          </IconButton>
+        ) : null}
+        {exercise.origin === 'custom' && exercise.status === 'active' ? (
+          <>
+            <IconButton aria-label={`Hide ${exercise.name}`} onClick={onHide}>
+              <EyeOff aria-hidden="true" size={18} />
+            </IconButton>
+            <IconButton aria-label={`Edit ${exercise.name}`} onClick={onEdit}>
+              <Edit2 aria-hidden="true" size={18} />
+            </IconButton>
+          </>
+        ) : null}
       </div>
     </div>
   )

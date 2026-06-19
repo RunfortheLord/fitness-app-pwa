@@ -95,13 +95,16 @@ test('creates and persists a custom exercise from the Add sheet', async ({
   await page.getByRole('button', { name: 'Open quick actions' }).click()
   await page.getByRole('button', { name: /Create exercise/ }).click()
   await expect(page).toHaveURL(/\/training/)
+  await waitForExerciseLibrary(page)
   await page.getByRole('textbox', { name: 'Name' }).fill('E2E Bench press')
   await fillRestInputs(page, '150')
   await page.getByLabel('Tracking preset').selectOption('weight_reps')
   await expect(page.getByText(/external weight and repetitions/)).toBeVisible()
   await page.getByRole('button', { name: 'Save exercise' }).click()
 
-  await expect(page.getByText('E2E Bench press')).toBeVisible()
+  await expect(page.getByText('E2E Bench press')).toBeVisible({
+    timeout: 15_000,
+  })
   await expect(page.getByText(/Weight \+ reps - 150s rest/)).toBeVisible()
 
   await page.reload()
@@ -113,12 +116,13 @@ test('creates, activates, manually selects, and persists a program cycle', async
 }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/training')
+  await waitForExerciseLibrary(page)
 
   await page.getByLabel('Create exercise').click()
   await page.getByRole('textbox', { name: 'Name' }).fill('E2E Squat')
   await fillRestInputs(page, '180')
   await page.getByRole('button', { name: 'Save exercise' }).click()
-  await expect(page.getByText('E2E Squat')).toBeVisible()
+  await expect(page.getByText('E2E Squat')).toBeVisible({ timeout: 15_000 })
 
   await page
     .getByLabel('Current active cycle')
@@ -158,13 +162,16 @@ test('creates, activates, manually selects, and persists a program cycle', async
 test('starts, resumes, edits, and cancels a live workout', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/training')
+  await waitForExerciseLibrary(page)
 
   await page.getByLabel('Create exercise').click()
   await page.getByRole('textbox', { name: 'Name' }).fill('E2E Live press')
   await fillRestInputs(page, '45')
   await page.getByLabel('Tracking preset').selectOption('weight_reps')
   await page.getByRole('button', { name: 'Save exercise' }).click()
-  await expect(page.getByText('E2E Live press')).toBeVisible()
+  await expect(page.getByText('E2E Live press')).toBeVisible({
+    timeout: 15_000,
+  })
 
   await page
     .getByLabel('Current active cycle')
@@ -292,9 +299,9 @@ test('logs, edits, deletes, switches dates, and persists bodyweight after reload
     .getByRole('textbox', { name: 'Bodyweight' })
     .fill('188.4')
   await page.getByRole('button', { name: 'Save' }).click()
-  await expect(
-    page.getByLabel('Bodyweight').getByText('188.4 lb'),
-  ).toBeVisible()
+  await expect(page.getByLabel('Bodyweight').getByText('188.4 lb')).toBeVisible(
+    { timeout: 15_000 },
+  )
 
   await page.reload()
   await expect(
@@ -410,6 +417,7 @@ test('completes the release workflow through backup restore', async ({
   ).toBeVisible()
 
   await page.goto('/training')
+  await waitForExerciseLibrary(page)
   await createExercise(page, 'Audit squat', '180')
   await createExercise(page, 'Audit curl', '60')
   await createExercise(page, 'Audit row', '90')
@@ -554,12 +562,21 @@ test('completes the release workflow through backup restore', async ({
 })
 
 async function createExercise(page: Page, name: string, rest: string) {
+  await waitForExerciseLibrary(page)
   await page.getByLabel('Create exercise').click()
   await page.getByRole('textbox', { name: 'Name' }).fill(name)
   await fillRestInputs(page, rest)
   await page.getByLabel('Tracking preset').selectOption('weight_reps')
   await page.getByRole('button', { name: 'Save exercise' }).click()
-  await expect(page.getByText(name)).toBeVisible()
+  await expect(page.getByText(name)).toBeVisible({ timeout: 15_000 })
+}
+
+async function waitForExerciseLibrary(page: Page) {
+  await expect(
+    page.getByText('Barbell Bench Press', { exact: true }),
+  ).toBeVisible({
+    timeout: 30_000,
+  })
 }
 
 async function fillRestInputs(page: Page, rest: string) {

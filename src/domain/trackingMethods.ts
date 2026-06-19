@@ -27,7 +27,7 @@ export const TRACKING_METHODS = [
     id: 'bodyweight_reps',
     name: 'Bodyweight + reps',
     explanation:
-      'Use for bodyweight movements where each set records repetitions only.',
+      'Legacy preset for bodyweight movements where each set records repetitions only.',
     metrics: [
       {
         key: 'reps',
@@ -47,6 +47,28 @@ export const TRACKING_METHODS = [
       {
         key: 'assistedWeight',
         label: 'Assisted weight',
+        valueType: 'number',
+        unit: 'lb',
+        requiredForCompletion: true,
+      },
+      {
+        key: 'reps',
+        label: 'Reps',
+        valueType: 'integer',
+        unit: null,
+        requiredForCompletion: true,
+      },
+    ],
+  },
+  {
+    id: 'added_weight_reps',
+    name: 'Added weight + reps',
+    explanation:
+      'Use for bodyweight movements where each set records external added load and repetitions.',
+    metrics: [
+      {
+        key: 'addedWeight',
+        label: 'Added weight',
         valueType: 'number',
         unit: 'lb',
         requiredForCompletion: true,
@@ -91,22 +113,14 @@ export const TRACKING_METHODS = [
   },
   {
     id: 'distance_duration',
-    name: 'Distance + duration',
-    explanation:
-      'Use for conditioning or carries where each set records distance and duration.',
+    name: 'Distance',
+    explanation: 'Use for carries where each set records distance.',
     metrics: [
       {
         key: 'distance',
         label: 'Distance',
         valueType: 'number',
-        unit: 'mi',
-        requiredForCompletion: true,
-      },
-      {
-        key: 'durationSeconds',
-        label: 'Duration',
-        valueType: 'durationSeconds',
-        unit: 's',
+        unit: 'ft',
         requiredForCompletion: true,
       },
     ],

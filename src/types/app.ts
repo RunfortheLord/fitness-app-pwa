@@ -2,8 +2,31 @@ import type { LocalDateString } from '@domain/dates'
 
 export type IsoTimestamp = string
 export type EntityStatus = 'active' | 'archived'
+export type ExerciseStatus = EntityStatus | 'hidden'
 export type WeightUnit = 'lb'
 export type EnergyUnit = 'kcal'
+export type ExerciseOrigin = 'built_in' | 'custom'
+export type ExerciseEquipmentType =
+  | 'barbell'
+  | 'dumbbell'
+  | 'machine'
+  | 'cable'
+  | 'bodyweight'
+export type MuscleGroup =
+  | 'chest'
+  | 'back'
+  | 'shoulders'
+  | 'biceps'
+  | 'triceps'
+  | 'forearms'
+  | 'quadriceps'
+  | 'hamstrings'
+  | 'glutes'
+  | 'calves'
+  | 'core'
+  | 'traps'
+  | 'hip abductors'
+  | 'hip adductors'
 
 export type AppMetadata = {
   id: 'app'
@@ -110,6 +133,7 @@ export type TrackingMethodId =
   | 'weight_reps'
   | 'bodyweight_reps'
   | 'assisted_weight_reps'
+  | 'added_weight_reps'
   | 'reps_only'
   | 'duration'
   | 'distance_duration'
@@ -126,9 +150,16 @@ export type Exercise = {
   name: string
   notes: string
   defaultRestSeconds: number
+  defaultWeightIncrement: number | null
   trackingMethodId: TrackingMethodId
   trackingMetrics: TrackingMetric[]
-  status: EntityStatus
+  primaryMuscleGroups: MuscleGroup[]
+  secondaryMuscleGroups: MuscleGroup[]
+  equipmentType: ExerciseEquipmentType
+  recordsRepsPerSide: boolean
+  origin: ExerciseOrigin
+  seedDataVersion: number | null
+  status: ExerciseStatus
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }
