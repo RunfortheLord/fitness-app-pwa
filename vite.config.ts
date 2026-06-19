@@ -15,12 +15,13 @@ export default defineConfig({
         'icons/icon-512.png',
       ],
       manifest: {
-        name: 'Training Log',
-        short_name: 'Training Log',
+        name: 'Fitness Log',
+        short_name: 'Fitness',
         description: 'A local-first fitness training log.',
-        theme_color: '#101112',
-        background_color: '#101112',
+        theme_color: '#101011',
+        background_color: '#101011',
         display: 'standalone',
+        orientation: 'portrait-primary',
         start_url: '/',
         scope: '/',
         icons: [
@@ -28,7 +29,13 @@ export default defineConfig({
             src: '/icons/icon-192.png',
             sizes: '192x192',
             type: 'image/png',
-            purpose: 'any maskable',
+            purpose: 'any',
+          },
+          {
+            src: '/icons/icon-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any',
           },
           {
             src: '/icons/icon-512.png',
@@ -39,6 +46,8 @@ export default defineConfig({
         ],
       },
       workbox: {
+        cleanupOutdatedCaches: true,
+        clientsClaim: false,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
         navigateFallbackDenylist: [/^\/api\//],
       },

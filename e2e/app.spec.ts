@@ -21,7 +21,7 @@ for (const viewport of [
       }) => {
         await page.goto(route.path)
 
-        await expect(page).toHaveTitle(/Training Log/)
+        await expect(page).toHaveTitle(/Fitness Log/)
         await expect(
           page.getByRole('heading', { level: 1, name: route.title }),
         ).toBeVisible()

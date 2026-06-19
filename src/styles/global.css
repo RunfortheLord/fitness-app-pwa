@@ -758,6 +758,18 @@ input::placeholder {
   color: #ffdca8;
 }
 
+.status-message-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.status-message p {
+  margin: var(--space-2) 0 0;
+}
+
 .loading-state {
   display: flex;
   min-height: 54px;
