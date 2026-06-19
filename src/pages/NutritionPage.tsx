@@ -1,4 +1,12 @@
-import { Archive, Edit2, Plus, Search, Trash2, Utensils } from 'lucide-react'
+import {
+  Archive,
+  CopyPlus,
+  Edit2,
+  Plus,
+  Search,
+  Trash2,
+  Utensils,
+} from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import {
@@ -25,12 +33,22 @@ import {
   formatSelectedDateLabel,
   type LocalDateString,
 } from '@domain/dates'
+import {
+  normalizeProviderQuery,
+  type GroupedFoodResult,
+  type NormalizedFoodResult,
+} from '@domain/foodProviderModels'
 import { useDashboardContext } from '@hooks/useDashboardContext'
 import {
   foodRepository,
   type CreateFoodInput,
 } from '@repositories/foodRepository'
 import { settingsRepository } from '@repositories/settingsRepository'
+import {
+  FoodProviderClientError,
+  searchProviderFoods,
+  type FoodProviderClientErrorCode,
+} from '@services/foodProviderClient'
 import {
   nutritionSummaryService,
   type DailyNutritionSummary,
@@ -43,10 +61,39 @@ import type {
 
 type NutritionMode = 'day' | 'foods' | 'targets'
 type SheetState =
-  | { type: 'food'; food: Food | null }
-  | { type: 'log'; food: Food }
+  | { type: 'food'; food: Food | null; initialForm?: FoodFormState }
+  | { type: 'select'; result: FoodSearchResult }
   | { type: 'entry'; entry: FoodLogEntry }
   | null
+
+type FoodFormState = {
+  name: string
+  brandName: string
+  servingQuantity: string
+  servingUnit: string
+  servingDescription: string
+  caloriesPerServing: string
+  proteinGramsPerServing: string
+  carbohydrateGramsPerServing: string
+  fatGramsPerServing: string
+  notes: string
+}
+
+type FoodSearchResult =
+  | { type: 'local'; food: Food; section: 'recent' | 'custom' | 'used' }
+  | { type: 'external'; food: GroupedFoodResult }
+
+type ProviderSearchState = {
+  status:
+    | 'idle'
+    | 'below-threshold'
+    | 'loading'
+    | 'ready'
+    | 'offline'
+    | FoodProviderClientErrorCode
+  results: GroupedFoodResult[]
+  query: string
+}
 
 type LoadState = {
   foods: Food[]
@@ -56,8 +103,9 @@ type LoadState = {
   status: 'loading' | 'ready' | 'error'
 }
 
-const emptyFoodForm = {
+const emptyFoodForm: FoodFormState = {
   name: '',
+  brandName: '',
   servingQuantity: '',
   servingUnit: '',
   servingDescription: '',
@@ -83,6 +131,11 @@ export function NutritionPage() {
   const [query, setQuery] = useState('')
   const [sheet, setSheet] = useState<SheetState>(null)
   const [deleteEntry, setDeleteEntry] = useState<FoodLogEntry | null>(null)
+  const [providerSearch, setProviderSearch] = useState<ProviderSearchState>({
+    status: 'idle',
+    results: [],
+    query: '',
+  })
   const [loadState, setLoadState] = useState<LoadState>({
     foods: [],
     logs: [],
@@ -128,7 +181,84 @@ export function NutritionPage() {
     }
   }, [query, revision, selectedDate])
 
-  const displayedFoods = query.trim() ? loadState.foods : loadState.recentFoods
+  useEffect(() => {
+    const normalizedQuery = normalizeProviderQuery(query)
+    if (!normalizedQuery) {
+      const timeoutId = window.setTimeout(() => {
+        setProviderSearch({ status: 'idle', results: [], query: '' })
+      }, 0)
+      return () => window.clearTimeout(timeoutId)
+    }
+    if (normalizedQuery.length < 2) {
+      const timeoutId = window.setTimeout(() => {
+        setProviderSearch({
+          status: 'below-threshold',
+          results: [],
+          query: normalizedQuery,
+        })
+      }, 0)
+      return () => window.clearTimeout(timeoutId)
+    }
+    if (!navigator.onLine) {
+      const timeoutId = window.setTimeout(() => {
+        setProviderSearch({
+          status: 'offline',
+          results: [],
+          query: normalizedQuery,
+        })
+      }, 0)
+      return () => window.clearTimeout(timeoutId)
+    }
+
+    const controller = new AbortController()
+    const timeoutId = window.setTimeout(() => {
+      setProviderSearch((current) => ({
+        ...current,
+        status: 'loading',
+        query: normalizedQuery,
+      }))
+      void searchProviderFoods({
+        query: normalizedQuery,
+        provider: 'usda',
+        allowFallback: true,
+        pageSize: 20,
+        signal: controller.signal,
+      })
+        .then((response) => {
+          setProviderSearch({
+            status: 'ready',
+            results: response.results,
+            query: response.query,
+          })
+        })
+        .catch((caught: unknown) => {
+          if (controller.signal.aborted) {
+            return
+          }
+          const status =
+            caught instanceof FoodProviderClientError
+              ? caught.code
+              : 'unexpected_server_error'
+          setProviderSearch({
+            status,
+            results: [],
+            query: normalizedQuery,
+          })
+        })
+    }, 350)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+      controller.abort()
+    }
+  }, [query])
+
+  const displayedResults = createSearchSections({
+    localFoods: loadState.foods,
+    providerResults: providerSearch.results,
+    query,
+    recentFoods: loadState.recentFoods,
+  })
   const summary = loadState.summary
   const reload = () => {
     setRevision((value) => value + 1)
@@ -169,11 +299,11 @@ export function NutritionPage() {
         <>
           <DailyTotalsCard summary={summary} />
           <FoodSearchCard
-            foods={displayedFoods}
-            isRecent={!query.trim()}
+            providerSearch={providerSearch}
+            results={displayedResults}
             onCreateFood={() => setSheet({ type: 'food', food: null })}
             onEditFood={(food) => setSheet({ type: 'food', food })}
-            onLogFood={(food) => setSheet({ type: 'log', food })}
+            onSelectResult={(result) => setSheet({ type: 'select', result })}
             query={query}
             setQuery={setQuery}
           />
@@ -199,11 +329,11 @@ export function NutritionPage() {
             }
           />
           <FoodSearchCard
-            foods={loadState.foods}
-            isRecent={false}
+            providerSearch={providerSearch}
+            results={displayedResults}
             onCreateFood={() => setSheet({ type: 'food', food: null })}
             onEditFood={(food) => setSheet({ type: 'food', food })}
-            onLogFood={(food) => setSheet({ type: 'log', food })}
+            onSelectResult={(result) => setSheet({ type: 'select', result })}
             query={query}
             setQuery={setQuery}
           />
@@ -224,6 +354,7 @@ export function NutritionPage() {
       {sheet?.type === 'food' ? (
         <FoodFormSheet
           food={sheet.food}
+          initialForm={sheet.initialForm}
           isOpen
           onClose={() => setSheet(null)}
           onSaved={() => {
@@ -234,11 +365,23 @@ export function NutritionPage() {
         />
       ) : null}
 
-      {sheet?.type === 'log' ? (
-        <LogFoodSheet
-          food={sheet.food}
+      {sheet?.type === 'select' ? (
+        <SelectedFoodSheet
+          result={sheet.result}
           isOpen
           localDate={selectedDate}
+          onCreateCopy={(initialForm) =>
+            setSheet({ type: 'food', food: null, initialForm })
+          }
+          onSelectAlternate={(food) =>
+            setSheet({
+              type: 'select',
+              result: {
+                type: 'external',
+                food: { ...food, alternates: [] },
+              },
+            })
+          }
           onClose={() => setSheet(null)}
           onSaved={() => {
             setMessage('Food logged.')
@@ -318,59 +461,89 @@ function DailyTotalsCard({
 }
 
 function FoodSearchCard({
-  foods,
-  isRecent,
+  providerSearch,
+  results,
   onCreateFood,
   onEditFood,
-  onLogFood,
+  onSelectResult,
   query,
   setQuery,
 }: {
-  foods: Food[]
-  isRecent: boolean
+  providerSearch: ProviderSearchState
+  results: Array<{ title: string; items: FoodSearchResult[] }>
   onCreateFood: () => void
   onEditFood: (food: Food) => void
-  onLogFood: (food: Food) => void
+  onSelectResult: (result: FoodSearchResult) => void
   query: string
   setQuery: (query: string) => void
 }) {
+  const hasResults = results.some((section) => section.items.length > 0)
+  const normalizedQuery = normalizeProviderQuery(query)
+
   return (
-    <Card title={isRecent ? 'Recent foods' : 'Food search'}>
+    <Card title={normalizedQuery ? 'Food search' : 'Recent foods'}>
       <FormField id="food-search" label="Search foods">
         <div className="input-icon-row">
           <Search aria-hidden="true" size={18} />
           <input
             id="food-search"
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search your foods"
+            placeholder="Search foods"
             type="search"
             value={query}
           />
         </div>
       </FormField>
-      {foods.length ? (
-        <div className="nutrition-list">
-          {foods.map((food) => (
-            <FoodLibraryRow
-              food={food}
-              key={food.id}
-              onEdit={() => onEditFood(food)}
-              onLog={() => onLogFood(food)}
-            />
-          ))}
+
+      <ProviderSearchStatus state={providerSearch} query={normalizedQuery} />
+
+      {hasResults ? (
+        <div className="nutrition-search-sections">
+          {results.map((section) =>
+            section.items.length ? (
+              <section
+                aria-label={section.title}
+                className="nutrition-result-section"
+                key={section.title}
+              >
+                <h3>{section.title}</h3>
+                <div className="nutrition-list">
+                  {section.items.map((result) => (
+                    <FoodLibraryRow
+                      key={resultKey(result)}
+                      result={result}
+                      onEdit={
+                        result.type === 'local' &&
+                        result.food.sourceType !== 'provider'
+                          ? () => onEditFood(result.food)
+                          : null
+                      }
+                      onSelect={() => onSelectResult(result)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null,
+          )}
         </div>
       ) : (
         <EmptyState
-          title={isRecent ? 'No recent foods' : 'No foods found'}
+          title={normalizedQuery ? 'No acceptable results' : 'No recent foods'}
           message={
-            isRecent
-              ? 'Logged foods appear here for faster repeat entries.'
-              : 'Create a reusable food before logging it.'
+            normalizedQuery
+              ? 'No local or provider foods with calories, protein, total carbohydrates, and fat matched.'
+              : 'Logged foods appear here for faster repeat entries.'
           }
           action={
-            <SecondaryButton type="button" onClick={onCreateFood}>
-              Create food
-            </SecondaryButton>
+            normalizedQuery ? (
+              <SecondaryButton type="button" onClick={onCreateFood}>
+                Create custom food
+              </SecondaryButton>
+            ) : (
+              <SecondaryButton type="button" onClick={onCreateFood}>
+                Create food
+              </SecondaryButton>
+            )
           }
         />
       )}
@@ -378,39 +551,200 @@ function FoodSearchCard({
   )
 }
 
-function FoodLibraryRow({
-  food,
-  onEdit,
-  onLog,
+function ProviderSearchStatus({
+  query,
+  state,
 }: {
-  food: Food
-  onEdit: () => void
-  onLog: () => void
+  query: string
+  state: ProviderSearchState
 }) {
+  if (!query) {
+    return null
+  }
+  if (state.status === 'below-threshold') {
+    return (
+      <p className="muted" role="status">
+        Type at least 2 characters to search remote foods. Local foods still
+        appear when they match.
+      </p>
+    )
+  }
+  if (state.status === 'loading') {
+    return <LoadingState label="Searching food providers" />
+  }
+  if (state.status === 'ready') {
+    return null
+  }
+
+  const message = providerStatusMessage(state.status)
+  return message ? (
+    <StatusMessage tone="warning">{message}</StatusMessage>
+  ) : null
+}
+
+function providerStatusMessage(status: ProviderSearchState['status']) {
+  switch (status) {
+    case 'offline':
+      return 'Remote food search needs a connection. Recent, custom, and previously used foods are still available.'
+    case 'provider_timeout':
+      return 'Food provider search timed out. Local foods and history are still available.'
+    case 'provider_unavailable':
+      return 'Food providers are unavailable right now. Local foods and history are still available.'
+    case 'provider_rate_limited':
+      return 'Food providers are rate limited right now. Try again later.'
+    case 'server_missing_configuration':
+      return 'Food provider search is not configured on this deployment.'
+    case 'normalization_failure':
+      return 'Food provider results could not be normalized.'
+    case 'unexpected_server_error':
+      return 'Food provider search failed unexpectedly.'
+    case 'invalid_request':
+    case 'query_too_short':
+    case 'no_acceptable_results':
+    case 'idle':
+    case 'below-threshold':
+    case 'loading':
+    case 'ready':
+      return null
+  }
+}
+
+function FoodLibraryRow({
+  result,
+  onEdit,
+  onSelect,
+}: {
+  result: FoodSearchResult
+  onEdit: (() => void) | null
+  onSelect: () => void
+}) {
+  const display = resultDisplay(result)
+
   return (
     <div className="nutrition-item">
       <span className="quick-action-icon">
         <Utensils aria-hidden="true" size={18} />
       </span>
-      <div>
-        <strong>{food.name}</strong>
+      <button
+        className="nutrition-result-button"
+        type="button"
+        onClick={onSelect}
+      >
+        <strong>{display.name}</strong>
+        {display.brand ? <small>{display.brand}</small> : null}
         <small>
-          {servingLabel(food)} - {roundMacro(food.caloriesPerServing)} kcal - P{' '}
-          {roundMacro(food.proteinGramsPerServing)} C{' '}
-          {roundMacro(food.carbohydrateGramsPerServing)} F{' '}
-          {roundMacro(food.fatGramsPerServing)}
+          {display.serving} - {roundMacro(display.calories)} kcal
         </small>
-      </div>
+      </button>
       <div className="row-actions">
-        <IconButton aria-label={`Edit ${food.name}`} onClick={onEdit}>
-          <Edit2 aria-hidden="true" size={18} />
-        </IconButton>
-        <IconButton aria-label={`Log ${food.name}`} onClick={onLog}>
+        {onEdit ? (
+          <IconButton aria-label={`Edit ${display.name}`} onClick={onEdit}>
+            <Edit2 aria-hidden="true" size={18} />
+          </IconButton>
+        ) : null}
+        <IconButton aria-label={`Select ${display.name}`} onClick={onSelect}>
           <Plus aria-hidden="true" size={18} />
         </IconButton>
       </div>
     </div>
   )
+}
+
+function resultDisplay(result: FoodSearchResult) {
+  if (result.type === 'local') {
+    return {
+      name: result.food.name,
+      brand: result.food.brandName ?? null,
+      serving: servingLabel(result.food),
+      calories: result.food.caloriesPerServing,
+    }
+  }
+
+  const macros = result.food.macrosPerServing ?? result.food.macrosPer100Grams
+  return {
+    name: result.food.name,
+    brand: result.food.brandName,
+    serving: providerServingLabel(result.food),
+    calories: macros?.calories ?? 0,
+  }
+}
+
+function createSearchSections({
+  localFoods,
+  providerResults,
+  query,
+  recentFoods,
+}: {
+  localFoods: Food[]
+  providerResults: GroupedFoodResult[]
+  query: string
+  recentFoods: Food[]
+}): Array<{ title: string; items: FoodSearchResult[] }> {
+  const normalizedQuery = normalizeProviderQuery(query)
+  if (!normalizedQuery) {
+    return [
+      {
+        title: 'Recent and previously used',
+        items: recentFoods.map((food) => ({
+          type: 'local',
+          food,
+          section: food.sourceType === 'provider' ? 'used' : 'recent',
+        })),
+      },
+    ]
+  }
+
+  const recentIds = new Set(recentFoods.map((food) => food.id))
+  const matchingRecent = recentFoods.filter((food) =>
+    food.name.toLocaleLowerCase().includes(normalizedQuery.toLocaleLowerCase()),
+  )
+  const customFoods = localFoods.filter(
+    (food) => food.sourceType !== 'provider' && !recentIds.has(food.id),
+  )
+  const usedProviderFoods = localFoods.filter(
+    (food) => food.sourceType === 'provider' && !recentIds.has(food.id),
+  )
+
+  return [
+    {
+      title: 'Recent and previously used',
+      items: matchingRecent.map((food) => ({
+        type: 'local',
+        food,
+        section: food.sourceType === 'provider' ? 'used' : 'recent',
+      })),
+    },
+    {
+      title: 'Custom foods',
+      items: customFoods.map((food) => ({
+        type: 'local',
+        food,
+        section: 'custom',
+      })),
+    },
+    {
+      title: 'Previously used provider foods',
+      items: usedProviderFoods.map((food) => ({
+        type: 'local',
+        food,
+        section: 'used',
+      })),
+    },
+    {
+      title: 'Provider results',
+      items: providerResults.map((food) => ({ type: 'external', food })),
+    },
+  ]
+}
+
+function resultKey(result: FoodSearchResult) {
+  return result.type === 'local' ? `local-${result.food.id}` : result.food.id
+}
+
+function providerServingLabel(food: NormalizedFoodResult) {
+  return `${roundMacro(food.serving.quantity)} ${
+    food.serving.unit || food.serving.description || 'serving'
+  }`
 }
 
 function LoggedFoodsCard({
@@ -470,11 +804,13 @@ function LoggedFoodsCard({
 
 function FoodFormSheet({
   food,
+  initialForm,
   isOpen,
   onClose,
   onSaved,
 }: {
   food: Food | null
+  initialForm?: FoodFormState
   isOpen: boolean
   onClose: () => void
   onSaved: () => void
@@ -483,6 +819,7 @@ function FoodFormSheet({
     food
       ? {
           name: food.name,
+          brandName: food.brandName ?? '',
           servingQuantity: String(food.servingQuantity),
           servingUnit: food.servingUnit,
           servingDescription: food.servingDescription,
@@ -492,7 +829,7 @@ function FoodFormSheet({
           fatGramsPerServing: String(food.fatGramsPerServing),
           notes: food.notes,
         }
-      : emptyFoodForm,
+      : (initialForm ?? emptyFoodForm),
   )
   const [error, setError] = useState<string | null>(null)
   const parsed = useMemo(() => parseFoodForm(form), [form])
@@ -567,6 +904,13 @@ function FoodFormFields({
           id="food-name"
           onChange={(event) => update('name', event.target.value)}
           value={form.name}
+        />
+      </FormField>
+      <FormField id="food-brand" label="Brand or restaurant">
+        <input
+          id="food-brand"
+          onChange={(event) => update('brandName', event.target.value)}
+          value={form.brandName}
         />
       </FormField>
       <FormField id="serving-quantity" label="Serving quantity">
@@ -654,66 +998,115 @@ function MacroInputs({
   )
 }
 
-function LogFoodSheet({
-  food,
+function SelectedFoodSheet({
+  result,
   isOpen,
   localDate,
+  onCreateCopy,
+  onSelectAlternate,
   onClose,
   onSaved,
 }: {
-  food: Food
+  result: FoodSearchResult
   isOpen: boolean
   localDate: LocalDateString
+  onCreateCopy: (initialForm: FoodFormState) => void
+  onSelectAlternate: (food: NormalizedFoodResult) => void
   onClose: () => void
   onSaved: () => void
 }) {
-  const [multiplier, setMultiplier] = useState('1')
+  const options = servingOptionsForResult(result)
+  const [amount, setAmount] = useState(() => String(options[0]?.amount ?? 1))
+  const [unit, setUnit] = useState(() => options[0]?.key ?? 'serving')
   const [error, setError] = useState<string | null>(null)
-  const parsedMultiplier = parsePositiveNumber(multiplier)
-  const preview = parsedMultiplier
-    ? {
-        calories: food.caloriesPerServing * parsedMultiplier,
-        protein: food.proteinGramsPerServing * parsedMultiplier,
-        carbs: food.carbohydrateGramsPerServing * parsedMultiplier,
-        fat: food.fatGramsPerServing * parsedMultiplier,
-      }
-    : null
+  const selectedOption =
+    options.find((option) => option.key === unit) ?? options[0]
+  const parsedAmount = parsePositiveNumber(amount)
+  const servingMultiplier =
+    parsedAmount && selectedOption
+      ? selectedOption.toServingMultiplier(parsedAmount)
+      : null
+  const base = baseMacrosForResult(result)
+  const preview =
+    servingMultiplier && base
+      ? {
+          calories: base.calories * servingMultiplier,
+          protein: base.protein * servingMultiplier,
+          carbs: base.carbs * servingMultiplier,
+          fat: base.fat * servingMultiplier,
+        }
+      : null
+  const display = resultDisplay(result)
+  const isImported =
+    result.type === 'external' ||
+    (result.type === 'local' && result.food.sourceType === 'provider')
 
   function saveLog() {
-    if (!parsedMultiplier) {
-      setError('Serving multiplier must be greater than zero.')
+    if (!servingMultiplier) {
+      setError('Serving amount must be greater than zero.')
       return
     }
 
-    void foodRepository
-      .logFood({
-        foodId: food.id,
-        localDate,
-        servingMultiplier: parsedMultiplier,
-      })
-      .then(onSaved)
-      .catch((caught: unknown) => {
-        setError(
-          caught instanceof Error ? caught.message : 'Food could not log.',
-        )
-      })
+    const action =
+      result.type === 'external'
+        ? foodRepository.logExternalFood({
+            food: result.food,
+            localDate,
+            servingMultiplier,
+          })
+        : foodRepository.logFood({
+            foodId: result.food.id,
+            localDate,
+            servingMultiplier,
+          })
+
+    void action.then(onSaved).catch((caught: unknown) => {
+      setError(caught instanceof Error ? caught.message : 'Food could not log.')
+    })
   }
 
   return (
-    <Sheet isOpen={isOpen} onClose={onClose} title="Log food">
+    <Sheet isOpen={isOpen} onClose={onClose} title="Food details">
       <p className="sheet-context">
-        <strong>{food.name}</strong>
+        <strong>{display.name}</strong>
         <br />
-        <span className="muted">
-          {servingLabel(food)} for {localDate}
-        </span>
+        {display.brand ? <span className="muted">{display.brand}</span> : null}
+        <br />
+        <span className="muted">{display.serving} source serving</span>
       </p>
-      <FormField id="serving-multiplier" label="Serving multiplier">
+      <div className="macro-row nutrition-row">
+        <span>Calories {roundMacro(base?.calories)} kcal</span>
+        <span>Protein {roundMacro(base?.protein)} g</span>
+        <span>Carbs {roundMacro(base?.carbs)} g</span>
+        <span>Fat {roundMacro(base?.fat)} g</span>
+      </div>
+      <FormField id="serving-amount" label="Serving amount">
         <NumericInput
-          id="serving-multiplier"
-          onChange={(event) => setMultiplier(event.target.value)}
-          value={multiplier}
+          id="serving-amount"
+          onChange={(event) => setAmount(event.target.value)}
+          value={amount}
         />
+      </FormField>
+      <FormField id="serving-unit-select" label="Serving unit">
+        <select
+          id="serving-unit-select"
+          onChange={(event) => {
+            const next = options.find(
+              (option) => option.key === event.target.value,
+            )
+            setUnit(event.target.value)
+            if (next) {
+              setAmount(String(next.amount))
+            }
+          }}
+          value={unit}
+        >
+          {options.map((option) => (
+            <option key={option.key} value={option.key}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </FormField>
       {preview ? (
         <p className="muted">
@@ -722,12 +1115,182 @@ function LogFoodSheet({
           {roundMacro(preview.fat)}
         </p>
       ) : null}
+      {result.type === 'external' && result.food.alternates.length > 0 ? (
+        <details className="more-results">
+          <summary>More results ({result.food.alternates.length})</summary>
+          <div className="nutrition-list">
+            {result.food.alternates.map((alternate) => (
+              <button
+                className="alternate-result-row"
+                key={alternate.id}
+                type="button"
+                onClick={() => onSelectAlternate(alternate)}
+              >
+                <strong>{alternate.name}</strong>
+                <small>
+                  {alternate.brandName ? `${alternate.brandName} - ` : ''}
+                  {providerServingLabel(alternate)}
+                </small>
+              </button>
+            ))}
+          </div>
+        </details>
+      ) : null}
       {error ? <ValidationMessage message={error} /> : null}
-      <PrimaryButton disabled={!preview} type="button" onClick={saveLog}>
-        Log food
-      </PrimaryButton>
+      <div className="button-row">
+        <PrimaryButton disabled={!preview} type="button" onClick={saveLog}>
+          Log food
+        </PrimaryButton>
+        {isImported ? (
+          <SecondaryButton
+            type="button"
+            onClick={() =>
+              onCreateCopy(
+                result.type === 'external'
+                  ? foodFormFromExternal(result.food, result.food.name)
+                  : foodFormFromLocal(result.food),
+              )
+            }
+          >
+            <CopyPlus aria-hidden="true" size={18} />
+            Custom copy
+          </SecondaryButton>
+        ) : null}
+      </div>
     </Sheet>
   )
+}
+
+type ServingOption = {
+  amount: number
+  key: string
+  label: string
+  toServingMultiplier: (amount: number) => number | null
+}
+
+function servingOptionsForResult(result: FoodSearchResult): ServingOption[] {
+  if (result.type === 'local') {
+    const options: ServingOption[] = [
+      {
+        amount: result.food.servingQuantity,
+        key: 'serving',
+        label: result.food.servingUnit || result.food.servingDescription,
+        toServingMultiplier: (amount) => amount / result.food.servingQuantity,
+      },
+    ]
+    if (
+      result.food.servingConversionReliable &&
+      result.food.gramsPerServing &&
+      result.food.ouncesPerServing
+    ) {
+      const gramsPerServing = result.food.gramsPerServing
+      const ouncesPerServing = result.food.ouncesPerServing
+      options.push(
+        {
+          amount: gramsPerServing,
+          key: 'g',
+          label: 'g',
+          toServingMultiplier: (amount) => amount / gramsPerServing,
+        },
+        {
+          amount: ouncesPerServing,
+          key: 'oz',
+          label: 'oz',
+          toServingMultiplier: (amount) => amount / ouncesPerServing,
+        },
+      )
+    }
+    return options
+  }
+
+  const options: ServingOption[] = [
+    {
+      amount: result.food.serving.quantity,
+      key: 'serving',
+      label: result.food.serving.unit || result.food.serving.description,
+      toServingMultiplier: (amount) => amount / result.food.serving.quantity,
+    },
+  ]
+
+  if (
+    result.food.serving.conversionReliable &&
+    result.food.serving.gramsPerServing &&
+    result.food.serving.ouncesPerServing
+  ) {
+    const gramsPerServing = result.food.serving.gramsPerServing
+    const ouncesPerServing = result.food.serving.ouncesPerServing
+    options.push(
+      {
+        amount: gramsPerServing,
+        key: 'g',
+        label: 'g',
+        toServingMultiplier: (amount) => amount / gramsPerServing,
+      },
+      {
+        amount: ouncesPerServing,
+        key: 'oz',
+        label: 'oz',
+        toServingMultiplier: (amount) => amount / ouncesPerServing,
+      },
+    )
+  }
+
+  return options
+}
+
+function baseMacrosForResult(result: FoodSearchResult) {
+  if (result.type === 'local') {
+    return {
+      calories: result.food.caloriesPerServing,
+      protein: result.food.proteinGramsPerServing,
+      carbs: result.food.carbohydrateGramsPerServing,
+      fat: result.food.fatGramsPerServing,
+    }
+  }
+
+  const macros = result.food.macrosPerServing ?? result.food.macrosPer100Grams
+  return macros
+    ? {
+        calories: macros.calories,
+        protein: macros.proteinGrams,
+        carbs: macros.carbohydrateGrams,
+        fat: macros.fatGrams,
+      }
+    : null
+}
+
+function foodFormFromExternal(
+  food: NormalizedFoodResult,
+  name: string,
+): FoodFormState {
+  const macros = food.macrosPerServing ?? food.macrosPer100Grams
+  return {
+    name,
+    brandName: food.brandName ?? '',
+    servingQuantity: String(food.serving.quantity),
+    servingUnit: food.serving.unit,
+    servingDescription: food.serving.description,
+    caloriesPerServing: String(macros?.calories ?? ''),
+    proteinGramsPerServing: String(macros?.proteinGrams ?? ''),
+    carbohydrateGramsPerServing: String(macros?.carbohydrateGrams ?? ''),
+    fatGramsPerServing: String(macros?.fatGrams ?? ''),
+    notes: '',
+  }
+}
+
+function foodFormFromLocal(food: Food): FoodFormState {
+  return {
+    name: food.name,
+    brandName: food.brandName ?? '',
+    servingQuantity: String(food.servingQuantity),
+    servingUnit: food.servingUnit,
+    servingDescription: food.servingDescription,
+    caloriesPerServing: String(food.caloriesPerServing),
+    proteinGramsPerServing: String(food.proteinGramsPerServing),
+    carbohydrateGramsPerServing: String(food.carbohydrateGramsPerServing),
+    fatGramsPerServing: String(food.fatGramsPerServing),
+    notes: '',
+  }
 }
 
 function EditFoodLogSheet({
@@ -938,6 +1501,7 @@ function parseFoodForm(
     ok: true,
     value: {
       name,
+      brandName: form.brandName.trim() || null,
       servingQuantity,
       servingUnit: form.servingUnit.trim(),
       servingDescription: form.servingDescription.trim(),

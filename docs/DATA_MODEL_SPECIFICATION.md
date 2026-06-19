@@ -69,6 +69,7 @@ foreign-key ID fields and sort indexes.
 - `proteinGramsPerServing`
 - `carbohydrateGramsPerServing`
 - `fatGramsPerServing`
+- Optional `brandName` for private custom foods.
 - Optional provider metadata: `brandName`, `sourceType`, `provider`,
   `providerRecordId`, `providerDataType`, `sourceName`, `sourceUrl`, `barcode`,
   `sourceUpdatedAt`, `providerIngestedAt`, and `normalizerVersion`
@@ -81,7 +82,9 @@ foreign-key ID fields and sort indexes.
 - `updatedAt`
 
 Imported provider foods are not directly editable. A corrected imported food is
-represented as a separate private custom food in a later workflow.
+represented as a separate private custom food through the Custom copy action.
+Previously used provider foods may be retained in this table for offline recent
+or previously used search results.
 
 ### FoodLogEntry
 

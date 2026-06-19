@@ -83,6 +83,11 @@ server-configuration error and existing local nutrition logging remains usable.
 Provider architecture, licensing, fallback behavior, cache limits, normalized
 schema, and security details are documented in `docs/FOOD_PROVIDERS.md`.
 
+The Nutrition screen searches recent, custom, previously used, and eligible
+provider foods. Remote provider search is debounced and starts after at least
+two normalized characters. Recent foods, custom foods, previously used provider
+foods, and historical logs remain available offline from IndexedDB.
+
 The app is deployed at the origin root to preserve PWA paths and scope:
 `/manifest.webmanifest`, `/sw.js`, `/apple-touch-icon.png`, `/icons/icon-192.png`,
 `/icons/icon-512.png`, manifest `start_url: "/"`, and manifest `scope: "/"`.

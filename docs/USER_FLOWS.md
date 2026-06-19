@@ -15,7 +15,8 @@
 1. User opens Nutrition or taps Add.
 2. User chooses Create Food.
 3. App opens a bottom sheet or full form.
-4. User enters name, serving quantity, serving unit or description, calories, protein, carbohydrates, fat, and optional notes.
+4. User enters name, optional brand, serving quantity, serving unit or
+   description, calories, protein, total carbohydrates, fat, and optional notes.
 5. App validates required fields and nonnegative nutrition values.
 6. User saves.
 7. App stores the reusable food with created and updated timestamps.
@@ -24,14 +25,31 @@
 ## Logging Food
 
 1. User opens Nutrition for the selected local date.
-2. User searches custom foods or selects a recent food.
-3. User selects a food.
-4. User enters a serving multiplier, including decimals when needed.
-5. App previews calories and macros for that multiplier.
-6. User logs the food.
-7. App creates a date-based log entry that snapshots the food values.
-8. Daily totals update immediately.
-9. If the reusable food is edited later, this logged entry keeps its original snapshot values.
+2. User searches recent foods, custom foods, previously used foods, or remote
+   providers.
+3. App searches remote providers only after at least two normalized characters
+   and debounces requests.
+4. User selects a food.
+5. App opens a detail sheet with calories, protein, total carbohydrates, fat,
+   serving amount, and available serving units.
+6. User edits serving amount or chooses grams/mass ounces when reliable
+   conversion is available.
+7. App previews calories and macros for that amount.
+8. User logs the food.
+9. App creates a date-based log entry that snapshots the food values and
+   provider metadata when known.
+10. Daily totals update immediately.
+11. If a reusable or provider-retained food changes later, this logged entry
+    keeps its original snapshot values.
+
+## Correcting an Imported Food
+
+1. User selects an imported provider food or a provider search result.
+2. User chooses Custom copy.
+3. App opens the custom food form prefilled from the provider record.
+4. User edits values locally and saves a private custom food.
+5. App does not submit the custom copy to USDA, Open Food Facts, or another
+   shared database.
 
 ## Entering Bodyweight
 
@@ -164,7 +182,12 @@
 3. App creates a full-fidelity JSON backup with backup schema version and database schema version.
 4. App offers the JSON file for local download/share.
 5. User may also choose CSV export for readable spreadsheet files.
-6. CSV export includes readable records but is not treated as full-fidelity backup.
+6. JSON and CSV exports use historical food-log snapshots, including food name,
+   optional brand or restaurant, provider identity when known, serving amount,
+   consumed multiplier, calories, protein, total carbohydrates, fat, and
+   conversion metadata.
+7. CSV export includes readable records but is not treated as full-fidelity
+   backup.
 
 ## Restoring Backup
 
@@ -184,7 +207,11 @@
 2. Service worker caches the application shell.
 3. User later opens the installed app without internet.
 4. App loads from the cache and reads records from IndexedDB.
-5. User logs food, bodyweight, and workouts offline.
-6. App persists all changes locally.
-7. When online again, no cloud sync is attempted.
-8. If a newer application version is available later, app notifies the user deliberately.
+5. User logs recent foods, private custom foods, and previously used provider
+   foods offline from IndexedDB.
+6. Remote-only provider search clearly indicates that connectivity is required.
+7. User logs bodyweight and workouts offline.
+8. App persists all changes locally.
+9. When online again, no cloud sync is attempted.
+10. If a newer application version is available later, app notifies the user
+    deliberately.

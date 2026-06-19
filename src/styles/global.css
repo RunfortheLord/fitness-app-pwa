@@ -330,6 +330,24 @@ textarea:focus-visible {
   gap: var(--space-2);
 }
 
+.nutrition-search-sections {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.nutrition-result-section {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.nutrition-result-section h3 {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
 .nutrition-item,
 .exercise-item,
 .program-template-row,
@@ -385,6 +403,41 @@ textarea:focus-visible {
   grid-column: 2;
   justify-self: start;
   margin-top: var(--space-1);
+}
+
+.nutrition-result-button,
+.alternate-result-row {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.nutrition-result-button {
+  cursor: pointer;
+}
+
+.alternate-result-row {
+  min-height: 44px;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.more-results {
+  margin: var(--space-2) 0;
+}
+
+.more-results summary {
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--color-text);
+  font-weight: 700;
 }
 
 .program-template-row .row-actions,

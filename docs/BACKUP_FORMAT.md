@@ -85,6 +85,13 @@ CSV export creates a local TAR archive containing one CSV file per exported tabl
 
 CSV files include headers, stable IDs, parent IDs, ordering fields, timestamps, local dates, archived status, source IDs, and escaped values for commas, quotation marks, line breaks, and empty values. Nested snapshot fields are serialized as JSON inside the CSV cell.
 
+Nutrition CSV and JSON exports use stored historical food-log snapshots. They
+include enough snapshot information to reconstruct local date, log timestamp,
+food name, optional brand or restaurant, provider identity when known, serving
+definition, consumed multiplier, calories, protein, total carbohydrates, fat,
+and reliable conversion metadata when available. Export never refetches provider
+records.
+
 CSV is intended for readable analysis and spreadsheet use. CSV import is not supported.
 
 ## Clear All Data

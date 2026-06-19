@@ -119,7 +119,15 @@ This cache is best-effort in serverless environments. Instances may be cold-star
 
 When an external food is logged, the app stores an immutable snapshot containing provider identity, serving data, conversion metadata, macros, macro basis, raw/cooked status, source update timestamp, ingestion timestamp, log timestamp, and normalizer version. Historical totals are computed from the snapshot, not a future provider lookup. Provider outages, provider deletion, cache eviction, or provider data changes do not affect existing logs.
 
-Previously used provider foods may be retained in the local IndexedDB `foods` table for reuse. Provider foods are separate from custom foods and cannot be edited directly. A corrected version should be represented later as a private custom food. Custom foods remain local and are never submitted to USDA, Open Food Facts, or another shared database.
+Previously used provider foods may be retained in the local IndexedDB `foods` table for reuse. Provider foods are separate from custom foods and cannot be edited directly. A corrected version is represented as a separate private custom food through the Custom copy action. Custom foods remain local and are never submitted to USDA, Open Food Facts, or another shared database.
+
+## Search UI Behavior
+
+The Nutrition screen searches local recent, custom, and previously used foods immediately. Remote provider search starts only after at least two normalized characters, is debounced, and cancels stale requests. The UI calls USDA through the provider-independent client service with controlled fallback enabled; Open Food Facts is reached only through the server-side fallback policy after no acceptable USDA results.
+
+Collapsed search rows show food name, optional brand or restaurant, serving size, and calories. Selecting a row opens details with calories, protein, total carbohydrates, fat, editable serving amount, and available serving units. Gram and mass-ounce options appear only when the normalized record has reliable gram conversion metadata.
+
+Provider duplicate groups show the primary representative first and expose alternates through a compact More Results control.
 
 ## Security
 
@@ -130,4 +138,4 @@ The USDA key is read only by Vercel server functions. Browser code uses same-ori
 - Live provider verification requires a real USDA key and was not performed unless a key is already configured securely.
 - Open Food Facts data is community-contributed and may be incomplete or inaccurate.
 - Restaurant and fast-food coverage is limited to records supplied by allowed providers.
-- Barcode scanning, barcode submission, broad nutrition search UI redesign, offline provider search, and custom-food correction workflow are deferred.
+- Barcode scanning, barcode submission, and offline remote-provider search are deferred.

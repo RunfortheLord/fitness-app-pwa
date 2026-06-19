@@ -1,4 +1,7 @@
-import type { NormalizedFoodResult } from '@domain/foodProviderModels'
+import type {
+  GroupedFoodResult,
+  NormalizedFoodResult,
+} from '@domain/foodProviderModels'
 import type { FoodProviderId } from '@shared-types/app'
 
 export type FoodProviderClientErrorCode =
@@ -26,7 +29,7 @@ export class FoodProviderClientError extends Error {
 export type FoodSearchResponse = {
   provider: FoodProviderId | 'all'
   query: string
-  results: NormalizedFoodResult[]
+  results: GroupedFoodResult[]
   fallbackUsed: boolean
 }
 

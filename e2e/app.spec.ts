@@ -251,8 +251,8 @@ test('creates, logs, edits, deletes, and persists nutrition entries', async ({
   await page.getByRole('button', { name: 'Save food' }).click()
 
   await page.getByRole('searchbox', { name: 'Search foods' }).fill('e2e')
-  await page.getByRole('button', { name: 'Log E2E Rice' }).click()
-  await page.getByRole('textbox', { name: 'Serving multiplier' }).fill('1.5')
+  await page.getByRole('button', { name: 'Select E2E Rice' }).click()
+  await page.getByRole('textbox', { name: 'Serving amount' }).fill('1.5')
   await expect(page.getByText(/Preview: 300 kcal/)).toBeVisible()
   await page.getByRole('button', { name: 'Log food', exact: true }).click()
   await expect(
@@ -401,8 +401,8 @@ test('completes the release workflow through backup restore', async ({
   await page.getByRole('textbox', { name: 'Fat per serving' }).fill('4')
   await page.getByRole('button', { name: 'Save food' }).click()
   await page.getByRole('searchbox', { name: 'Search foods' }).fill('audit')
-  await page.getByRole('button', { name: 'Log Audit oats' }).click()
-  await page.getByRole('textbox', { name: 'Serving multiplier' }).fill('1.25')
+  await page.getByRole('button', { name: 'Select Audit oats' }).click()
+  await page.getByRole('textbox', { name: 'Serving amount' }).fill('1.25')
   await expect(page.getByText(/Preview: 250 kcal/)).toBeVisible()
   await page.getByRole('button', { name: 'Log food', exact: true }).click()
   await expect(page.getByText(/1.25x 1 cup .* 250 kcal/)).toBeVisible()

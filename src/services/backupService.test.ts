@@ -5,6 +5,7 @@ import { BUILT_IN_EXERCISES } from '@domain/exerciseLibrary'
 import { createSettingsRepository } from '@repositories/settingsRepository'
 import {
   createBackupService,
+  createCsvFiles,
   csvEscape,
   validateBackup,
 } from '@services/backupService'
@@ -179,6 +180,71 @@ describe('backupService', () => {
       workoutExerciseId: 'history-exercise-1',
     })
     expect(JSON.parse(result.json)).toEqual(result.backup)
+  })
+
+  it('exports provider food log snapshots in JSON and CSV without refetching providers', async () => {
+    await database.foodLogEntries.add({
+      id: 'provider-log-1',
+      localDate: testLocalDate,
+      foodId: 'usda:123',
+      foodSnapshot: {
+        snapshotId: 'snapshot-1',
+        foodName: 'Chicken breast cooked',
+        brandName: 'USDA Test Kitchen',
+        sourceType: 'provider',
+        provider: 'usda',
+        providerRecordId: '123',
+        providerDataType: 'Foundation',
+        servingQuantity: 120,
+        servingUnit: 'g',
+        servingDescription: '120 g',
+        gramsPerServing: 120,
+        ouncesPerServing: 4.232875,
+        servingConversionReliable: true,
+        servingConversionSource: 'provider_serving_weight',
+        caloriesPerServing: 198,
+        proteinGramsPerServing: 37.2,
+        carbohydrateGramsPerServing: 0,
+        fatGramsPerServing: 4.32,
+        macroBasis: 'both',
+        rawCookedStatus: 'cooked',
+        sourceUpdatedAt: '2026-01-01T00:00:00.000Z',
+        providerIngestedAt: '2026-06-19T00:00:00.000Z',
+        normalizerVersion: 1,
+        notes: '',
+      },
+      servingMultiplier: 0.5,
+      computedCalories: 99,
+      computedProteinGrams: 18.6,
+      computedCarbohydrateGrams: 0,
+      computedFatGrams: 2.16,
+      notes: '',
+      createdAt: '2026-06-19T12:00:00.000Z',
+      updatedAt: '2026-06-19T12:00:00.000Z',
+    })
+
+    const result = await createBackupService(database).createJsonBackup(
+      new Date('2026-06-19T14:15:16.000Z'),
+    )
+    expect(result.backup.data.foodLogEntries[0]).toMatchObject({
+      id: 'provider-log-1',
+      foodSnapshot: {
+        brandName: 'USDA Test Kitchen',
+        provider: 'usda',
+        providerRecordId: '123',
+        gramsPerServing: 120,
+      },
+      computedCalories: 99,
+      computedProteinGrams: 18.6,
+    })
+
+    const foodLogCsv = createCsvFiles(result.backup.data).find(
+      (file) => file.name === 'foodLogEntries.csv',
+    )
+    expect(foodLogCsv?.content).toContain('Chicken breast cooked')
+    expect(foodLogCsv?.content).toContain('USDA Test Kitchen')
+    expect(foodLogCsv?.content).toContain('providerRecordId')
+    expect(foodLogCsv?.content).toContain('computedCalories')
   })
 
   it('validates backups with progression recommendation metadata', async () => {

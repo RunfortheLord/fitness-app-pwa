@@ -75,31 +75,47 @@
 
 - Date selector at top.
 - Daily total card with calories and macros.
-- Search input for foods.
-- Recent foods list.
+- Search input for recent, custom, previously used, and provider foods.
+- Remote provider search waits for at least two normalized characters and
+  debounces requests.
+- Results are sectioned in priority order: recent and previously used foods,
+  private custom foods, previously used provider foods, then provider results.
+- Provider loading, offline, timeout, unavailable, rate-limit, server
+  configuration, and unexpected-error states are distinct from no acceptable
+  results.
+- Recent foods list when no search is active.
 - Logged foods grouped for the selected date.
 - Create Food action reachable from header, empty state, and Add sheet.
 
 ### Food Rows
 
 - Food name.
+- Brand or restaurant when available.
 - Serving definition.
-- Calories and macro line.
-- Row-level add button for reusable foods.
+- Calories in collapsed search rows.
+- Row-level select button for reusable or provider foods.
 - Logged rows show multiplier, computed totals, edit action, and delete action.
+- Provider duplicate groups show one primary result and a compact More Results
+  control for alternates.
 
 ### Create/Edit Food Form
 
-- Fields: name, serving quantity, serving unit or description, calories, protein, carbohydrates, fat, notes.
+- Fields: name, optional brand, serving quantity, serving unit or description,
+  calories, protein, carbohydrates, fat, notes.
 - Required fields are marked without excessive copy.
 - Numeric fields reject invalid, blank, negative, or nonnumeric values.
 - Save remains disabled until required fields are valid.
 - Editing a reusable food does not rewrite historical log snapshots.
+- Imported provider foods are read-only. Users can create a separate private
+  custom copy for corrections.
 
 ### Log Food Sheet
 
 - Shows selected food and serving definition.
-- Multiplier input supports decimal values.
+- Selected provider or local food opens a detail sheet with calories, protein,
+  total carbohydrates, fat, editable serving amount, and serving unit selector.
+- Gram and mass-ounce serving options appear only when a reliable gram weight
+  exists. Fluid ounces are not treated as mass ounces.
 - Preview displays computed calories and macros.
 - Save logs the snapshot to the selected date.
 

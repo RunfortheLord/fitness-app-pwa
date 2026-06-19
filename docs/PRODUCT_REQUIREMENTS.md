@@ -70,6 +70,8 @@
 - The app must show daily nutrition totals and recent foods.
 - External food data must use USDA FoodData Central as the primary provider and
   Open Food Facts only as a controlled branded-product fallback.
+- Users must be able to search recent, custom, previously used, and eligible
+  provider foods from the Nutrition screen.
 - External provider foods are eligible only when calories, protein, total
   carbohydrates, and fat are all present and usable. Numeric zero is valid.
 - Logging an external provider food must store an immutable nutrition snapshot
@@ -77,8 +79,8 @@
 - The app must display calories, protein, total carbohydrates, and fat only.
 - The first release must exclude barcode scanning, barcode submission, AI
   food-photo analysis, automatic calorie adjustments, bundled bulk food
-  databases, micronutrients, broad external-food search UI redesign,
-  search-as-you-type Open Food Facts calls, and meal recommendations.
+  databases, micronutrients, search-as-you-type Open Food Facts calls, and meal
+  recommendations.
 
 ### Bodyweight
 
