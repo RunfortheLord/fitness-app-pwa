@@ -117,6 +117,7 @@ export type TrackingMethodId =
 export type TrackingMethod = {
   id: TrackingMethodId
   name: string
+  explanation: string
   metrics: TrackingMetric[]
 }
 

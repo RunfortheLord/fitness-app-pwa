@@ -4,6 +4,8 @@ export const TRACKING_METHODS = [
   {
     id: 'weight_reps',
     name: 'Weight + reps',
+    explanation:
+      'Use for loaded movements where each set records external weight and repetitions.',
     metrics: [
       {
         key: 'weight',
@@ -24,6 +26,8 @@ export const TRACKING_METHODS = [
   {
     id: 'bodyweight_reps',
     name: 'Bodyweight + reps',
+    explanation:
+      'Use for bodyweight movements where each set records repetitions only.',
     metrics: [
       {
         key: 'reps',
@@ -37,6 +41,8 @@ export const TRACKING_METHODS = [
   {
     id: 'assisted_weight_reps',
     name: 'Assisted weight + reps',
+    explanation:
+      'Use for assisted movements where each set records assistance weight and repetitions.',
     metrics: [
       {
         key: 'assistedWeight',
@@ -57,6 +63,8 @@ export const TRACKING_METHODS = [
   {
     id: 'reps_only',
     name: 'Reps only',
+    explanation:
+      'Use for movements where repetitions are the only performance value.',
     metrics: [
       {
         key: 'reps',
@@ -70,6 +78,7 @@ export const TRACKING_METHODS = [
   {
     id: 'duration',
     name: 'Duration',
+    explanation: 'Use for timed work where each set records duration.',
     metrics: [
       {
         key: 'durationSeconds',
@@ -83,6 +92,8 @@ export const TRACKING_METHODS = [
   {
     id: 'distance_duration',
     name: 'Distance + duration',
+    explanation:
+      'Use for conditioning or carries where each set records distance and duration.',
     metrics: [
       {
         key: 'distance',

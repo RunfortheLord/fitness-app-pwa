@@ -318,12 +318,14 @@ textarea:focus-visible {
   color: var(--color-muted);
 }
 
-.nutrition-list {
+.nutrition-list,
+.exercise-list {
   display: grid;
   gap: var(--space-2);
 }
 
-.nutrition-item {
+.nutrition-item,
+.exercise-item {
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr) auto;
   align-items: center;
@@ -336,21 +338,49 @@ textarea:focus-visible {
 }
 
 .nutrition-item strong,
-.nutrition-item small {
+.nutrition-item small,
+.exercise-item strong,
+.exercise-item small {
   display: block;
 }
 
-.nutrition-item strong {
+.nutrition-item strong,
+.exercise-item strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.nutrition-item small {
+.nutrition-item small,
+.exercise-item small {
   margin-top: 2px;
   color: var(--color-muted);
   font-size: 13px;
   line-height: 1.35;
+}
+
+.library-filter-row {
+  margin-bottom: var(--space-4);
+}
+
+.library-filter-row button[aria-pressed='true'] {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+.tracking-method-panel {
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-strong);
+}
+
+.tracking-method-panel p {
+  margin: 0 0 var(--space-3);
+  color: var(--color-muted);
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 .row-actions {

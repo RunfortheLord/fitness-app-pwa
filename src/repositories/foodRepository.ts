@@ -30,6 +30,18 @@ export function createFoodRepository(
   database: TrainingLogDatabase = db,
   testHooks: FoodRepositoryTestHooks = {},
 ) {
+  let lastFoodLogTimestampMs = 0
+
+  function createMonotonicTimestamp() {
+    const currentMs = Date.now()
+    const nextMs =
+      currentMs <= lastFoodLogTimestampMs
+        ? lastFoodLogTimestampMs + 1
+        : currentMs
+    lastFoodLogTimestampMs = nextMs
+    return new Date(nextMs).toISOString()
+  }
+
   function validateFoodInput(input: CreateFoodInput) {
     if (!input.name.trim()) {
       throw new Error('Food name is required.')
@@ -116,7 +128,7 @@ export function createFoodRepository(
 
     async logFood(input: LogFoodInput) {
       validateServingMultiplier(input.servingMultiplier)
-      const now = new Date().toISOString()
+      const now = createMonotonicTimestamp()
       return database.transaction(
         'rw',
         database.foods,

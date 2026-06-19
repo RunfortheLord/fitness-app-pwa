@@ -54,6 +54,31 @@ test('opens the quick action bottom sheet from the center add button', async ({
   const sheet = page.getByRole('dialog', { name: 'Quick actions' })
   await expect(sheet).toBeVisible()
   await expect(sheet.getByRole('button', { name: /Log food/ })).toBeVisible()
+  await expect(
+    sheet.getByRole('button', { name: /Create exercise/ }),
+  ).toBeVisible()
+})
+
+test('creates and persists a custom exercise from the Add sheet', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+
+  await page.getByRole('button', { name: 'Open quick actions' }).click()
+  await page.getByRole('button', { name: /Create exercise/ }).click()
+  await expect(page).toHaveURL(/\/training/)
+  await page.getByRole('textbox', { name: 'Name' }).fill('E2E Bench press')
+  await page.getByRole('textbox', { name: 'Default rest time' }).fill('150')
+  await page.getByLabel('Tracking preset').selectOption('weight_reps')
+  await expect(page.getByText(/external weight and repetitions/)).toBeVisible()
+  await page.getByRole('button', { name: 'Save exercise' }).click()
+
+  await expect(page.getByText('E2E Bench press')).toBeVisible()
+  await expect(page.getByText(/Weight \+ reps - 150s rest/)).toBeVisible()
+
+  await page.reload()
+  await expect(page.getByText('E2E Bench press')).toBeVisible()
 })
 
 test('creates, logs, edits, deletes, and persists nutrition entries', async ({

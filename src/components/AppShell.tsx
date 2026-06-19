@@ -117,13 +117,19 @@ function AppShellContent({ children }: AppShellProps) {
               <small>Placeholder for a selected workout day</small>
             </span>
           </button>
-          <button type="button">
+          <button
+            type="button"
+            onClick={() => {
+              setIsQuickActionOpen(false)
+              void navigate('/training?createExercise=1')
+            }}
+          >
             <span className="quick-action-icon">
               <NotebookPen aria-hidden="true" size={20} />
             </span>
             <span>
-              <strong>Create item</strong>
-              <small>Placeholder for future food and training forms</small>
+              <strong>Create exercise</strong>
+              <small>Add a custom exercise to the library</small>
             </span>
           </button>
           <IconButton
