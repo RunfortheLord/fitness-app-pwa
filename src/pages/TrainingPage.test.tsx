@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { App } from '@app/App'
 import { db } from '@db/database'
+import { HistoryPage } from '@pages/HistoryPage'
 import { HomePage } from '@pages/HomePage'
+import { LiveWorkoutPage } from '@pages/LiveWorkoutPage'
 import { TrainingPage } from '@pages/TrainingPage'
 import { createProgramRepository } from '@repositories/programRepository'
 import { initializeAppData } from '@services/appInitializationService'
@@ -193,6 +195,45 @@ describe('TrainingPage', () => {
     confirm.mockRestore()
   })
 
+  it('starts a selected workout day, logs a set, and recovers after remount', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    await createProgramRepository(db).activateTemplate(program.template.id)
+    const firstRender = renderTraining()
+
+    await user.click(
+      within(await screen.findByLabelText('Workout days')).getByRole('button', {
+        name: /Upper/,
+      }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Start Workout' }))
+
+    expect(await screen.findByText('Live workout')).toBeInTheDocument()
+    await user.type(
+      screen.getByRole('textbox', { name: 'Workout notes' }),
+      'Good warmup',
+    )
+    await user.tab()
+    await user.clear(screen.getByRole('textbox', { name: 'Set 1 Weight' }))
+    await user.type(
+      screen.getByRole('textbox', { name: 'Set 1 Weight' }),
+      '185',
+    )
+    await user.tab()
+    await user.clear(screen.getByRole('textbox', { name: 'Set 1 Reps' }))
+    await user.type(screen.getByRole('textbox', { name: 'Set 1 Reps' }), '8')
+    await user.tab()
+    await user.click(screen.getByRole('button', { name: 'Complete set 1' }))
+
+    expect(await screen.findByText('Rest timer')).toBeInTheDocument()
+    firstRender.unmount()
+    renderTraining(['/workout'])
+
+    expect(await screen.findByDisplayValue('Good warmup')).toBeInTheDocument()
+    expect(await screen.findByDisplayValue('185')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('8')).toBeInTheDocument()
+  })
+
   it('hides archived templates from the library', async () => {
     const user = userEvent.setup()
     await seedProgram(db)
@@ -244,6 +285,8 @@ function renderTraining(initialEntries = ['/training']) {
         children: [
           { index: true, element: <HomePage /> },
           { path: 'training', element: <TrainingPage /> },
+          { path: 'workout', element: <LiveWorkoutPage /> },
+          { path: 'history', element: <HistoryPage /> },
         ],
       },
     ],

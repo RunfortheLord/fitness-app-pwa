@@ -145,6 +145,9 @@ describe('exerciseRepository', () => {
       dayId: active.days[0].id,
       localDate: testLocalDate,
     })
+    await workoutRepository.updateWorkoutSet(started.sets[0].id, {
+      completed: true,
+    })
     const completed = await workoutRepository.completeWorkout({
       workoutId: started.workout.id,
       completedAt: new Date(

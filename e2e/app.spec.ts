@@ -90,7 +90,7 @@ test('creates, activates, manually selects, and persists a program cycle', async
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/training')
 
-  await page.getByRole('button', { name: 'Create exercise' }).click()
+  await page.getByLabel('Create exercise').click()
   await page.getByRole('textbox', { name: 'Name' }).fill('E2E Squat')
   await page.getByRole('textbox', { name: 'Default rest time' }).fill('180')
   await page.getByRole('button', { name: 'Save exercise' }).click()
@@ -126,6 +126,69 @@ test('creates, activates, manually selects, and persists a program cycle', async
     page.getByLabel('Current active cycle').getByText('E2E Strength'),
   ).toBeVisible()
   await expect(page.getByRole('button', { name: /Day A/ })).toBeVisible()
+})
+
+test('starts, resumes, edits, and cancels a live workout', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/training')
+
+  await page.getByLabel('Create exercise').click()
+  await page.getByRole('textbox', { name: 'Name' }).fill('E2E Live press')
+  await page.getByRole('textbox', { name: 'Default rest time' }).fill('45')
+  await page.getByLabel('Tracking preset').selectOption('weight_reps')
+  await page.getByRole('button', { name: 'Save exercise' }).click()
+  await expect(page.getByText('E2E Live press')).toBeVisible()
+
+  await page
+    .getByLabel('Current active cycle')
+    .getByRole('button', { name: 'Create program' })
+    .click()
+  await page.getByRole('textbox', { name: 'Name' }).fill('E2E Live program')
+  await page.getByRole('button', { name: 'Save program' }).click()
+  const builder = page.getByRole('dialog', { name: 'Edit template' })
+  await builder.getByRole('textbox', { name: 'Add workout day' }).fill('Live A')
+  await builder.getByRole('button', { name: 'Add day' }).click()
+  await builder.getByRole('button', { name: 'Add exercise' }).click()
+  await builder.getByLabel('Exercise').selectOption({ label: 'E2E Live press' })
+  await builder.getByRole('textbox', { name: 'Target sets' }).fill('1')
+  await builder.getByRole('button', { name: 'Save prescription' }).click()
+  await builder.getByRole('button', { name: 'Close quick actions' }).click()
+
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: 'Activate E2E Live program' }).click()
+  await page.getByRole('button', { name: /Live A/ }).click()
+  await page
+    .getByRole('dialog', { name: 'Live A' })
+    .getByRole('button', { name: 'Start Workout' })
+    .click()
+
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Live Workout' }),
+  ).toBeVisible()
+  await page.getByRole('textbox', { name: 'Workout notes' }).fill('E2E note')
+  await page.getByRole('textbox', { name: 'Set 1 Weight' }).fill('95')
+  await page.getByRole('textbox', { name: 'Set 1 Reps' }).fill('10')
+  await page.getByRole('button', { name: 'Complete set 1' }).click()
+  await expect(page.getByText('Rest timer')).toBeVisible()
+
+  await page.reload()
+  await expect(
+    page.getByRole('textbox', { name: 'Workout notes' }),
+  ).toHaveValue('E2E note')
+  await expect(page.getByRole('textbox', { name: 'Set 1 Weight' })).toHaveValue(
+    '95',
+  )
+  await expect(page.getByRole('textbox', { name: 'Set 1 Reps' })).toHaveValue(
+    '10',
+  )
+
+  await page.getByRole('button', { name: 'Workout actions' }).click()
+  await page.getByRole('button', { name: /Cancel Workout/ }).click()
+  await page
+    .getByRole('dialog', { name: 'Cancel workout?' })
+    .getByRole('button', { name: 'Cancel Workout' })
+    .click()
+  await expect(page).toHaveURL(/\/training/)
 })
 
 test('creates, logs, edits, deletes, and persists nutrition entries', async ({

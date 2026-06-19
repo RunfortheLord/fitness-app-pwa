@@ -109,13 +109,19 @@ function AppShellContent({ children }: AppShellProps) {
               <small>Save pounds for the selected date</small>
             </span>
           </button>
-          <button type="button">
+          <button
+            type="button"
+            onClick={() => {
+              setIsQuickActionOpen(false)
+              void navigate('/workout')
+            }}
+          >
             <span className="quick-action-icon">
               <Dumbbell aria-hidden="true" size={20} />
             </span>
             <span>
-              <strong>Start workout</strong>
-              <small>Placeholder for a selected workout day</small>
+              <strong>Start or resume workout</strong>
+              <small>Open active workout or choose a day from Training</small>
             </span>
           </button>
           <button
@@ -173,6 +179,10 @@ function getRouteTitle(pathname: string) {
 
   if (pathname.startsWith('/training')) {
     return 'Training'
+  }
+
+  if (pathname.startsWith('/workout')) {
+    return 'Live Workout'
   }
 
   if (pathname.startsWith('/history')) {

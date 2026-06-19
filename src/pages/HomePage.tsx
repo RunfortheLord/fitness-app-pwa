@@ -208,7 +208,12 @@ export function HomePage() {
           </p>
           <p className="muted">Started {dashboard.activeWorkout.localDate}</p>
           <div className="button-row">
-            <PrimaryButton type="button">Resume workout</PrimaryButton>
+            <PrimaryButton
+              type="button"
+              onClick={() => void navigate('/workout')}
+            >
+              Resume workout
+            </PrimaryButton>
           </div>
         </Card>
       ) : null}
@@ -240,6 +245,7 @@ export function HomePage() {
           <PrimaryButton
             type="button"
             disabled={!dashboard?.activeProgram?.days.length}
+            onClick={() => void navigate('/training')}
           >
             Start workout
           </PrimaryButton>

@@ -9,7 +9,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import {
   BottomSheet,
@@ -27,6 +27,7 @@ import {
   ValidationMessage,
 } from '@components/ui'
 import { TRACKING_METHODS, getTrackingMethod } from '@domain/trackingMethods'
+import { formatLocalDate } from '@domain/dates'
 import {
   exerciseRepository,
   type CreateExerciseInput,
@@ -35,6 +36,7 @@ import {
   programRepository,
   type CreateTemplateExerciseInput,
 } from '@repositories/programRepository'
+import { workoutRepository } from '@repositories/workoutRepository'
 import type {
   ActiveCycleWorkoutDay,
   ActiveCycleWorkoutExercise,
@@ -122,6 +124,7 @@ const emptyPrescriptionForm: PrescriptionFormState = {
 
 export function TrainingPage() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [view, setView] = useState<ExerciseView>('active')
   const [sheet, setSheet] = useState<SheetState>(null)
@@ -339,6 +342,10 @@ export function TrainingPage() {
         <WorkoutDayDetailSheet
           isOpen
           onClose={() => setSheet(null)}
+          onStarted={() => {
+            setSheet(null)
+            void navigate('/workout')
+          }}
           selectedDay={activeSheet.selectedDay}
         />
       ) : null}
@@ -1146,12 +1153,62 @@ function PrescriptionEditor({
 function WorkoutDayDetailSheet({
   isOpen,
   onClose,
+  onStarted,
   selectedDay,
 }: {
   isOpen: boolean
   onClose: () => void
+  onStarted: () => void
   selectedDay: NonNullable<SelectedDay>
 }) {
+  const [error, setError] = useState<string | null>(null)
+  const [existingWorkoutId, setExistingWorkoutId] = useState<string | null>(
+    null,
+  )
+
+  function startWorkout() {
+    void workoutRepository
+      .startWorkout({
+        activeCycleId: selectedDay.cycle.id,
+        dayId: selectedDay.day.id,
+        localDate: formatLocalDate(new Date()),
+      })
+      .then(onStarted)
+      .catch((caught: unknown) => {
+        const message =
+          caught instanceof Error ? caught.message : 'Workout could not start.'
+        setError(message)
+        if (message.includes('active workout')) {
+          void workoutRepository.getActiveWorkout().then((workout) => {
+            setExistingWorkoutId(workout?.id ?? null)
+          })
+        }
+      })
+  }
+
+  function cancelCurrentWorkout() {
+    if (!existingWorkoutId) {
+      return
+    }
+    if (!window.confirm('Cancel the current active workout?')) {
+      return
+    }
+    void workoutRepository
+      .cancelWorkout(existingWorkoutId)
+      .then(() => {
+        setExistingWorkoutId(null)
+        setError(null)
+        startWorkout()
+      })
+      .catch((caught: unknown) => {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : 'Current workout could not be cancelled.',
+        )
+      })
+  }
+
   return (
     <BottomSheet isOpen={isOpen} onClose={onClose} title={selectedDay.day.name}>
       <p className="sheet-context">
@@ -1177,6 +1234,29 @@ function WorkoutDayDetailSheet({
           title="No prescribed exercises"
           message="Edit the current cycle to add exercises before starting a future live workout."
         />
+      )}
+      {error ? <ValidationMessage message={error} /> : null}
+      {existingWorkoutId ? (
+        <div className="button-row">
+          <PrimaryButton type="button" onClick={onStarted}>
+            Resume
+          </PrimaryButton>
+          <SecondaryButton
+            className="button-danger"
+            type="button"
+            onClick={cancelCurrentWorkout}
+          >
+            Cancel Current Workout
+          </SecondaryButton>
+        </div>
+      ) : (
+        <PrimaryButton
+          disabled={!selectedDay.exercises.length}
+          type="button"
+          onClick={startWorkout}
+        >
+          Start Workout
+        </PrimaryButton>
       )}
     </BottomSheet>
   )

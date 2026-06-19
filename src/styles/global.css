@@ -415,6 +415,122 @@ textarea:focus-visible {
   background: var(--color-surface-strong);
 }
 
+.live-workout-hero h2,
+.exercise-card h2 {
+  margin: 0;
+}
+
+.live-workout-title-row,
+.exercise-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.live-workout-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.live-workout-stats span {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-strong);
+  color: var(--color-muted);
+  font-weight: 800;
+}
+
+.exercise-card {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.exercise-card.skipped {
+  opacity: 0.72;
+}
+
+.set-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.set-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  align-items: end;
+  min-width: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-strong);
+}
+
+.set-number {
+  grid-column: 1 / -1;
+}
+
+.set-number strong,
+.set-number small,
+.set-row label span {
+  display: block;
+}
+
+.set-number strong {
+  font-size: 18px;
+}
+
+.set-number small,
+.set-row label span {
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.set-row input {
+  min-height: 44px;
+  margin-top: var(--space-1);
+  padding: 0 var(--space-2);
+}
+
+.rest-timer-card {
+  border-color: rgb(143 124 255 / 50%);
+}
+
+.live-workout-finish {
+  position: sticky;
+  bottom: calc(env(safe-area-inset-bottom) + var(--bottom-nav-height));
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgb(29 29 31 / 96%);
+  backdrop-filter: blur(14px);
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  margin-bottom: var(--space-4);
+}
+
+.checkbox-row input {
+  width: 22px;
+  min-height: 22px;
+}
+
 .inline-editor {
   margin-top: var(--space-4);
   background: var(--color-surface);
