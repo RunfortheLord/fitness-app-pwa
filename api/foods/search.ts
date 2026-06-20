@@ -13,6 +13,11 @@ type VercelResponse = {
   json(value: unknown): void
 }
 
+type ProviderErrorResponse = {
+  ok: false
+  error: { code: string; message: string }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Cache-Control', 'no-store')
 
@@ -40,7 +45,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return
   }
 
-  res.status(statusForError(result.error.code)).json(result)
+  const errorResult = result as ProviderErrorResponse
+  res.status(statusForError(errorResult.error.code)).json(errorResult)
 }
 
 function readQueryValue(value: string | string[] | undefined) {
