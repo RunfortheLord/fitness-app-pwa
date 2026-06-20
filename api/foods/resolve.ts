@@ -1,4 +1,6 @@
-import { handleFoodResolve } from '../../src/server/foodProviderApi'
+import { handleFoodResolve } from '../../src/server/foodProviderApi.js'
+
+declare const process: { env: Record<string, string | undefined> }
 
 type VercelRequest = {
   method?: string

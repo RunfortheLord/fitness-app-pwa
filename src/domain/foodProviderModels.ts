@@ -4,7 +4,7 @@ import type {
   FoodProviderId,
   IsoTimestamp,
   RawCookedStatus,
-} from '@shared-types/app'
+} from '../types/app.js'
 
 export const FOOD_NORMALIZER_VERSION = 1
 export const GRAMS_PER_OUNCE = 28.349523125
@@ -255,7 +255,7 @@ export function rankFoods(
         textRelevance(food.normalizedSearchName, normalizedQuery) +
         cookedMeatBonus(food),
     }))
-    .toSorted(
+    .sort(
       (left, right) =>
         right.relevanceScore - left.relevanceScore ||
         right.providerPriority - left.providerPriority ||
@@ -277,7 +277,7 @@ export function groupDuplicateFoods(
 
   return [...groups.entries()]
     .map(([key, group]) => {
-      const sorted = group.toSorted(
+      const sorted = [...group].sort(
         (left, right) =>
           right.providerPriority - left.providerPriority ||
           right.relevanceScore - left.relevanceScore ||
@@ -298,7 +298,7 @@ export function groupDuplicateFoods(
             : [],
       }
     })
-    .toSorted(
+    .sort(
       (left, right) =>
         right.relevanceScore - left.relevanceScore ||
         right.providerPriority - left.providerPriority ||

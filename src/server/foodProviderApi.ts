@@ -1,12 +1,12 @@
-import { normalizeProviderQuery } from '../domain/foodProviderModels'
+import { normalizeProviderQuery } from '../domain/foodProviderModels.js'
 import {
   createOpenFoodFactsAdapter,
   createUsdaAdapter,
   resolveUsdaFood,
   type ProviderAdapter,
-} from './foodProviderAdapters'
-import { TtlCache } from './foodProviderCache'
-import { ProviderError, toProviderError } from './foodProviderErrors'
+} from './foodProviderAdapters.js'
+import { TtlCache } from './foodProviderCache.js'
+import { ProviderError, toProviderError } from './foodProviderErrors.js'
 
 export type FoodProviderApiConfig = {
   usdaApiKey?: string

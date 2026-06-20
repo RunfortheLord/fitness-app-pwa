@@ -12,8 +12,8 @@ import {
   type NormalizedFoodMacros,
   type NormalizedFoodPortion,
   type NormalizedFoodResult,
-} from '../domain/foodProviderModels'
-import { ProviderError } from './foodProviderErrors'
+} from '../domain/foodProviderModels.js'
+import { ProviderError } from './foodProviderErrors.js'
 
 export type ProviderSearchInput = {
   query: string
