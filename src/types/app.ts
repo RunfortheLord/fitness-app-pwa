@@ -447,6 +447,7 @@ export type WorkoutSet = {
   targetSnapshot?: WorkoutSetTargetSnapshot | null
   targetRecommendation?: WorkoutSetTargetRecommendation | null
   metricValues: Record<string, number | boolean | null>
+  metricValueSources?: Record<string, WorkoutSetMetricValueSource>
   rir: number | null
   completed: boolean
   completedAt: IsoTimestamp | null
@@ -463,6 +464,7 @@ export type WorkoutHistoryEntry = Workout & {
 
 export type WorkoutHistoryExercise = WorkoutExercise
 export type WorkoutHistorySet = Omit<WorkoutSet, 'createdAt' | 'updatedAt'>
+export type WorkoutSetMetricValueSource = 'manual' | 'auto'
 
 export type WorkoutSetTargetSnapshot = {
   trackingMethodId: TrackingMethodId

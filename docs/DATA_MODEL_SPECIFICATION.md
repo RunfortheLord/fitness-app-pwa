@@ -299,6 +299,8 @@ Provider snapshot metadata is optional so old local food logs remain readable.
   original, suggested, user-edited, reason, explanation, source set, and
   generated timestamp
 - `metricValues`
+- `metricValueSources`: optional per-field ownership map for active workout
+  propagation; values are `manual` or `auto`. Missing maps are treated as empty.
 - `rir`
 - `completed`
 - `completedAt`
@@ -504,6 +506,11 @@ not add distance or moving time.
   FoodData Central API keys. The migration is additive and does not change
   meals, foods, bodyweight entries, workouts, history, programs, exercises,
   runs, or general settings.
+- Schema version 7 adds optional per-field workout-set value ownership metadata
+  used by live-workout forward propagation. The migration initializes missing
+  ownership maps to empty objects for active and historical workout sets without
+  changing stored set values, completed state, history, exercises, nutrition,
+  bodyweight, runs, settings, API-key settings, or object-store names.
 
 ## Transaction Boundaries
 

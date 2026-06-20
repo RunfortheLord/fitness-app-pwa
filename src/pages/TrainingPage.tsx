@@ -1861,8 +1861,6 @@ function ExerciseLibraryRow({
   onHide: () => void
   onRestore: () => void
 }) {
-  const trackingMethod = getTrackingMethod(exercise.trackingMethodId)
-
   return (
     <div className="exercise-item">
       <span className="quick-action-icon">
@@ -1870,11 +1868,7 @@ function ExerciseLibraryRow({
       </span>
       <div>
         <strong>{exercise.name}</strong>
-        <small>
-          {trackingMethod?.name ?? exercise.trackingMethodId} -{' '}
-          {exercise.defaultRestSeconds}s rest -{' '}
-          {exercise.origin === 'built_in' ? 'Built-in' : 'Custom'}
-        </small>
+        <small>{exerciseLibraryMetadata(exercise)}</small>
         <small>{metricSummary(exercise)}</small>
         {exercise.notes ? <small>{exercise.notes}</small> : null}
       </div>
@@ -2318,6 +2312,15 @@ function exerciseMetadata(exercise: Exercise) {
   return `${formatEquipment(exercise.equipmentType)} - ${muscles} - ${
     trackingMethod?.name ?? exercise.trackingMethodId
   }${exercise.origin === 'custom' ? ' - Custom' : ''}`
+}
+
+function exerciseLibraryMetadata(exercise: Exercise) {
+  const trackingMethod = getTrackingMethod(exercise.trackingMethodId)
+  const trackingLabel = trackingMethod?.name ?? exercise.trackingMethodId
+  if (exercise.origin === 'built_in') {
+    return `${trackingLabel} - Built-in - ${exercise.defaultRestSeconds}s rest`
+  }
+  return `${trackingLabel} - ${exercise.defaultRestSeconds}s rest - Custom`
 }
 
 function isRepetitionBased(exercise: Exercise) {

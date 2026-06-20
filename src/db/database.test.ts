@@ -361,6 +361,70 @@ describe('database', () => {
 
     await destroyTestDatabase(migratedDatabase)
   })
+
+  it('migrates v6 workout sets with empty metric value source metadata', async () => {
+    const name = `training-log-v6-set-source-migration-${crypto.randomUUID()}`
+    const oldDatabase = new Dexie(name)
+    oldDatabase.version(6).stores(v6Stores)
+    await oldDatabase.table('appMetadata').put({
+      id: 'app',
+      databaseSchemaVersion: 6,
+      backupSchemaVersion: 1,
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('workoutSets').put({
+      id: 'set-1',
+      workoutId: 'workout-1',
+      workoutExerciseId: 'workout-exercise-1',
+      setNumber: 1,
+      targetSnapshot: null,
+      targetRecommendation: null,
+      metricValues: { weight: 185, reps: 5 },
+      rir: null,
+      completed: false,
+      completedAt: null,
+      restSecondsUsed: null,
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('workoutHistorySets').put({
+      id: 'history-set-1',
+      workoutId: 'history-1',
+      workoutExerciseId: 'history-exercise-1',
+      setNumber: 1,
+      targetSnapshot: null,
+      targetRecommendation: null,
+      metricValues: { weight: 185, reps: 5 },
+      rir: 1,
+      completed: true,
+      completedAt: '2026-06-18T12:05:00.000Z',
+      restSecondsUsed: 120,
+    })
+    oldDatabase.close()
+
+    const migratedDatabase = new TrainingLogDatabase(name)
+
+    await expect(
+      migratedDatabase.workoutSets.get('set-1'),
+    ).resolves.toMatchObject({
+      metricValues: { weight: 185, reps: 5 },
+      metricValueSources: {},
+    })
+    await expect(
+      migratedDatabase.workoutHistorySets.get('history-set-1'),
+    ).resolves.toMatchObject({
+      metricValues: { weight: 185, reps: 5 },
+      metricValueSources: {},
+    })
+    await expect(
+      migratedDatabase.appMetadata.get('app'),
+    ).resolves.toMatchObject({
+      databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+    })
+
+    await destroyTestDatabase(migratedDatabase)
+  })
 })
 
 const v2Stores = {
@@ -398,4 +462,16 @@ const v3Stores = {
   ...v2Stores,
   exercises:
     '&id, status, origin, seedDataVersion, name, trackingMethodId, updatedAt',
+}
+
+const v6Stores = {
+  ...v3Stores,
+  bodyweightEntries: '&id, localDate, createdAt, updatedAt',
+  runs: '&id, status, localDate, startedAt, completedAt',
+  runSamples:
+    '&id, runId, timestamp, decision, rejectionReason, [runId+timestamp]',
+  runPauses: '&id, runId, startedAt, endedAt',
+  runSplits: '&id, runId, mileNumber, completedAt',
+  runClassifications: '&id, runId, type, startedAt',
+  apiKeyIntegrationSettings: '&id, status, updatedAt',
 }

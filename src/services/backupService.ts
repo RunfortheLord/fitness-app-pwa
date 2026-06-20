@@ -488,6 +488,10 @@ const metricValuesSchema = z.record(
   z.string(),
   z.union([z.number().finite(), z.boolean(), z.null()]),
 )
+const metricValueSourcesSchema = z.record(
+  z.string(),
+  z.enum(['manual', 'auto']),
+)
 const workoutSetSchema = z.object({
   id: idSchema,
   workoutId: idSchema,
@@ -502,6 +506,7 @@ const workoutSetSchema = z.object({
     .optional()
     .default(null),
   metricValues: metricValuesSchema,
+  metricValueSources: metricValueSourcesSchema.optional().default({}),
   rir: z.union([nonNegativeNumber, z.null()]),
   completed: z.boolean(),
   completedAt: z.union([isoTimestampSchema, z.null()]),

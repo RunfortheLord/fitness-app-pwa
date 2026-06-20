@@ -143,13 +143,22 @@ describe('SettingsPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Test Connection' }))
     await waitFor(() => expect(mockTestUsdaApiKey).toHaveBeenCalledTimes(2))
+    await waitFor(async () =>
+      expect(await settingsRepository.getUsdaApiKeySettings()).toMatchObject({
+        apiKey: 'first-key',
+        status: 'connected',
+      }),
+    )
 
     await user.click(screen.getByRole('button', { name: 'Replace Key' }))
     await user.type(screen.getByLabelText('USDA API key'), 'second-key')
     await user.click(screen.getByRole('button', { name: 'Save key' }))
-    await expect(
-      settingsRepository.getUsdaApiKeySettings(),
-    ).resolves.toMatchObject({ apiKey: 'second-key', status: 'connected' })
+    await waitFor(async () =>
+      expect(await settingsRepository.getUsdaApiKeySettings()).toMatchObject({
+        apiKey: 'second-key',
+        status: 'connected',
+      }),
+    )
 
     await user.click(screen.getByRole('button', { name: 'Remove Key' }))
     await waitFor(() =>

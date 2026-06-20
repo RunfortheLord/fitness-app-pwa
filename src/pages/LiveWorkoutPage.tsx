@@ -31,7 +31,10 @@ import {
 } from '@components/ui'
 import { getRestTimerRemainingSeconds } from '@domain/restTimer'
 import { exerciseRepository } from '@repositories/exerciseRepository'
-import { workoutRepository } from '@repositories/workoutRepository'
+import {
+  workoutRepository,
+  type WorkoutSetMetricValue,
+} from '@repositories/workoutRepository'
 import type {
   Exercise,
   ActiveCycleWorkoutExercise,
@@ -348,12 +351,14 @@ export function LiveWorkoutPage() {
               workoutRepository
                 .updateWorkoutSet(set.id, { completed })
                 .then(() =>
-                  completed && restSeconds > 0
-                    ? workoutRepository.setRestTimer(
-                        state.workout.id,
-                        restSeconds,
-                      )
-                    : undefined,
+                  !completed
+                    ? workoutRepository.dismissRestTimer(state.workout.id)
+                    : restSeconds > 0
+                      ? workoutRepository.setRestTimer(
+                          state.workout.id,
+                          restSeconds,
+                        )
+                      : undefined,
                 ),
             )
           }}
@@ -368,11 +373,11 @@ export function LiveWorkoutPage() {
           }
           onSetMetric={(set, metricValues) => {
             run(
-              updateSetAndLaterIncompleteSets({
-                allSets: activeSets,
-                set,
-                metricValues,
-              }),
+              workoutRepository.updateWorkoutSetMetricAndPropagate(
+                set.id,
+                metricValues.key,
+                metricValues.value,
+              ),
             )
           }}
           onSetRir={(set, rir) =>
@@ -480,7 +485,10 @@ function ExerciseWorkspace({
   onNext: () => void
   onPrevious: () => void
   onReplaceExercise: () => void
-  onSetMetric: (set: WorkoutSet, values: WorkoutSet['metricValues']) => void
+  onSetMetric: (
+    set: WorkoutSet,
+    value: { key: string; value: WorkoutSetMetricValue },
+  ) => void
   onSetRir: (set: WorkoutSet, rir: number | null) => void
   onSkip: (skipped: boolean) => void
   prescription: ActiveCycleWorkoutExercise | undefined
@@ -558,7 +566,7 @@ function ExerciseWorkspace({
             metrics={metrics}
             onComplete={(completed) => onCompleteSet(set, completed)}
             onDelete={() => onDeleteSet(set.id)}
-            onMetricChange={(values) => onSetMetric(set, values)}
+            onMetricChange={(key, value) => onSetMetric(set, { key, value })}
             onRirChange={(rir) => onSetRir(set, rir)}
             prescription={prescription}
             set={set}
@@ -590,47 +598,43 @@ function SetRow({
   metrics: TrackingMetric[]
   onComplete: (completed: boolean) => void
   onDelete: () => void
-  onMetricChange: (values: WorkoutSet['metricValues']) => void
+  onMetricChange: (key: string, value: WorkoutSetMetricValue) => void
   onRirChange: (rir: number | null) => void
   prescription: ActiveCycleWorkoutExercise | undefined
   set: WorkoutSet
 }) {
   const showRir = supportsRir(metrics) && set.id === finalProgrammedSetId
   const repsPerSide = exerciseRecordsRepsPerSide(exercise)
-  const completionError = validateSetForCompletion(set, metrics, showRir)
+  const invalidMetricKeys = invalidRequiredMetricKeys(set, metrics)
   return (
-    <div className="set-row">
+    <div className={set.completed ? 'set-row completed' : 'set-row'}>
       <div className="set-number">
-        <strong>Set {set.setNumber}</strong>
-        <small>{set.targetSnapshot ? 'Programmed' : 'Added'}</small>
+        <strong>{set.setNumber}</strong>
       </div>
       {metrics.map((metric) => (
         <label key={metric.key}>
           <span>{formatMetricLabel(metric, repsPerSide)}</span>
-          <NumericInput
+          <MetricNumericInput
             aria-label={`Set ${set.setNumber} ${formatMetricLabel(
               metric,
               repsPerSide,
             )}`}
             disabled={set.completed}
-            onBlur={(event) =>
-              onMetricChange({
-                ...set.metricValues,
-                [metric.key]: parseMetricValue(event.currentTarget.value),
-              })
-            }
+            invalid={invalidMetricKeys.has(metric.key)}
+            key={`${metric.key}:${formatMetricInput(set.metricValues[metric.key])}`}
+            onValueChange={(value) => onMetricChange(metric.key, value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
                 event.preventDefault()
                 event.currentTarget.blur()
               }
             }}
-            defaultValue={formatMetricInput(set.metricValues[metric.key])}
             placeholder={
               metric.key === 'reps'
-                ? (formatRepTarget(prescription) ?? undefined)
+                ? (formatRepTargetPlaceholder(prescription) ?? undefined)
                 : undefined
             }
+            value={formatMetricInput(set.metricValues[metric.key])}
           />
         </label>
       ))}
@@ -640,6 +644,9 @@ function SetRow({
           <NumericInput
             aria-label={`Set ${set.setNumber} final RIR`}
             disabled={set.completed}
+            aria-invalid={
+              showRir && (set.rir === null || set.rir === undefined)
+            }
             onBlur={(event) =>
               onRirChange(parseNullableNumber(event.currentTarget.value))
             }
@@ -672,74 +679,43 @@ function SetRow({
       <IconButton aria-label={`Delete set ${set.setNumber}`} onClick={onDelete}>
         <Trash2 aria-hidden="true" size={18} />
       </IconButton>
-      {completionError ? (
-        <small className="validation-message">{completionError}</small>
-      ) : null}
     </div>
   )
 }
 
-function updateSetAndLaterIncompleteSets({
-  allSets,
-  metricValues,
-  set,
-}: {
-  allSets: WorkoutSet[]
-  metricValues: WorkoutSet['metricValues']
-  set: WorkoutSet
+function MetricNumericInput({
+  disabled,
+  invalid,
+  onKeyDown,
+  onValueChange,
+  placeholder,
+  value,
+  ...props
+}: Omit<
+  React.ComponentProps<typeof NumericInput>,
+  'aria-invalid' | 'onChange' | 'value'
+> & {
+  invalid: boolean
+  onValueChange: (value: WorkoutSetMetricValue) => void
+  value: string
 }) {
-  const updateCurrent = workoutRepository.updateWorkoutSet(set.id, {
-    metricValues,
-  })
-  const loadKey = loadMetricKeyFromValues(metricValues)
-  const oldLoad = loadKey ? set.metricValues[loadKey] : null
-  const newLoad = loadKey ? metricValues[loadKey] : null
-  const oldReps = set.metricValues.reps
-  const newReps = metricValues.reps
-  const shouldPropagate =
-    !set.completed &&
-    loadKey !== null &&
-    typeof oldLoad === 'number' &&
-    typeof oldReps === 'number' &&
-    typeof newLoad === 'number' &&
-    typeof newReps === 'number' &&
-    (oldLoad !== newLoad || oldReps !== newReps)
+  const [draft, setDraft] = useState(value)
 
-  if (!shouldPropagate) {
-    return updateCurrent
-  }
-
-  return updateCurrent.then(() =>
-    Promise.all(
-      allSets
-        .filter(
-          (candidate) =>
-            candidate.setNumber > set.setNumber && !candidate.completed,
-        )
-        .map((candidate) =>
-          workoutRepository.updateWorkoutSet(candidate.id, {
-            metricValues: {
-              ...candidate.metricValues,
-              [loadKey]: newLoad,
-              reps: newReps,
-            },
-          }),
-        ),
-    ),
+  return (
+    <NumericInput
+      {...props}
+      aria-invalid={invalid}
+      disabled={disabled}
+      onChange={(event) => {
+        const next = event.currentTarget.value
+        setDraft(next)
+        onValueChange(parseMetricValue(next))
+      }}
+      onKeyDown={onKeyDown}
+      placeholder={placeholder}
+      value={draft}
+    />
   )
-}
-
-function loadMetricKeyFromValues(metricValues: WorkoutSet['metricValues']) {
-  if ('weight' in metricValues) {
-    return 'weight'
-  }
-  if ('assistedWeight' in metricValues) {
-    return 'assistedWeight'
-  }
-  if ('addedWeight' in metricValues) {
-    return 'addedWeight'
-  }
-  return null
 }
 
 function RestTimerCard({
@@ -962,6 +938,26 @@ function formatRepTarget(prescription: ActiveCycleWorkoutExercise | undefined) {
   )
 }
 
+function formatRepTargetPlaceholder(
+  prescription: ActiveCycleWorkoutExercise | undefined,
+) {
+  if (!prescription) {
+    return null
+  }
+  const min = prescription.targetRepsMin
+  const max = prescription.targetRepsMax
+  if (min !== null && max !== null) {
+    return min === max ? `${min}` : `${min}-${max}`
+  }
+  if (min !== null) {
+    return `${min}`
+  }
+  if (max !== null) {
+    return `${max}`
+  }
+  return null
+}
+
 function formatRepTargetFromValues(min: number | null, max: number | null) {
   if (min !== null && max !== null) {
     return min === max ? `${min} reps` : `${min}-${max} reps`
@@ -1013,28 +1009,21 @@ function supportsRir(metrics: TrackingMetric[]) {
   return metrics.some((metric) => metric.key === 'reps')
 }
 
-function validateSetForCompletion(
-  set: WorkoutSet,
-  metrics: TrackingMetric[],
-  showRir: boolean,
-) {
+function invalidRequiredMetricKeys(set: WorkoutSet, metrics: TrackingMetric[]) {
   if (set.completed) {
-    return null
+    return new Set<string>()
   }
-  const missingMetric = metrics.find((metric) => {
-    if (!metric.requiredForCompletion) {
-      return false
-    }
-    const value = set.metricValues[metric.key]
-    return typeof value !== 'number' || !Number.isFinite(value) || value < 0
-  })
-  if (missingMetric) {
-    return `${missingMetric.label} is required.`
-  }
-  if (showRir && (set.rir === null || set.rir === undefined)) {
-    return 'Final RIR is required.'
-  }
-  return null
+  return new Set(
+    metrics
+      .filter((metric) => {
+        if (!metric.requiredForCompletion) {
+          return false
+        }
+        const value = set.metricValues[metric.key]
+        return typeof value !== 'number' || !Number.isFinite(value) || value < 0
+      })
+      .map((metric) => metric.key),
+  )
 }
 
 function getFinalProgrammedSetId(sets: WorkoutSet[]) {

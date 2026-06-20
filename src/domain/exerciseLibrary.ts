@@ -6,7 +6,7 @@ import type {
   TrackingMethodId,
 } from '@shared-types/app'
 
-export const BUILT_IN_EXERCISE_SEED_VERSION = 2
+export const BUILT_IN_EXERCISE_SEED_VERSION = 3
 export const BUILT_IN_EXERCISE_CREATED_AT = '2026-06-19T00:00:00.000Z'
 
 export type BuiltInExerciseSeed = Pick<
@@ -1330,6 +1330,90 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
     rest: moderateCompound,
     secondary: ['chest', 'shoulders', 'glutes'],
     tracking: 'reps_only',
+  }),
+  exercise(
+    '10-lb-medicine-ball-throws',
+    '10 lb Medicine Ball Throws',
+    'dumbbell',
+    ['shoulders'],
+    {
+      increment: null,
+      rest: moderateCompound,
+      secondary: ['chest', 'core'],
+      tracking: 'distance_duration',
+    },
+  ),
+  exercise(
+    '2-gripper-strapholds',
+    '#2 Gripper Strapholds',
+    'dumbbell',
+    ['forearms'],
+    {
+      rest: 150,
+      tracking: 'weight_reps',
+    },
+  ),
+  exercise(
+    '1-5-gripper-strapholds',
+    '#1.5 Gripper Strapholds',
+    'dumbbell',
+    ['forearms'],
+    {
+      rest: 150,
+      tracking: 'weight_reps',
+    },
+  ),
+  exercise(
+    '2-gripper-isometric-holds',
+    '#2 Gripper Isometric Holds',
+    'dumbbell',
+    ['forearms'],
+    {
+      increment: null,
+      rest: isolation,
+      tracking: 'duration',
+    },
+  ),
+  exercise(
+    '1-5-gripper-isometric-holds',
+    '#1.5 Gripper Isometric Holds',
+    'dumbbell',
+    ['forearms'],
+    {
+      increment: null,
+      rest: isolation,
+      tracking: 'duration',
+    },
+  ),
+  exercise('2-gripper-closes', '#2 Gripper Closes', 'dumbbell', ['forearms'], {
+    tracking: 'reps_only',
+  }),
+  exercise(
+    '1-5-gripper-closes',
+    '#1.5 Gripper Closes',
+    'dumbbell',
+    ['forearms'],
+    {
+      tracking: 'reps_only',
+    },
+  ),
+  exercise(
+    'triple-broad-jumps',
+    'Triple Broad Jumps',
+    'bodyweight',
+    ['glutes'],
+    {
+      increment: null,
+      rest: moderateCompound,
+      secondary: ['quadriceps', 'hamstrings', 'calves'],
+      tracking: 'distance_duration',
+    },
+  ),
+  exercise('40-yd-sprints', '40 yd Sprints', 'bodyweight', ['quadriceps'], {
+    increment: null,
+    rest: largeCompound,
+    secondary: ['glutes', 'hamstrings', 'calves'],
+    tracking: 'duration',
   }),
 ]
 

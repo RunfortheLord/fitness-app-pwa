@@ -753,15 +753,21 @@ function FoodLibraryRow({
         <Utensils aria-hidden="true" size={18} />
       </span>
       <button
+        aria-label={`Select ${display.name}`}
         className="nutrition-result-button"
         type="button"
         onClick={onSelect}
       >
-        <strong>{display.name}</strong>
-        {display.brand ? <small>{display.brand}</small> : null}
-        <small>
-          {display.serving} - {roundMacro(display.calories)} kcal
-        </small>
+        <span className="food-result-main">
+          <strong>{display.name}</strong>
+          {display.brand ? (
+            <span className="brand-badge">{display.brand}</span>
+          ) : null}
+          <small>{display.serving}</small>
+        </span>
+        <span className="food-result-calories">
+          {roundMacro(display.calories)} kcal
+        </span>
       </button>
       <div className="row-actions">
         {onEdit ? (
@@ -769,7 +775,7 @@ function FoodLibraryRow({
             <Edit2 aria-hidden="true" size={18} />
           </IconButton>
         ) : null}
-        <IconButton aria-label={`Select ${display.name}`} onClick={onSelect}>
+        <IconButton aria-label={`Open ${display.name}`} onClick={onSelect}>
           <Plus aria-hidden="true" size={18} />
         </IconButton>
       </div>
@@ -858,8 +864,16 @@ function createSearchSections({
       })),
     },
     {
-      title: 'Provider results',
-      items: providerResults.map((food) => ({ type: 'external', food })),
+      title: 'Common',
+      items: providerResults
+        .filter((food) => food.source.providerDataType !== 'Branded')
+        .map((food) => ({ type: 'external', food })),
+    },
+    {
+      title: 'Branded',
+      items: providerResults
+        .filter((food) => food.source.providerDataType === 'Branded')
+        .map((food) => ({ type: 'external', food })),
     },
   ]
 }
@@ -906,6 +920,7 @@ function LoggedFoodsCard({
                 <IconButton
                   aria-label={`Edit ${entry.foodSnapshot.foodName} log`}
                   onClick={() => onEdit(entry)}
+                  onPointerDown={() => onEdit(entry)}
                 >
                   <Edit2 aria-hidden="true" size={18} />
                 </IconButton>

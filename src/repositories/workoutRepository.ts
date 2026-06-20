@@ -1,5 +1,6 @@
 import { db, type TrainingLogDatabase } from '@db/database'
 import { createId } from '@domain/ids'
+import { buildSetMetricPropagationUpdates } from '@domain/setPropagation'
 import {
   buildSetRecommendation,
   createOriginalTargetSnapshot,
@@ -53,6 +54,7 @@ export type WorkoutSetMetricValue = number | boolean | null
 
 export type UpdateWorkoutSetInput = {
   metricValues?: Record<string, WorkoutSetMetricValue>
+  metricValueSources?: NonNullable<WorkoutSet['metricValueSources']>
   rir?: number | null
   completed?: boolean
 }
@@ -230,6 +232,7 @@ export function createWorkoutRepository(
                       }
                     : null,
                 metricValues: initialMetricValuesForSet(),
+                metricValueSources: {},
                 rir: sourceExercise.targetRir,
                 completed: false,
                 completedAt: null,
@@ -344,6 +347,12 @@ export function createWorkoutRepository(
             metricValues: input.metricValues
               ? { ...set.metricValues, ...input.metricValues }
               : set.metricValues,
+            metricValueSources: input.metricValueSources
+              ? {
+                  ...(set.metricValueSources ?? {}),
+                  ...input.metricValueSources,
+                }
+              : (set.metricValueSources ?? {}),
             rir: hasOwn(input, 'rir') ? (input.rir ?? null) : set.rir,
             completed,
             completedAt:
@@ -362,6 +371,67 @@ export function createWorkoutRepository(
           )
           await database.workouts.update(set.workoutId, { updatedAt: now })
           return updated
+        },
+      )
+    },
+
+    async updateWorkoutSetMetricAndPropagate(
+      setId: string,
+      metricKey: string,
+      value: WorkoutSetMetricValue,
+    ) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        [
+          database.workouts,
+          database.workoutExercises,
+          database.workoutSets,
+          database.activeCycleWorkoutExercises,
+          database.exercises,
+        ],
+        async () => {
+          const set = await database.workoutSets.get(setId)
+          if (!set) {
+            throw new Error(`Workout set ${setId} was not found.`)
+          }
+          const exercise = await database.workoutExercises.get(
+            set.workoutExerciseId,
+          )
+          if (!exercise) {
+            throw new Error(
+              `Workout exercise ${set.workoutExerciseId} was not found.`,
+            )
+          }
+          if (exercise.skipped) {
+            throw new Error('Skipped exercises cannot be edited.')
+          }
+
+          const allSets = await database.workoutSets
+            .where({ workoutExerciseId: set.workoutExerciseId })
+            .sortBy('setNumber')
+          const updates = buildSetMetricPropagationUpdates({
+            allSets,
+            sourceSet: set,
+            metricKey,
+            value,
+          })
+
+          for (const update of updates) {
+            await database.workoutSets.update(update.setId, {
+              metricValues: update.metricValues,
+              metricValueSources: update.metricValueSources,
+              updatedAt: now,
+            })
+          }
+
+          await recomputeWorkoutExerciseRecommendations(
+            database,
+            set.workoutExerciseId,
+            now,
+          )
+          await database.workouts.update(set.workoutId, { updatedAt: now })
+          return updates
         },
       )
     },
@@ -445,6 +515,7 @@ export function createWorkoutRepository(
             targetSnapshot: null,
             targetRecommendation: null,
             metricValues: {},
+            metricValueSources: {},
             rir: null,
             completed: false,
             completedAt: null,
@@ -590,6 +661,11 @@ export function createWorkoutRepository(
                   metricValues: Object.fromEntries(
                     Object.entries(set.metricValues).filter(([key]) =>
                       allowedKeys.has(key),
+                    ),
+                  ),
+                  metricValueSources: Object.fromEntries(
+                    Object.entries(set.metricValueSources ?? {}).filter(
+                      ([key]) => allowedKeys.has(key),
                     ),
                   ),
                   updatedAt: now,
@@ -803,6 +879,7 @@ export function createWorkoutRepository(
               targetSnapshot: set.targetSnapshot ?? null,
               targetRecommendation: set.targetRecommendation ?? null,
               metricValues: set.metricValues,
+              metricValueSources: set.metricValueSources ?? {},
               rir: set.rir,
               completed: set.completed,
               completedAt: set.completedAt,

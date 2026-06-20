@@ -62,6 +62,43 @@ describe('built-in exercise library', () => {
     ).toBe(true)
   })
 
+  it('contains the requested added exercises with tracking metadata', () => {
+    expect(() => validateBuiltInExercises()).not.toThrow()
+    const byName = new Map(
+      BUILT_IN_EXERCISES.map((exercise) => [exercise.name, exercise]),
+    )
+
+    expect(byName.get('10 lb Medicine Ball Throws')).toMatchObject({
+      trackingMethodId: 'distance_duration',
+    })
+    expect(byName.get('#2 Gripper Strapholds')).toMatchObject({
+      trackingMethodId: 'weight_reps',
+      defaultRestSeconds: 150,
+    })
+    expect(byName.get('#1.5 Gripper Strapholds')).toMatchObject({
+      trackingMethodId: 'weight_reps',
+      defaultRestSeconds: 150,
+    })
+    expect(byName.get('#2 Gripper Isometric Holds')).toMatchObject({
+      trackingMethodId: 'duration',
+    })
+    expect(byName.get('#1.5 Gripper Isometric Holds')).toMatchObject({
+      trackingMethodId: 'duration',
+    })
+    expect(byName.get('#2 Gripper Closes')).toMatchObject({
+      trackingMethodId: 'reps_only',
+    })
+    expect(byName.get('#1.5 Gripper Closes')).toMatchObject({
+      trackingMethodId: 'reps_only',
+    })
+    expect(byName.get('Triple Broad Jumps')).toMatchObject({
+      trackingMethodId: 'distance_duration',
+    })
+    expect(byName.get('40 yd Sprints')).toMatchObject({
+      trackingMethodId: 'duration',
+    })
+  })
+
   it('rejects duplicate IDs and invalid records during validation', () => {
     expect(() =>
       validateBuiltInExercises([

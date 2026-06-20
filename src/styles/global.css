@@ -683,21 +683,24 @@ textarea:focus-visible {
 
 .set-list {
   display: grid;
-  gap: var(--space-2);
+  gap: 6px;
 }
 
 .set-row {
   display: grid;
-  grid-template-columns:
-    minmax(48px, 0.5fr) repeat(2, minmax(58px, 1fr))
-    44px 44px;
-  gap: var(--space-2);
+  grid-template-columns: 28px repeat(3, minmax(0, 1fr)) 44px 44px;
+  gap: 6px;
   align-items: center;
   min-width: 0;
-  padding: var(--space-2);
+  padding: 6px;
   border: 1px solid var(--color-border-soft);
   border-radius: var(--radius-sm);
   background: var(--color-surface-strong);
+}
+
+.set-row.completed {
+  opacity: 0.72;
+  background: rgb(255 255 255 / 4%);
 }
 
 .set-row .icon-button,
@@ -718,6 +721,7 @@ textarea:focus-visible {
 
 .set-number strong {
   font-size: 15px;
+  text-align: center;
 }
 
 .set-number small,
@@ -730,8 +734,13 @@ textarea:focus-visible {
 
 .set-row input {
   min-height: 44px;
-  margin-top: var(--space-1);
-  padding: 0 var(--space-2);
+  margin-top: 2px;
+  padding: 0 6px;
+}
+
+.set-row input[aria-invalid='true'] {
+  border-color: var(--color-danger);
+  box-shadow: 0 0 0 1px var(--color-danger);
 }
 
 .set-complete-button.completed {
@@ -945,6 +954,10 @@ input::placeholder {
 
 .input-icon-row {
   position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .input-icon-row svg {
@@ -957,6 +970,44 @@ input::placeholder {
 
 .input-icon-row input {
   padding-left: 40px;
+}
+
+.nutrition-result-button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: center;
+  text-align: left;
+}
+
+.food-result-main {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.food-result-main strong,
+.food-result-main small {
+  overflow-wrap: anywhere;
+}
+
+.brand-badge {
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px 7px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 999px;
+  color: var(--color-text);
+  background: rgb(255 255 255 / 7%);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.food-result-calories {
+  white-space: nowrap;
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 900;
 }
 
 .sheet-context {

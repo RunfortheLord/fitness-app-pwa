@@ -3,7 +3,7 @@
 ## Current Versions
 
 - Backup format version: `1`
-- Compatible database schema versions: backups with `databaseSchemaVersion` less than or equal to the app's current IndexedDB schema version `6` can be restored after validation.
+- Compatible database schema versions: backups with `databaseSchemaVersion` less than or equal to the app's current IndexedDB schema version `7` can be restored after validation.
 - API key integration settings are not exported in backups. Replacing local data
   from a backup clears the saved API key integration record.
 - Application restore support: application version `0.0.0` can restore backup format version `1`.
@@ -28,11 +28,14 @@ Exercise snapshots may include `recordsRepsPerSide`. Older backups that do not
 include this snapshot field restore it as `false`; restore does not rewrite or
 double historical repetition values.
 
-Workout set records may include optional progression metadata:
-`targetSnapshot` and `targetRecommendation`. These preserve the original target,
-engine suggestion, user-edited target, effective-target inputs, source set,
-reason code, explanation, and generated timestamp used for explainable live
-recommendations. Older backups that omit these fields remain valid.
+Workout set records may include optional per-field value ownership metadata
+`metricValueSources` for live-workout propagation. Older backups that omit it
+restore each set with an empty ownership map. Workout set records may also
+include optional progression metadata: `targetSnapshot` and
+`targetRecommendation`. These preserve the original target, engine suggestion,
+user-edited target, effective-target inputs, source set, reason code,
+explanation, and generated timestamp used for explainable live recommendations.
+Older backups that omit these fields remain valid.
 
 Workout and workout-exercise records may include legacy `notes` fields. The
 current live-workout UI does not write workout-level or exercise-level notes,

@@ -248,11 +248,13 @@ export function rankFoods(
   query: string,
 ): NormalizedFoodResult[] {
   const normalizedQuery = normalizeFoodText(query)
-  return foods
+  const ranked = foods
     .map((food) => ({
       ...food,
       relevanceScore:
         textRelevance(food.normalizedSearchName, normalizedQuery) +
+        completeRestaurantItemBonus(food, normalizedQuery) +
+        brandedCategoryBonus(food, normalizedQuery) +
         cookedMeatBonus(food),
     }))
     .sort(
@@ -262,6 +264,7 @@ export function rankFoods(
         left.name.localeCompare(right.name) ||
         left.id.localeCompare(right.id),
     )
+  return diversifyTopFoodResults(ranked)
 }
 
 export function groupDuplicateFoods(
@@ -353,6 +356,114 @@ function cookedMeatBonus(food: NormalizedFoodResult) {
     return 0.05
   }
   return 0
+}
+
+function completeRestaurantItemBonus(
+  food: NormalizedFoodResult,
+  query: string,
+) {
+  if (!query || food.source.providerDataType !== 'Branded') {
+    return 0
+  }
+  const categoryText = normalizeFoodText(food.foodCategory ?? '')
+  const brand = food.normalizedBrand ?? ''
+  const restaurantLike =
+    brand.includes(query) ||
+    categoryText.includes('restaurant') ||
+    categoryText.includes('fast food')
+  if (!restaurantLike) {
+    return 0
+  }
+  const completeItems =
+    /\b(bowl|burrito|taco|tacos|salad|sandwich|wrap|meal|plate|entree|burger|pizza|combo)\b/u
+  const isolatedIngredients =
+    /\b(chicken|beef|pork|rice|beans|cheese|salsa|lettuce|tortilla|sauce|dressing)\b/u
+  if (completeItems.test(food.normalizedSearchName)) {
+    return 1.25
+  }
+  return isolatedIngredients.test(food.normalizedSearchName) ? -0.35 : 0
+}
+
+function brandedCategoryBonus(food: NormalizedFoodResult, query: string) {
+  if (!query || food.source.providerDataType !== 'Branded') {
+    return 0
+  }
+  const brand = food.normalizedBrand ?? ''
+  if (!brand.includes(query)) {
+    return 0
+  }
+  const categoryWords =
+    /\b(bar|bars|granola|cereal|protein|snack|cracker|cookie|yogurt|drink|shake|chips)\b/u
+  return categoryWords.test(food.normalizedSearchName) ? 0.35 : 0
+}
+
+function diversifyTopFoodResults<T extends NormalizedFoodResult>(foods: T[]) {
+  const firstFive: T[] = []
+  const remainder = [...foods]
+  const usedConcepts = new Set<string>()
+
+  for (let index = 0; index < remainder.length && firstFive.length < 5; ) {
+    const candidate = remainder[index]
+    const concept = foodConceptKey(candidate)
+    if (!usedConcepts.has(concept)) {
+      firstFive.push(candidate)
+      usedConcepts.add(concept)
+      remainder.splice(index, 1)
+      continue
+    }
+    index += 1
+  }
+
+  while (firstFive.length < 5 && remainder.length) {
+    firstFive.push(remainder.shift()!)
+  }
+
+  return [...firstFive, ...remainder]
+}
+
+function foodConceptKey(food: NormalizedFoodResult) {
+  const tokens = new Set(food.normalizedSearchName.split(' '))
+  const category = normalizeFoodText(food.foodCategory ?? '')
+  const concepts = [
+    ['breast', ['breast']],
+    ['leg-thigh', ['leg', 'thigh', 'drumstick']],
+    ['tender', ['tender', 'tenders', 'finger', 'fingers', 'nugget']],
+    ['whole-roasted', ['whole', 'roasted', 'rotisserie']],
+    ['soup-stew', ['soup', 'stew', 'broth']],
+    ['ground', ['ground', 'minced']],
+    ['steak-chop', ['steak', 'chop', 'cutlet']],
+    ['rib', ['rib', 'ribs']],
+    ['loin', ['loin', 'tenderloin']],
+    ['fillet', ['fillet', 'filet']],
+    ['white-rice', ['white']],
+    ['brown-rice', ['brown']],
+    ['bread-loaf', ['bread', 'loaf']],
+    ['pasta-noodle', ['pasta', 'spaghetti', 'noodle', 'macaroni']],
+    ['egg-whole', ['egg', 'eggs']],
+    ['cheese-sliced', ['slice', 'sliced']],
+    ['cereal-granola', ['cereal', 'granola']],
+    ['bean-whole', ['bean', 'beans']],
+    ['fruit-whole', ['fruit', 'apple', 'banana', 'berry', 'orange']],
+    ['vegetable', ['vegetable', 'broccoli', 'carrot', 'spinach']],
+    ['bar', ['bar', 'bars']],
+    ['bowl', ['bowl']],
+    ['burrito', ['burrito']],
+    ['taco', ['taco', 'tacos']],
+    ['salad', ['salad']],
+    ['sandwich-wrap', ['sandwich', 'wrap']],
+  ] as const
+
+  const matched = concepts.find(([, words]) =>
+    words.some((word) => tokens.has(word)),
+  )
+  const rawCooked =
+    food.rawCookedStatus === 'unknown' ? '' : food.rawCookedStatus
+  return [
+    matched?.[0] ?? [...tokens].slice(0, 2).join('-'),
+    rawCooked,
+    food.source.providerDataType,
+    category.split(' ').slice(0, 2).join('-'),
+  ].join('|')
 }
 
 function textRelevance(name: string, query: string) {
