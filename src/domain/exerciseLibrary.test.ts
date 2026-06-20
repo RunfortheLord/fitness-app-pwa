@@ -58,6 +58,14 @@ describe('built-in exercise library', () => {
       ),
     ).toMatchObject({ recordsRepsPerSide: true })
     expect(
+      BUILT_IN_EXERCISES.find((seed) => seed.name === 'Scapular Pull-Up'),
+    ).toMatchObject({
+      equipmentType: 'bodyweight',
+      trackingMethodId: 'reps_only',
+      primaryMuscleGroups: ['back'],
+      secondaryMuscleGroups: ['shoulders'],
+    })
+    expect(
       BUILT_IN_EXERCISES.every((seed) => seed.primaryMuscleGroups.length),
     ).toBe(true)
   })

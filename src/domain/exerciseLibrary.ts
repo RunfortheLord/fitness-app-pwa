@@ -6,7 +6,7 @@ import type {
   TrackingMethodId,
 } from '@shared-types/app'
 
-export const BUILT_IN_EXERCISE_SEED_VERSION = 3
+export const BUILT_IN_EXERCISE_SEED_VERSION = 4
 export const BUILT_IN_EXERCISE_CREATED_AT = '2026-06-19T00:00:00.000Z'
 
 export type BuiltInExerciseSeed = Pick<
@@ -1098,6 +1098,11 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
   exercise('pull-up', 'Pull-Up', 'bodyweight', ['back'], {
     rest: moderateCompound,
     secondary: ['biceps'],
+    tracking: 'reps_only',
+  }),
+  exercise('scapular-pull-up', 'Scapular Pull-Up', 'bodyweight', ['back'], {
+    rest: isolation,
+    secondary: ['shoulders'],
     tracking: 'reps_only',
   }),
   exercise('chin-up', 'Chin-Up', 'bodyweight', ['back'], {
