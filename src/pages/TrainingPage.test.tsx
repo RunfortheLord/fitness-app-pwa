@@ -341,11 +341,6 @@ describe('TrainingPage', () => {
     expect(
       await screen.findByText('Live workout', undefined, { timeout: 5_000 }),
     ).toBeInTheDocument()
-    await user.type(
-      screen.getByRole('textbox', { name: 'Workout notes' }),
-      'Good warmup',
-    )
-    await user.tab()
     await user.clear(screen.getByRole('textbox', { name: 'Set 1 Weight' }))
     await user.type(
       screen.getByRole('textbox', { name: 'Set 1 Weight' }),
@@ -361,9 +356,10 @@ describe('TrainingPage', () => {
     firstRender.unmount()
     renderTraining(['/workout'])
 
-    expect(await screen.findByDisplayValue('Good warmup')).toBeInTheDocument()
-    expect(await screen.findByDisplayValue('185')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('8')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getAllByDisplayValue('185').length).toBeGreaterThan(0),
+    )
+    expect(screen.getAllByDisplayValue('8').length).toBeGreaterThan(0)
   })
 
   it('shows one live exercise workspace and keeps the active exercise stable after edits, swipes, and reload', async () => {
@@ -440,6 +436,7 @@ describe('TrainingPage', () => {
     expect(
       screen.getByRole('heading', { name: 'Live row' }),
     ).toBeInTheDocument()
+    await user.clear(screen.getByRole('textbox', { name: 'Set 1 Reps' }))
     await user.type(screen.getByRole('textbox', { name: 'Set 1 Reps' }), '12')
     await user.tab()
     expect(screen.getByText('Exercise 2 of 2')).toBeInTheDocument()

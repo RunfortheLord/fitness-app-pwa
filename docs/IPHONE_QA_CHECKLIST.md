@@ -59,7 +59,7 @@ as passed from desktop emulation, Playwright, or simulator testing.
 - [ ] Choose a workout day.
 - [ ] Start workout.
 - [ ] Confirm only one exercise workspace is visible at a time.
-- [ ] Navigate exercises with Previous, Next, the exercise navigator, and horizontal swipes.
+- [ ] Navigate exercises with Previous and Next.
 - [ ] Enter weight, reps, RIR, and completed status.
 - [ ] Confirm RIR appears only on the final programmed set.
 - [ ] Confirm per-side exercises label rep values per side and do not double the stored value.
@@ -76,25 +76,26 @@ as passed from desktop emulation, Playwright, or simulator testing.
 - [ ] Close the app.
 - [ ] Reopen the app.
 - [ ] Resume the workout.
+- [ ] Discard an active workout from the live workout screen only after the confirmation dialog.
 - [ ] Finish workout.
 - [ ] Review detected changes.
 - [ ] View workout history.
 - [ ] Open Run.
 - [ ] Confirm no location permission prompt appears before tapping Start Run.
 - [ ] Tap Start Run and handle the location permission prompt.
+- [ ] Confirm Start Run offers resume or discard when a lifting workout is active.
 - [ ] Confirm elapsed time, moving time, distance, current pace, average moving pace, and mile splits remain readable around 390 x 844.
 - [ ] Pause and resume a run.
 - [ ] Close and reopen the app with an active run and confirm it resumes without fabricated GPS points.
 - [ ] Finish a run only after the confirmation dialog.
+- [ ] Discard an active run only after the confirmation dialog.
 - [ ] View completed run history and confirm splits, walking/rest classification, and GPS-gap labels are readable.
 - [ ] Background the installed PWA and confirm any GPS suspension is represented as a limitation/gap rather than claimed continuous tracking.
 - [ ] Confirm no route samples appear in console logs or external network requests.
 - [ ] Physical-device GPS accuracy, permission, and background-suspension behavior still require this manual iPhone pass.
 - [ ] View bodyweight progress history.
-- [ ] Open History Graphs and select a weighted exercise.
-- [ ] Change 1M, 3M, 6M, 1Y, and All strength ranges.
-- [ ] Tap estimated 1RM graph points and confirm date, completed weight, reps,
-      and estimated 1RM details remain readable.
+- [ ] Open Graphs and confirm Bodyweight is the default graph category.
+- [ ] Switch graph categories without horizontal scrolling.
 
 ## Persistence
 

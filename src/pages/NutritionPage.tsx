@@ -71,7 +71,6 @@ type FoodFormState = {
   brandName: string
   servingQuantity: string
   servingUnit: string
-  servingDescription: string
   caloriesPerServing: string
   proteinGramsPerServing: string
   carbohydrateGramsPerServing: string
@@ -108,7 +107,6 @@ const emptyFoodForm: FoodFormState = {
   brandName: '',
   servingQuantity: '',
   servingUnit: '',
-  servingDescription: '',
   caloriesPerServing: '',
   proteinGramsPerServing: '',
   carbohydrateGramsPerServing: '',
@@ -136,6 +134,7 @@ export function NutritionPage() {
     results: [],
     query: '',
   })
+  const [providerSearchNonce, setProviderSearchNonce] = useState(0)
   const [loadState, setLoadState] = useState<LoadState>({
     foods: [],
     logs: [],
@@ -251,7 +250,7 @@ export function NutritionPage() {
       window.clearTimeout(timeoutId)
       controller.abort()
     }
-  }, [query])
+  }, [providerSearchNonce, query])
 
   const displayedResults = createSearchSections({
     localFoods: loadState.foods,
@@ -304,6 +303,7 @@ export function NutritionPage() {
             onCreateFood={() => setSheet({ type: 'food', food: null })}
             onEditFood={(food) => setSheet({ type: 'food', food })}
             onSelectResult={(result) => setSheet({ type: 'select', result })}
+            onSearch={() => setProviderSearchNonce((current) => current + 1)}
             query={query}
             setQuery={setQuery}
           />
@@ -334,6 +334,7 @@ export function NutritionPage() {
             onCreateFood={() => setSheet({ type: 'food', food: null })}
             onEditFood={(food) => setSheet({ type: 'food', food })}
             onSelectResult={(result) => setSheet({ type: 'select', result })}
+            onSearch={() => setProviderSearchNonce((current) => current + 1)}
             query={query}
             setQuery={setQuery}
           />
@@ -466,6 +467,7 @@ function FoodSearchCard({
   onCreateFood,
   onEditFood,
   onSelectResult,
+  onSearch,
   query,
   setQuery,
 }: {
@@ -474,6 +476,7 @@ function FoodSearchCard({
   onCreateFood: () => void
   onEditFood: (food: Food) => void
   onSelectResult: (result: FoodSearchResult) => void
+  onSearch: () => void
   query: string
   setQuery: (query: string) => void
 }) {
@@ -488,14 +491,27 @@ function FoodSearchCard({
           <input
             id="food-search"
             onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                onSearch()
+              }
+            }}
             placeholder="Search foods"
             type="search"
             value={query}
           />
+          <SecondaryButton type="button" onClick={onSearch}>
+            Search
+          </SecondaryButton>
         </div>
       </FormField>
 
-      <ProviderSearchStatus state={providerSearch} query={normalizedQuery} />
+      <ProviderSearchStatus
+        state={providerSearch}
+        query={normalizedQuery}
+        onRetry={onSearch}
+      />
 
       {hasResults ? (
         <div className="nutrition-search-sections">
@@ -552,9 +568,11 @@ function FoodSearchCard({
 }
 
 function ProviderSearchStatus({
+  onRetry,
   query,
   state,
 }: {
+  onRetry: () => void
   query: string
   state: ProviderSearchState
 }) {
@@ -578,7 +596,14 @@ function ProviderSearchStatus({
 
   const message = providerStatusMessage(state.status)
   return message ? (
-    <StatusMessage tone="warning">{message}</StatusMessage>
+    <StatusMessage tone="warning">
+      <div className="status-message-content">
+        <span>{message}</span>
+        <SecondaryButton type="button" onClick={onRetry}>
+          Retry
+        </SecondaryButton>
+      </div>
+    </StatusMessage>
   ) : null
 }
 
@@ -824,7 +849,6 @@ function FoodFormSheet({
           brandName: food.brandName ?? '',
           servingQuantity: String(food.servingQuantity),
           servingUnit: food.servingUnit,
-          servingDescription: food.servingDescription,
           caloriesPerServing: String(food.caloriesPerServing),
           proteinGramsPerServing: String(food.proteinGramsPerServing),
           carbohydrateGramsPerServing: String(food.carbohydrateGramsPerServing),
@@ -833,14 +857,18 @@ function FoodFormSheet({
         }
       : (initialForm ?? emptyFoodForm),
   )
+  const [submitAttempted, setSubmitAttempted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const parsed = useMemo(() => parseFoodForm(form), [form])
+  const fieldErrors =
+    submitAttempted || error ? validateFoodFormFields(form) : {}
 
   function update(field: keyof typeof form, value: string) {
     setForm((current) => ({ ...current, [field]: value }))
   }
 
   function saveFood() {
+    setSubmitAttempted(true)
     if (!parsed.ok) {
       setError(parsed.error)
       return
@@ -873,8 +901,13 @@ function FoodFormSheet({
     >
       <FoodFormFields form={form} update={update} />
       {error ? <ValidationMessage message={error} /> : null}
+      {Object.keys(fieldErrors).length ? (
+        <StatusMessage tone="warning">
+          Fix the highlighted food fields and save again.
+        </StatusMessage>
+      ) : null}
       <div className="button-row">
-        <PrimaryButton disabled={!parsed.ok} type="button" onClick={saveFood}>
+        <PrimaryButton type="button" onClick={saveFood}>
           Save food
         </PrimaryButton>
         {food ? (
@@ -901,8 +934,13 @@ function FoodFormFields({
 }) {
   return (
     <>
-      <FormField id="food-name" label="Name">
+      <FormField
+        id="food-name"
+        label="Name"
+        error={validateFoodFormFields(form).name}
+      >
         <input
+          aria-invalid={Boolean(validateFoodFormFields(form).name)}
           id="food-name"
           onChange={(event) => update('name', event.target.value)}
           value={form.name}
@@ -915,8 +953,13 @@ function FoodFormFields({
           value={form.brandName}
         />
       </FormField>
-      <FormField id="serving-quantity" label="Serving quantity">
+      <FormField
+        id="serving-quantity"
+        label="Serving amount"
+        error={validateFoodFormFields(form).servingQuantity}
+      >
         <NumericInput
+          aria-invalid={Boolean(validateFoodFormFields(form).servingQuantity)}
           id="serving-quantity"
           onChange={(event) => update('servingQuantity', event.target.value)}
           placeholder="1"
@@ -926,21 +969,15 @@ function FoodFormFields({
       <FormField
         id="serving-unit"
         label="Serving unit"
-        helpText="Use a unit or a serving description."
+        helpText="Use any unit, such as bake, slice, container, oz, or g."
+        error={validateFoodFormFields(form).servingUnit}
       >
         <input
+          aria-invalid={Boolean(validateFoodFormFields(form).servingUnit)}
           id="serving-unit"
           onChange={(event) => update('servingUnit', event.target.value)}
-          placeholder="cup, scoop, g"
+          placeholder="bake"
           value={form.servingUnit}
-        />
-      </FormField>
-      <FormField id="serving-description" label="Serving description">
-        <input
-          id="serving-description"
-          onChange={(event) => update('servingDescription', event.target.value)}
-          placeholder="medium bowl"
-          value={form.servingDescription}
         />
       </FormField>
       <MacroInputs form={form} update={update} />
@@ -964,15 +1001,29 @@ function MacroInputs({
 }) {
   return (
     <>
-      <FormField id="food-calories" label="Calories per serving">
+      <FormField
+        id="food-calories"
+        label="Calories per serving"
+        error={validateFoodFormFields(form).caloriesPerServing}
+      >
         <NumericInput
+          aria-invalid={Boolean(
+            validateFoodFormFields(form).caloriesPerServing,
+          )}
           id="food-calories"
           onChange={(event) => update('caloriesPerServing', event.target.value)}
           value={form.caloriesPerServing}
         />
       </FormField>
-      <FormField id="food-protein" label="Protein per serving">
+      <FormField
+        id="food-protein"
+        label="Protein per serving"
+        error={validateFoodFormFields(form).proteinGramsPerServing}
+      >
         <NumericInput
+          aria-invalid={Boolean(
+            validateFoodFormFields(form).proteinGramsPerServing,
+          )}
           id="food-protein"
           onChange={(event) =>
             update('proteinGramsPerServing', event.target.value)
@@ -980,8 +1031,15 @@ function MacroInputs({
           value={form.proteinGramsPerServing}
         />
       </FormField>
-      <FormField id="food-carbs" label="Carbohydrates per serving">
+      <FormField
+        id="food-carbs"
+        label="Carbohydrates per serving"
+        error={validateFoodFormFields(form).carbohydrateGramsPerServing}
+      >
         <NumericInput
+          aria-invalid={Boolean(
+            validateFoodFormFields(form).carbohydrateGramsPerServing,
+          )}
           id="food-carbs"
           onChange={(event) =>
             update('carbohydrateGramsPerServing', event.target.value)
@@ -989,8 +1047,15 @@ function MacroInputs({
           value={form.carbohydrateGramsPerServing}
         />
       </FormField>
-      <FormField id="food-fat" label="Fat per serving">
+      <FormField
+        id="food-fat"
+        label="Fat per serving"
+        error={validateFoodFormFields(form).fatGramsPerServing}
+      >
         <NumericInput
+          aria-invalid={Boolean(
+            validateFoodFormFields(form).fatGramsPerServing,
+          )}
           id="food-fat"
           onChange={(event) => update('fatGramsPerServing', event.target.value)}
           value={form.fatGramsPerServing}
@@ -1271,7 +1336,6 @@ function foodFormFromExternal(
     brandName: food.brandName ?? '',
     servingQuantity: String(food.serving.quantity),
     servingUnit: food.serving.unit,
-    servingDescription: food.serving.description,
     caloriesPerServing: String(macros?.calories ?? ''),
     proteinGramsPerServing: String(macros?.proteinGrams ?? ''),
     carbohydrateGramsPerServing: String(macros?.carbohydrateGrams ?? ''),
@@ -1286,7 +1350,6 @@ function foodFormFromLocal(food: Food): FoodFormState {
     brandName: food.brandName ?? '',
     servingQuantity: String(food.servingQuantity),
     servingUnit: food.servingUnit,
-    servingDescription: food.servingDescription,
     caloriesPerServing: String(food.caloriesPerServing),
     proteinGramsPerServing: String(food.proteinGramsPerServing),
     carbohydrateGramsPerServing: String(food.carbohydrateGramsPerServing),
@@ -1470,13 +1533,11 @@ function parseFoodForm(
   const name = form.name.trim()
   const servingQuantity = parsePositiveNumber(form.servingQuantity)
   const caloriesPerServing = parseNonNegativeNumber(form.caloriesPerServing)
-  const proteinGramsPerServing = parseNonNegativeNumber(
-    form.proteinGramsPerServing,
-  )
-  const carbohydrateGramsPerServing = parseNonNegativeNumber(
+  const proteinGramsPerServing = parseOptionalMacro(form.proteinGramsPerServing)
+  const carbohydrateGramsPerServing = parseOptionalMacro(
     form.carbohydrateGramsPerServing,
   )
-  const fatGramsPerServing = parseNonNegativeNumber(form.fatGramsPerServing)
+  const fatGramsPerServing = parseOptionalMacro(form.fatGramsPerServing)
 
   if (!name) {
     return { ok: false, error: 'Food name is required.' }
@@ -1486,17 +1547,23 @@ function parseFoodForm(
     return { ok: false, error: 'Serving quantity must be greater than zero.' }
   }
 
-  if (!form.servingUnit.trim() && !form.servingDescription.trim()) {
-    return { ok: false, error: 'Serving unit or description is required.' }
+  if (!form.servingUnit.trim()) {
+    return { ok: false, error: 'Serving unit is required.' }
+  }
+
+  if (caloriesPerServing === null) {
+    return { ok: false, error: 'Calories must be zero or greater.' }
   }
 
   if (
-    caloriesPerServing === null ||
     proteinGramsPerServing === null ||
     carbohydrateGramsPerServing === null ||
     fatGramsPerServing === null
   ) {
-    return { ok: false, error: 'Nutrition values must be zero or greater.' }
+    return {
+      ok: false,
+      error: 'Optional macros must be blank or zero or greater.',
+    }
   }
 
   return {
@@ -1506,7 +1573,7 @@ function parseFoodForm(
       brandName: form.brandName.trim() || null,
       servingQuantity,
       servingUnit: form.servingUnit.trim(),
-      servingDescription: form.servingDescription.trim(),
+      servingDescription: '',
       caloriesPerServing,
       proteinGramsPerServing,
       carbohydrateGramsPerServing,
@@ -1514,6 +1581,34 @@ function parseFoodForm(
       notes: form.notes.trim(),
     },
   }
+}
+
+function validateFoodFormFields(form: typeof emptyFoodForm) {
+  const errors: Partial<Record<keyof typeof emptyFoodForm, string>> = {}
+  if (!form.name.trim()) {
+    errors.name = 'Food name is required.'
+  }
+  if (!parsePositiveNumber(form.servingQuantity)) {
+    errors.servingQuantity = 'Serving amount must be greater than zero.'
+  }
+  if (!form.servingUnit.trim()) {
+    errors.servingUnit = 'Serving unit is required.'
+  }
+  if (parseNonNegativeNumber(form.caloriesPerServing) === null) {
+    errors.caloriesPerServing =
+      'Calories are required and must be zero or greater.'
+  }
+  if (parseOptionalMacro(form.proteinGramsPerServing) === null) {
+    errors.proteinGramsPerServing = 'Protein must be blank or zero or greater.'
+  }
+  if (parseOptionalMacro(form.carbohydrateGramsPerServing) === null) {
+    errors.carbohydrateGramsPerServing =
+      'Carbohydrates must be blank or zero or greater.'
+  }
+  if (parseOptionalMacro(form.fatGramsPerServing) === null) {
+    errors.fatGramsPerServing = 'Fat must be blank or zero or greater.'
+  }
+  return errors
 }
 
 function parseTargetForm(
@@ -1545,8 +1640,15 @@ function parsePositiveNumber(value: string) {
 }
 
 function parseNonNegativeNumber(value: string) {
+  if (!value.trim()) {
+    return null
+  }
   const parsed = Number(value)
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+}
+
+function parseOptionalMacro(value: string) {
+  return value.trim() ? parseNonNegativeNumber(value) : 0
 }
 
 function roundMacro(value: number | undefined) {

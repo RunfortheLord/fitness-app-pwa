@@ -59,18 +59,25 @@ export function createFoodRepository(
       throw new Error('Serving quantity must be greater than zero.')
     }
 
-    if (!input.servingUnit.trim() && !input.servingDescription.trim()) {
-      throw new Error('Serving unit or description is required.')
+    if (!input.servingUnit.trim()) {
+      throw new Error('Serving unit is required.')
     }
 
     for (const [label, value] of [
       ['Calories', input.caloriesPerServing],
+    ] as const) {
+      if (value < 0 || !Number.isFinite(value)) {
+        throw new Error(`${label} must be zero or greater.`)
+      }
+    }
+
+    for (const [label, value] of [
       ['Protein', input.proteinGramsPerServing],
       ['Carbohydrates', input.carbohydrateGramsPerServing],
       ['Fat', input.fatGramsPerServing],
     ] as const) {
       if (value < 0 || !Number.isFinite(value)) {
-        throw new Error(`${label} must be zero or greater.`)
+        throw new Error(`${label} must be zero or greater when provided.`)
       }
     }
   }
@@ -97,10 +104,27 @@ export function createFoodRepository(
   const repository = {
     async createFood(input: CreateFoodInput) {
       validateFoodInput(input)
+      const normalizedName = input.name.trim().toLocaleLowerCase()
+      const duplicate = await database.foods
+        .where('status')
+        .equals('active')
+        .filter(
+          (food) => food.name.trim().toLocaleLowerCase() === normalizedName,
+        )
+        .first()
+      if (duplicate) {
+        throw new Error('A food with that name already exists.')
+      }
       const now = new Date().toISOString()
       const food: Food = {
         id: createId(),
         ...input,
+        name: input.name.trim(),
+        servingUnit: input.servingUnit.trim(),
+        servingDescription: '',
+        proteinGramsPerServing: input.proteinGramsPerServing ?? 0,
+        carbohydrateGramsPerServing: input.carbohydrateGramsPerServing ?? 0,
+        fatGramsPerServing: input.fatGramsPerServing ?? 0,
         status: 'active',
         createdAt: now,
         updatedAt: now,
@@ -167,11 +191,27 @@ export function createFoodRepository(
         ...food,
         ...input,
         id: food.id,
+        name: (input.name ?? food.name).trim(),
+        servingUnit: (input.servingUnit ?? food.servingUnit).trim(),
+        servingDescription: '',
         status: food.status,
         createdAt: food.createdAt,
         updatedAt: new Date().toISOString(),
       }
       validateFoodInput(updated)
+      const normalizedName = updated.name.trim().toLocaleLowerCase()
+      const duplicate = await database.foods
+        .where('status')
+        .equals('active')
+        .filter(
+          (candidate) =>
+            candidate.id !== id &&
+            candidate.name.trim().toLocaleLowerCase() === normalizedName,
+        )
+        .first()
+      if (duplicate) {
+        throw new Error('A food with that name already exists.')
+      }
       await database.foods.put(updated)
       return updated
     },

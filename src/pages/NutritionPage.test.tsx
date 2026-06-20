@@ -62,7 +62,7 @@ describe('NutritionPage', () => {
 
     await screen.findByText('No recent foods')
     await user.click(screen.getByRole('button', { name: 'Create food' }))
-    await expectSaveFoodDisabled()
+    await expectSaveFoodAvailable()
     await fillFoodForm(user, {
       name: 'Rice',
       calories: '200',
@@ -441,9 +441,9 @@ function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
-async function expectSaveFoodDisabled() {
+async function expectSaveFoodAvailable() {
   await waitFor(() =>
-    expect(screen.getByRole('button', { name: 'Save food' })).toBeDisabled(),
+    expect(screen.getByRole('button', { name: 'Save food' })).toBeEnabled(),
   )
 }
 
@@ -458,10 +458,7 @@ async function fillFoodForm(
   },
 ) {
   await user.type(screen.getByRole('textbox', { name: 'Name' }), values.name)
-  await user.type(
-    screen.getByRole('textbox', { name: 'Serving quantity' }),
-    '1',
-  )
+  await user.type(screen.getByRole('textbox', { name: 'Serving amount' }), '1')
   await user.type(screen.getByRole('textbox', { name: 'Serving unit' }), 'cup')
   await user.type(
     screen.getByRole('textbox', { name: 'Calories per serving' }),

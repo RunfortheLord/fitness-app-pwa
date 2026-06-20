@@ -45,6 +45,7 @@ import {
   programRepository,
   type CreateTemplateExerciseInput,
 } from '@repositories/programRepository'
+import { runRepository } from '@repositories/runRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
 import type {
   ActiveCycleWorkoutDay,
@@ -1585,7 +1586,8 @@ function WorkoutDayDetailSheet({
   const [existingWorkoutId, setExistingWorkoutId] = useState<string | null>(
     null,
   )
-  const [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState(false)
+  const [existingRunId, setExistingRunId] = useState<string | null>(null)
+  const [isDiscardConfirmOpen, setIsDiscardConfirmOpen] = useState(false)
 
   function startWorkout() {
     void workoutRepository
@@ -1604,17 +1606,22 @@ function WorkoutDayDetailSheet({
             setExistingWorkoutId(workout?.id ?? null)
           })
         }
+        if (message.includes('active run')) {
+          void runRepository.getActiveRun().then((run) => {
+            setExistingRunId(run?.id ?? null)
+          })
+        }
       })
   }
 
-  function cancelCurrentWorkout() {
+  function discardCurrentWorkoutAndStart() {
     if (!existingWorkoutId) {
       return
     }
     void workoutRepository
-      .cancelWorkout(existingWorkoutId)
+      .discardWorkout(existingWorkoutId)
       .then(() => {
-        setIsCancelConfirmOpen(false)
+        setIsDiscardConfirmOpen(false)
         setExistingWorkoutId(null)
         setError(null)
         startWorkout()
@@ -1623,7 +1630,27 @@ function WorkoutDayDetailSheet({
         setError(
           caught instanceof Error
             ? caught.message
-            : 'Current workout could not be cancelled.',
+            : 'Current workout could not be discarded.',
+        )
+      })
+  }
+
+  function discardCurrentRunAndStart() {
+    if (!existingRunId) {
+      return
+    }
+    void runRepository
+      .discardRun(existingRunId)
+      .then(() => {
+        setExistingRunId(null)
+        setError(null)
+        startWorkout()
+      })
+      .catch((caught: unknown) => {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : 'Current run could not be discarded.',
         )
       })
   }
@@ -1664,14 +1691,32 @@ function WorkoutDayDetailSheet({
         {existingWorkoutId ? (
           <div className="button-row">
             <PrimaryButton type="button" onClick={onStarted}>
-              Resume
+              Resume Existing Workout
             </PrimaryButton>
             <SecondaryButton
               className="button-danger"
               type="button"
-              onClick={() => setIsCancelConfirmOpen(true)}
+              onClick={() => setIsDiscardConfirmOpen(true)}
             >
-              Cancel Current Workout
+              Discard Existing Workout and Start New Workout
+            </SecondaryButton>
+          </div>
+        ) : existingRunId ? (
+          <div className="button-row">
+            <PrimaryButton
+              type="button"
+              onClick={() => {
+                window.location.assign('/run')
+              }}
+            >
+              Resume Active Run
+            </PrimaryButton>
+            <SecondaryButton
+              className="button-danger"
+              type="button"
+              onClick={discardCurrentRunAndStart}
+            >
+              Discard Active Run
             </SecondaryButton>
           </div>
         ) : (
@@ -1685,15 +1730,15 @@ function WorkoutDayDetailSheet({
         )}
       </BottomSheet>
       <ModalConfirmationDialog
-        confirmLabel="Cancel current workout"
-        isOpen={isCancelConfirmOpen}
-        onCancel={() => setIsCancelConfirmOpen(false)}
-        onConfirm={cancelCurrentWorkout}
-        title="Cancel current workout?"
+        confirmLabel="Discard Existing Workout and Start New Workout"
+        isOpen={isDiscardConfirmOpen}
+        onCancel={() => setIsDiscardConfirmOpen(false)}
+        onConfirm={discardCurrentWorkoutAndStart}
+        title="Discard existing workout?"
       >
         <p>
-          This discards the active workout so the selected day can start. No
-          completed workout history is removed.
+          This permanently discards the active workout and its recorded data so
+          the selected day can start. Completed workout history is not removed.
         </p>
       </ModalConfirmationDialog>
     </>

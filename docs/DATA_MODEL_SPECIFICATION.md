@@ -65,7 +65,8 @@ foreign-key ID fields and sort indexes.
 - `name`
 - `servingQuantity`
 - `servingUnit`
-- `servingDescription`
+- `servingDescription`: retained for provider foods and older snapshots;
+  private custom foods store an empty string in the current UI.
 - `caloriesPerServing`
 - `proteinGramsPerServing`
 - `carbohydrateGramsPerServing`
@@ -87,6 +88,10 @@ represented as a separate private custom food through the Custom copy action.
 Previously used provider foods may be retained in this table for offline recent
 or previously used search results.
 
+Private custom food creation requires name, serving quantity, serving unit, and
+calories. Optional macros default to zero when left blank. Active private custom
+food names are unique after trimming and case folding.
+
 ### FoodLogEntry
 
 - `id`
@@ -98,7 +103,8 @@ or previously used search results.
 - `computedProteinGrams`
 - `computedCarbohydrateGrams`
 - `computedFatGrams`
-- `notes`
+- `notes`: legacy-compatible field retained for backups and restore; the
+  current live-workout UI does not write workout-level notes.
 - `createdAt`
 - `updatedAt`
 
@@ -121,7 +127,8 @@ record.
   `ouncesPerServing`, `servingConversionReliable`, `servingConversionSource`,
   `macroBasis`, `rawCookedStatus`, `sourceUpdatedAt`, `providerIngestedAt`, and
   `normalizerVersion`
-- `notes`
+- `notes`: legacy-compatible field retained for backups and restore; the
+  current live-workout UI does not write exercise-level notes.
 
 Provider snapshot metadata is optional so old local food logs remain readable.
 
@@ -131,7 +138,8 @@ Provider snapshot metadata is optional so old local food logs remain readable.
 - `localDate`
 - `weight`
 - `unit`: default `lb`
-- `notes`
+- `notes`: legacy-compatible field retained for backups and restore; the
+  current workout completion flow does not prompt for workout notes.
 - `createdAt`
 - `updatedAt`
 - Multiple entries may share a `localDate`.
@@ -144,7 +152,8 @@ Provider snapshot metadata is optional so old local food logs remain readable.
 
 - `id`
 - `name`
-- `notes`
+- `notes`: legacy-compatible field retained for backups and restore; the
+  current live-workout UI does not write exercise-level notes.
 - `defaultRestSeconds`
 - `defaultWeightIncrement`: nullable for non-weight tracking methods
 - `trackingMethodId`
@@ -246,7 +255,8 @@ Provider snapshot metadata is optional so old local food logs remain readable.
 - `name`
 - `workoutSnapshot`
 - `exercises`
-- `notes`
+- `notes`: legacy-compatible field retained for backups and restore; the
+  current live-workout UI does not write workout-level notes.
 - `startedAt`
 - `elapsedPausedSeconds`
 - `activeRestTimer`
@@ -260,7 +270,8 @@ Provider snapshot metadata is optional so old local food logs remain readable.
 - `exerciseSnapshot`
 - `sourcePrescribedExerciseId`
 - `orderIndex`
-- `notes`
+- `notes`: legacy-compatible field retained for backups and restore; the
+  current live-workout UI does not write exercise-level notes.
 - `skipped`
 - `replacementOfExerciseId`
 - `sets`
@@ -306,7 +317,8 @@ Provider snapshot metadata is optional so old local food logs remain readable.
 - `completedAt`
 - `durationSeconds`
 - `exercises`
-- `notes`
+- `notes`: legacy-compatible field retained for backups and restore; the
+  current workout completion flow does not prompt for workout notes.
 - `detectedChanges`
 - `createdAt`
 - `updatedAt`
@@ -317,7 +329,8 @@ Provider snapshot metadata is optional so old local food logs remain readable.
 - `exerciseId`
 - `exerciseSnapshot`
 - `orderIndex`
-- `notes`
+- `notes`: legacy-compatible field retained for backups and restore; the
+  current live-workout UI does not write exercise-level notes.
 - `skipped`
 - `sets`
 
@@ -480,7 +493,9 @@ not add distance or moving time.
 - Creating or editing a food and logging a food are separate transactions.
 - Logging food writes the snapshot and computed totals in one transaction.
 - Activating a program copies template data into an active cycle in one transaction.
-- Starting a workout creates the active workout and source snapshot in one transaction.
+- Starting a workout checks for an active or paused run and creates the active
+  workout and source snapshot in one transaction. Runs and lifting workouts are
+  mutually exclusive.
 - Completing a workout writes history and removes active workout in one transaction after history write succeeds.
 - Starting a run checks for an active run and active lifting workout in one
   transaction. Runs and lifting workouts are mutually exclusive.

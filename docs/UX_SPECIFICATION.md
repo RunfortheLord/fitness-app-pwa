@@ -105,11 +105,13 @@
 
 ### Create/Edit Food Form
 
-- Fields: name, optional brand, serving quantity, serving unit or description,
-  calories, protein, carbohydrates, fat, notes.
+- Fields: name, optional brand, serving quantity, serving unit, calories,
+  protein, carbohydrates, fat, notes.
 - Required fields are marked without excessive copy.
-- Numeric fields reject invalid, blank, negative, or nonnumeric values.
-- Save remains disabled until required fields are valid.
+- Numeric fields reject invalid, negative, or nonnumeric values. Calories are
+  required; blank optional macros save as zero.
+- Save remains available and reports inline validation errors when required
+  fields are invalid.
 - Editing a reusable food does not rewrite historical log snapshots.
 - Imported provider foods are read-only. Users can create a separate private
   custom copy for corrections.
@@ -179,25 +181,19 @@
 - Workout name.
 - Elapsed duration.
 - Finish action.
-- Cancel action behind confirmation.
-- Workout notes action.
+- Discard Workout action behind confirmation.
 
 ### Exercise Workspace
 
 - The live workout shows one active exercise workspace at a time instead of a
   full vertical stack of exercise cards.
 - Exercise position is visible as "Exercise N of M".
-- Previous and Next buttons are always available when another exercise exists,
-  and horizontal swipe navigation is supported with thresholds that avoid
-  numeric-input gestures.
-- A compact exercise navigator lists the workout exercises and lets the user
-  jump directly to another exercise.
+- Previous and Next buttons are available when another exercise exists.
 - The active exercise is restored from local UI state for the active workout
   after reload or route return when possible. If that UI state is unavailable,
   the first exercise is selected without mutating workout data.
 - Source prescription summary.
 - Previous performance in compact set rows.
-- Exercise-level notes.
 - Skip exercise action.
 - Replace exercise action.
 - Add set action.
@@ -227,10 +223,8 @@
   per-side value and are not doubled.
 - RIR is requested only on the final programmed set. Historical RIR stored on
   other sets remains in data but is not shown in the current live UI.
-- When a deterministic progression suggestion changes an upcoming programmed
-  target, the compact row shows the effective target with a Suggested or Edited
-  text state, a concise explanation, target edit controls, and a restore-original
-  action. Suggested targets never prefill actual-result inputs.
+- Programmed targets appear as compact context. Actual-result inputs are
+  prefilled from the source target when available and may be edited by the user.
 
 ### Rest Timer
 
@@ -262,12 +256,13 @@
 
 - Date-sorted list of completed workouts and completed runs.
 - Search/filter can be deferred unless needed for usability.
-- Workout detail shows local date, source program/day, start and completion times, duration, exercises, sets, notes, skipped exercises, and change review results.
+- Workout detail shows local date, source program/day, start and completion times, duration, exercises, sets, skipped exercises, and change review results.
 - Run detail shows local date, distance, elapsed time, moving time, average
   moving pace, mile splits, walking/rest classifications, and GPS-gap state.
-- Editing is limited to notes and recorded performance values.
+- Editing is limited to recorded performance values.
 - Delete requires confirmation.
-- Bodyweight progress view is reachable from Home and History query state.
+- Graphs opens to Bodyweight progress by default and is reachable from Home,
+  History query state, and the `/graphs` route.
 - Bodyweight graph shows local date/time on the horizontal axis through stored
   entry timestamps and bodyweight in pounds on the vertical axis.
 - Range controls: 1M, 3M, 6M, and All.
@@ -280,8 +275,9 @@
   details.
 - Summary text includes first value, latest value, net change, and date range
   when enough data exists.
-- Strength Graphs is reachable from History and shows estimated 1RM for
-  weighted-repetition exercises with eligible completed history.
+- Additional graph categories are reachable from History and Graphs. Strength
+  graph placeholders may be deferred when no eligible implementation data is
+  available.
 - Strength graph range controls are 1M, 3M, 6M, 1Y, and All.
 - The chart plots one point per completed workout per exercise, selected from
   the highest eligible Epley estimate in that workout.
@@ -327,7 +323,8 @@
 - Required text fields show inline error after blur or submit.
 - Numeric fields show unit, accepted range, and clear error message.
 - Duplicate food, exercise, or program names may be allowed but should warn if confusing.
-- Save buttons are disabled when required data is missing.
+- Save buttons either disable while required data is missing or remain
+  available and surface inline validation errors on submit.
 - Destructive actions require explicit confirmation.
 
 ## Error States

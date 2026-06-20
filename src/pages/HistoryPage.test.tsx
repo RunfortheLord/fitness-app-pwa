@@ -110,7 +110,7 @@ describe('HistoryPage', () => {
       'true',
     )
 
-    await user.click(screen.getByRole('button', { name: 'All' }))
+    await user.click(screen.getAllByRole('button', { name: 'All' })[1])
     expect(screen.getByLabelText('Graph summary')).toHaveTextContent('200 lb')
 
     await user.click(screen.getByRole('button', { name: '2026-05-28 215 lb' }))

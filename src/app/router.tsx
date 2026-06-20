@@ -21,6 +21,7 @@ export const router = createBrowserRouter([
       { path: 'run', element: <RunPage /> },
       { path: 'training', element: <TrainingPage /> },
       { path: 'workout', element: <LiveWorkoutPage /> },
+      { path: 'graphs', element: <HistoryPage /> },
       { path: 'history', element: <HistoryPage /> },
       { path: 'settings', element: <SettingsPage /> },
     ],

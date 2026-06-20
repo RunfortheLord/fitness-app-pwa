@@ -3,7 +3,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
-  MoreHorizontal,
   Pause,
   Play,
   Plus,
@@ -11,7 +10,6 @@ import {
   Square,
   TimerOff,
   Trash2,
-  X,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -73,8 +71,7 @@ export function LiveWorkoutPage() {
   const [revision, setRevision] = useState(0)
   const [now, setNow] = useState(() => new Date())
   const [error, setError] = useState<string | null>(null)
-  const [confirmCancel, setConfirmCancel] = useState(false)
-  const [actionsOpen, setActionsOpen] = useState(false)
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
   const [picker, setPicker] = useState<ExercisePickerState>(null)
   const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null)
   const alertedTimerIds = useRef(new Set<string>())
@@ -281,12 +278,13 @@ export function LiveWorkoutPage() {
               {state.workout.workoutSnapshot.dayName}
             </p>
           </div>
-          <IconButton
-            aria-label="Workout actions"
-            onClick={() => setActionsOpen(true)}
+          <SecondaryButton
+            className="button-danger"
+            type="button"
+            onClick={() => setConfirmDiscard(true)}
           >
-            <MoreHorizontal aria-hidden="true" size={20} />
-          </IconButton>
+            Discard Workout
+          </SecondaryButton>
         </div>
         <div className="live-workout-stats">
           <span>
@@ -298,22 +296,6 @@ export function LiveWorkoutPage() {
       </Card>
 
       {error ? <ValidationMessage message={error} /> : null}
-
-      <Card title="Workout notes">
-        <textarea
-          aria-label="Workout notes"
-          onBlur={(event) =>
-            run(
-              workoutRepository.updateWorkoutNotes(
-                state.workout.id,
-                event.currentTarget.value,
-              ),
-            )
-          }
-          defaultValue={state.workout.notes}
-          placeholder="Session notes"
-        />
-      </Card>
 
       <RestTimerCard
         onAddTime={() =>
@@ -332,12 +314,6 @@ export function LiveWorkoutPage() {
         onSkip={() => run(workoutRepository.dismissRestTimer(state.workout.id))}
         remainingSeconds={restRemaining}
         timer={state.workout.activeRestTimer}
-      />
-
-      <ExerciseNavigator
-        activeExerciseId={activeExercise?.id ?? null}
-        exercises={state.exercises}
-        onSelect={(id) => setActiveExerciseId(id)}
       />
 
       {activeExercise ? (
@@ -381,19 +357,8 @@ export function LiveWorkoutPage() {
           onSetRir={(set, rir) =>
             run(workoutRepository.updateWorkoutSet(set.id, { rir }))
           }
-          onSetTarget={(set, target) =>
-            run(workoutRepository.updateWorkoutSetTarget(set.id, target))
-          }
           onSkip={(skipped) =>
             run(workoutRepository.skipExercise(activeExercise.id, skipped))
-          }
-          onUpdateNotes={(notes) =>
-            run(
-              workoutRepository.updateWorkoutExerciseNotes(
-                activeExercise.id,
-                notes,
-              ),
-            )
           }
           prescription={activePrescription}
           sets={activeSets}
@@ -432,33 +397,6 @@ export function LiveWorkoutPage() {
         </PrimaryButton>
       </div>
 
-      <BottomSheet
-        isOpen={actionsOpen}
-        onClose={() => setActionsOpen(false)}
-        title="Workout actions"
-      >
-        <div className="quick-action-list">
-          <button type="button" onClick={() => setPicker({ mode: 'add' })}>
-            <span className="quick-action-icon">
-              <Plus aria-hidden="true" size={20} />
-            </span>
-            <span>
-              <strong>Add Exercise</strong>
-              <small>Add an exercise to this active workout only</small>
-            </span>
-          </button>
-          <button type="button" onClick={() => setConfirmCancel(true)}>
-            <span className="quick-action-icon">
-              <X aria-hidden="true" size={20} />
-            </span>
-            <span>
-              <strong>Cancel Workout</strong>
-              <small>Discard this active workout after confirmation</small>
-            </span>
-          </button>
-        </div>
-      </BottomSheet>
-
       <ExercisePickerSheet
         currentWorkoutId={state.workout.id}
         onClose={() => setPicker(null)}
@@ -471,55 +409,24 @@ export function LiveWorkoutPage() {
       />
 
       <ModalConfirmationDialog
-        confirmLabel="Cancel Workout"
-        isOpen={confirmCancel}
-        onCancel={() => setConfirmCancel(false)}
+        confirmLabel="Discard Workout"
+        isOpen={confirmDiscard}
+        onCancel={() => setConfirmDiscard(false)}
         onConfirm={() => {
           run(
-            workoutRepository.cancelWorkout(state.workout.id).then(() => {
-              setConfirmCancel(false)
+            workoutRepository.discardWorkout(state.workout.id).then(() => {
+              setConfirmDiscard(false)
               navigate('/training')
             }),
-            'Workout could not be cancelled.',
+            'Workout could not be discarded.',
           )
         }}
-        title="Cancel workout?"
+        title="Discard workout?"
       >
-        This discards the active workout and its unsaved history entry.
+        This permanently discards the active workout and all recorded set data.
+        It will not appear in history, graphs, or statistics.
       </ModalConfirmationDialog>
     </PageContainer>
-  )
-}
-
-function ExerciseNavigator({
-  activeExerciseId,
-  exercises,
-  onSelect,
-}: {
-  activeExerciseId: string | null
-  exercises: WorkoutExercise[]
-  onSelect: (id: string) => void
-}) {
-  if (exercises.length <= 1) {
-    return null
-  }
-
-  return (
-    <Card className="exercise-navigator" title="Exercise navigator">
-      <div className="exercise-tab-list" role="list">
-        {exercises.map((exercise, index) => (
-          <button
-            aria-current={exercise.id === activeExerciseId ? 'true' : undefined}
-            key={exercise.id}
-            onClick={() => onSelect(exercise.id)}
-            type="button"
-          >
-            <span>{index + 1}</span>
-            <small>{exercise.exerciseSnapshot.exerciseName}</small>
-          </button>
-        ))}
-      </div>
-    </Card>
   )
 }
 
@@ -537,9 +444,7 @@ function ExerciseWorkspace({
   onReplaceExercise,
   onSetMetric,
   onSetRir,
-  onSetTarget,
   onSkip,
-  onUpdateNotes,
   prescription,
   sets,
 }: {
@@ -556,12 +461,7 @@ function ExerciseWorkspace({
   onReplaceExercise: () => void
   onSetMetric: (set: WorkoutSet, values: WorkoutSet['metricValues']) => void
   onSetRir: (set: WorkoutSet, rir: number | null) => void
-  onSetTarget: (
-    set: WorkoutSet,
-    values: Parameters<typeof workoutRepository.updateWorkoutSetTarget>[1],
-  ) => void
   onSkip: (skipped: boolean) => void
-  onUpdateNotes: (notes: string) => void
   prescription: ActiveCycleWorkoutExercise | undefined
   sets: WorkoutSet[]
 }) {
@@ -628,14 +528,6 @@ function ExerciseWorkspace({
         </SecondaryButton>
       </div>
 
-      <FormField id={`${exercise.id}-notes`} label="Exercise notes">
-        <textarea
-          id={`${exercise.id}-notes`}
-          onBlur={(event) => onUpdateNotes(event.currentTarget.value)}
-          defaultValue={exercise.notes}
-        />
-      </FormField>
-
       <div className="set-list">
         {sets.map((set) => (
           <SetRow
@@ -647,7 +539,6 @@ function ExerciseWorkspace({
             onDelete={() => onDeleteSet(set.id)}
             onMetricChange={(values) => onSetMetric(set, values)}
             onRirChange={(rir) => onSetRir(set, rir)}
-            onTargetChange={(target) => onSetTarget(set, target)}
             prescription={prescription}
             set={set}
           />
@@ -670,7 +561,6 @@ function SetRow({
   onDelete,
   onMetricChange,
   onRirChange,
-  onTargetChange,
   prescription,
   set,
 }: {
@@ -681,37 +571,21 @@ function SetRow({
   onDelete: () => void
   onMetricChange: (values: WorkoutSet['metricValues']) => void
   onRirChange: (rir: number | null) => void
-  onTargetChange: (
-    values: Parameters<typeof workoutRepository.updateWorkoutSetTarget>[1],
-  ) => void
   prescription: ActiveCycleWorkoutExercise | undefined
   set: WorkoutSet
 }) {
   const showRir = supportsRir(metrics) && set.id === finalProgrammedSetId
   const repsPerSide = exerciseRecordsRepsPerSide(exercise)
   const effectiveTarget = getEffectiveTarget(set)
-  const recommendation = set.targetRecommendation
-  const recommendationId = recommendation
-    ? `${set.id}-recommendation`
-    : undefined
+  const completionError = validateSetForCompletion(set, metrics, showRir)
   return (
-    <div
-      aria-describedby={recommendationId}
-      className={recommendation ? 'set-row has-recommendation' : 'set-row'}
-    >
+    <div className="set-row">
       <div className="set-number">
         <strong>Set {set.setNumber}</strong>
         <small>{set.targetSnapshot ? 'Programmed' : 'Added'}</small>
       </div>
       <div className="set-target">
-        <span>
-          Target
-          {recommendation?.userEditedTarget
-            ? ' - Edited'
-            : recommendation?.suggestedTarget
-              ? ' - Suggested'
-              : ''}
-        </span>
+        <span>Target</span>
         <strong>
           {formatSetTarget(prescription, metrics, repsPerSide, effectiveTarget)}
         </strong>
@@ -724,12 +598,19 @@ function SetRow({
               metric,
               repsPerSide,
             )}`}
+            disabled={set.completed}
             onBlur={(event) =>
               onMetricChange({
                 ...set.metricValues,
                 [metric.key]: parseMetricValue(event.currentTarget.value),
               })
             }
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                event.currentTarget.blur()
+              }
+            }}
             defaultValue={formatMetricInput(set.metricValues[metric.key])}
           />
         </label>
@@ -739,9 +620,16 @@ function SetRow({
           <span>Final RIR</span>
           <NumericInput
             aria-label={`Set ${set.setNumber} final RIR`}
+            disabled={set.completed}
             onBlur={(event) =>
               onRirChange(parseNullableNumber(event.currentTarget.value))
             }
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                event.currentTarget.blur()
+              }
+            }}
             defaultValue={set.rir?.toString() ?? ''}
           />
         </label>
@@ -749,6 +637,7 @@ function SetRow({
       <label className="failed-set-toggle">
         <input
           checked={set.metricValues.failed === true}
+          disabled={set.completed}
           onChange={(event) =>
             onMetricChange({
               ...set.metricValues,
@@ -778,58 +667,8 @@ function SetRow({
       <IconButton aria-label={`Delete set ${set.setNumber}`} onClick={onDelete}>
         <Trash2 aria-hidden="true" size={18} />
       </IconButton>
-      {recommendation ? (
-        <div className="set-recommendation" id={recommendationId}>
-          <p aria-live="polite">{recommendation.explanation}</p>
-          {!set.completed &&
-          (recommendation.suggestedTarget ||
-            recommendation.userEditedTarget) ? (
-            <div className="target-edit-grid">
-              {effectiveTarget?.targetWeight !== null &&
-              effectiveTarget?.targetWeight !== undefined ? (
-                <label>
-                  <span>Target load</span>
-                  <NumericInput
-                    aria-label={`Set ${set.setNumber} target load`}
-                    defaultValue={String(effectiveTarget.targetWeight)}
-                    onBlur={(event) =>
-                      onTargetChange({
-                        targetWeight: parseNullableNumber(
-                          event.currentTarget.value,
-                        ),
-                      })
-                    }
-                  />
-                </label>
-              ) : null}
-              {effectiveTarget?.targetRepsMin !== null &&
-              effectiveTarget?.targetRepsMin !== undefined ? (
-                <label>
-                  <span>Target reps</span>
-                  <NumericInput
-                    aria-label={`Set ${set.setNumber} target reps`}
-                    defaultValue={String(effectiveTarget.targetRepsMin)}
-                    onBlur={(event) => {
-                      const reps = parseNullableNumber(
-                        event.currentTarget.value,
-                      )
-                      onTargetChange({
-                        targetRepsMin: reps,
-                        targetRepsMax: reps,
-                      })
-                    }}
-                  />
-                </label>
-              ) : null}
-              <SecondaryButton
-                type="button"
-                onClick={() => onTargetChange({ restoreOriginal: true })}
-              >
-                Original
-              </SecondaryButton>
-            </div>
-          ) : null}
-        </div>
+      {completionError ? (
+        <small className="validation-message">{completionError}</small>
       ) : null}
     </div>
   )
@@ -1158,6 +997,30 @@ function formatMetricInput(value: WorkoutSet['metricValues'][string]) {
 
 function supportsRir(metrics: TrackingMetric[]) {
   return metrics.some((metric) => metric.key === 'reps')
+}
+
+function validateSetForCompletion(
+  set: WorkoutSet,
+  metrics: TrackingMetric[],
+  showRir: boolean,
+) {
+  if (set.completed) {
+    return null
+  }
+  const missingMetric = metrics.find((metric) => {
+    if (!metric.requiredForCompletion) {
+      return false
+    }
+    const value = set.metricValues[metric.key]
+    return typeof value !== 'number' || !Number.isFinite(value) || value < 0
+  })
+  if (missingMetric) {
+    return `${missingMetric.label} is required.`
+  }
+  if (showRir && (set.rir === null || set.rir === undefined)) {
+    return 'Final RIR is required.'
+  }
+  return null
 }
 
 function getFinalProgrammedSetId(sets: WorkoutSet[]) {

@@ -259,6 +259,30 @@ export function createRunRepository(database: TrainingLogDatabase = db) {
       )
     },
 
+    async discardRun(runId: string) {
+      return database.transaction(
+        'rw',
+        [
+          database.runs,
+          database.runSamples,
+          database.runPauses,
+          database.runSplits,
+          database.runClassifications,
+        ],
+        async () => {
+          const run = await database.runs.get(runId)
+          if (!run || (run.status !== 'active' && run.status !== 'paused')) {
+            throw new Error(`Active run ${runId} was not found.`)
+          }
+          await database.runClassifications.where({ runId }).delete()
+          await database.runSplits.where({ runId }).delete()
+          await database.runPauses.where({ runId }).delete()
+          await database.runSamples.where({ runId }).delete()
+          await database.runs.delete(runId)
+        },
+      )
+    },
+
     async recordLowPaceResponse(
       runId: string,
       response: RunAlertResponse,

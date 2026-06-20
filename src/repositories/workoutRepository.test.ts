@@ -237,7 +237,7 @@ describe('workoutRepository', () => {
       suggestedTarget: { targetWeight: 190 },
       userEditedTarget: { targetWeight: 187.5 },
     })
-    expect(edited?.metricValues).toEqual({})
+    expect(edited?.metricValues).toEqual({ reps: 8, weight: 185 })
   })
 
   it('enters every tracking metric type during a live workout', async () => {

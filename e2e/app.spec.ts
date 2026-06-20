@@ -205,7 +205,9 @@ test('starts, resumes, edits, and cancels a live workout', async ({
   await expect(
     page.getByRole('heading', { level: 1, name: 'Live Workout' }),
   ).toBeVisible()
-  await page.getByRole('textbox', { name: 'Workout notes' }).fill('E2E note')
+  await expect(
+    page.getByRole('textbox', { name: 'Workout notes' }),
+  ).toHaveCount(0)
   await page.getByRole('textbox', { name: 'Set 1 Weight' }).fill('95')
   await page.getByRole('textbox', { name: 'Set 1 Reps' }).fill('10')
   await page.getByRole('button', { name: 'Complete set 1' }).click()
@@ -216,9 +218,6 @@ test('starts, resumes, edits, and cancels a live workout', async ({
   })
 
   await page.reload()
-  await expect(
-    page.getByRole('textbox', { name: 'Workout notes' }),
-  ).toHaveValue('E2E note')
   await expect(page.getByRole('textbox', { name: 'Set 1 Weight' })).toHaveValue(
     '95',
   )
@@ -226,11 +225,10 @@ test('starts, resumes, edits, and cancels a live workout', async ({
     '10',
   )
 
-  await page.getByRole('button', { name: 'Workout actions' }).click()
-  await page.getByRole('button', { name: /Cancel Workout/ }).click()
+  await page.getByRole('button', { name: 'Discard Workout' }).click()
   await page
-    .getByRole('dialog', { name: 'Cancel workout?' })
-    .getByRole('button', { name: 'Cancel Workout' })
+    .getByRole('dialog', { name: 'Discard Workout' })
+    .getByRole('button', { name: 'Discard Workout' })
     .click()
   await expect(page).toHaveURL(/\/training/)
 })
@@ -242,9 +240,9 @@ test('creates, logs, edits, deletes, and persists nutrition entries', async ({
   await page.goto('/nutrition')
 
   await page.getByRole('button', { name: 'Create food' }).click()
-  await expect(page.getByRole('button', { name: 'Save food' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Save food' })).toBeEnabled()
   await page.getByRole('textbox', { name: 'Name' }).fill('E2E Rice')
-  await page.getByRole('textbox', { name: 'Serving quantity' }).fill('1')
+  await page.getByRole('textbox', { name: 'Serving amount' }).fill('1')
   await page.getByRole('textbox', { name: 'Serving unit' }).fill('cup')
   await page.getByRole('textbox', { name: 'Calories per serving' }).fill('200')
   await page.getByRole('textbox', { name: 'Protein per serving' }).fill('4')
@@ -387,9 +385,12 @@ test('shows bodyweight progress graph with range controls and tap details', asyn
     'aria-pressed',
     'true',
   )
-  await page.getByRole('button', { name: 'All' }).click()
+  await page
+    .getByLabel('Bodyweight range')
+    .getByRole('button', { name: 'All' })
+    .click()
   await page.getByRole('button', { name: /189 lb/ }).click()
-  await expect(page.getByText('Selected')).toBeVisible()
+  await expect(page.getByText('Selected', { exact: true })).toBeVisible()
 })
 
 test('settings exposes local data controls and validates malformed restore files', async ({
@@ -436,7 +437,7 @@ test('completes the release workflow through backup restore', async ({
 
   await page.getByRole('button', { name: 'Create food' }).click()
   await page.getByRole('textbox', { name: 'Name' }).fill('Audit oats')
-  await page.getByRole('textbox', { name: 'Serving quantity' }).fill('1')
+  await page.getByRole('textbox', { name: 'Serving amount' }).fill('1')
   await page.getByRole('textbox', { name: 'Serving unit' }).fill('cup')
   await page.getByRole('textbox', { name: 'Calories per serving' }).fill('200')
   await page.getByRole('textbox', { name: 'Protein per serving' }).fill('8')
@@ -534,9 +535,9 @@ test('completes the release workflow through backup restore', async ({
 
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Audit curl' })).toBeVisible()
-  await expect(page.getByText('Audit row')).toBeVisible()
   await expect(page.getByText('Skipped', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Previous' }).click()
+  await expect(page.getByRole('heading', { name: 'Audit row' })).toBeVisible()
   await expect(page.getByRole('textbox', { name: 'Set 4 Weight' })).toHaveValue(
     '200',
   )

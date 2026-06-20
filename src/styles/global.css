@@ -109,7 +109,8 @@ textarea:focus-visible {
 .app-header,
 .app-main,
 .status-message,
-.offline-indicator {
+.offline-indicator,
+.active-activity-banner {
   width: min(100%, 720px);
   margin-right: auto;
   margin-left: auto;
@@ -1062,6 +1063,19 @@ input::placeholder {
 
 .status-message p {
   margin: var(--space-2) 0 0;
+}
+
+.active-activity-banner {
+  display: block;
+  min-height: 44px;
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid rgb(126 231 135 / 45%);
+  border-radius: var(--radius-md);
+  background: rgb(22 54 34 / 92%);
+  color: #d9ffe6;
+  font-weight: 700;
+  text-align: center;
 }
 
 .loading-state {

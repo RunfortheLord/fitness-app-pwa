@@ -32,6 +32,12 @@ engine suggestion, user-edited target, effective-target inputs, source set,
 reason code, explanation, and generated timestamp used for explainable live
 recommendations. Older backups that omit these fields remain valid.
 
+Workout and workout-exercise records may include legacy `notes` fields. The
+current live-workout UI does not write workout-level or exercise-level notes,
+but restore keeps older fields readable so historical backups do not corrupt
+unrelated workout data. These legacy note fields do not create active UI
+controls.
+
 Detected workout changes may include type `progression_recommendation` with
 optional `recommendationReason` and `recommendationSummary`. These records are
 unchecked by default in review and are applied only to selected future

@@ -58,7 +58,8 @@
 
 - Nutrition is manual and simple.
 - Food log entries snapshot nutrition values at logging time.
-- Bodyweight is one manual entry per local calendar date, pounds by default.
+- Bodyweight supports multiple timestamped entries per local calendar date,
+  pounds by default.
 - Exercise tracking uses metric-driven presets to allow future expansion.
 - The built-in offline exercise library is an original curated seed list. No
   third-party exercise database, third-party application code, images, videos,
@@ -76,8 +77,9 @@
 - Users manually select workout days.
 - Only one active workout is required at a time.
 - Runs and lifting workouts are mutually exclusive in this release. Starting a
-  run is blocked while a lifting workout is active, and starting a second run is
-  blocked while any run is active or paused.
+  run requires the user to resume, finish, or explicitly discard an active
+  lifting workout, and starting a second run is blocked while any run is active
+  or paused.
 - Active workout state must persist across navigation, refresh, app close, and installed PWA reopen.
 - Active run state persists in IndexedDB. GPS is not backfilled after reload,
   browser suspension, or PWA restart; only received samples are stored.

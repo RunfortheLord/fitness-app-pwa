@@ -61,8 +61,10 @@ do not install it globally.
    `npx --yes vercel project protection disable fitness-app-pwa --sso`.
 5. Create a preview deployment with
    `npx --yes vercel deploy --target preview --yes`.
-6. Do not attach a custom domain, enable analytics, add environment secrets, or
-   add paid services for the preview deployment.
+6. Promote an accepted build to the existing production domain with the Vercel
+   project workflow so day-to-day phone use stays on one stable origin.
+7. Do not attach a new custom domain, enable analytics, add unrelated secrets,
+   or add paid services for the preview deployment.
 
 `vercel.json` configures Vercel to run `npm run build`, publish `dist/`, and
 serve `index.html` for client-side routes such as `/nutrition`, `/training`,
@@ -108,6 +110,14 @@ The generated Workbox service worker precaches the app shell, hashed build
 assets, manifest, and icons for offline launch, and cleans outdated Workbox
 caches during updates. User records are stored in IndexedDB, not in
 service-worker caches.
+
+Browser-local storage is scoped by origin. Each immutable Vercel preview URL has
+its own IndexedDB database, Cache Storage, and installed-PWA identity. Opening a
+new preview URL on the phone will not show records created under a different
+preview URL. Routine use should stay on the stable production domain for the
+same Vercel project, and accepted preview builds should be promoted to that
+origin. A service-worker update on the same origin must not clear IndexedDB,
+localStorage, or backup data.
 
 ## Installing From Safari
 

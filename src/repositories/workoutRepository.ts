@@ -112,6 +112,7 @@ export function createWorkoutRepository(
           database.workouts,
           database.workoutExercises,
           database.workoutSets,
+          database.runs,
           database.workoutHistoryEntries,
           database.workoutHistoryExercises,
           database.workoutHistorySets,
@@ -122,6 +123,13 @@ export function createWorkoutRepository(
             .first()
           if (existingActive) {
             throw new Error('An active workout already exists.')
+          }
+          const existingRun = await database.runs
+            .where('status')
+            .anyOf('active', 'paused')
+            .first()
+          if (existingRun) {
+            throw new Error('An active run already exists.')
           }
 
           const cycle = await database.activeProgramCycles.get(
@@ -224,12 +232,11 @@ export function createWorkoutRepository(
                         generatedAt: now,
                       }
                     : null,
-                metricValues:
-                  suggestedLoad === null || suggestedLoadMetricKey === null
-                    ? {}
-                    : {
-                        [suggestedLoadMetricKey]: suggestedLoad,
-                      },
+                metricValues: initialMetricValuesForSet({
+                  originalTarget,
+                  suggestedLoad,
+                  suggestedLoadMetricKey,
+                }),
                 rir: sourceExercise.targetRir,
                 completed: false,
                 completedAt: null,
@@ -733,6 +740,10 @@ export function createWorkoutRepository(
       )
     },
 
+    async discardWorkout(workoutId: string) {
+      return this.cancelWorkout(workoutId)
+    },
+
     async completeWorkout(input: CompleteWorkoutInput) {
       const completedAt = input.completedAt ?? new Date().toISOString()
       return database.transaction(
@@ -1192,9 +1203,55 @@ async function recomputeWorkoutExerciseRecommendations(
           : null
     await database.workoutSets.update(set.id, {
       targetRecommendation,
+      metricValues: nextIncompleteMetricValues(set, sourceSet),
       updatedAt: generatedAt,
     })
   }
+}
+
+function initialMetricValuesForSet({
+  originalTarget,
+  suggestedLoad,
+  suggestedLoadMetricKey,
+}: {
+  originalTarget: WorkoutSetTargetSnapshot | null
+  suggestedLoad: number | null
+  suggestedLoadMetricKey: string | null
+}) {
+  const values: WorkoutSet['metricValues'] = {}
+  const targetWeight = suggestedLoad ?? originalTarget?.targetWeight ?? null
+  if (targetWeight !== null && suggestedLoadMetricKey !== null) {
+    values[suggestedLoadMetricKey] = targetWeight
+  }
+  if (
+    originalTarget?.targetRepsMin !== null &&
+    originalTarget?.targetRepsMin !== undefined
+  ) {
+    values.reps = originalTarget.targetRepsMin
+  }
+  return values
+}
+
+function nextIncompleteMetricValues(
+  set: WorkoutSet,
+  sourceSet: WorkoutSet | undefined,
+) {
+  if (!sourceSet) {
+    return set.metricValues
+  }
+  const merged = { ...set.metricValues }
+  for (const [key, value] of Object.entries(sourceSet.metricValues)) {
+    if (key === 'failed') {
+      continue
+    }
+    if (
+      (merged[key] === null || merged[key] === undefined) &&
+      typeof value === 'number'
+    ) {
+      merged[key] = value
+    }
+  }
+  return merged
 }
 
 async function detectProgressionRecommendationChanges(

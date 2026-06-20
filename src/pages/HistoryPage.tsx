@@ -1,6 +1,6 @@
 import { Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useContext, useEffect, useMemo, useState } from 'react'
+import { useLocation, useSearchParams } from 'react-router-dom'
 
 import {
   Card,
@@ -17,6 +17,7 @@ import {
   StatusMessage,
   ValidationMessage,
 } from '@components/ui'
+import { DashboardContext } from '@components/dashboardContextValue'
 import { formatLocalDate } from '@domain/dates'
 import {
   createBodyweightChartModel,
@@ -109,6 +110,7 @@ const strengthRangeOptions: Array<{
 ]
 
 export function HistoryPage() {
+  const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const [state, setState] = useState<HistoryState>({ status: 'loading' })
   const [revision, setRevision] = useState(0)
@@ -122,6 +124,7 @@ export function HistoryPage() {
 
   useEffect(() => {
     if (
+      location.pathname.startsWith('/graphs') ||
       searchParams.get('view') === 'bodyweight' ||
       searchParams.get('view') === 'graphs'
     ) {
@@ -232,7 +235,7 @@ export function HistoryPage() {
     return () => {
       isCurrent = false
     }
-  }, [revision, searchParams])
+  }, [location.pathname, revision, searchParams])
 
   const summary = useMemo(() => {
     if (state.status !== 'ready' || !state.selected) {
@@ -296,7 +299,10 @@ export function HistoryPage() {
       })
   }
 
-  if (searchParams.get('view') === 'bodyweight') {
+  if (
+    location.pathname.startsWith('/graphs') ||
+    searchParams.get('view') === 'bodyweight'
+  ) {
     return (
       <BodyweightProgressView
         onShowWorkouts={() => {
@@ -612,9 +618,13 @@ function BodyweightProgressView({
   onShowWorkouts: () => void
 }) {
   const [range, setRange] = useState<BodyweightRange>('3m')
+  const [graphCategory, setGraphCategory] = useState('bodyweight')
   const [entries, setEntries] = useState<BodyweightEntry[]>([])
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null)
+  const dashboardContext = useContext(DashboardContext)
+  const dashboardRevision = dashboardContext?.dashboardRevision ?? 0
+  const openBodyweightSheet = dashboardContext?.openBodyweightSheet
   const today = formatLocalDate(new Date())
 
   useEffect(() => {
@@ -640,7 +650,7 @@ function BodyweightProgressView({
     return () => {
       isCurrent = false
     }
-  }, [])
+  }, [dashboardRevision])
 
   const rangedEntries = filterBodyweightEntriesForRange({
     entries,
@@ -656,39 +666,102 @@ function BodyweightProgressView({
   return (
     <PageContainer>
       <SectionHeader
-        title="Bodyweight progress"
+        title="Graphs"
         action={
           <SecondaryButton type="button" onClick={onShowWorkouts}>
-            Workouts
+            History
           </SecondaryButton>
         }
       />
-      <Card title="Bodyweight graph">
-        <SegmentedControl
-          label="Bodyweight range"
-          onChange={(value) => {
-            setRange(value as BodyweightRange)
-            setSelectedEntryId(null)
-          }}
-          options={bodyweightRangeOptions}
-          value={range}
-        />
-        {status === 'loading' ? (
-          <LoadingState label="Loading bodyweight progress" />
-        ) : null}
-        {status === 'error' ? (
-          <StatusMessage tone="warning">
-            Bodyweight progress could not load.
-          </StatusMessage>
-        ) : null}
-        {status === 'ready' ? (
-          <BodyweightChart
-            model={model}
-            onSelect={(entry) => setSelectedEntryId(entry.id)}
-            selectedEntry={selectedEntry}
+      <SegmentedControl
+        label="Graph category"
+        onChange={setGraphCategory}
+        options={[
+          { label: 'Body Weight', value: 'bodyweight' },
+          { label: 'Exercises', value: 'exercises' },
+          { label: 'Running', value: 'running' },
+          { label: 'All', value: 'all' },
+        ]}
+        value={graphCategory}
+      />
+      {graphCategory === 'exercises' ? (
+        <Card title="Exercise graphs">
+          <SecondaryButton type="button" onClick={() => onShowWorkouts()}>
+            Open exercise graphs
+          </SecondaryButton>
+        </Card>
+      ) : null}
+      {graphCategory === 'running' ? (
+        <Card title="Running">
+          <EmptyState
+            title="No running graph selected"
+            message="Completed runs remain available from History."
           />
-        ) : null}
-      </Card>
+        </Card>
+      ) : null}
+      {graphCategory === 'all' ? (
+        <Card title="View everything">
+          <FormField id="all-dashboard-filter" label="Dashboard filter">
+            <select id="all-dashboard-filter" defaultValue="bodyweight">
+              <option value="bodyweight">Body weight</option>
+              <option value="exercises">Exercises</option>
+              <option value="running">Running</option>
+              <option value="nutrition">Nutrition</option>
+              <option value="history">History</option>
+            </select>
+          </FormField>
+        </Card>
+      ) : null}
+      {graphCategory === 'bodyweight' ? (
+        <Card title="Bodyweight progress">
+          <div className="button-row">
+            <SecondaryButton
+              disabled={!openBodyweightSheet}
+              type="button"
+              onClick={() => openBodyweightSheet?.(today)}
+            >
+              Log Bodyweight
+            </SecondaryButton>
+            {selectedEntry && openBodyweightSheet ? (
+              <SecondaryButton
+                type="button"
+                onClick={() =>
+                  openBodyweightSheet({
+                    entryId: selectedEntry.id,
+                    localDate: selectedEntry.localDate,
+                  })
+                }
+              >
+                Edit Selected
+              </SecondaryButton>
+            ) : null}
+          </div>
+          <SegmentedControl
+            label="Bodyweight range"
+            onChange={(value) => {
+              setRange(value as BodyweightRange)
+              setSelectedEntryId(null)
+            }}
+            options={bodyweightRangeOptions}
+            value={range}
+          />
+          {status === 'loading' ? (
+            <LoadingState label="Loading bodyweight progress" />
+          ) : null}
+          {status === 'error' ? (
+            <StatusMessage tone="warning">
+              Bodyweight progress could not load.
+            </StatusMessage>
+          ) : null}
+          {status === 'ready' ? (
+            <BodyweightChart
+              model={model}
+              onSelect={(entry) => setSelectedEntryId(entry.id)}
+              selectedEntry={selectedEntry}
+            />
+          ) : null}
+        </Card>
+      ) : null}
     </PageContainer>
   )
 }

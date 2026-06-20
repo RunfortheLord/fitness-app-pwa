@@ -15,9 +15,11 @@
 1. User opens Nutrition or taps Add.
 2. User chooses Create Food.
 3. App opens a bottom sheet or full form.
-4. User enters name, optional brand, serving quantity, serving unit or
-   description, calories, protein, total carbohydrates, fat, and optional notes.
-5. App validates required fields and nonnegative nutrition values.
+4. User enters name, optional brand, serving quantity, serving unit, calories,
+   optional protein, optional total carbohydrates, optional fat, and optional
+   notes.
+5. App validates required fields and nonnegative nutrition values. Blank
+   optional macros save as zero.
 6. User saves.
 7. App stores the reusable food with created and updated timestamps.
 8. Food appears in search and recent foods after use.
@@ -123,16 +125,19 @@
 ## Starting a Workout
 
 1. User starts from a manually selected workout day.
-2. App checks whether another active workout exists.
-3. If one exists, app offers Resume or Cancel Existing Workout with confirmation.
-4. If no active workout exists, app creates an active workout session.
-5. App snapshots the source active-cycle day structure into the active workout.
-6. App records local date and start timestamp.
-7. App opens the live workout screen.
+2. App checks whether another active workout or active run exists.
+3. If a workout exists, app offers Resume or Discard Existing Workout with
+   confirmation.
+4. If a run exists, app offers Resume Active Run or Discard Active Run with
+   confirmation.
+5. If no active activity exists, app creates an active workout session.
+6. App snapshots the source active-cycle day structure into the active workout.
+7. App records local date and start timestamp.
+8. App opens the live workout screen.
 
 ## Completing Sets
 
-1. User opens an exercise card in the live workout.
+1. User opens the live workout exercise workspace.
 2. App shows set rows with fields appropriate to the exercise tracking method.
 3. For weighted exercises, user enters weight, reps, optional RIR, and completion status.
 4. App persists changes immediately or near-immediately.
@@ -155,12 +160,11 @@
 
 1. User taps Finish Workout.
 2. App validates that at least one set or explicit skipped exercise exists.
-3. App allows workout-level notes.
-4. User confirms completion.
-5. App saves a historical workout with start time, completion time, duration, exercises, sets, notes, skipped exercises, and source references.
-6. App compares the performed workout to the source active-cycle day.
-7. If no structural changes are detected, app closes the active workout and shows workout history detail.
-8. If changes are detected, app opens detected-change review.
+3. User confirms completion.
+4. App saves a historical workout with start time, completion time, duration, exercises, sets, skipped exercises, and source references.
+5. App compares the performed workout to the source active-cycle day.
+6. If no structural changes are detected, app closes the active workout and shows workout history detail.
+7. If changes are detected, app opens detected-change review.
 
 ## Reviewing Detected Changes
 
@@ -186,8 +190,8 @@
 1. User opens History.
 2. App lists completed workouts and completed runs by local date.
 3. User opens a workout.
-4. App shows source program/day when applicable, start time, completion time, duration, exercise details, performed sets, skipped exercises, notes, and change review outcomes.
-5. User may edit notes and recorded performance values.
+4. App shows source program/day when applicable, start time, completion time, duration, exercise details, performed sets, skipped exercises, and change review outcomes.
+5. User may edit recorded performance values.
 6. Edits do not change the source program template.
 7. User may delete the historical workout only after confirmation.
 
@@ -195,15 +199,9 @@
 
 1. User opens History.
 2. User chooses Graphs.
-3. App lists exercises with eligible weighted-repetition history.
-4. User selects an exercise.
-5. App shows estimated one-repetition-maximum points for 1M, 3M, 6M, 1Y, or
-   All history ranges.
-6. User taps or focuses a point.
-7. App shows the local date, completed weight, completed repetitions, and
-   estimated 1RM for the selected workout point.
-8. Empty and one-point states avoid implying a trend when insufficient history
-   exists.
+3. App opens the Bodyweight graph by default.
+4. User may switch graph categories.
+5. App keeps bodyweight entry actions available from the graph view.
 
 ## Tracking a Run
 
@@ -211,7 +209,8 @@
 2. App shows Start Run without requesting location permission yet.
 3. User taps Start Run.
 4. App checks that no active run or active lifting workout exists, then starts
-   foreground geolocation.
+   foreground geolocation. If a lifting workout exists, the user can resume it
+   or explicitly discard it before starting the run.
 5. App stores every received sample with accuracy, timestamp, decision, and
    rejection reason when applicable.
 6. App updates elapsed time, moving time, distance, current pace, average

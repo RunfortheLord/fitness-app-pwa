@@ -19,6 +19,7 @@ import {
   formatPace,
 } from '@domain/runFormatting'
 import { runRepository, type RunStructure } from '@repositories/runRepository'
+import { workoutRepository } from '@repositories/workoutRepository'
 import type { Run, RunAlertResponse } from '@shared-types/app'
 
 type RunPageState =
@@ -31,6 +32,10 @@ export function RunPage() {
   const [state, setState] = useState<RunPageState>({ status: 'loading' })
   const [geoError, setGeoError] = useState<string | null>(null)
   const [finishRequested, setFinishRequested] = useState(false)
+  const [discardRequested, setDiscardRequested] = useState(false)
+  const [activeWorkoutConflictId, setActiveWorkoutConflictId] = useState<
+    string | null
+  >(null)
   const [lowPacePrompt, setLowPacePrompt] = useState(false)
   const watchId = useRef<number | null>(null)
 
@@ -125,10 +130,25 @@ export function RunPage() {
       const run = await runRepository.startRun()
       await reload(run.id)
     } catch (caught) {
-      setGeoError(
-        caught instanceof Error ? caught.message : 'Run could not start.',
-      )
+      const message =
+        caught instanceof Error ? caught.message : 'Run could not start.'
+      if (message.toLocaleLowerCase().includes('active lifting workout')) {
+        const workout = await workoutRepository.getActiveWorkout()
+        setActiveWorkoutConflictId(workout?.id ?? null)
+        setGeoError(null)
+        return
+      }
+      setGeoError(message)
     }
+  }
+
+  async function discardWorkoutAndStartRun() {
+    if (!activeWorkoutConflictId) {
+      return
+    }
+    await workoutRepository.discardWorkout(activeWorkoutConflictId)
+    setActiveWorkoutConflictId(null)
+    await startRun()
   }
 
   async function pauseRun(run: Run) {
@@ -147,6 +167,14 @@ export function RunPage() {
     watchId.current = null
     setFinishRequested(false)
     await reload(run.id)
+  }
+
+  async function discardRun(run: Run) {
+    await runRepository.discardRun(run.id)
+    stopGpsWatch(watchId.current)
+    watchId.current = null
+    setDiscardRequested(false)
+    setState({ status: 'idle' })
   }
 
   async function respondToLowPace(run: Run, response: RunAlertResponse) {
@@ -192,6 +220,27 @@ export function RunPage() {
           />
         </Card>
         <RunLimitations />
+        <ModalConfirmationDialog
+          confirmLabel="Resume Active Workout"
+          isOpen={activeWorkoutConflictId !== null}
+          onCancel={() => setActiveWorkoutConflictId(null)}
+          onConfirm={() => {
+            window.location.assign('/workout')
+          }}
+          title="Workout in progress"
+        >
+          <p>
+            An active workout is in progress. Resume it, discard it before
+            starting this run, or cancel.
+          </p>
+          <SecondaryButton
+            className="button-danger"
+            type="button"
+            onClick={() => void discardWorkoutAndStartRun()}
+          >
+            Discard Active Workout
+          </SecondaryButton>
+        </ModalConfirmationDialog>
       </PageContainer>
     )
   }
@@ -202,6 +251,15 @@ export function RunPage() {
   return (
     <PageContainer>
       <SectionHeader title={completed ? 'Run complete' : 'Run'} />
+      {!completed ? (
+        <SecondaryButton
+          className="button-danger"
+          type="button"
+          onClick={() => setDiscardRequested(true)}
+        >
+          Discard Run
+        </SecondaryButton>
+      ) : null}
       <p className="visually-hidden" aria-live="polite">
         Run status {run.status}. Distance {formatDistance(run.distanceMeters)}.
       </p>
@@ -317,6 +375,19 @@ export function RunPage() {
         <p>
           Save this run to History with its elapsed time, moving time, samples,
           splits, classifications, and GPS-gap markers.
+        </p>
+      </ModalConfirmationDialog>
+
+      <ModalConfirmationDialog
+        confirmLabel="Discard Run"
+        isOpen={discardRequested}
+        onCancel={() => setDiscardRequested(false)}
+        onConfirm={() => void discardRun(run)}
+        title="Discard run?"
+      >
+        <p>
+          This permanently discards the active run and all recorded GPS data. It
+          will not appear in history, graphs, or statistics.
         </p>
       </ModalConfirmationDialog>
 

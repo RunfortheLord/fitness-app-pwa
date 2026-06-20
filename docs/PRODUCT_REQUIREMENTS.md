@@ -66,7 +66,10 @@
 
 - Users must be able to set calorie and macro targets manually.
 - Users must be able to create, search, edit, and archive or delete custom foods.
-- A custom food must include name, serving quantity, serving unit or description, calories per serving, protein per serving, carbohydrates per serving, fat per serving, and optional notes.
+- A custom food must include name, serving quantity, serving unit, calories per
+  serving, and optional protein, carbohydrate, fat, brand, and notes. Blank
+  optional macros are stored as zero; invalid or negative nutrition values are
+  rejected.
 - Users must be able to log foods by local calendar date with decimal serving multipliers.
 - A food log entry must snapshot food nutrition values at the time of logging.
 - Users must be able to edit and delete logged foods.
@@ -125,10 +128,14 @@
 - A workout must start from a manually selected workout day.
 - An active workout must be resumable after navigation, refresh, closing, and reopening the installed PWA.
 - Active workout edits must persist immediately or near-immediately.
-- The live workout must display workout name, elapsed duration, exercise cards, previous performance, exercise-level notes, workout-level notes, and rest timer.
+- The live workout must display workout name, elapsed duration, exercise
+  workspace, previous performance, set rows, and rest timer.
 - Set rows must display fields appropriate to the exercise tracking method.
 - Typical weighted set rows must show set number, previous performance, weight, reps, RIR, and completed control.
-- Users must be able to add sets, delete sets, edit completed sets, complete sets, skip exercises, replace exercises, add exercises, reorder exercises where practical, change session rest time, and cancel with confirmation.
+- Users must be able to add sets, delete sets, edit completed sets, complete
+  sets, skip exercises, replace exercises, add exercises, reorder exercises
+  where practical, change session rest time, and discard the active workout
+  with confirmation.
 - The rest timer must be timestamp-based so remaining time is correct after backgrounding or resuming.
 - The first release excludes coaching, automatic program advancement, and opaque
   recommendation services. Deterministic local progression recommendations may
@@ -160,7 +167,7 @@
   status across reloads without inventing missing GPS points.
 - The app must prevent two simultaneous active runs.
 - The app must not start a run while a lifting workout is active. The user must
-  finish or cancel the lifting workout first.
+  resume, finish, or explicitly discard the lifting workout first.
 - GPS samples must store latitude, longitude, timestamp, accuracy, optional
   altitude, decision, rejection reason, and accepted segment distance.
 - Distance processing must reject poor accuracy, duplicate or stale samples,
@@ -191,7 +198,8 @@
   elapsed time, moving time, average moving pace, mile splits, walking/rest
   classifications, and GPS-gap indication.
 - Users must be able to view full workout details.
-- Users must be able to safely edit notes and recorded performance values without changing original program templates.
+- Users must be able to safely edit recorded performance values without
+  changing original program templates.
 - Deleting a historical workout must require confirmation.
 - History must include estimated one-repetition-maximum graphs for eligible
   weighted-repetition exercises. The graph uses completed historical sets only,

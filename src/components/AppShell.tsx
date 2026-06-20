@@ -27,6 +27,13 @@ import {
   StatusMessage,
 } from '@components/ui'
 import { useDashboardContext } from '@hooks/useDashboardContext'
+import { runRepository } from '@repositories/runRepository'
+import { workoutRepository } from '@repositories/workoutRepository'
+
+type ActiveActivity =
+  | { type: 'workout'; id: string }
+  | { type: 'run'; id: string }
+  | null
 
 type AppShellProps = {
   children: React.ReactNode
@@ -49,6 +56,7 @@ function AppShellContent({ children }: AppShellProps) {
   )
   const [isOffline, setIsOffline] = useState(() => !navigator.onLine)
   const [isQuickActionOpen, setIsQuickActionOpen] = useState(false)
+  const [activeActivity, setActiveActivity] = useState<ActiveActivity>(null)
   const { bodyweightSheet, closeBodyweightSheet, openBodyweightSheet } =
     useDashboardContext()
   const location = useLocation()
@@ -101,6 +109,28 @@ function AppShellContent({ children }: AppShellProps) {
       )
     }
   }, [])
+
+  useEffect(() => {
+    let isCurrent = true
+    void Promise.all([
+      workoutRepository.getActiveWorkout(),
+      runRepository.getActiveRun(),
+    ]).then(([workout, run]) => {
+      if (!isCurrent) {
+        return
+      }
+      setActiveActivity(
+        workout
+          ? { type: 'workout', id: workout.id }
+          : run
+            ? { type: 'run', id: run.id }
+            : null,
+      )
+    })
+    return () => {
+      isCurrent = false
+    }
+  }, [location.pathname])
 
   useEffect(() => {
     function updateOnlineStatus() {
@@ -164,6 +194,21 @@ function AppShellContent({ children }: AppShellProps) {
           </div>
           {updateInstruction ? <p>{updateInstruction}</p> : null}
         </StatusMessage>
+      ) : null}
+
+      {activeActivity && !isActiveActivityRoute(location.pathname) ? (
+        <button
+          className="active-activity-banner"
+          type="button"
+          onClick={() =>
+            void navigate(
+              activeActivity.type === 'workout' ? '/workout' : '/run',
+            )
+          }
+        >
+          Active {activeActivity.type === 'workout' ? 'Workout' : 'Run'} - Tap
+          to Resume
+        </button>
       ) : null}
 
       <main className="app-main">{children}</main>
@@ -304,9 +349,17 @@ function getRouteTitle(pathname: string) {
     return 'History'
   }
 
+  if (pathname.startsWith('/graphs')) {
+    return 'Graphs'
+  }
+
   if (pathname.startsWith('/settings')) {
     return 'Settings'
   }
 
   return 'Home'
+}
+
+function isActiveActivityRoute(pathname: string) {
+  return pathname.startsWith('/workout') || pathname.startsWith('/run')
 }

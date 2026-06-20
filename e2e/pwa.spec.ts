@@ -181,7 +181,7 @@ test('recovers an active workout after an offline reload', async ({
   await page.reload()
   await expect(
     page.getByRole('textbox', { name: 'Workout notes' }),
-  ).toHaveValue('Offline active workout')
+  ).toHaveCount(0)
   await expect(page.getByRole('textbox', { name: 'Set 1 Weight' })).toHaveValue(
     '105',
   )
@@ -279,9 +279,6 @@ async function createActiveWorkout(page: Page) {
     .getByRole('button', { name: 'Start Workout' })
     .click()
 
-  await page
-    .getByRole('textbox', { name: 'Workout notes' })
-    .fill('Offline active workout')
   await page.getByRole('textbox', { name: 'Set 1 Weight' }).fill('105')
   await page.getByRole('textbox', { name: 'Set 1 Reps' }).fill('8')
   await page.getByRole('button', { name: 'Complete set 1' }).click()
