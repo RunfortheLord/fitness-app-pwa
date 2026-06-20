@@ -6,6 +6,7 @@ import { HistoryPage } from '@pages/HistoryPage'
 import { HomePage } from '@pages/HomePage'
 import { LiveWorkoutPage } from '@pages/LiveWorkoutPage'
 import { NutritionPage } from '@pages/NutritionPage'
+import { RunPage } from '@pages/RunPage'
 import { SettingsPage } from '@pages/SettingsPage'
 import { TrainingPage } from '@pages/TrainingPage'
 
@@ -17,6 +18,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <HomePage /> },
       { path: 'nutrition', element: <NutritionPage /> },
+      { path: 'run', element: <RunPage /> },
       { path: 'training', element: <TrainingPage /> },
       { path: 'workout', element: <LiveWorkoutPage /> },
       { path: 'history', element: <HistoryPage /> },

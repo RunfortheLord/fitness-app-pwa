@@ -30,7 +30,7 @@
 - No account, backend, cloud sync, subscription, internet dependency after installation, or external food database is included in the first release.
 - JSON is the authoritative full-fidelity backup format.
 - CSV is export-only for readable spreadsheet use.
-- Backup format version `1` is separate from IndexedDB schema version `3`.
+- Backup format version `1` is separate from IndexedDB schema version `5`.
 - JSON restore supports replace mode only in this release. Merge restore remains
   unavailable until same-ID, natural-key, duplicate historical workout,
   source-reference, archived-record, and timestamp conflict behavior is defined.
@@ -39,7 +39,8 @@
 - Clear-all data removes user data transactionally and reinitializes required
   app metadata without inserting demo data.
 - The UI uses a dark, dense, card-based mobile design adapted from the reference analysis without copying branding or proprietary assets.
-- Main navigation is fixed bottom navigation: Home, Nutrition, center Add, Training, History.
+- Main navigation is fixed bottom navigation: Home, Nutrition, center Add,
+  Training, Run, History.
 - Settings are reachable from the header or a visible secondary action.
 - The center Add button opens a context-aware quick-action bottom sheet.
 
@@ -64,9 +65,17 @@
 - Programs never auto-advance or force a schedule.
 - Users manually select workout days.
 - Only one active workout is required at a time.
+- Runs and lifting workouts are mutually exclusive in this release. Starting a
+  run is blocked while a lifting workout is active, and starting a second run is
+  blocked while any run is active or paused.
 - Active workout state must persist across navigation, refresh, app close, and installed PWA reopen.
+- Active run state persists in IndexedDB. GPS is not backfilled after reload,
+  browser suspension, or PWA restart; only received samples are stored.
 - Rest timers are timestamp-based.
 - Completing a workout saves history before any optional structural program update.
+- Run moving time is the sum of accepted GPS sample intervals whose implied
+  speed meets the configured moving threshold. Paused, rejected, stale, jitter,
+  impossible-speed, and long-gap intervals do not add moving time.
 - Detected structural changes are reviewed individually and are never applied automatically.
 - Applying detected changes to active cycle/template/both is transactional.
 
@@ -83,5 +92,6 @@
 - Automated calorie adjustment.
 - Automated progression and automatic program advancement.
 - Estimated 1RM, strength scores, trend weight, adherence percentages, and graphs.
+- Route maps, external map tiles, and reliable fully backgrounded GPS tracking.
 - Public App Store distribution.
 - Push-notification dependency.

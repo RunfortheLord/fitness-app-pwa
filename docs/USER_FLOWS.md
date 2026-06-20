@@ -184,12 +184,39 @@
 ## Viewing Workout History
 
 1. User opens History.
-2. App lists completed workouts by local workout date.
+2. App lists completed workouts and completed runs by local date.
 3. User opens a workout.
 4. App shows source program/day when applicable, start time, completion time, duration, exercise details, performed sets, skipped exercises, notes, and change review outcomes.
 5. User may edit notes and recorded performance values.
 6. Edits do not change the source program template.
 7. User may delete the historical workout only after confirmation.
+
+## Tracking a Run
+
+1. User opens Run.
+2. App shows Start Run without requesting location permission yet.
+3. User taps Start Run.
+4. App checks that no active run or active lifting workout exists, then starts
+   foreground geolocation.
+5. App stores every received sample with accuracy, timestamp, decision, and
+   rejection reason when applicable.
+6. App updates elapsed time, moving time, distance, current pace, average
+   moving pace, and mile splits from accepted samples only.
+7. User may Pause and Resume.
+8. If recent speed stays low past the configured threshold and cooldown, app
+   asks whether the user is walking, resting, or continuing.
+9. User taps Finish and confirms.
+10. App saves the completed run and keeps samples, pauses, splits,
+    classifications, and GPS-gap markers for History and backup.
+
+## Viewing Run History
+
+1. User opens History.
+2. User opens a completed run.
+3. App shows date, distance, elapsed time, moving time, average pace, started
+   and completed timestamps, mile splits, walking/rest classifications, and GPS
+   gap status.
+4. App does not show run samples as lifting set rows.
 
 ## Exporting Backup
 
@@ -226,7 +253,8 @@
 5. User logs recent foods, private custom foods, and previously used provider
    foods offline from IndexedDB.
 6. Remote-only provider search clearly indicates that connectivity is required.
-7. User logs bodyweight and workouts offline.
+7. User logs bodyweight, workouts, and foreground runs offline when browser
+   location permission and platform behavior allow it.
 8. App persists all changes locally.
 9. When online again, no cloud sync is attempted.
 10. If a newer application version is available later, app notifies the user

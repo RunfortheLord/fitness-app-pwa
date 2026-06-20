@@ -164,6 +164,11 @@ describe('backupService', () => {
       'workoutHistorySets',
       'detectedWorkoutChanges',
       'appliedWorkoutChanges',
+      'runs',
+      'runSamples',
+      'runPauses',
+      'runSplits',
+      'runClassifications',
     ])
     expect(result.backup.data.foods[0]?.id).toBe(food.id)
     expect(result.backup.data.foodLogEntries[0]).toMatchObject({
@@ -223,6 +228,95 @@ describe('backupService', () => {
     )
 
     await expect(database.bodyweightEntries.toArray()).resolves.toHaveLength(2)
+  })
+
+  it('exports and restores run samples, splits, pauses, and classifications', async () => {
+    await database.runs.add({
+      id: 'run-1',
+      localDate: testLocalDate,
+      status: 'completed',
+      startedAt: '2026-06-19T12:00:00.000Z',
+      completedAt: '2026-06-19T12:30:00.000Z',
+      elapsedSeconds: 1800,
+      movingSeconds: 1500,
+      distanceMeters: 3218.688,
+      currentPaceSecondsPerMile: null,
+      averageMovingPaceSecondsPerMile: 750,
+      hasGpsGap: true,
+      lowPaceAlertedAt: '2026-06-19T12:12:00.000Z',
+      notes: '',
+      createdAt: '2026-06-19T12:00:00.000Z',
+      updatedAt: '2026-06-19T12:30:00.000Z',
+    })
+    await database.runSamples.add({
+      id: 'sample-1',
+      runId: 'run-1',
+      latitude: 41.88,
+      longitude: -87.63,
+      timestamp: '2026-06-19T12:00:00.000Z',
+      accuracyMeters: 8,
+      altitudeMeters: null,
+      decision: 'accepted',
+      rejectionReason: 'first_sample',
+      segmentDistanceMeters: 0,
+      createdAt: '2026-06-19T12:00:00.000Z',
+    })
+    await database.runPauses.add({
+      id: 'pause-1',
+      runId: 'run-1',
+      startedAt: '2026-06-19T12:10:00.000Z',
+      endedAt: '2026-06-19T12:11:00.000Z',
+      createdAt: '2026-06-19T12:10:00.000Z',
+      updatedAt: '2026-06-19T12:11:00.000Z',
+    })
+    await database.runSplits.add({
+      id: 'split-1',
+      runId: 'run-1',
+      mileNumber: 1,
+      distanceMeters: 1609.344,
+      elapsedSeconds: 800,
+      movingSeconds: 750,
+      paceSecondsPerMile: 750,
+      completedAt: '2026-06-19T12:13:20.000Z',
+      createdAt: '2026-06-19T12:13:20.000Z',
+    })
+    await database.runClassifications.add({
+      id: 'classification-1',
+      runId: 'run-1',
+      type: 'walking',
+      response: 'walking',
+      startedAt: '2026-06-19T12:12:00.000Z',
+      endedAt: null,
+      createdAt: '2026-06-19T12:12:00.000Z',
+    })
+
+    const service = createBackupService(database)
+    const result = await service.createJsonBackup(
+      new Date('2026-06-19T14:00:00.000Z'),
+    )
+    expect(result.backup.data.runSamples[0]).toMatchObject({
+      id: 'sample-1',
+      latitude: 41.88,
+      decision: 'accepted',
+    })
+    expect(
+      createCsvFiles(result.backup.data).map((file) => file.name),
+    ).toContain('runSamples.csv')
+
+    await database.runs.clear()
+    await database.runSamples.clear()
+    await database.runPauses.clear()
+    await database.runSplits.clear()
+    await database.runClassifications.clear()
+    await service.restoreReplace(
+      result.backup,
+      new Date('2026-06-19T15:00:00.000Z'),
+    )
+
+    await expect(database.runs.count()).resolves.toBe(1)
+    await expect(database.runSamples.count()).resolves.toBe(1)
+    await expect(database.runSplits.count()).resolves.toBe(1)
+    await expect(database.runClassifications.count()).resolves.toBe(1)
   })
 
   it('exports provider food log snapshots in JSON and CSV without refetching providers', async () => {

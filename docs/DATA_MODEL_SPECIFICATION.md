@@ -21,6 +21,7 @@
 - `updatedAt`: ISO 8601 timestamp.
 - `localDate`: `YYYY-MM-DD` in the user's local calendar.
 - Workout `startedAt` and `completedAt`: ISO 8601 timestamps.
+- Run sample timestamps and run lifecycle timestamps: ISO 8601 timestamps.
 - Durations are stored in seconds.
 
 ## Entities
@@ -354,6 +355,73 @@ See `docs/PROGRESSION_RECOMMENDATIONS.md` for deterministic rule definitions,
 supported tracking methods, increment handling, assisted-weight direction,
 added-weight semantics, and final programmed-set RIR behavior.
 
+### Run
+
+- `id`
+- `localDate`
+- `status`: `active`, `paused`, `completed`, or `cancelled`
+- `startedAt`
+- `completedAt`
+- `elapsedSeconds`
+- `movingSeconds`
+- `distanceMeters`
+- `currentPaceSecondsPerMile`
+- `averageMovingPaceSecondsPerMile`
+- `hasGpsGap`
+- `lowPaceAlertedAt`
+- `notes`
+- `createdAt`
+- `updatedAt`
+
+### RunSample
+
+- `id`
+- `runId`
+- `latitude`
+- `longitude`
+- `timestamp`
+- `accuracyMeters`
+- `altitudeMeters`: nullable
+- `decision`: `accepted`, `rejected`, or `gap`
+- `rejectionReason`: nullable typed reason such as poor accuracy, stale sample,
+  duplicate, jitter, unrealistic speed, or long gap
+- `segmentDistanceMeters`
+- `createdAt`
+
+Raw samples are retained for audit and future recalculation. Rejected samples do
+not add distance or moving time.
+
+### RunPause
+
+- `id`
+- `runId`
+- `startedAt`
+- `endedAt`
+- `createdAt`
+- `updatedAt`
+
+### RunSplit
+
+- `id`
+- `runId`
+- `mileNumber`
+- `distanceMeters`
+- `elapsedSeconds`
+- `movingSeconds`
+- `paceSecondsPerMile`
+- `completedAt`
+- `createdAt`
+
+### RunClassification
+
+- `id`
+- `runId`
+- `type`: `walking` or `resting`
+- `response`: `walking`, `resting`, `continuing`, or `paused`
+- `startedAt`
+- `endedAt`
+- `createdAt`
+
 ## Relationships
 
 - `FoodLogEntry.foodId` references `Food.id` but historical totals depend on `foodSnapshot`.
@@ -361,6 +429,7 @@ added-weight semantics, and final programmed-set RIR behavior.
 - `ActiveProgramCycle.sourceTemplateId` references `ProgramTemplate.id`.
 - `ActiveWorkout` references the source cycle, template, and day when applicable.
 - `WorkoutHistoryEntry` references source IDs and stores full performed snapshots.
+- `RunSample`, `RunPause`, `RunSplit`, and `RunClassification` reference `Run.id`.
 - Referenced exercises and foods should be archived rather than hard deleted when deletion would break references.
 
 ## Snapshot Behavior
@@ -398,6 +467,9 @@ added-weight semantics, and final programmed-set RIR behavior.
   timestamped bodyweight entries can be retained for the same local date. The
   migration updates app metadata and does not rewrite existing bodyweight
   records.
+- Schema version 5 adds `runs`, `runSamples`, `runPauses`, `runSplits`, and
+  `runClassifications`. The migration updates app metadata and does not change
+  existing lifting, nutrition, bodyweight, or progression records.
 
 ## Transaction Boundaries
 
@@ -406,17 +478,24 @@ added-weight semantics, and final programmed-set RIR behavior.
 - Activating a program copies template data into an active cycle in one transaction.
 - Starting a workout creates the active workout and source snapshot in one transaction.
 - Completing a workout writes history and removes active workout in one transaction after history write succeeds.
+- Starting a run checks for an active run and active lifting workout in one
+  transaction. Runs and lifting workouts are mutually exclusive.
+- Run samples are persisted as they arrive. Accepted samples update derived
+  run distance, moving time, pace, gap state, and splits in the same
+  transaction.
+- Finishing a run marks the run completed and leaves samples, splits, pauses,
+  and classifications attached for History and backup.
 - Applying detected changes to cycle/template/both must be transactional. A failed update must not partially update one destination.
 - Restore replace must validate first, then replace data in one transaction or staged sequence with rollback-safe behavior.
 - Clear all data requires destructive confirmation and clears all user stores together.
 
 ## Backup Model
 
-- JSON backup includes metadata, schema versions, exportedAt timestamp, settings, foods, food logs, bodyweight entries, exercises, program templates, active cycles, active workout if present, and workout history.
+- JSON backup includes metadata, schema versions, exportedAt timestamp, settings, foods, food logs, bodyweight entries, exercises, program templates, active cycles, active workout if present, workout history, active and completed runs, run samples, pauses, splits, and classifications.
 - JSON backup is authoritative and full fidelity.
 - CSV export is derived from stores for readability and does not need to support restore.
 - Import preview summarizes counts, schema versions, conflicts, and whether merge or replace is selected.
-- Current backup format version is `1`, separate from IndexedDB schema version `4`.
+- Current backup format version is `1`, separate from IndexedDB schema version `5`.
 - Backup root fields are `backupFormatVersion`, `databaseSchemaVersion`,
   `applicationVersion`, `exportedAt`, and `data`.
 - Restore supports backup format version `1` when the backup database schema

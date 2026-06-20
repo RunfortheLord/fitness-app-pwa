@@ -22,6 +22,11 @@ import type {
   NutritionTarget,
   ProgramTemplate,
   ProgramTemplateDay,
+  Run,
+  RunClassification,
+  RunPause,
+  RunSample,
+  RunSplit,
   TemplateWorkoutExercise,
   UserSettings,
   Workout,
@@ -57,6 +62,11 @@ const tableNames = [
   'workoutHistorySets',
   'detectedWorkoutChanges',
   'appliedWorkoutChanges',
+  'runs',
+  'runSamples',
+  'runPauses',
+  'runSplits',
+  'runClassifications',
 ] as const
 
 type DataTableName = (typeof tableNames)[number]
@@ -82,6 +92,11 @@ export type BackupData = {
   workoutHistorySets: WorkoutHistorySet[]
   detectedWorkoutChanges: DetectedWorkoutChange[]
   appliedWorkoutChanges: AppliedWorkoutChange[]
+  runs: Run[]
+  runSamples: RunSample[]
+  runPauses: RunPause[]
+  runSplits: RunSplit[]
+  runClassifications: RunClassification[]
 }
 
 export type JsonBackup = {
@@ -549,6 +564,75 @@ const appliedWorkoutChangeSchema = z.object({
   appliedAt: isoTimestampSchema,
   createdAt: isoTimestampSchema,
 })
+const runSchema = z.object({
+  id: idSchema,
+  localDate: localDateSchema,
+  status: z.enum(['active', 'paused', 'completed', 'cancelled']),
+  startedAt: isoTimestampSchema,
+  completedAt: z.union([isoTimestampSchema, z.null()]),
+  elapsedSeconds: nonNegativeInteger,
+  movingSeconds: nonNegativeInteger,
+  distanceMeters: nonNegativeNumber,
+  currentPaceSecondsPerMile: z.union([nonNegativeInteger, z.null()]),
+  averageMovingPaceSecondsPerMile: z.union([nonNegativeInteger, z.null()]),
+  hasGpsGap: z.boolean(),
+  lowPaceAlertedAt: z.union([isoTimestampSchema, z.null()]),
+  notes: z.string(),
+  createdAt: isoTimestampSchema,
+  updatedAt: isoTimestampSchema,
+})
+const runSampleSchema = z.object({
+  id: idSchema,
+  runId: idSchema,
+  latitude: z.number().finite().min(-90).max(90),
+  longitude: z.number().finite().min(-180).max(180),
+  timestamp: isoTimestampSchema,
+  accuracyMeters: nonNegativeNumber,
+  altitudeMeters: z.union([z.number().finite(), z.null()]),
+  decision: z.enum(['accepted', 'rejected', 'gap']),
+  rejectionReason: z.union([
+    z.enum([
+      'first_sample',
+      'poor_accuracy',
+      'duplicate',
+      'stale',
+      'long_gap',
+      'unrealistic_speed',
+      'jitter',
+    ]),
+    z.null(),
+  ]),
+  segmentDistanceMeters: nonNegativeNumber,
+  createdAt: isoTimestampSchema,
+})
+const runPauseSchema = z.object({
+  id: idSchema,
+  runId: idSchema,
+  startedAt: isoTimestampSchema,
+  endedAt: z.union([isoTimestampSchema, z.null()]),
+  createdAt: isoTimestampSchema,
+  updatedAt: isoTimestampSchema,
+})
+const runSplitSchema = z.object({
+  id: idSchema,
+  runId: idSchema,
+  mileNumber: z.number().int().positive(),
+  distanceMeters: nonNegativeNumber,
+  elapsedSeconds: nonNegativeInteger,
+  movingSeconds: nonNegativeInteger,
+  paceSecondsPerMile: z.union([nonNegativeInteger, z.null()]),
+  completedAt: isoTimestampSchema,
+  createdAt: isoTimestampSchema,
+})
+const runClassificationSchema = z.object({
+  id: idSchema,
+  runId: idSchema,
+  type: z.enum(['walking', 'resting']),
+  response: z.enum(['walking', 'resting', 'continuing', 'paused']),
+  startedAt: isoTimestampSchema,
+  endedAt: z.union([isoTimestampSchema, z.null()]),
+  createdAt: isoTimestampSchema,
+})
 
 const backupDataSchema = z.object({
   userSettings: z.array(userSettingsSchema),
@@ -571,6 +655,11 @@ const backupDataSchema = z.object({
   workoutHistorySets: z.array(workoutHistorySetSchema),
   detectedWorkoutChanges: z.array(detectedWorkoutChangeSchema),
   appliedWorkoutChanges: z.array(appliedWorkoutChangeSchema),
+  runs: z.array(runSchema).optional().default([]),
+  runSamples: z.array(runSampleSchema).optional().default([]),
+  runPauses: z.array(runPauseSchema).optional().default([]),
+  runSplits: z.array(runSplitSchema).optional().default([]),
+  runClassifications: z.array(runClassificationSchema).optional().default([]),
 })
 
 const jsonBackupSchema = z.object({
@@ -788,6 +877,11 @@ async function readBackupData(
         database.detectedWorkoutChanges,
       ),
       appliedWorkoutChanges: await sortedTable(database.appliedWorkoutChanges),
+      runs: await sortedTable(database.runs),
+      runSamples: await sortedTable(database.runSamples),
+      runPauses: await sortedTable(database.runPauses),
+      runSplits: await sortedTable(database.runSplits),
+      runClassifications: await sortedTable(database.runClassifications),
     }),
   )
 }
@@ -823,6 +917,11 @@ async function putBackupData(database: TrainingLogDatabase, data: BackupData) {
   await database.workoutHistorySets.bulkPut(data.workoutHistorySets)
   await database.detectedWorkoutChanges.bulkPut(data.detectedWorkoutChanges)
   await database.appliedWorkoutChanges.bulkPut(data.appliedWorkoutChanges)
+  await database.runs.bulkPut(data.runs)
+  await database.runSamples.bulkPut(data.runSamples)
+  await database.runPauses.bulkPut(data.runPauses)
+  await database.runSplits.bulkPut(data.runSplits)
+  await database.runClassifications.bulkPut(data.runClassifications)
 }
 
 function writableTables(database: TrainingLogDatabase) {
@@ -851,6 +950,7 @@ function validateRelationshipIntegrity(data: BackupData) {
   const historyWorkoutIds = idSet(data.workoutHistoryEntries)
   const historyExerciseIds = idSet(data.workoutHistoryExercises)
   const detectedChangeIds = idSet(data.detectedWorkoutChanges)
+  const runIds = idSet(data.runs)
 
   for (const log of data.foodLogEntries) {
     if (log.foodId && !foodIds.has(log.foodId)) {
@@ -1050,6 +1150,38 @@ function validateRelationshipIntegrity(data: BackupData) {
     }
   }
 
+  for (const sample of data.runSamples) {
+    if (!runIds.has(sample.runId)) {
+      errors.push(
+        `Run sample ${sample.id} references missing run ${sample.runId}.`,
+      )
+    }
+  }
+
+  for (const pause of data.runPauses) {
+    if (!runIds.has(pause.runId)) {
+      errors.push(
+        `Run pause ${pause.id} references missing run ${pause.runId}.`,
+      )
+    }
+  }
+
+  for (const split of data.runSplits) {
+    if (!runIds.has(split.runId)) {
+      errors.push(
+        `Run split ${split.id} references missing run ${split.runId}.`,
+      )
+    }
+  }
+
+  for (const classification of data.runClassifications) {
+    if (!runIds.has(classification.runId)) {
+      errors.push(
+        `Run classification ${classification.id} references missing run ${classification.runId}.`,
+      )
+    }
+  }
+
   return errors
 }
 
@@ -1058,6 +1190,11 @@ function normalizeBackup(backup: JsonBackup): JsonBackup {
     ...backup,
     data: {
       ...backup.data,
+      runs: backup.data.runs ?? [],
+      runSamples: backup.data.runSamples ?? [],
+      runPauses: backup.data.runPauses ?? [],
+      runSplits: backup.data.runSplits ?? [],
+      runClassifications: backup.data.runClassifications ?? [],
       exercises: backup.data.exercises.map((exercise) => {
         const trackingMethod = getTrackingMethod(exercise.trackingMethodId)
         return {

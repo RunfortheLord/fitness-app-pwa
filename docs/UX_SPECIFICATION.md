@@ -260,9 +260,11 @@
 
 ## History Screen
 
-- Date-sorted list of completed workouts.
+- Date-sorted list of completed workouts and completed runs.
 - Search/filter can be deferred unless needed for usability.
 - Workout detail shows local date, source program/day, start and completion times, duration, exercises, sets, notes, skipped exercises, and change review results.
+- Run detail shows local date, distance, elapsed time, moving time, average
+  moving pace, mile splits, walking/rest classifications, and GPS-gap state.
 - Editing is limited to notes and recorded performance values.
 - Delete requires confirmation.
 - Bodyweight progress view is reachable from Home and History query state.
@@ -279,6 +281,23 @@
 - Summary text includes first value, latest value, net change, and date range
   when enough data exists.
 
+## Run Screen
+
+- The default empty state shows Start Run and states that GPS collection starts
+  only after that action.
+- Active run metrics show elapsed time, moving time, distance, current pace, and
+  average moving pace in large, tap-readable cards.
+- Primary controls are Start Run, Pause, Resume, and Finish. Finish requires a
+  confirmation dialog.
+- Mile splits are shown as a list after each completed mile.
+- Paused, GPS-error, and GPS-gap states use text labels/status messages, not
+  color alone.
+- The low-pace prompt asks whether the user is walking, resting, or continuing,
+  and offers Pause. The prompt records classification separately from GPS
+  samples.
+- The screen documents foreground tracking support and states that installed
+  PWAs or browsers may suspend geolocation while backgrounded.
+
 ## Settings Screen
 
 - Nutrition targets.
@@ -291,7 +310,7 @@
 
 ## Bottom Sheets
 
-- Used for quick actions, log food, bodyweight entry, exercise options, set edit actions, rest timer controls, detected-change destination selection, and destructive confirmations.
+- Used for quick actions, log food, bodyweight entry, exercise options, set edit actions, rest timer controls, run low-pace classification, detected-change destination selection, and destructive confirmations.
 - Include grab handle, close control, title, and safe-area bottom padding.
 - Avoid nested sheets deeper than one level unless replacing the current sheet.
 

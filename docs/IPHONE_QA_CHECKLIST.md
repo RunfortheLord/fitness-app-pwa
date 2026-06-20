@@ -12,7 +12,7 @@ as passed from desktop emulation, Playwright, or simulator testing.
   Vercel Authentication interstitial.
 - The production build must output `dist/`.
 - Vercel must serve `index.html` for client-side routes such as `/nutrition`,
-  `/training`, `/workout`, `/history`, and `/settings`.
+  `/training`, `/workout`, `/run`, `/history`, and `/settings`.
 - The PWA is intended to run at the deployment origin root so `/sw.js`,
   `/manifest.webmanifest`, `/apple-touch-icon.png`, `/icons/icon-192.png`, and
   `/icons/icon-512.png` keep root scope paths.
@@ -79,6 +79,17 @@ as passed from desktop emulation, Playwright, or simulator testing.
 - [ ] Finish workout.
 - [ ] Review detected changes.
 - [ ] View workout history.
+- [ ] Open Run.
+- [ ] Confirm no location permission prompt appears before tapping Start Run.
+- [ ] Tap Start Run and handle the location permission prompt.
+- [ ] Confirm elapsed time, moving time, distance, current pace, average moving pace, and mile splits remain readable around 390 x 844.
+- [ ] Pause and resume a run.
+- [ ] Close and reopen the app with an active run and confirm it resumes without fabricated GPS points.
+- [ ] Finish a run only after the confirmation dialog.
+- [ ] View completed run history and confirm splits, walking/rest classification, and GPS-gap labels are readable.
+- [ ] Background the installed PWA and confirm any GPS suspension is represented as a limitation/gap rather than claimed continuous tracking.
+- [ ] Confirm no route samples appear in console logs or external network requests.
+- [ ] Physical-device GPS accuracy, permission, and background-suspension behavior still require this manual iPhone pass.
 - [ ] View bodyweight progress history.
 
 ## Persistence

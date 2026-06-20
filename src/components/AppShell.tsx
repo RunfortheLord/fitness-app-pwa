@@ -1,5 +1,6 @@
 import {
   Dumbbell,
+  Footprints,
   NotebookPen,
   Plus,
   Scale,
@@ -222,6 +223,21 @@ function AppShellContent({ children }: AppShellProps) {
             type="button"
             onClick={() => {
               setIsQuickActionOpen(false)
+              void navigate('/run')
+            }}
+          >
+            <span className="quick-action-icon">
+              <Footprints aria-hidden="true" size={20} />
+            </span>
+            <span>
+              <strong>Start or resume run</strong>
+              <small>Track GPS distance, time, and mile splits</small>
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsQuickActionOpen(false)
               void navigate('/training?createExercise=1')
             }}
           >
@@ -278,6 +294,10 @@ function getRouteTitle(pathname: string) {
 
   if (pathname.startsWith('/workout')) {
     return 'Live Workout'
+  }
+
+  if (pathname.startsWith('/run')) {
+    return 'Run'
   }
 
   if (pathname.startsWith('/history')) {

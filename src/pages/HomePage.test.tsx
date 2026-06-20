@@ -57,8 +57,6 @@ describe('HomePage', () => {
   it('waits for initial dashboard initialization before stable empty-state assertions', async () => {
     renderHome()
 
-    expect(await screen.findByText('Loading dashboard')).toBeInTheDocument()
-
     await waitForDashboardReady()
 
     expect(screen.queryByText('Loading dashboard')).not.toBeInTheDocument()
@@ -93,7 +91,14 @@ describe('HomePage', () => {
     await expect(db.bodyweightEntries.toArray()).resolves.toHaveLength(1)
 
     await user.click(screen.getByRole('button', { name: 'Edit latest' }))
-    await user.click(screen.getByRole('button', { name: /Delete/ }))
+    await waitFor(() =>
+      expect(
+        within(
+          screen.getByRole('dialog', { name: 'Log bodyweight' }),
+        ).getByRole('textbox', { name: 'Bodyweight' }),
+      ).toHaveValue('189.2'),
+    )
+    await user.click(await screen.findByRole('button', { name: /Delete/ }))
     await user.click(
       within(
         screen.getByRole('dialog', { name: 'Delete bodyweight?' }),

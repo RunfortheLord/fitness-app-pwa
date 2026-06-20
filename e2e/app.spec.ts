@@ -4,6 +4,7 @@ const routes = [
   { path: '/', title: 'Home', nav: 'Home' },
   { path: '/nutrition', title: 'Nutrition', nav: 'Nutrition' },
   { path: '/training', title: 'Training', nav: 'Training' },
+  { path: '/run', title: 'Run', nav: 'Run' },
   { path: '/history', title: 'History', nav: 'History' },
   { path: '/settings', title: 'Settings' },
 ]
@@ -61,6 +62,9 @@ test('opens the quick action bottom sheet from the center add button', async ({
   ).toBeVisible()
   await expect(
     sheet.getByRole('button', { name: /Create program/ }),
+  ).toBeVisible()
+  await expect(
+    sheet.getByRole('button', { name: /Start or resume run/ }),
   ).toBeVisible()
 })
 

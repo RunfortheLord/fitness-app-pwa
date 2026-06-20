@@ -246,7 +246,11 @@ describe('NutritionPage', () => {
     expect(screen.getByText(/Preview: 99 kcal/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Log food' }))
 
-    const [entry] = await db.foodLogEntries.toArray()
+    let entry = await db.foodLogEntries.toCollection().first()
+    await waitFor(async () => {
+      entry = await db.foodLogEntries.toCollection().first()
+      expect(entry).toBeTruthy()
+    })
     expect(entry).toMatchObject({
       computedCalories: 99,
       computedProteinGrams: 18.6,

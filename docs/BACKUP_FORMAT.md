@@ -3,7 +3,7 @@
 ## Current Versions
 
 - Backup format version: `1`
-- Compatible database schema versions: backups with `databaseSchemaVersion` less than or equal to the app's current IndexedDB schema version `4` can be restored after validation.
+- Compatible database schema versions: backups with `databaseSchemaVersion` less than or equal to the app's current IndexedDB schema version `5` can be restored after validation.
 - Application restore support: application version `0.0.0` can restore backup format version `1`.
 
 The backup format version is intentionally separate from the IndexedDB database schema version. A database migration does not automatically imply a backup format change, and a backup format change does not automatically imply an IndexedDB migration.
@@ -18,7 +18,7 @@ JSON is the authoritative full-fidelity backup format. A backup root contains:
 - `exportedAt`
 - `data`
 
-`data` contains arrays for settings, nutrition target history, foods, food logs, bodyweight entries, exercises, program templates, template workout days, template workout exercises, active program cycles, active-cycle workout days, active-cycle workout exercises, active workout records, workout exercises, workout sets, completed workout history, history exercises, history sets, detected workout changes, and applied workout changes.
+`data` contains arrays for settings, nutrition target history, foods, food logs, bodyweight entries, exercises, program templates, template workout days, template workout exercises, active program cycles, active-cycle workout days, active-cycle workout exercises, active workout records, workout exercises, workout sets, completed workout history, history exercises, history sets, detected workout changes, applied workout changes, runs, run samples, run pauses, run splits, and run classifications.
 
 Stable IDs, parent IDs, ordering fields, local dates, timestamps, archived or hidden status, source IDs, built-in exercise metadata, custom exercise metadata, and snapshots are preserved.
 
@@ -82,12 +82,23 @@ CSV export creates a local TAR archive containing one CSV file per exported tabl
 - `workoutHistorySets.csv`
 - `detectedWorkoutChanges.csv`
 - `appliedWorkoutChanges.csv`
+- `runs.csv`
+- `runSamples.csv`
+- `runPauses.csv`
+- `runSplits.csv`
+- `runClassifications.csv`
 
 CSV files include headers, stable IDs, parent IDs, ordering fields, timestamps, local dates, archived status, source IDs, and escaped values for commas, quotation marks, line breaks, and empty values. Nested snapshot fields are serialized as JSON inside the CSV cell.
 
 Bodyweight CSV and JSON exports include every stored bodyweight entry,
 including multiple entries for the same local date. Export does not collapse,
 average, or rewrite same-day records used by the progress graph.
+
+Run CSV and JSON exports include active and completed runs plus raw GPS samples,
+sample decisions, rejection reasons, pause periods, splits, GPS-gap markers,
+and walking/rest classifications. Location history is sensitive data and stays
+inside the user-initiated local export file; the app does not upload route
+samples.
 
 Nutrition CSV and JSON exports use stored historical food-log snapshots. They
 include enough snapshot information to reconstruct local date, log timestamp,
@@ -100,7 +111,7 @@ CSV is intended for readable analysis and spreadsheet use. CSV import is not sup
 
 ## Clear All Data
 
-Clear all data requires explicit confirmation. It removes local settings, nutrition data, bodyweight entries, custom exercises, programs, active workouts, completed history, detected changes, and applied changes in one transaction. App metadata may be reinitialized. Built-in exercises are reseeded idempotently. Demo data is not inserted.
+Clear all data requires explicit confirmation. It removes local settings, nutrition data, bodyweight entries, custom exercises, programs, active workouts, completed history, detected changes, applied changes, runs, run samples, run pauses, run splits, and run classifications in one transaction. App metadata may be reinitialized. Built-in exercises are reseeded idempotently. Demo data is not inserted.
 
 Users should export a JSON backup before clearing data if they may need to restore later.
 

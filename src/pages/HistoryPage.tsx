@@ -24,11 +24,18 @@ import {
   formatWeight,
   type BodyweightRange,
 } from '@domain/bodyweightProgress'
+import {
+  formatDistance,
+  formatDuration as formatRunDuration,
+  formatPace,
+} from '@domain/runFormatting'
 import { bodyweightRepository } from '@repositories/bodyweightRepository'
+import { runRepository, type RunStructure } from '@repositories/runRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
 import type {
   BodyweightEntry,
   DetectedWorkoutChange,
+  Run,
   StructuralChangeDestination,
   TrackingMetric,
   WorkoutHistoryEntry,
@@ -51,8 +58,10 @@ type HistoryState =
   | {
       status: 'ready'
       workouts: WorkoutHistoryEntry[]
+      runs: Run[]
       summaries: Record<string, WorkoutSummary>
-      selected: WorkoutHistoryEntry
+      selected: WorkoutHistoryEntry | null
+      selectedRun: RunStructure | null
       exercises: WorkoutHistoryExercise[]
       setsByExercise: Record<string, WorkoutHistorySet[]>
       changes: DetectedWorkoutChange[]
@@ -99,29 +108,42 @@ export function HistoryPage() {
     void workoutRepository
       .listRecentCompletedWorkouts(25)
       .then(async (workouts) => {
+        const runs = await runRepository.listRecentCompletedRuns(25)
         if (!isCurrent) {
           return
         }
-        if (!workouts.length) {
+        if (!workouts.length && !runs.length) {
           setState({ status: 'empty' })
           return
         }
 
         const requestedId = searchParams.get('workout')
+        const requestedRunId = searchParams.get('run')
         const requested =
           workouts.find((workout) => workout.id === requestedId) ?? workouts[0]
+        const selectedRun = requestedRunId
+          ? await runRepository
+              .getRunStructure(requestedRunId)
+              .catch(() => null)
+          : !requested && runs[0]
+            ? await runRepository.getRunStructure(runs[0].id)
+            : null
         const structures = await Promise.all(
           workouts.map((workout) =>
             workoutRepository.getWorkoutHistoryStructure(workout.id),
           ),
         )
         const selectedStructure =
-          structures.find(
-            (structure) => structure.workout.id === requested.id,
-          ) ?? structures[0]
-        const changes = await workoutRepository.listDetectedChanges(
-          selectedStructure.workout.id,
-        )
+          requested && !selectedRun
+            ? (structures.find(
+                (structure) => structure.workout.id === requested.id,
+              ) ?? structures[0])
+            : null
+        const changes = selectedStructure
+          ? await workoutRepository.listDetectedChanges(
+              selectedStructure.workout.id,
+            )
+          : []
         const summaries = Object.fromEntries(
           structures.map((structure) => {
             const sets = Object.values(structure.setsByExercise).flat()
@@ -143,10 +165,12 @@ export function HistoryPage() {
         setState({
           status: 'ready',
           workouts,
+          runs,
           summaries,
-          selected: selectedStructure.workout,
-          exercises: selectedStructure.exercises,
-          setsByExercise: selectedStructure.setsByExercise,
+          selected: selectedStructure?.workout ?? null,
+          selectedRun,
+          exercises: selectedStructure?.exercises ?? [],
+          setsByExercise: selectedStructure?.setsByExercise ?? {},
           changes,
         })
         setSelectedIds(
@@ -187,7 +211,7 @@ export function HistoryPage() {
   }, [revision, searchParams])
 
   const summary = useMemo(() => {
-    if (state.status !== 'ready') {
+    if (state.status !== 'ready' || !state.selected) {
       return null
     }
     const sets = Object.values(state.setsByExercise).flat()
@@ -221,6 +245,9 @@ export function HistoryPage() {
 
   function deleteSelectedWorkout() {
     if (state.status !== 'ready') {
+      return
+    }
+    if (!state.selected) {
       return
     }
     const deletedId = state.selected.id
@@ -286,18 +313,35 @@ export function HistoryPage() {
     )
   }
 
+  const selectedWorkout = state.selected
+
   return (
     <PageContainer>
-      <SectionHeader title="Completed workouts" />
+      <SectionHeader title="History" />
       {editError ? <ValidationMessage message={editError} /> : null}
       <div className="history-layout">
         <Card title="History">
           <div className="history-list">
+            {state.runs.map((run) => (
+              <button
+                aria-current={run.id === state.selectedRun?.run.id}
+                key={run.id}
+                onClick={() => setSearchParams({ run: run.id })}
+                type="button"
+              >
+                <strong>Run</strong>
+                <small>GPS run</small>
+                <small>
+                  {run.localDate} - {formatDistance(run.distanceMeters)} -{' '}
+                  {formatRunDuration(run.elapsedSeconds)}
+                </small>
+              </button>
+            ))}
             {state.workouts.map((workout) => {
               const workoutSummary = state.summaries[workout.id]
               return (
                 <button
-                  aria-current={workout.id === state.selected.id}
+                  aria-current={workout.id === state.selected?.id}
                   key={workout.id}
                   onClick={() => setSearchParams({ workout: workout.id })}
                   type="button"
@@ -316,182 +360,192 @@ export function HistoryPage() {
           </div>
         </Card>
 
-        <Card title={state.selected.name}>
-          {summary ? (
-            <div className="summary-grid">
-              <span>
-                <strong>{state.selected.localDate}</strong>
-                <small>Local date</small>
-              </span>
-              <span>
-                <strong>
-                  {formatDuration(state.selected.durationSeconds)}
-                </strong>
-                <small>Duration</small>
-              </span>
-              <span>
-                <strong>{summary.exercisesCompleted}</strong>
-                <small>Exercises</small>
-              </span>
-              <span>
-                <strong>{summary.setsCompleted}</strong>
-                <small>Completed sets</small>
-              </span>
-              <span>
-                <strong>{summary.reviewStatus}</strong>
-                <small>Review</small>
-              </span>
-            </div>
-          ) : null}
+        {state.selectedRun ? (
+          <RunHistoryDetail structure={state.selectedRun} />
+        ) : null}
 
-          <dl className="history-detail-list">
-            <div>
-              <dt>Started</dt>
-              <dd>{formatTimestamp(state.selected.startedAt)}</dd>
-            </div>
-            <div>
-              <dt>Completed</dt>
-              <dd>{formatTimestamp(state.selected.completedAt)}</dd>
-            </div>
-            <div>
-              <dt>Program snapshot</dt>
-              <dd>
-                {state.selected.workoutSnapshot.templateName ??
-                  state.selected.workoutSnapshot.activeCycleName ??
-                  'No program source'}
-              </dd>
-            </div>
-            <div>
-              <dt>Workout-day snapshot</dt>
-              <dd>
-                {state.selected.workoutSnapshot.dayName}
-                {state.selected.workoutSnapshot.dayNotes
-                  ? ` - ${state.selected.workoutSnapshot.dayNotes}`
-                  : ''}
-              </dd>
-            </div>
-          </dl>
+        {selectedWorkout ? (
+          <Card title={selectedWorkout.name}>
+            {summary ? (
+              <div className="summary-grid">
+                <span>
+                  <strong>{selectedWorkout.localDate}</strong>
+                  <small>Local date</small>
+                </span>
+                <span>
+                  <strong>
+                    {formatDuration(selectedWorkout.durationSeconds)}
+                  </strong>
+                  <small>Duration</small>
+                </span>
+                <span>
+                  <strong>{summary.exercisesCompleted}</strong>
+                  <small>Exercises</small>
+                </span>
+                <span>
+                  <strong>{summary.setsCompleted}</strong>
+                  <small>Completed sets</small>
+                </span>
+                <span>
+                  <strong>{summary.reviewStatus}</strong>
+                  <small>Review</small>
+                </span>
+              </div>
+            ) : null}
 
-          <FormField id={`${state.selected.id}-notes`} label="Workout notes">
-            <textarea
-              defaultValue={state.selected.notes}
-              id={`${state.selected.id}-notes`}
-              onBlur={(event) =>
-                runEdit(
-                  workoutRepository.updateWorkoutHistoryNotes(
-                    state.selected.id,
-                    event.currentTarget.value,
-                  ),
-                )
-              }
-              placeholder="Session notes"
-            />
-          </FormField>
+            <dl className="history-detail-list">
+              <div>
+                <dt>Started</dt>
+                <dd>{formatTimestamp(selectedWorkout.startedAt)}</dd>
+              </div>
+              <div>
+                <dt>Completed</dt>
+                <dd>{formatTimestamp(selectedWorkout.completedAt)}</dd>
+              </div>
+              <div>
+                <dt>Program snapshot</dt>
+                <dd>
+                  {selectedWorkout.workoutSnapshot.templateName ??
+                    selectedWorkout.workoutSnapshot.activeCycleName ??
+                    'No program source'}
+                </dd>
+              </div>
+              <div>
+                <dt>Workout-day snapshot</dt>
+                <dd>
+                  {selectedWorkout.workoutSnapshot.dayName}
+                  {selectedWorkout.workoutSnapshot.dayNotes
+                    ? ` - ${selectedWorkout.workoutSnapshot.dayNotes}`
+                    : ''}
+                </dd>
+              </div>
+            </dl>
 
-          {summary?.skipped.length ? (
-            <p className="muted">
-              Skipped:{' '}
-              {summary.skipped
-                .map((exercise) => exercise.exerciseSnapshot.exerciseName)
-                .join(', ')}
-            </p>
-          ) : null}
-
-          <div className="button-row">
-            <SecondaryButton
-              className="button-danger"
-              onClick={() => setDeleteRequested(true)}
-              type="button"
-            >
-              <Trash2 aria-hidden="true" size={18} />
-              Delete workout
-            </SecondaryButton>
-          </div>
-        </Card>
-
-        <Card title="Exercises">
-          <div className="history-exercise-list">
-            {state.exercises.map((exercise) => (
-              <HistoryExerciseCard
-                exercise={exercise}
-                key={exercise.id}
-                onExerciseNotes={(notes) =>
+            <FormField id={`${selectedWorkout.id}-notes`} label="Workout notes">
+              <textarea
+                defaultValue={selectedWorkout.notes}
+                id={`${selectedWorkout.id}-notes`}
+                onBlur={(event) =>
                   runEdit(
-                    workoutRepository.updateWorkoutHistoryExerciseNotes(
-                      exercise.id,
-                      notes,
+                    workoutRepository.updateWorkoutHistoryNotes(
+                      selectedWorkout.id,
+                      event.currentTarget.value,
                     ),
                   )
                 }
-                onSetChange={(set, input) =>
-                  runEdit(
-                    workoutRepository.updateWorkoutHistorySet(set.id, input),
-                  )
-                }
-                sets={state.setsByExercise[exercise.id] ?? []}
+                placeholder="Session notes"
               />
-            ))}
-          </div>
-        </Card>
+            </FormField>
 
-        <ChangeReview
-          changes={state.changes}
-          error={reviewError}
-          hasTemplate={Boolean(state.selected.sourceTemplateId)}
-          onDestinationChange={(changeId, destination) =>
-            setSelectedDestinations((current) => ({
-              ...current,
-              [changeId]: destination,
-            }))
-          }
-          onSave={(applySelected) => {
-            const selections = state.changes.map((change) => ({
-              changeId: change.id,
-              destination:
-                applySelected && selectedIds.has(change.id)
-                  ? (selectedDestinations[change.id] ?? 'cycle_only')
-                  : ('neither' as const),
-            }))
-            void workoutRepository
-              .applyDetectedChanges(selections)
-              .then(() => {
-                setReviewError(null)
-                reload()
+            {summary?.skipped.length ? (
+              <p className="muted">
+                Skipped:{' '}
+                {summary.skipped
+                  .map((exercise) => exercise.exerciseSnapshot.exerciseName)
+                  .join(', ')}
+              </p>
+            ) : null}
+
+            <div className="button-row">
+              <SecondaryButton
+                className="button-danger"
+                onClick={() => setDeleteRequested(true)}
+                type="button"
+              >
+                <Trash2 aria-hidden="true" size={18} />
+                Delete workout
+              </SecondaryButton>
+            </div>
+          </Card>
+        ) : null}
+
+        {selectedWorkout ? (
+          <Card title="Exercises">
+            <div className="history-exercise-list">
+              {state.exercises.map((exercise) => (
+                <HistoryExerciseCard
+                  exercise={exercise}
+                  key={exercise.id}
+                  onExerciseNotes={(notes) =>
+                    runEdit(
+                      workoutRepository.updateWorkoutHistoryExerciseNotes(
+                        exercise.id,
+                        notes,
+                      ),
+                    )
+                  }
+                  onSetChange={(set, input) =>
+                    runEdit(
+                      workoutRepository.updateWorkoutHistorySet(set.id, input),
+                    )
+                  }
+                  sets={state.setsByExercise[exercise.id] ?? []}
+                />
+              ))}
+            </div>
+          </Card>
+        ) : null}
+
+        {selectedWorkout ? (
+          <ChangeReview
+            changes={state.changes}
+            error={reviewError}
+            hasTemplate={Boolean(selectedWorkout.sourceTemplateId)}
+            onDestinationChange={(changeId, destination) =>
+              setSelectedDestinations((current) => ({
+                ...current,
+                [changeId]: destination,
+              }))
+            }
+            onSave={(applySelected) => {
+              const selections = state.changes.map((change) => ({
+                changeId: change.id,
+                destination:
+                  applySelected && selectedIds.has(change.id)
+                    ? (selectedDestinations[change.id] ?? 'cycle_only')
+                    : ('neither' as const),
+              }))
+              void workoutRepository
+                .applyDetectedChanges(selections)
+                .then(() => {
+                  setReviewError(null)
+                  reload()
+                })
+                .catch((caught: unknown) => {
+                  setReviewError(
+                    caught instanceof Error
+                      ? caught.message
+                      : 'Change review could not be saved.',
+                  )
+                  reload()
+                })
+            }}
+            onToggle={(changeId) => {
+              setSelectedIds((current) => {
+                const next = new Set(current)
+                if (next.has(changeId)) {
+                  next.delete(changeId)
+                } else {
+                  next.add(changeId)
+                }
+                return next
               })
-              .catch((caught: unknown) => {
-                setReviewError(
-                  caught instanceof Error
-                    ? caught.message
-                    : 'Change review could not be saved.',
-                )
-                reload()
-              })
-          }}
-          onToggle={(changeId) => {
-            setSelectedIds((current) => {
-              const next = new Set(current)
-              if (next.has(changeId)) {
-                next.delete(changeId)
-              } else {
-                next.add(changeId)
-              }
-              return next
-            })
-          }}
-          selectedDestinations={selectedDestinations}
-          selectedIds={selectedIds}
-        />
+            }}
+            selectedDestinations={selectedDestinations}
+            selectedIds={selectedIds}
+          />
+        ) : null}
       </div>
 
       <ModalConfirmationDialog
         confirmLabel="Delete"
-        isOpen={deleteRequested}
+        isOpen={deleteRequested && state.selected !== null}
         onCancel={() => setDeleteRequested(false)}
         onConfirm={deleteSelectedWorkout}
         title="Delete workout history?"
       >
         <p>
-          Delete {state.selected.name} from {state.selected.localDate}. This
+          Delete {state.selected?.name} from {state.selected?.localDate}. This
           removes only this historical workout snapshot and cannot be undone.
         </p>
       </ModalConfirmationDialog>
@@ -583,6 +637,82 @@ function BodyweightProgressView({
         ) : null}
       </Card>
     </PageContainer>
+  )
+}
+
+function RunHistoryDetail({ structure }: { structure: RunStructure }) {
+  const { run, splits, classifications } = structure
+  return (
+    <Card title="Run detail">
+      <div className="summary-grid">
+        <span>
+          <strong>{run.localDate}</strong>
+          <small>Date</small>
+        </span>
+        <span>
+          <strong>{formatDistance(run.distanceMeters)}</strong>
+          <small>Distance</small>
+        </span>
+        <span>
+          <strong>{formatRunDuration(run.elapsedSeconds)}</strong>
+          <small>Elapsed</small>
+        </span>
+        <span>
+          <strong>{formatRunDuration(run.movingSeconds)}</strong>
+          <small>Moving</small>
+        </span>
+        <span>
+          <strong>{formatPace(run.averageMovingPaceSecondsPerMile)}</strong>
+          <small>Average pace</small>
+        </span>
+        <span>
+          <strong>{run.hasGpsGap ? 'Yes' : 'No'}</strong>
+          <small>GPS gap</small>
+        </span>
+      </div>
+      <dl className="history-detail-list">
+        <div>
+          <dt>Started</dt>
+          <dd>{formatTimestamp(run.startedAt)}</dd>
+        </div>
+        <div>
+          <dt>Completed</dt>
+          <dd>
+            {run.completedAt ? formatTimestamp(run.completedAt) : 'Active'}
+          </dd>
+        </div>
+      </dl>
+      <h3>Mile splits</h3>
+      {splits.length ? (
+        <div className="run-split-list">
+          {splits.map((split) => (
+            <div key={split.id}>
+              <strong>Mile {split.mileNumber}</strong>
+              <span>{formatPace(split.paceSecondsPerMile)}</span>
+              <small>
+                {formatRunDuration(split.movingSeconds)} moving -{' '}
+                {formatRunDuration(split.elapsedSeconds)} elapsed
+              </small>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="muted">No completed mile splits.</p>
+      )}
+      <h3>Walking and rest</h3>
+      {classifications.length ? (
+        <ul className="compact-list">
+          {classifications.map((classification) => (
+            <li key={classification.id}>
+              <span>{classification.type}</span>
+              <strong>{formatTimestamp(classification.startedAt)}</strong>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted">No walking or rest classifications recorded.</p>
+      )}
+    </Card>
   )
 }
 

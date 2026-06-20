@@ -169,13 +169,25 @@ export function TrainingPage() {
   useEffect(() => {
     let isCurrent = true
 
+    void exerciseRepository.seedBuiltInExercises().finally(() => {
+      if (isCurrent) {
+        reload()
+      }
+    })
+
+    return () => {
+      isCurrent = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let isCurrent = true
+
     void Promise.all([
-      exerciseRepository.seedBuiltInExercises().then(() =>
-        exerciseRepository.searchExercises({
-          includeArchived: view === 'hidden',
-          query,
-        }),
-      ),
+      exerciseRepository.searchExercises({
+        includeArchived: view === 'hidden',
+        query,
+      }),
       programRepository.listProgramTemplates(),
       programRepository.getCurrentActiveCycleStructure(),
       programRepository.getExerciseUsageSummary(),
@@ -372,7 +384,19 @@ export function TrainingPage() {
           if (programConfirmation.type === 'activate') {
             const { id } = programConfirmation.template
             setProgramConfirmation(null)
-            void programRepository.activateTemplate(id).then(() => {
+            void programRepository.activateTemplate(id).then((activated) => {
+              setLoadState((current) => ({
+                ...current,
+                currentCycle: {
+                  cycle: activated.cycle,
+                  days: activated.days,
+                  exercisesByDay: groupActiveExercisesByDay(
+                    activated.days,
+                    activated.exercises,
+                  ),
+                },
+                status: 'ready',
+              }))
               setMessage('Program activated.')
               reload()
             })
@@ -399,6 +423,20 @@ export function TrainingPage() {
         </p>
       </ModalConfirmationDialog>
     </PageContainer>
+  )
+}
+
+function groupActiveExercisesByDay(
+  days: ActiveCycleWorkoutDay[],
+  exercises: ActiveCycleWorkoutExercise[],
+) {
+  return Object.fromEntries(
+    days.map((day) => [
+      day.id,
+      exercises
+        .filter((exercise) => exercise.dayId === day.id)
+        .sort((first, second) => first.orderIndex - second.orderIndex),
+    ]),
   )
 }
 

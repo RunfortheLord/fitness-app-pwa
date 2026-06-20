@@ -23,8 +23,6 @@ export type ExerciseSearchOptions = {
   limit?: number
 }
 
-const seedPromises = new WeakMap<TrainingLogDatabase, Promise<void>>()
-
 export function createExerciseRepository(database: TrainingLogDatabase = db) {
   function validateExerciseInput(input: CreateExerciseInput) {
     if (!input.name.trim()) {
@@ -72,19 +70,7 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
 
   return {
     async seedBuiltInExercises() {
-      const existingSeed = seedPromises.get(database)
-      if (existingSeed) {
-        await existingSeed
-        return
-      }
-
-      const seedPromise = seedBuiltInExerciseRecords(database)
-      seedPromises.set(database, seedPromise)
-      try {
-        await seedPromise
-      } finally {
-        seedPromises.delete(database)
-      }
+      await seedBuiltInExerciseRecords(database)
     },
 
     async createExercise(input: CreateExerciseInput) {

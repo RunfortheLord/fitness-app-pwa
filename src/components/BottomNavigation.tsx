@@ -1,4 +1,11 @@
-import { Dumbbell, History, Home, Plus, Utensils } from 'lucide-react'
+import {
+  Dumbbell,
+  Footprints,
+  History,
+  Home,
+  Plus,
+  Utensils,
+} from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
 type BottomNavigationProps = {
@@ -27,6 +34,10 @@ export function BottomNavigation({ onAdd }: BottomNavigationProps) {
       <NavLink to="/training" className="bottom-nav-link">
         <Dumbbell aria-hidden="true" size={20} />
         <span>Training</span>
+      </NavLink>
+      <NavLink to="/run" className="bottom-nav-link">
+        <Footprints aria-hidden="true" size={20} />
+        <span>Run</span>
       </NavLink>
       <NavLink to="/history" className="bottom-nav-link">
         <History aria-hidden="true" size={20} />

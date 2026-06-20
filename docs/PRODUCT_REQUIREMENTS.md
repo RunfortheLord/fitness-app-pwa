@@ -3,7 +3,7 @@
 ## Product Goals
 
 - Build a single-user, local-first, mobile-first fitness tracking Progressive Web App.
-- Support manual nutrition logging, bodyweight logging, custom exercise management, program creation, active workout logging, and workout history.
+- Support manual nutrition logging, bodyweight logging, custom exercise management, program creation, active workout logging, GPS run tracking, and workout history.
 - Target iPhone users who install the app through Safari using Add to Home Screen.
 - Work after installation without a user account, backend, cloud sync, subscription, internet connection, external food database, or push-notification dependency.
 - Store all primary user data locally in IndexedDB with exportable, restorable records.
@@ -41,10 +41,11 @@
 
 ### Navigation
 
-- Fixed bottom navigation must include Home, Nutrition, center Add, Training, and History.
+- Fixed bottom navigation must include Home, Nutrition, center Add, Training, Run, and History.
 - Settings must be reachable from the app header or another clearly visible secondary action.
 - The center Add button must open a bottom sheet with context-appropriate quick actions:
   - start or resume workout
+  - start or resume run
   - log food
   - log bodyweight
   - create exercise
@@ -148,9 +149,47 @@
 - Applying changes must be transactional.
 - The user must be able to finish and save the workout without applying changes.
 
+### GPS Runs
+
+- Running must be a separate section and must not force run data into lifting set rows.
+- GPS collection must begin only after the user presses Start Run.
+- Active runs must support Start Run, Pause, Resume, Finish, elapsed time,
+  moving time, distance, current pace, average moving pace, and per-mile splits.
+- Active runs must persist start time, pause periods, samples, accepted
+  distance, splits, moving time, walking/rest classifications, GPS gaps, and
+  status across reloads without inventing missing GPS points.
+- The app must prevent two simultaneous active runs.
+- The app must not start a run while a lifting workout is active. The user must
+  finish or cancel the lifting workout first.
+- GPS samples must store latitude, longitude, timestamp, accuracy, optional
+  altitude, decision, rejection reason, and accepted segment distance.
+- Distance processing must reject poor accuracy, duplicate or stale samples,
+  jitter, unrealistic speed, and long gaps. Long gaps must be marked and must
+  not create fabricated straight-line distance.
+- Moving time is the sum of accepted sample intervals whose implied speed meets
+  the configured moving threshold. Paused time and rejected/gap intervals do
+  not add moving time.
+- Splits must be created at every completed mile from accepted distance only.
+- Current pace must use a stable recent accepted-sample window rather than a
+  single point. Average pace uses accepted distance and moving time.
+- A conservative low-pace detector may ask whether the user is walking,
+  resting, or continuing, with hysteresis/cooldown. It must not automatically
+  discard time or distance.
+- Completed runs must appear in History with date, total distance, elapsed
+  time, moving time, average moving pace, mile splits, classifications, and
+  GPS-gap indication.
+- Foreground browser tracking is supported when permission exists. iOS and
+  other browsers may suspend geolocation after the browser or installed PWA is
+  backgrounded. Service workers cannot guarantee continuous GPS sampling.
+- Location history remains local. Route samples must not be logged to analytics
+  or sent to third parties.
+
 ### History
 
 - Workout history must include local workout date, workout name, program and day source when applicable, start time, completion time, duration, exercises, performed sets, weight, reps, RIR, completion status, notes, skipped exercises, and applied or rejected structural changes.
+- Completed run history must include a dedicated run detail view with distance,
+  elapsed time, moving time, average moving pace, mile splits, walking/rest
+  classifications, and GPS-gap indication.
 - Users must be able to view full workout details.
 - Users must be able to safely edit notes and recorded performance values without changing original program templates.
 - Deleting a historical workout must require confirmation.
@@ -183,7 +222,7 @@
 
 ## Out of Scope
 
-- Account creation, login, backend server, cloud sync, social features, friends, followers, public profiles, subscriptions, advertisements, wearable integrations, Apple Health integration, AI coaching, AI food-photo analysis, external food database, barcode scanner, micronutrients, automatic calorie adjustment, automated training progression, automatic program advancement, estimated one-repetition maximum, trend-weight calculations, weekly adherence percentage, non-bodyweight graphs, public App Store distribution, and push-notification dependency.
+- Account creation, login, backend server, cloud sync, social features, friends, followers, public profiles, subscriptions, advertisements, wearable integrations, Apple Health integration, AI coaching, AI food-photo analysis, external food database, barcode scanner, micronutrients, automatic calorie adjustment, automated training progression, automatic program advancement, estimated one-repetition maximum, trend-weight calculations, weekly adherence percentage, non-bodyweight graphs, route maps or external map tiles, reliable fully backgrounded GPS tracking, public App Store distribution, and push-notification dependency.
 
 ## Acceptance Criteria
 
@@ -196,6 +235,8 @@
 - A user can create a program template, activate it into an independent active cycle, manually select a workout day, and start a workout.
 - A user can close and reopen the installed PWA and resume the active workout with preserved set entries and timer state.
 - A user can finish a workout, save history, review detected structural changes, and choose a destination per change.
+- A user can start a run explicitly, pause, resume, finish, recover it after
+  reload, and review the completed run in History.
 - A user can export full JSON, restore from validated JSON with preview and confirmation, export CSV, and clear data only after confirmation.
 - No first-release out-of-scope feature appears in the UI as an active product feature.
 

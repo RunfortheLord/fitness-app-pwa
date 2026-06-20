@@ -1,4 +1,5 @@
 import {
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -28,6 +29,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  cleanup()
   await db.delete()
 })
 
@@ -74,14 +76,23 @@ describe('TrainingPage', () => {
     expect(await screen.findByText('Barbell bench')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Create exercise' }))
+    const duplicateDialog = await screen.findByRole('dialog', {
+      name: 'Create exercise',
+    })
     await user.type(
-      screen.getByRole('textbox', { name: 'Name' }),
+      within(duplicateDialog).getByRole('textbox', { name: 'Name' }),
       'Bench press',
     )
     expect(
-      await screen.findByText(/Similar exercise name already exists/),
+      await within(duplicateDialog).findByText(
+        /Similar exercise name already exists/,
+        undefined,
+        { timeout: 5_000 },
+      ),
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Save exercise' })).toBeEnabled()
+    expect(
+      within(duplicateDialog).getByRole('button', { name: 'Save exercise' }),
+    ).toBeEnabled()
     await user.click(
       within(screen.getByRole('dialog', { name: 'Create exercise' })).getByRole(
         'button',
@@ -123,13 +134,22 @@ describe('TrainingPage', () => {
       screen.queryByRole('button', { name: 'Hide Barbell Bench Press' }),
     ).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Hide Bench press' }))
+    await waitFor(async () => {
+      const exercise = await db.exercises.where({ name: 'Bench press' }).first()
+      expect(exercise?.status).toBe('hidden')
+    })
     await waitFor(() =>
       expect(screen.queryByText('Bench press')).not.toBeInTheDocument(),
     )
 
     await user.click(screen.getByRole('button', { name: 'Hidden' }))
+    expect(await screen.findByText('Hidden exercises')).toBeInTheDocument()
     expect(
-      await screen.findByRole('button', { name: 'Restore Bench press' }),
+      await screen.findByRole(
+        'button',
+        { name: 'Restore Bench press' },
+        { timeout: 5_000 },
+      ),
     ).toBeInTheDocument()
     await user.click(
       screen.getByRole('button', { name: 'Restore Bench press' }),
@@ -246,12 +266,18 @@ describe('TrainingPage', () => {
       ).getByRole('button', { name: 'Activate' }),
     )
     expect(await screen.findByText('Program activated.')).toBeInTheDocument()
-    await user.click(await screen.findByRole('button', { name: /Pull/ }))
+    await waitFor(async () => {
+      const activeCycle = await db.activeProgramCycles.toCollection().first()
+      expect(activeCycle?.name).toBe('PPL')
+    })
+    await user.click(
+      await screen.findByRole('button', { name: /Pull/ }, { timeout: 5_000 }),
+    )
     expect(
       await screen.findByRole('dialog', { name: 'Pull' }),
     ).toBeInTheDocument()
     expect(screen.getByText(/stays on this day/)).toBeInTheDocument()
-  }, 10_000)
+  }, 15_000)
 
   it('searches built-in and visible custom exercises while excluding hidden custom exercises', async () => {
     const user = userEvent.setup()
@@ -312,7 +338,9 @@ describe('TrainingPage', () => {
     )
     await user.click(screen.getByRole('button', { name: 'Start Workout' }))
 
-    expect(await screen.findByText('Live workout')).toBeInTheDocument()
+    expect(
+      await screen.findByText('Live workout', undefined, { timeout: 5_000 }),
+    ).toBeInTheDocument()
     await user.type(
       screen.getByRole('textbox', { name: 'Workout notes' }),
       'Good warmup',

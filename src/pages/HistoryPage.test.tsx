@@ -7,6 +7,7 @@ import { db } from '@db/database'
 import { createExerciseRepository } from '@repositories/exerciseRepository'
 import { createFoodRepository } from '@repositories/foodRepository'
 import { createProgramRepository } from '@repositories/programRepository'
+import { createRunRepository } from '@repositories/runRepository'
 import { createWorkoutRepository } from '@repositories/workoutRepository'
 import { initializeAppData } from '@services/appInitializationService'
 import { seedProgram, testLocalDate } from '@test/seedFactories'
@@ -137,6 +138,49 @@ describe('HistoryPage', () => {
     const items = await screen.findAllByRole('button', { name: /Upper/ })
     expect(items[0]).toHaveTextContent('2026-06-19')
     expect(items[1]).toHaveTextContent('2026-06-17')
+  })
+
+  it('shows completed runs with dedicated run detail', async () => {
+    const repository = createRunRepository(db)
+    const run = await repository.startRun(new Date('2026-06-19T12:00:00.000Z'))
+    await db.runs.update(run.id, {
+      distanceMeters: 3218.688,
+      movingSeconds: 1200,
+      averageMovingPaceSecondsPerMile: 600,
+      hasGpsGap: true,
+    })
+    await db.runSplits.bulkAdd([
+      {
+        id: 'split-1',
+        runId: run.id,
+        mileNumber: 1,
+        distanceMeters: 1609.344,
+        elapsedSeconds: 620,
+        movingSeconds: 600,
+        paceSecondsPerMile: 600,
+        completedAt: '2026-06-19T12:10:20.000Z',
+        createdAt: '2026-06-19T12:10:20.000Z',
+      },
+    ])
+    await db.runClassifications.add({
+      id: 'classification-1',
+      runId: run.id,
+      type: 'walking',
+      response: 'walking',
+      startedAt: '2026-06-19T12:08:00.000Z',
+      endedAt: null,
+      createdAt: '2026-06-19T12:08:00.000Z',
+    })
+    await repository.finishRun(run.id, new Date('2026-06-19T12:25:00.000Z'))
+
+    renderHistory(`/history?run=${run.id}`)
+
+    expect(await screen.findByText('Run detail')).toBeInTheDocument()
+    expect(screen.getAllByText('2.00 mi').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('10:00/mi').length).toBeGreaterThan(0)
+    expect(screen.getByText('Mile 1')).toBeInTheDocument()
+    expect(screen.getByText('walking')).toBeInTheDocument()
+    expect(screen.getByText('GPS gap')).toBeInTheDocument()
   })
 
   it('displays full workout detail including snapshots, timestamps, sets, skipped exercises, and changes', async () => {

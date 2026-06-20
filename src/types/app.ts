@@ -156,6 +156,82 @@ export type BodyweightEntry = {
   updatedAt: IsoTimestamp
 }
 
+export type RunStatus = 'active' | 'paused' | 'completed' | 'cancelled'
+export type RunSampleDecision = 'accepted' | 'rejected' | 'gap'
+export type RunSampleRejectionReason =
+  | 'first_sample'
+  | 'poor_accuracy'
+  | 'duplicate'
+  | 'stale'
+  | 'long_gap'
+  | 'unrealistic_speed'
+  | 'jitter'
+export type RunClassificationType = 'walking' | 'resting'
+export type RunAlertResponse = 'walking' | 'resting' | 'continuing' | 'paused'
+
+export type Run = {
+  id: string
+  localDate: LocalDateString
+  status: RunStatus
+  startedAt: IsoTimestamp
+  completedAt: IsoTimestamp | null
+  elapsedSeconds: number
+  movingSeconds: number
+  distanceMeters: number
+  currentPaceSecondsPerMile: number | null
+  averageMovingPaceSecondsPerMile: number | null
+  hasGpsGap: boolean
+  lowPaceAlertedAt: IsoTimestamp | null
+  notes: string
+  createdAt: IsoTimestamp
+  updatedAt: IsoTimestamp
+}
+
+export type RunSample = {
+  id: string
+  runId: string
+  latitude: number
+  longitude: number
+  timestamp: IsoTimestamp
+  accuracyMeters: number
+  altitudeMeters: number | null
+  decision: RunSampleDecision
+  rejectionReason: RunSampleRejectionReason | null
+  segmentDistanceMeters: number
+  createdAt: IsoTimestamp
+}
+
+export type RunPause = {
+  id: string
+  runId: string
+  startedAt: IsoTimestamp
+  endedAt: IsoTimestamp | null
+  createdAt: IsoTimestamp
+  updatedAt: IsoTimestamp
+}
+
+export type RunSplit = {
+  id: string
+  runId: string
+  mileNumber: number
+  distanceMeters: number
+  elapsedSeconds: number
+  movingSeconds: number
+  paceSecondsPerMile: number | null
+  completedAt: IsoTimestamp
+  createdAt: IsoTimestamp
+}
+
+export type RunClassification = {
+  id: string
+  runId: string
+  type: RunClassificationType
+  response: RunAlertResponse
+  startedAt: IsoTimestamp
+  endedAt: IsoTimestamp | null
+  createdAt: IsoTimestamp
+}
+
 export type TrackingMetricValueType =
   | 'number'
   | 'integer'
