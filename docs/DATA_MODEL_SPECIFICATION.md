@@ -50,6 +50,19 @@ foreign-key ID fields and sort indexes.
 - `createdAt`
 - `updatedAt`
 
+### ApiKeyIntegrationSettings
+
+- `id`: currently `usda_fooddata_central`
+- `apiKey`: user-supplied key stored only in device-local IndexedDB
+- `status`: `not_configured`, `testing`, `connected`, `invalid_key`,
+  `rate_limited`, `network_unavailable`, or `service_unavailable`
+- `lastTestedAt`
+- `createdAt`
+- `updatedAt`
+
+This store is intentionally excluded from JSON backups, CSV exports, diagnostics,
+and restore payloads.
+
 ### NutritionTarget
 
 - `calories`
@@ -487,6 +500,10 @@ not add distance or moving time.
 - Schema version 5 adds `runs`, `runSamples`, `runPauses`, `runSplits`, and
   `runClassifications`. The migration updates app metadata and does not change
   existing lifting, nutrition, bodyweight, or progression records.
+- Schema version 6 adds `apiKeyIntegrationSettings` for user-managed USDA
+  FoodData Central API keys. The migration is additive and does not change
+  meals, foods, bodyweight entries, workouts, history, programs, exercises,
+  runs, or general settings.
 
 ## Transaction Boundaries
 
@@ -514,7 +531,7 @@ not add distance or moving time.
 - JSON backup is authoritative and full fidelity.
 - CSV export is derived from stores for readability and does not need to support restore.
 - Import preview summarizes counts, schema versions, conflicts, and whether merge or replace is selected.
-- Current backup format version is `1`, separate from IndexedDB schema version `5`.
+- Current backup format version is `1`, separate from IndexedDB schema version `6`.
 - Backup root fields are `backupFormatVersion`, `databaseSchemaVersion`,
   `applicationVersion`, `exportedAt`, and `data`.
 - Restore supports backup format version `1` when the backup database schema

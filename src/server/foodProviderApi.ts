@@ -58,9 +58,12 @@ export async function handleFoodSearch(
       input.allowFallback,
     ].join('|')
 
-    const data = await searchCache.getOrCreate(cacheKey, async () =>
-      searchWithFallback(input, adapters, signal),
-    )
+    const data =
+      input.provider === 'open_food_facts'
+        ? await searchCache.getOrCreate(cacheKey, async () =>
+            searchWithFallback(input, adapters, signal),
+          )
+        : await searchWithFallback(input, adapters, signal)
     return { ok: true, data }
   } catch (error) {
     return formatError(error)
@@ -93,10 +96,10 @@ export function validateSearchRequest(request: FoodSearchRequest) {
   if (!query) {
     throw new ProviderError('invalid_request', 'Query is required.')
   }
-  if (query.length < 2) {
+  if (query.length < 3) {
     throw new ProviderError(
       'query_too_short',
-      'Query must be at least 2 characters.',
+      'Query must be at least 3 characters.',
     )
   }
   if (query.length > 80) {

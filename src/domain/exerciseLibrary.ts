@@ -6,7 +6,7 @@ import type {
   TrackingMethodId,
 } from '@shared-types/app'
 
-export const BUILT_IN_EXERCISE_SEED_VERSION = 1
+export const BUILT_IN_EXERCISE_SEED_VERSION = 2
 export const BUILT_IN_EXERCISE_CREATED_AT = '2026-06-19T00:00:00.000Z'
 
 export type BuiltInExerciseSeed = Pick<
@@ -1285,6 +1285,52 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
   exercise('sissy-squat', 'Sissy Squat', 'bodyweight', ['quadriceps'], {
     tracking: 'reps_only',
   }),
+  exercise('neck-flexion', 'Neck Flexion', 'bodyweight', ['traps'], {
+    rest: shortIsolation,
+    tracking: 'reps_only',
+  }),
+  exercise('neck-extension', 'Neck Extension', 'bodyweight', ['traps'], {
+    rest: shortIsolation,
+    tracking: 'reps_only',
+  }),
+  exercise(
+    'neck-lateral-flexion',
+    'Neck Lateral Flexion',
+    'bodyweight',
+    ['traps'],
+    {
+      perSide: true,
+      rest: shortIsolation,
+      tracking: 'reps_only',
+    },
+  ),
+  exercise('dead-hang', 'Dead Hang', 'bodyweight', ['forearms'], {
+    increment: null,
+    rest: isolation,
+    secondary: ['back'],
+    tracking: 'duration',
+  }),
+  exercise('plate-pinch-hold', 'Plate Pinch Hold', 'dumbbell', ['forearms'], {
+    rest: isolation,
+    tracking: 'duration',
+  }),
+  exercise('sled-push', 'Sled Push', 'machine', ['quadriceps'], {
+    increment: null,
+    rest: moderateCompound,
+    secondary: ['glutes', 'calves'],
+    tracking: 'distance_duration',
+  }),
+  exercise('battle-ropes', 'Battle Ropes', 'bodyweight', ['shoulders'], {
+    increment: null,
+    rest: isolation,
+    secondary: ['core'],
+    tracking: 'duration',
+  }),
+  exercise('burpee', 'Burpee', 'bodyweight', ['quadriceps'], {
+    rest: moderateCompound,
+    secondary: ['chest', 'shoulders', 'glutes'],
+    tracking: 'reps_only',
+  }),
 ]
 
 export function validateBuiltInExercises(
@@ -1365,6 +1411,7 @@ export function validateBuiltInExercises(
           'back',
           'chest',
           'core',
+          'traps',
           'hip abductors',
           'hip adductors',
         ].includes(muscle),

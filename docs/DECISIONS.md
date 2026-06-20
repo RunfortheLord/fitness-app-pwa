@@ -40,7 +40,7 @@
 - No account, backend, cloud sync, subscription, internet dependency after installation, or external food database is included in the first release.
 - JSON is the authoritative full-fidelity backup format.
 - CSV is export-only for readable spreadsheet use.
-- Backup format version `1` is separate from IndexedDB schema version `5`.
+- Backup format version `1` is separate from IndexedDB schema version `6`.
 - JSON restore supports replace mode only in this release. Merge restore remains
   unavailable until same-ID, natural-key, duplicate historical workout,
   source-reference, archived-record, and timestamp conflict behavior is defined.
@@ -50,7 +50,8 @@
   app metadata without inserting demo data.
 - The UI uses a dark, dense, card-based mobile design adapted from the reference analysis without copying branding or proprietary assets.
 - Main navigation is fixed bottom navigation: Home, Nutrition, center Add,
-  Training, Run, History.
+  Training, Run. History, Graphs, Bodyweight, and Settings access are exposed
+  from Home while their routes remain available.
 - Settings are reachable from the header or a visible secondary action.
 - The center Add button opens a context-aware quick-action bottom sheet.
 
@@ -66,6 +67,9 @@
   instructions, or descriptions are imported.
 - Built-in exercise IDs use stable `builtin:` identifiers and seed metadata so
   future library updates can add or correct built-in records idempotently.
+- Basic neck exercise seeds use the existing `traps` muscle category because
+  adding a separate `neck` muscle enum would broaden the persisted schema beyond
+  the exercise-library update.
 - Exercises referenced by history or programs should be archived instead of hard deleted.
 - Custom exercises can be hidden from future selection while preserving
   program, active-workout, and completed-history references.
@@ -99,7 +103,7 @@
 - Subscriptions and ads.
 - Wearables and Apple Health.
 - AI coaching and AI food-photo analysis.
-- External food database and barcode scanner.
+- Bundled external food database and barcode scanner.
 - Micronutrients and meal plans.
 - Automated calorie adjustment.
 - Automated progression and automatic program advancement.

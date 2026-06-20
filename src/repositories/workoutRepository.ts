@@ -207,9 +207,6 @@ export function createWorkoutRepository(
                 trackingMethodId:
                   sourceExercise.exerciseSnapshot.trackingMethodId,
               })
-              const suggestedLoadMetricKey = loadMetricKey(
-                sourceExercise.exerciseSnapshot.trackingMethodId,
-              )
               const set: WorkoutSet = {
                 id: createId(),
                 workoutId: workout.id,
@@ -232,11 +229,7 @@ export function createWorkoutRepository(
                         generatedAt: now,
                       }
                     : null,
-                metricValues: initialMetricValuesForSet({
-                  originalTarget,
-                  suggestedLoad,
-                  suggestedLoadMetricKey,
-                }),
+                metricValues: initialMetricValuesForSet(),
                 rir: sourceExercise.targetRir,
                 completed: false,
                 completedAt: null,
@@ -1203,55 +1196,13 @@ async function recomputeWorkoutExerciseRecommendations(
           : null
     await database.workoutSets.update(set.id, {
       targetRecommendation,
-      metricValues: nextIncompleteMetricValues(set, sourceSet),
       updatedAt: generatedAt,
     })
   }
 }
 
-function initialMetricValuesForSet({
-  originalTarget,
-  suggestedLoad,
-  suggestedLoadMetricKey,
-}: {
-  originalTarget: WorkoutSetTargetSnapshot | null
-  suggestedLoad: number | null
-  suggestedLoadMetricKey: string | null
-}) {
-  const values: WorkoutSet['metricValues'] = {}
-  const targetWeight = suggestedLoad ?? originalTarget?.targetWeight ?? null
-  if (targetWeight !== null && suggestedLoadMetricKey !== null) {
-    values[suggestedLoadMetricKey] = targetWeight
-  }
-  if (
-    originalTarget?.targetRepsMin !== null &&
-    originalTarget?.targetRepsMin !== undefined
-  ) {
-    values.reps = originalTarget.targetRepsMin
-  }
-  return values
-}
-
-function nextIncompleteMetricValues(
-  set: WorkoutSet,
-  sourceSet: WorkoutSet | undefined,
-) {
-  if (!sourceSet) {
-    return set.metricValues
-  }
-  const merged = { ...set.metricValues }
-  for (const [key, value] of Object.entries(sourceSet.metricValues)) {
-    if (key === 'failed') {
-      continue
-    }
-    if (
-      (merged[key] === null || merged[key] === undefined) &&
-      typeof value === 'number'
-    ) {
-      merged[key] = value
-    }
-  }
-  return merged
+function initialMetricValuesForSet() {
+  return {}
 }
 
 async function detectProgressionRecommendationChanges(

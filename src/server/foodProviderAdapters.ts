@@ -43,10 +43,7 @@ export function createUsdaAdapter(
     id: 'usda',
     async search(input) {
       if (!apiKey) {
-        throw new ProviderError(
-          'server_missing_configuration',
-          'USDA_FDC_API_KEY is not configured.',
-        )
+        throw new ProviderError('missing_api_key', 'USDA API key is missing.')
       }
 
       const url = new URL(USDA_SEARCH_URL)
@@ -144,10 +141,7 @@ export async function resolveUsdaFood(
   fetcher: Fetcher = fetch,
 ) {
   if (!apiKey) {
-    throw new ProviderError(
-      'server_missing_configuration',
-      'USDA_FDC_API_KEY is not configured.',
-    )
+    throw new ProviderError('missing_api_key', 'USDA API key is missing.')
   }
   if (!/^\d+$/.test(providerRecordId)) {
     throw new ProviderError('invalid_request', 'Invalid provider record ID.')
@@ -384,6 +378,13 @@ async function fetchWithTimeout(
         'provider_rate_limited',
         'Food provider rate limited the request.',
         429,
+      )
+    }
+    if (response.status === 401 || response.status === 403) {
+      throw new ProviderError(
+        'invalid_api_key',
+        'USDA API key is invalid.',
+        401,
       )
     }
     if (response.status === 503 || response.status >= 500) {

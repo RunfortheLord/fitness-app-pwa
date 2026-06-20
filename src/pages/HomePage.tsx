@@ -1,4 +1,4 @@
-import { Activity, Dumbbell, Scale } from 'lucide-react'
+import { Activity, Dumbbell, LineChart, Scale, Settings } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -355,6 +355,56 @@ export function HomePage() {
         ) : (
           <LoadingState label="Loading local metadata" />
         )}
+      </Card>
+
+      <Card title="Home links">
+        <div className="quick-action-list">
+          <button type="button" onClick={() => void navigate('/history')}>
+            <span className="quick-action-icon">
+              <Activity aria-hidden="true" size={20} />
+            </span>
+            <span>
+              <strong>View All History</strong>
+              <small>Open the compact workout and run history list</small>
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => void navigate('/history?view=graphs')}
+          >
+            <span className="quick-action-icon">
+              <LineChart aria-hidden="true" size={20} />
+            </span>
+            <span>
+              <strong>Graphs</strong>
+              <small>Open bodyweight and strength graph views</small>
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => void navigate('/history?view=bodyweight')}
+          >
+            <span className="quick-action-icon">
+              <Scale aria-hidden="true" size={20} />
+            </span>
+            <span>
+              <strong>Bodyweight</strong>
+              <small>Open the full bodyweight history and logging page</small>
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => void navigate('/settings?section=usda')}
+          >
+            <span className="quick-action-icon">
+              <Settings aria-hidden="true" size={20} />
+            </span>
+            <span>
+              <strong>Settings</strong>
+              <small>Integrations - USDA FoodData Central</small>
+            </span>
+          </button>
+        </div>
       </Card>
     </PageContainer>
   )

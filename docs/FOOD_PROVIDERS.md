@@ -27,12 +27,13 @@ Open Food Facts database data is available under the Open Database License, with
 
 ## API Routes
 
-- `GET /api/foods/search`
-- `GET /api/foods/resolve`
+- `POST /api/foods/test-key`
+- `POST /api/foods/search`
+- `POST /api/foods/details`
 
 Search parameters:
 
-- `q`: required, trimmed, repeated whitespace normalized, minimum 2 characters, maximum 80 characters.
+- `query`: required, trimmed, repeated whitespace normalized, minimum 3 characters, maximum 80 characters.
 - `provider`: optional `usda`, `open_food_facts`, or `all`; defaults to `usda`.
 - `page`: optional integer 1 through 20.
 - `pageSize`: optional integer 1 through 50.
@@ -50,24 +51,19 @@ paths so they do not depend on Vite-only path alias resolution. If a deployed
 API route returns the SPA HTML shell instead of JSON, the client reports a typed
 API-routing misconfiguration instead of a generic provider failure.
 
-## Environment
+## API Key Handling
 
-Required server-only variable:
+The app no longer uses a Vercel-stored USDA key. The user enters their own USDA
+FoodData Central key under Settings -> Integrations -> USDA FoodData Central.
+The PWA stores that key only in device-local IndexedDB and sends it over HTTPS
+to the same-origin Vercel function for the current request. The function does
+not log, cache, persist, or return the key.
 
-- `USDA_FDC_API_KEY`
-
-Local development:
-
-1. Copy `.env.example` to `.env.local`.
-2. Set `USDA_FDC_API_KEY` to a USDA FoodData Central API key.
-3. Do not use a `VITE_` prefix for this value.
-
-Vercel preview and production:
-
-1. Add `USDA_FDC_API_KEY` in the Vercel project environment variables for Preview and Production.
-2. Redeploy after changing the variable.
-
-When the variable is missing, provider search returns `server_missing_configuration`. Existing local nutrition logging remains usable and the client app should not crash. Automated tests use mocked fetchers and do not need a real key.
+The key is not included in source constants, VITE environment variables,
+deployment settings, backups, CSV exports, diagnostics, console logs, or raw
+errors. Removing or replacing the key deletes or updates only the integration
+settings record. Clearing all local app data or replacing data from backup also
+removes the saved integration key.
 
 ## Normalized Food Schema
 
@@ -116,7 +112,10 @@ Duplicate grouping is deterministic and conservative. It compares normalized nam
 
 ## Cache Behavior
 
-Server code caches normalized results in process memory with explicit TTL and bounded size. Search keys include provider, normalized query, pagination, and fallback state. Open Food Facts has a stricter cache and concurrent identical fallback calls are coalesced. Error responses are not cached indefinitely by the normalized result cache.
+Server code caches Open Food Facts fallback results in process memory with
+explicit TTL and bounded size. USDA searches are executed per request with the
+user-supplied key and are not stored in the shared normalized result cache.
+Concurrent identical Open Food Facts fallback calls are coalesced.
 
 This cache is best-effort in serverless environments. Instances may be cold-started or evicted, and caches are not shared across all Vercel regions or invocations. Dynamic provider responses are not added to the service-worker precache.
 
@@ -128,7 +127,7 @@ Previously used provider foods may be retained in the local IndexedDB `foods` ta
 
 ## Search UI Behavior
 
-The Nutrition screen searches local recent, custom, and previously used foods immediately. Remote provider search starts only after at least two normalized characters, is debounced, and cancels stale requests. The UI calls USDA through the provider-independent client service with controlled fallback enabled; Open Food Facts is reached only through the server-side fallback policy after no acceptable USDA results.
+The Nutrition screen searches local recent, custom, and previously used foods immediately. Remote USDA search starts only after at least three normalized characters, is debounced, requires a configured key, and cancels stale requests.
 
 Collapsed search rows show food name, optional brand or restaurant, serving size, and calories. Selecting a row opens details with calories, protein, total carbohydrates, fat, editable serving amount, and available serving units. Gram and mass-ounce options appear only when the normalized record has reliable gram conversion metadata.
 
@@ -136,7 +135,11 @@ Provider duplicate groups show the primary representative first and expose alter
 
 ## Security
 
-The USDA key is read only by Vercel server functions. Browser code uses same-origin API calls and never imports the key. API inputs are bounded and validated, provider base URLs are fixed server-side, raw provider errors are not reflected to clients, and raw provider payloads are not forwarded wholesale. The production build runs a sentinel scan to fail if the known test secret appears in generated assets, service-worker output, manifest, or source maps.
+Browser code never bundles a USDA key. API inputs are bounded and validated,
+provider base URLs are fixed server-side, raw provider errors are not reflected
+to clients, and raw provider payloads are not forwarded wholesale. The
+production build runs a sentinel scan to fail if the known test secret appears
+in generated assets, service-worker output, manifest, or source maps.
 
 ## Known Limitations
 

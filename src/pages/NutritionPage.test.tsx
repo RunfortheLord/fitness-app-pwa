@@ -13,6 +13,7 @@ import {
 } from '@domain/foodProviderModels'
 import { HomePage } from '@pages/HomePage'
 import { NutritionPage } from '@pages/NutritionPage'
+import { settingsRepository } from '@repositories/settingsRepository'
 import { initializeAppData } from '@services/appInitializationService'
 import {
   FoodProviderClientError,
@@ -58,7 +59,9 @@ afterEach(async () => {
 describe('NutritionPage', () => {
   it('creates, searches, logs, edits, deletes, and snapshots food logs', async () => {
     const user = userEvent.setup()
+    await configureUsdaKey()
     renderNutrition()
+    await screen.findByText('Connected')
 
     await screen.findByText('No recent foods')
     await user.click(screen.getByRole('button', { name: 'Create food' }))
@@ -74,7 +77,7 @@ describe('NutritionPage', () => {
 
     await user.type(
       screen.getByRole('searchbox', { name: 'Search foods' }),
-      'ri',
+      'rice',
     )
     await user.click(await screen.findByRole('button', { name: 'Select Rice' }))
     await user.clear(screen.getByRole('textbox', { name: 'Serving amount' }))
@@ -162,16 +165,31 @@ describe('NutritionPage', () => {
     expect(await screen.findByText('0 g / 160 g')).toBeInTheDocument()
   })
 
-  it('debounces provider search after the two-character threshold', async () => {
+  it('keeps remote USDA search disabled without a configured key', async () => {
     const user = userEvent.setup()
     renderNutrition()
+
+    await user.type(
+      await screen.findByRole('searchbox', { name: 'Search foods' }),
+      'rice',
+    )
+
+    expect(await screen.findByText(/API key missing/)).toBeInTheDocument()
+    expect(mockSearchProviderFoods).not.toHaveBeenCalled()
+  })
+
+  it('debounces provider search after the three-character threshold', async () => {
+    const user = userEvent.setup()
+    await configureUsdaKey()
+    renderNutrition()
+    await screen.findByText('Connected')
 
     await screen.findByText('No recent foods')
     await user.type(
       screen.getByRole('searchbox', { name: 'Search foods' }),
       'r',
     )
-    await delay(450)
+    await delay(550)
     expect(mockSearchProviderFoods).not.toHaveBeenCalled()
 
     await user.type(
@@ -184,14 +202,16 @@ describe('NutritionPage', () => {
     expect(mockSearchProviderFoods).toHaveBeenCalledWith(
       expect.objectContaining({
         query: 'rice',
+        apiKey: 'test-usda-key',
         provider: 'usda',
-        allowFallback: true,
+        allowFallback: false,
       }),
     )
   })
 
   it('shows provider failures separately from no acceptable results', async () => {
     const user = userEvent.setup()
+    await configureUsdaKey()
     mockSearchProviderFoods.mockRejectedValue(
       new FoodProviderClientError(
         'provider_unavailable',
@@ -199,10 +219,11 @@ describe('NutritionPage', () => {
       ),
     )
     renderNutrition()
+    await screen.findByText('Connected')
 
     await user.type(
       await screen.findByRole('searchbox', { name: 'Search foods' }),
-      'zz',
+      'zzz',
     )
 
     expect(
@@ -213,6 +234,7 @@ describe('NutritionPage', () => {
 
   it('selects, converts, and logs external foods as immutable snapshots', async () => {
     const user = userEvent.setup()
+    await configureUsdaKey()
     mockSearchProviderFoods.mockResolvedValue({
       provider: 'usda',
       query: 'chicken',
@@ -220,6 +242,7 @@ describe('NutritionPage', () => {
       fallbackUsed: false,
     })
     renderNutrition()
+    await screen.findByText('Connected')
 
     await user.type(
       await screen.findByRole('searchbox', { name: 'Search foods' }),
@@ -271,6 +294,7 @@ describe('NutritionPage', () => {
 
   it('supports More Results alternates and private corrected custom copies', async () => {
     const user = userEvent.setup()
+    await configureUsdaKey()
     mockSearchProviderFoods.mockResolvedValue({
       provider: 'usda',
       query: 'chicken',
@@ -278,6 +302,7 @@ describe('NutritionPage', () => {
       fallbackUsed: false,
     })
     renderNutrition()
+    await screen.findByText('Connected')
 
     await user.type(
       await screen.findByRole('searchbox', { name: 'Search foods' }),
@@ -439,6 +464,10 @@ function providerFood(
 
 function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+async function configureUsdaKey() {
+  await settingsRepository.saveUsdaApiKey('test-usda-key', 'connected')
 }
 
 async function expectSaveFoodAvailable() {

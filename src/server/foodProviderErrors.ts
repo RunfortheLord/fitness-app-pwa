@@ -3,6 +3,8 @@ export type ProviderErrorCode =
   | 'query_too_short'
   | 'no_acceptable_results'
   | 'offline'
+  | 'missing_api_key'
+  | 'invalid_api_key'
   | 'provider_timeout'
   | 'provider_unavailable'
   | 'provider_rate_limited'
@@ -30,7 +32,10 @@ export function statusForCode(code: ProviderErrorCode) {
   switch (code) {
     case 'invalid_request':
     case 'query_too_short':
+    case 'missing_api_key':
       return 400
+    case 'invalid_api_key':
+      return 401
     case 'server_missing_configuration':
       return 500
     case 'provider_timeout':

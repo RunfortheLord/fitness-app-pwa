@@ -5,7 +5,7 @@
 - Build a single-user, local-first, mobile-first fitness tracking Progressive Web App.
 - Support manual nutrition logging, bodyweight logging, custom exercise management, program creation, active workout logging, GPS run tracking, and workout history.
 - Target iPhone users who install the app through Safari using Add to Home Screen.
-- Work after installation without a user account, backend, cloud sync, subscription, internet connection, external food database, or push-notification dependency.
+- Work after installation without a user account, cloud sync, subscription, internet connection, bundled external food database, or push-notification dependency.
 - Store all primary user data locally in IndexedDB with exportable, restorable records.
 - Use a dark, dense, card-based interface inspired by the reference recording without copying branding, names, proprietary assets, or exact iconography.
 
@@ -21,7 +21,8 @@
 
 - Tracks calories and macros using personally entered foods.
 - Needs recent foods, decimal serving multipliers, editable logs, and daily totals.
-- Does not want external food APIs, barcode scanning, AI food recognition, or micronutrient tracking.
+- Wants manual food entry first, with optional user-configured USDA FoodData
+  Central lookup when they provide their own API key.
 
 ### Privacy-First User
 
@@ -41,8 +42,9 @@
 
 ### Navigation
 
-- Fixed bottom navigation must include Home, Nutrition, center Add, Training, Run, and History.
-- Settings must be reachable from the app header or another clearly visible secondary action.
+- Fixed bottom navigation must include Home, Nutrition, center Add, Training,
+  and Run. History must not appear as a bottom navigation tab.
+- History, Graphs, Bodyweight, and Settings must be reachable from Home.
 - The center Add button must open a bottom sheet with context-appropriate quick actions:
   - start or resume workout
   - start or resume run
@@ -234,7 +236,7 @@
 
 ## Out of Scope
 
-- Account creation, login, backend server, cloud sync, social features, friends, followers, public profiles, subscriptions, advertisements, wearable integrations, Apple Health integration, AI coaching, AI food-photo analysis, external food database, barcode scanner, micronutrients, automatic calorie adjustment, automated training progression, automatic program advancement, trend-weight calculations, weekly adherence percentage, non-history graphs, route maps or external map tiles, reliable fully backgrounded GPS tracking, public App Store distribution, and push-notification dependency.
+- Account creation, login, persistent backend server, cloud sync, social features, friends, followers, public profiles, subscriptions, advertisements, wearable integrations, Apple Health integration, AI coaching, AI food-photo analysis, bundled external food database, barcode scanner, micronutrients, automatic calorie adjustment, automated training progression, automatic program advancement, trend-weight calculations, weekly adherence percentage, non-history graphs, route maps or external map tiles, reliable fully backgrounded GPS tracking, public App Store distribution, and push-notification dependency.
 
 ## Acceptance Criteria
 

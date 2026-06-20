@@ -29,7 +29,6 @@ import {
   StatusMessage,
   ValidationMessage,
 } from '@components/ui'
-import { getEffectiveTarget } from '@domain/progressionRecommendations'
 import { getRestTimerRemainingSeconds } from '@domain/restTimer'
 import { exerciseRepository } from '@repositories/exerciseRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
@@ -316,6 +315,22 @@ export function LiveWorkoutPage() {
         timer={state.workout.activeRestTimer}
       />
 
+      <Card className="exercise-navigator" title="Exercises">
+        <div className="exercise-tab-list">
+          {state.exercises.map((exercise, index) => (
+            <button
+              aria-current={exercise.id === activeExercise?.id}
+              key={exercise.id}
+              onClick={() => selectExercise(index)}
+              type="button"
+            >
+              <span>{index + 1}</span>
+              <small>{exercise.exerciseSnapshot.exerciseName}</small>
+            </button>
+          ))}
+        </div>
+      </Card>
+
       {activeExercise ? (
         <ExerciseWorkspace
           canGoNext={canGoNext}
@@ -351,9 +366,15 @@ export function LiveWorkoutPage() {
               workoutExerciseId: activeExercise.id,
             })
           }
-          onSetMetric={(set, metricValues) =>
-            run(workoutRepository.updateWorkoutSet(set.id, { metricValues }))
-          }
+          onSetMetric={(set, metricValues) => {
+            run(
+              updateSetAndLaterIncompleteSets({
+                allSets: activeSets,
+                set,
+                metricValues,
+              }),
+            )
+          }}
           onSetRir={(set, rir) =>
             run(workoutRepository.updateWorkoutSet(set.id, { rir }))
           }
@@ -576,19 +597,12 @@ function SetRow({
 }) {
   const showRir = supportsRir(metrics) && set.id === finalProgrammedSetId
   const repsPerSide = exerciseRecordsRepsPerSide(exercise)
-  const effectiveTarget = getEffectiveTarget(set)
   const completionError = validateSetForCompletion(set, metrics, showRir)
   return (
     <div className="set-row">
       <div className="set-number">
         <strong>Set {set.setNumber}</strong>
         <small>{set.targetSnapshot ? 'Programmed' : 'Added'}</small>
-      </div>
-      <div className="set-target">
-        <span>Target</span>
-        <strong>
-          {formatSetTarget(prescription, metrics, repsPerSide, effectiveTarget)}
-        </strong>
       </div>
       {metrics.map((metric) => (
         <label key={metric.key}>
@@ -612,6 +626,11 @@ function SetRow({
               }
             }}
             defaultValue={formatMetricInput(set.metricValues[metric.key])}
+            placeholder={
+              metric.key === 'reps'
+                ? (formatRepTarget(prescription) ?? undefined)
+                : undefined
+            }
           />
         </label>
       ))}
@@ -634,20 +653,6 @@ function SetRow({
           />
         </label>
       ) : null}
-      <label className="failed-set-toggle">
-        <input
-          checked={set.metricValues.failed === true}
-          disabled={set.completed}
-          onChange={(event) =>
-            onMetricChange({
-              ...set.metricValues,
-              failed: event.currentTarget.checked,
-            })
-          }
-          type="checkbox"
-        />
-        <span>Failed</span>
-      </label>
       <IconButton
         aria-label={`${set.completed ? 'Mark incomplete' : 'Complete'} set ${set.setNumber}`}
         aria-pressed={set.completed}
@@ -672,6 +677,69 @@ function SetRow({
       ) : null}
     </div>
   )
+}
+
+function updateSetAndLaterIncompleteSets({
+  allSets,
+  metricValues,
+  set,
+}: {
+  allSets: WorkoutSet[]
+  metricValues: WorkoutSet['metricValues']
+  set: WorkoutSet
+}) {
+  const updateCurrent = workoutRepository.updateWorkoutSet(set.id, {
+    metricValues,
+  })
+  const loadKey = loadMetricKeyFromValues(metricValues)
+  const oldLoad = loadKey ? set.metricValues[loadKey] : null
+  const newLoad = loadKey ? metricValues[loadKey] : null
+  const oldReps = set.metricValues.reps
+  const newReps = metricValues.reps
+  const shouldPropagate =
+    !set.completed &&
+    loadKey !== null &&
+    typeof oldLoad === 'number' &&
+    typeof oldReps === 'number' &&
+    typeof newLoad === 'number' &&
+    typeof newReps === 'number' &&
+    (oldLoad !== newLoad || oldReps !== newReps)
+
+  if (!shouldPropagate) {
+    return updateCurrent
+  }
+
+  return updateCurrent.then(() =>
+    Promise.all(
+      allSets
+        .filter(
+          (candidate) =>
+            candidate.setNumber > set.setNumber && !candidate.completed,
+        )
+        .map((candidate) =>
+          workoutRepository.updateWorkoutSet(candidate.id, {
+            metricValues: {
+              ...candidate.metricValues,
+              [loadKey]: newLoad,
+              reps: newReps,
+            },
+          }),
+        ),
+    ),
+  )
+}
+
+function loadMetricKeyFromValues(metricValues: WorkoutSet['metricValues']) {
+  if ('weight' in metricValues) {
+    return 'weight'
+  }
+  if ('assistedWeight' in metricValues) {
+    return 'assistedWeight'
+  }
+  if ('addedWeight' in metricValues) {
+    return 'addedWeight'
+  }
+  return null
 }
 
 function RestTimerCard({
@@ -884,54 +952,10 @@ function formatPrescriptionSummary(
   return parts.join(' - ')
 }
 
-function formatSetTarget(
-  prescription: ActiveCycleWorkoutExercise | undefined,
-  metrics: TrackingMetric[],
-  repsPerSide: boolean,
-  effectiveTarget?: ReturnType<typeof getEffectiveTarget>,
-) {
+function formatRepTarget(prescription: ActiveCycleWorkoutExercise | undefined) {
   if (!prescription) {
-    return 'Open'
+    return null
   }
-  const parts = metrics
-    .map((metric) => {
-      if (metric.key === 'reps') {
-        const reps = effectiveTarget
-          ? formatRepTargetFromValues(
-              effectiveTarget.targetRepsMin,
-              effectiveTarget.targetRepsMax,
-            )
-          : formatRepTarget(prescription)
-        return reps ? (repsPerSide ? `${reps}/side` : reps) : null
-      }
-      if (
-        metric.key === 'weight' ||
-        metric.key === 'assistedWeight' ||
-        metric.key === 'addedWeight'
-      ) {
-        const targetWeight =
-          effectiveTarget?.targetWeight ?? prescription.targetWeight
-        return targetWeight !== null && targetWeight !== undefined
-          ? `${formatTargetLoad(metric.key, targetWeight)}`
-          : null
-      }
-      if (metric.key === 'durationSeconds') {
-        return prescription.targetDurationSeconds
-          ? formatDuration(prescription.targetDurationSeconds)
-          : null
-      }
-      if (metric.key === 'distance') {
-        return prescription.targetDistance
-          ? `${prescription.targetDistance} ft`
-          : null
-      }
-      return null
-    })
-    .filter(Boolean)
-  return parts.length ? parts.join(' / ') : 'Open'
-}
-
-function formatRepTarget(prescription: ActiveCycleWorkoutExercise) {
   return formatRepTargetFromValues(
     prescription.targetRepsMin,
     prescription.targetRepsMax,
@@ -949,16 +973,6 @@ function formatRepTargetFromValues(min: number | null, max: number | null) {
     return `up to ${max} reps`
   }
   return null
-}
-
-function formatTargetLoad(metricKey: string, value: number) {
-  if (metricKey === 'assistedWeight') {
-    return `${value} lb assist`
-  }
-  if (metricKey === 'addedWeight') {
-    return `${value} lb added`
-  }
-  return `${value} lb`
 }
 
 function formatMetricLabel(metric: TrackingMetric, repsPerSide: boolean) {

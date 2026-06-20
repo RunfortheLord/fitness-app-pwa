@@ -24,6 +24,20 @@ describe('App', () => {
     expect(
       screen.getByRole('navigation', { name: 'Primary' }),
     ).toBeInTheDocument()
+    const navigation = screen.getByRole('navigation', { name: 'Primary' })
+    expect(navigation).toHaveTextContent('Home')
+    expect(navigation).toHaveTextContent('Nutrition')
+    expect(navigation).toHaveTextContent('Training')
+    expect(navigation).toHaveTextContent('Run')
+    expect(navigation).not.toHaveTextContent('History')
+    expect(
+      screen
+        .getAllByRole('link')
+        .filter((link) => link.closest('nav[aria-label="Primary"]')),
+    ).toHaveLength(4)
+    expect(
+      screen.getByRole('button', { name: 'Open quick actions' }),
+    ).toBeInTheDocument()
     expect(await screen.findByText('Loading dashboard')).toBeInTheDocument()
   })
 })

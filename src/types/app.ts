@@ -7,6 +7,15 @@ export type WeightUnit = 'lb'
 export type EnergyUnit = 'kcal'
 export type FoodSourceType = 'local' | 'provider'
 export type FoodProviderId = 'usda' | 'open_food_facts'
+export type IntegrationProviderId = 'usda_fooddata_central'
+export type IntegrationConnectionStatus =
+  | 'not_configured'
+  | 'testing'
+  | 'connected'
+  | 'invalid_key'
+  | 'rate_limited'
+  | 'network_unavailable'
+  | 'service_unavailable'
 export type RawCookedStatus = 'raw' | 'cooked' | 'unknown'
 export type FoodMacroBasis = 'per_serving' | 'per_100g' | 'both'
 export type FoodConversionSource =
@@ -60,6 +69,15 @@ export type UserSettings = {
   weightUnit: WeightUnit
   energyUnit: EnergyUnit
   nutritionTargets: NutritionTargetValues
+  createdAt: IsoTimestamp
+  updatedAt: IsoTimestamp
+}
+
+export type ApiKeyIntegrationSettings = {
+  id: IntegrationProviderId
+  apiKey: string
+  status: IntegrationConnectionStatus
+  lastTestedAt: IsoTimestamp | null
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }

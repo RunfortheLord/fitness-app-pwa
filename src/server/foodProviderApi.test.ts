@@ -16,7 +16,7 @@ describe('food provider API core', () => {
 
     expect(() =>
       validateSearchRequest({ query: 'a', provider: 'usda' }),
-    ).toThrow('at least 2 characters')
+    ).toThrow('at least 3 characters')
     expect(() =>
       validateSearchRequest({
         query: 'rice',
@@ -36,7 +36,7 @@ describe('food provider API core', () => {
       handleFoodSearch({ query: 'rice', provider: 'usda' }, {}),
     ).resolves.toMatchObject({
       ok: false,
-      error: { code: 'server_missing_configuration' },
+      error: { code: 'missing_api_key' },
     })
   })
 

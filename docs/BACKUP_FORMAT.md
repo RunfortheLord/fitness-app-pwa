@@ -3,7 +3,9 @@
 ## Current Versions
 
 - Backup format version: `1`
-- Compatible database schema versions: backups with `databaseSchemaVersion` less than or equal to the app's current IndexedDB schema version `5` can be restored after validation.
+- Compatible database schema versions: backups with `databaseSchemaVersion` less than or equal to the app's current IndexedDB schema version `6` can be restored after validation.
+- API key integration settings are not exported in backups. Replacing local data
+  from a backup clears the saved API key integration record.
 - Application restore support: application version `0.0.0` can restore backup format version `1`.
 
 The backup format version is intentionally separate from the IndexedDB database schema version. A database migration does not automatically imply a backup format change, and a backup format change does not automatically imply an IndexedDB migration.

@@ -8,6 +8,7 @@ import {
   Utensils,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import {
   Card,
@@ -56,6 +57,7 @@ import {
 import type {
   Food,
   FoodLogEntry,
+  IntegrationConnectionStatus,
   NutritionTargetValues,
 } from '@shared-types/app'
 
@@ -94,6 +96,12 @@ type ProviderSearchState = {
   query: string
 }
 
+type UsdaKeyState = {
+  configured: boolean
+  apiKey: string | null
+  status: IntegrationConnectionStatus
+}
+
 type LoadState = {
   foods: Food[]
   logs: FoodLogEntry[]
@@ -125,6 +133,7 @@ export function NutritionPage() {
   const { refreshDashboard, selectedDate, setSelectedDate } =
     useDashboardContext()
   const today = formatLocalDate(new Date())
+  const navigate = useNavigate()
   const [mode, setMode] = useState<NutritionMode>('day')
   const [query, setQuery] = useState('')
   const [sheet, setSheet] = useState<SheetState>(null)
@@ -135,6 +144,11 @@ export function NutritionPage() {
     query: '',
   })
   const [providerSearchNonce, setProviderSearchNonce] = useState(0)
+  const [usdaKey, setUsdaKey] = useState<UsdaKeyState>({
+    configured: false,
+    apiKey: null,
+    status: 'not_configured',
+  })
   const [loadState, setLoadState] = useState<LoadState>({
     foods: [],
     logs: [],
@@ -181,6 +195,23 @@ export function NutritionPage() {
   }, [query, revision, selectedDate])
 
   useEffect(() => {
+    let isCurrent = true
+    void settingsRepository.getUsdaApiKeySettings().then((settings) => {
+      if (!isCurrent) {
+        return
+      }
+      setUsdaKey({
+        configured: Boolean(settings?.apiKey),
+        apiKey: settings?.apiKey ?? null,
+        status: settings?.status ?? 'not_configured',
+      })
+    })
+    return () => {
+      isCurrent = false
+    }
+  }, [revision])
+
+  useEffect(() => {
     const normalizedQuery = normalizeProviderQuery(query)
     if (!normalizedQuery) {
       const timeoutId = window.setTimeout(() => {
@@ -188,10 +219,20 @@ export function NutritionPage() {
       }, 0)
       return () => window.clearTimeout(timeoutId)
     }
-    if (normalizedQuery.length < 2) {
+    if (normalizedQuery.length < 3) {
       const timeoutId = window.setTimeout(() => {
         setProviderSearch({
           status: 'below-threshold',
+          results: [],
+          query: normalizedQuery,
+        })
+      }, 0)
+      return () => window.clearTimeout(timeoutId)
+    }
+    if (!usdaKey.configured || !usdaKey.apiKey) {
+      const timeoutId = window.setTimeout(() => {
+        setProviderSearch({
+          status: 'missing_api_key',
           results: [],
           query: normalizedQuery,
         })
@@ -209,6 +250,7 @@ export function NutritionPage() {
       return () => window.clearTimeout(timeoutId)
     }
 
+    const apiKey = usdaKey.apiKey
     const controller = new AbortController()
     const timeoutId = window.setTimeout(() => {
       setProviderSearch((current) => ({
@@ -218,8 +260,9 @@ export function NutritionPage() {
       }))
       void searchProviderFoods({
         query: normalizedQuery,
+        apiKey,
         provider: 'usda',
-        allowFallback: true,
+        allowFallback: false,
         pageSize: 20,
         signal: controller.signal,
       })
@@ -244,13 +287,13 @@ export function NutritionPage() {
             query: normalizedQuery,
           })
         })
-    }, 350)
+    }, 500)
 
     return () => {
       window.clearTimeout(timeoutId)
       controller.abort()
     }
-  }, [providerSearchNonce, query])
+  }, [providerSearchNonce, query, usdaKey])
 
   const displayedResults = createSearchSections({
     localFoods: loadState.foods,
@@ -293,6 +336,12 @@ export function NutritionPage() {
         </StatusMessage>
       ) : null}
       {message ? <StatusMessage tone="success">{message}</StatusMessage> : null}
+
+      <UsdaStatusRow
+        configured={usdaKey.configured}
+        status={usdaKey.status}
+        onManage={() => void navigate('/settings?section=usda')}
+      />
 
       {mode === 'day' ? (
         <>
@@ -567,6 +616,34 @@ function FoodSearchCard({
   )
 }
 
+function UsdaStatusRow({
+  configured,
+  onManage,
+  status,
+}: {
+  configured: boolean
+  onManage: () => void
+  status: IntegrationConnectionStatus
+}) {
+  return (
+    <Card>
+      <div className="settings-access-row">
+        <div>
+          <strong>USDA FoodData Central</strong>
+          <p className="muted">
+            {configured
+              ? usdaStatusLabel(status)
+              : 'API key required for remote USDA search.'}
+          </p>
+        </div>
+        <SecondaryButton type="button" onClick={onManage}>
+          {configured ? 'Manage Key' : 'Add USDA API Key'}
+        </SecondaryButton>
+      </div>
+    </Card>
+  )
+}
+
 function ProviderSearchStatus({
   onRetry,
   query,
@@ -582,7 +659,7 @@ function ProviderSearchStatus({
   if (state.status === 'below-threshold') {
     return (
       <p className="muted" role="status">
-        Type at least 2 characters to search remote foods. Local foods still
+        Type at least 3 characters to search remote foods. Local foods still
         appear when they match.
       </p>
     )
@@ -611,6 +688,10 @@ function providerStatusMessage(status: ProviderSearchState['status']) {
   switch (status) {
     case 'offline':
       return 'Remote food search needs a connection. Recent, custom, and previously used foods are still available.'
+    case 'missing_api_key':
+      return 'API key missing. Add a USDA API key in Settings to enable remote search.'
+    case 'invalid_api_key':
+      return 'API key invalid. Manage the USDA key in Settings.'
     case 'provider_timeout':
       return 'Food provider search timed out. Local foods and history are still available.'
     case 'provider_unavailable':
@@ -618,7 +699,7 @@ function providerStatusMessage(status: ProviderSearchState['status']) {
     case 'provider_rate_limited':
       return 'Food providers are rate limited right now. Try again later.'
     case 'server_missing_configuration':
-      return 'Food provider search is not configured on this deployment.'
+      return 'USDA search is not configured.'
     case 'api_route_misconfigured':
       return 'Food provider API routing is misconfigured on this deployment.'
     case 'normalization_failure':
@@ -633,6 +714,25 @@ function providerStatusMessage(status: ProviderSearchState['status']) {
     case 'loading':
     case 'ready':
       return null
+  }
+}
+
+function usdaStatusLabel(status: IntegrationConnectionStatus) {
+  switch (status) {
+    case 'not_configured':
+      return 'Not configured'
+    case 'testing':
+      return 'Testing'
+    case 'connected':
+      return 'Connected'
+    case 'invalid_key':
+      return 'Invalid key'
+    case 'rate_limited':
+      return 'Rate limited'
+    case 'network_unavailable':
+      return 'Network unavailable'
+    case 'service_unavailable':
+      return 'Service unavailable'
   }
 }
 

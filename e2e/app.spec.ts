@@ -5,7 +5,7 @@ const routes = [
   { path: '/nutrition', title: 'Nutrition', nav: 'Nutrition' },
   { path: '/training', title: 'Training', nav: 'Training' },
   { path: '/run', title: 'Run', nav: 'Run' },
-  { path: '/history', title: 'History', nav: 'History' },
+  { path: '/history', title: 'History' },
   { path: '/settings', title: 'Settings' },
 ]
 
@@ -66,6 +66,24 @@ test('opens the quick action bottom sheet from the center add button', async ({
   await expect(
     sheet.getByRole('button', { name: /Start or resume run/ }),
   ).toBeVisible()
+})
+
+test('bottom navigation has exactly five controls and no History tab', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+
+  const nav = page.getByRole('navigation', { name: 'Primary' })
+  await expect(nav.getByRole('link', { name: 'Home' })).toBeVisible()
+  await expect(nav.getByRole('link', { name: 'Nutrition' })).toBeVisible()
+  await expect(
+    nav.getByRole('button', { name: 'Open quick actions' }),
+  ).toBeVisible()
+  await expect(nav.getByRole('link', { name: 'Training' })).toBeVisible()
+  await expect(nav.getByRole('link', { name: 'Run' })).toBeVisible()
+  await expect(nav.getByRole('link', { name: 'History' })).toHaveCount(0)
+  await expect(nav.locator('a,button')).toHaveCount(5)
 })
 
 test('quick action sheet traps focus and closes with Escape', async ({

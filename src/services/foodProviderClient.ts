@@ -9,6 +9,8 @@ export type FoodProviderClientErrorCode =
   | 'query_too_short'
   | 'no_acceptable_results'
   | 'offline'
+  | 'missing_api_key'
+  | 'invalid_api_key'
   | 'provider_timeout'
   | 'provider_unavailable'
   | 'provider_rate_limited'
@@ -36,6 +38,7 @@ export type FoodSearchResponse = {
 
 export type SearchFoodsInput = {
   query: string
+  apiKey: string
   provider?: FoodProviderId | 'all'
   page?: number
   pageSize?: number
@@ -44,43 +47,63 @@ export type SearchFoodsInput = {
 }
 
 export async function searchProviderFoods(input: SearchFoodsInput) {
-  const params = new URLSearchParams({
-    q: input.query,
-  })
-  if (input.provider) {
-    params.set('provider', input.provider)
-  }
-  if (input.page !== undefined) {
-    params.set('page', String(input.page))
-  }
-  if (input.pageSize !== undefined) {
-    params.set('pageSize', String(input.pageSize))
-  }
-  if (input.allowFallback) {
-    params.set('allowFallback', 'true')
-  }
-
   return readProviderResponse<FoodSearchResponse>(
-    await fetch(`/api/foods/search?${params.toString()}`, {
+    await fetch('/api/foods/search', {
+      method: 'POST',
       signal: input.signal,
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-USDA-FDC-API-Key': input.apiKey,
+      },
+      body: JSON.stringify({
+        query: input.query,
+        provider: input.provider,
+        page: input.page,
+        pageSize: input.pageSize,
+        allowFallback: input.allowFallback,
+      }),
     }),
   )
 }
 
 export async function resolveProviderFood(input: {
+  apiKey: string
   provider: 'usda'
   providerRecordId: string
   signal?: AbortSignal
 }) {
-  const params = new URLSearchParams({
-    provider: input.provider,
-    providerRecordId: input.providerRecordId,
-  })
   return readProviderResponse<NormalizedFoodResult>(
-    await fetch(`/api/foods/resolve?${params.toString()}`, {
+    await fetch('/api/foods/details', {
+      method: 'POST',
       signal: input.signal,
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-USDA-FDC-API-Key': input.apiKey,
+      },
+      body: JSON.stringify({
+        provider: input.provider,
+        providerRecordId: input.providerRecordId,
+      }),
+    }),
+  )
+}
+
+export async function testUsdaApiKey(input: {
+  apiKey: string
+  signal?: AbortSignal
+}) {
+  return readProviderResponse<{ status: 'connected' }>(
+    await fetch('/api/foods/test-key', {
+      method: 'POST',
+      signal: input.signal,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-USDA-FDC-API-Key': input.apiKey,
+      },
+      body: JSON.stringify({}),
     }),
   )
 }

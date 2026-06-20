@@ -744,7 +744,7 @@ export function createBackupService(database: TrainingLogDatabase = db) {
       const importedAt = now.toISOString()
       await database.transaction('rw', writableTables(database), async () => {
         await Promise.all(
-          tableNames.map((tableName) => database[tableName].clear()),
+          clearableDataTables(database).map((table) => table.clear()),
         )
         await putBackupData(database, validation.backup.data)
         const existingMetadata = await database.appMetadata.get('app')
@@ -775,7 +775,7 @@ export function createBackupService(database: TrainingLogDatabase = db) {
       const clearedAt = now.toISOString()
       await database.transaction('rw', writableTables(database), async () => {
         await Promise.all(
-          tableNames.map((tableName) => database[tableName].clear()),
+          clearableDataTables(database).map((table) => table.clear()),
         )
         await database.appMetadata.put({
           id: 'app',
@@ -926,9 +926,16 @@ async function putBackupData(database: TrainingLogDatabase, data: BackupData) {
 
 function writableTables(database: TrainingLogDatabase) {
   return [
-    ...tableNames.map((name) => database[name]),
+    ...clearableDataTables(database),
     database.appMetadata,
     database.backupMetadata,
+  ]
+}
+
+function clearableDataTables(database: TrainingLogDatabase) {
+  return [
+    ...tableNames.map((name) => database[name]),
+    database.apiKeyIntegrationSettings,
   ]
 }
 

@@ -133,9 +133,9 @@ export function HistoryPage() {
 
     let isCurrent = true
     void workoutRepository
-      .listRecentCompletedWorkouts(25)
+      .listRecentCompletedWorkouts(5000)
       .then(async (workouts) => {
-        const runs = await runRepository.listRecentCompletedRuns(25)
+        const runs = await runRepository.listRecentCompletedRuns(5000)
         if (!isCurrent) {
           return
         }
@@ -381,41 +381,51 @@ export function HistoryPage() {
       <div className="history-layout">
         <Card title="History">
           <div className="history-list">
-            {state.runs.map((run) => (
-              <button
-                aria-current={run.id === state.selectedRun?.run.id}
-                key={run.id}
-                onClick={() => setSearchParams({ run: run.id })}
-                type="button"
-              >
-                <strong>Run</strong>
-                <small>GPS run</small>
-                <small>
-                  {run.localDate} - {formatDistance(run.distanceMeters)} -{' '}
-                  {formatRunDuration(run.elapsedSeconds)}
-                </small>
-              </button>
-            ))}
-            {state.workouts.map((workout) => {
-              const workoutSummary = state.summaries[workout.id]
-              return (
-                <button
-                  aria-current={workout.id === state.selected?.id}
-                  key={workout.id}
-                  onClick={() => setSearchParams({ workout: workout.id })}
-                  type="button"
-                >
-                  <strong>{workout.name}</strong>
-                  <small>{formatSourceLabel(workout)}</small>
-                  <small>
-                    {workout.localDate} -{' '}
-                    {formatDuration(workout.durationSeconds)} -{' '}
-                    {workoutSummary?.exerciseCount ?? 0} exercises -{' '}
-                    {workoutSummary?.completedSetCount ?? 0} completed sets
-                  </small>
-                </button>
-              )
-            })}
+            {groupHistoryItemsByDate(state.workouts, state.runs).map(
+              (group) => (
+                <section key={group.localDate} className="history-date-group">
+                  <h3>{group.localDate}</h3>
+                  {group.items.map((item) =>
+                    item.type === 'run' ? (
+                      <button
+                        aria-current={item.run.id === state.selectedRun?.run.id}
+                        key={item.run.id}
+                        onClick={() => setSearchParams({ run: item.run.id })}
+                        type="button"
+                      >
+                        <strong>Run</strong>
+                        <small>GPS run</small>
+                        <small>
+                          {formatDistance(item.run.distanceMeters)} -{' '}
+                          {formatRunDuration(item.run.elapsedSeconds)}
+                        </small>
+                      </button>
+                    ) : (
+                      <button
+                        aria-current={item.workout.id === state.selected?.id}
+                        key={item.workout.id}
+                        onClick={() =>
+                          setSearchParams({ workout: item.workout.id })
+                        }
+                        type="button"
+                      >
+                        <strong>{item.workout.name}</strong>
+                        <small>{formatSourceLabel(item.workout)}</small>
+                        <small>
+                          {item.workout.localDate} -{' '}
+                          {formatDuration(item.workout.durationSeconds)} -{' '}
+                          {state.summaries[item.workout.id]?.exerciseCount ?? 0}{' '}
+                          exercises -{' '}
+                          {state.summaries[item.workout.id]
+                            ?.completedSetCount ?? 0}{' '}
+                          completed sets
+                        </small>
+                      </button>
+                    ),
+                  )}
+                </section>
+              ),
+            )}
           </div>
         </Card>
 
@@ -1450,6 +1460,32 @@ function formatSourceLabel(workout: WorkoutHistoryEntry) {
   return program
     ? `${program} - ${workout.workoutSnapshot.dayName}`
     : 'No program source'
+}
+
+function groupHistoryItemsByDate(workouts: WorkoutHistoryEntry[], runs: Run[]) {
+  const items = [
+    ...workouts.map((workout) => ({
+      type: 'workout' as const,
+      localDate: workout.localDate,
+      completedAt: workout.completedAt,
+      workout,
+    })),
+    ...runs.map((run) => ({
+      type: 'run' as const,
+      localDate: run.localDate,
+      completedAt: run.completedAt ?? run.startedAt,
+      run,
+    })),
+  ].sort((left, right) => right.completedAt.localeCompare(left.completedAt))
+
+  const groups = new Map<string, typeof items>()
+  for (const item of items) {
+    groups.set(item.localDate, [...(groups.get(item.localDate) ?? []), item])
+  }
+  return [...groups.entries()].map(([localDate, groupItems]) => ({
+    localDate,
+    items: groupItems,
+  }))
 }
 
 function formatChangeDestination(destination: StructuralChangeDestination) {

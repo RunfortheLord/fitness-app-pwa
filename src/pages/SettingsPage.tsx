@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 import {
   Card,
@@ -22,6 +23,11 @@ import {
   type BackupPreview,
   type JsonBackup,
 } from '@services/backupService'
+import {
+  FoodProviderClientError,
+  testUsdaApiKey,
+} from '@services/foodProviderClient'
+import type { IntegrationConnectionStatus } from '@shared-types/app'
 
 const emptyTargets = {
   calories: '',
@@ -47,6 +53,14 @@ export function SettingsPage() {
   const [targetForm, setTargetForm] = useState(emptyTargets)
   const [targetError, setTargetError] = useState<string | null>(null)
   const [targetMessage, setTargetMessage] = useState<string | null>(null)
+  const [searchParams] = useSearchParams()
+  const [usdaForm, setUsdaForm] = useState('')
+  const [usdaConfigured, setUsdaConfigured] = useState(false)
+  const [usdaReplacing, setUsdaReplacing] = useState(false)
+  const [usdaStatus, setUsdaStatus] =
+    useState<IntegrationConnectionStatus>('not_configured')
+  const [usdaMessage, setUsdaMessage] = useState<string | null>(null)
+  const [usdaError, setUsdaError] = useState<string | null>(null)
   const { refreshDashboard } = useDashboardContext()
   const parsedTargets = parseTargetForm(targetForm)
 
@@ -66,6 +80,14 @@ export function SettingsPage() {
       })
     })
 
+    void settingsRepository.getUsdaApiKeySettings().then((settings) => {
+      if (!isCurrent) {
+        return
+      }
+      setUsdaConfigured(Boolean(settings?.apiKey))
+      setUsdaStatus(settings?.status ?? 'not_configured')
+    })
+
     return () => {
       isCurrent = false
     }
@@ -73,6 +95,79 @@ export function SettingsPage() {
 
   function updateTarget(field: keyof typeof emptyTargets, value: string) {
     setTargetForm((current) => ({ ...current, [field]: value }))
+  }
+
+  function statusFromProviderError(
+    error: unknown,
+  ): IntegrationConnectionStatus {
+    if (error instanceof FoodProviderClientError) {
+      if (
+        error.code === 'invalid_api_key' ||
+        error.code === 'missing_api_key'
+      ) {
+        return 'invalid_key'
+      }
+      if (error.code === 'provider_rate_limited') {
+        return 'rate_limited'
+      }
+      if (error.code === 'offline') {
+        return 'network_unavailable'
+      }
+      return 'service_unavailable'
+    }
+    return navigator.onLine ? 'service_unavailable' : 'network_unavailable'
+  }
+
+  async function testAndPersistUsdaKey(apiKey: string) {
+    await settingsRepository.saveUsdaApiKey(apiKey, 'testing')
+    setUsdaStatus('testing')
+    setUsdaError(null)
+    setUsdaMessage(null)
+    try {
+      await testUsdaApiKey({ apiKey })
+      await settingsRepository.updateUsdaApiKeyStatus('connected')
+      setUsdaConfigured(true)
+      setUsdaReplacing(false)
+      setUsdaForm('')
+      setUsdaStatus('connected')
+      setUsdaMessage('USDA connection tested and saved.')
+    } catch (error) {
+      const status = statusFromProviderError(error)
+      await settingsRepository.updateUsdaApiKeyStatus(status)
+      setUsdaConfigured(true)
+      setUsdaStatus(status)
+      setUsdaError(usdaStatusHelp(status))
+    }
+  }
+
+  function saveUsdaKey() {
+    const key = usdaForm.trim()
+    if (!key) {
+      setUsdaError('USDA API key is required.')
+      return
+    }
+    void testAndPersistUsdaKey(key)
+  }
+
+  function testSavedUsdaKey() {
+    void settingsRepository.getUsdaApiKeySettings().then((settings) => {
+      if (!settings?.apiKey) {
+        setUsdaError('USDA API key is not configured.')
+        return
+      }
+      void testAndPersistUsdaKey(settings.apiKey)
+    })
+  }
+
+  function removeUsdaKey() {
+    void settingsRepository.removeUsdaApiKey().then(() => {
+      setUsdaConfigured(false)
+      setUsdaReplacing(false)
+      setUsdaForm('')
+      setUsdaStatus('not_configured')
+      setUsdaMessage('USDA API key removed from this device.')
+      setUsdaError(null)
+    })
   }
 
   function saveTargets() {
@@ -206,6 +301,92 @@ export function SettingsPage() {
             <dd>Set manually below.</dd>
           </div>
         </dl>
+      </Card>
+
+      <SectionHeader title="Integrations" />
+      <Card
+        title={
+          searchParams.get('section') === 'usda'
+            ? 'USDA FoodData Central'
+            : 'Settings -> Integrations -> USDA FoodData Central'
+        }
+      >
+        <dl className="settings-list">
+          <div>
+            <dt>Status</dt>
+            <dd>{usdaStatusLabel(usdaStatus)}</dd>
+          </div>
+          <div>
+            <dt>Stored key</dt>
+            <dd>{usdaConfigured ? 'Saved and masked' : 'Not configured'}</dd>
+          </div>
+        </dl>
+        {!usdaConfigured || usdaReplacing ? (
+          <FormField id="usda-api-key" label="USDA API key">
+            <input
+              autoComplete="off"
+              id="usda-api-key"
+              onChange={(event) => setUsdaForm(event.target.value)}
+              placeholder={usdaConfigured ? 'Enter replacement key' : 'API key'}
+              type="password"
+              value={usdaForm}
+            />
+          </FormField>
+        ) : null}
+        <p className="muted">
+          The key is stored only in IndexedDB on this device. Browser or
+          device-local storage is not equivalent to a secure hardware keychain.
+          Clearing app or site data may remove the saved key.
+        </p>
+        <p className="muted">
+          Get a free USDA FoodData Central key at{' '}
+          <a href="https://fdc.nal.usda.gov/api-key-signup.html">
+            fdc.nal.usda.gov
+          </a>
+          .
+        </p>
+        {usdaMessage ? (
+          <StatusMessage tone="success">{usdaMessage}</StatusMessage>
+        ) : null}
+        {usdaError ? <ValidationMessage message={usdaError} /> : null}
+        <div className="button-row">
+          {!usdaConfigured || usdaReplacing ? (
+            <PrimaryButton
+              disabled={usdaStatus === 'testing'}
+              type="button"
+              onClick={saveUsdaKey}
+            >
+              {usdaStatus === 'testing' ? 'Testing' : 'Save key'}
+            </PrimaryButton>
+          ) : null}
+          {usdaConfigured ? (
+            <>
+              <SecondaryButton
+                disabled={usdaStatus === 'testing'}
+                type="button"
+                onClick={testSavedUsdaKey}
+              >
+                Test Connection
+              </SecondaryButton>
+              <SecondaryButton
+                type="button"
+                onClick={() => {
+                  setUsdaReplacing(true)
+                  setUsdaForm('')
+                }}
+              >
+                Replace Key
+              </SecondaryButton>
+              <SecondaryButton
+                className="button-danger"
+                type="button"
+                onClick={removeUsdaKey}
+              >
+                Remove Key
+              </SecondaryButton>
+            </>
+          ) : null}
+        </div>
       </Card>
 
       <SectionHeader title="Nutrition targets" />
@@ -445,6 +626,44 @@ function ImportPreview({ preview }: { preview: BackupPreview }) {
       ) : null}
     </section>
   )
+}
+
+function usdaStatusLabel(status: IntegrationConnectionStatus) {
+  switch (status) {
+    case 'not_configured':
+      return 'Not configured'
+    case 'testing':
+      return 'Testing'
+    case 'connected':
+      return 'Connected'
+    case 'invalid_key':
+      return 'Invalid key'
+    case 'rate_limited':
+      return 'Rate limited'
+    case 'network_unavailable':
+      return 'Network unavailable'
+    case 'service_unavailable':
+      return 'Service unavailable'
+  }
+}
+
+function usdaStatusHelp(status: IntegrationConnectionStatus) {
+  switch (status) {
+    case 'invalid_key':
+      return 'Invalid key.'
+    case 'rate_limited':
+      return 'USDA request limit reached.'
+    case 'network_unavailable':
+      return 'No internet connection.'
+    case 'service_unavailable':
+      return 'USDA service unavailable.'
+    case 'not_configured':
+      return 'USDA API key is not configured.'
+    case 'testing':
+      return 'Testing connection.'
+    case 'connected':
+      return 'Connected.'
+  }
 }
 
 function downloadBlob(blob: Blob, filename: string) {

@@ -29,8 +29,9 @@
 1. User opens Nutrition for the selected local date.
 2. User searches recent foods, custom foods, previously used foods, or remote
    providers.
-3. App searches remote providers only after at least two normalized characters
-   and debounces requests.
+3. App searches remote providers only after a USDA FoodData Central API key is
+   saved, at least three normalized characters are entered, and the request
+   debounce elapses.
 4. User selects a food.
 5. App opens a detail sheet with calories, protein, total carbohydrates, fat,
    serving amount, and available serving units.

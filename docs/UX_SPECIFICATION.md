@@ -12,10 +12,11 @@
 - Mobile-first and portrait-first.
 - No horizontal scrolling in primary screens.
 - Use `env(safe-area-inset-top)` and `env(safe-area-inset-bottom)` for iPhone chrome, Dynamic Island, and home indicator.
-- Fixed bottom navigation contains Home, Nutrition, Add, Training, and History.
+- Fixed bottom navigation contains Home, Nutrition, Add, Training, and Run.
 - The center Add button is visually prominent, circular, and raised above the tab bar.
 - Main content scrolls behind fixed header and nav only when padding prevents occlusion.
-- Header contains current screen title plus Settings access or contextual secondary action.
+- Header contains current screen title plus contextual secondary actions.
+  History, Graphs, Bodyweight, and Settings are reachable from Home.
 
 ## Visual System
 
@@ -81,8 +82,8 @@
 - Date selector at top.
 - Daily total card with calories and macros.
 - Search input for recent, custom, previously used, and provider foods.
-- Remote provider search waits for at least two normalized characters and
-  debounces requests.
+- Remote provider search waits for at least three normalized characters, a saved
+  USDA FoodData Central API key, and debounces requests.
 - Results are sectioned in priority order: recent and previously used foods,
   private custom foods, previously used provider foods, then provider results.
 - Provider loading, offline, timeout, unavailable, rate-limit, server

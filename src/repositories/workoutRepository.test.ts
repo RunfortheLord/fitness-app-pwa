@@ -237,7 +237,7 @@ describe('workoutRepository', () => {
       suggestedTarget: { targetWeight: 190 },
       userEditedTarget: { targetWeight: 187.5 },
     })
-    expect(edited?.metricValues).toEqual({ reps: 8, weight: 185 })
+    expect(edited?.metricValues).toEqual({})
   })
 
   it('enters every tracking metric type during a live workout', async () => {
@@ -526,7 +526,9 @@ describe('workoutRepository', () => {
     })
 
     expect(second.sets.map((set) => set.metricValues.weight)).toEqual([
-      135, 145, 155,
+      undefined,
+      undefined,
+      undefined,
     ])
     expect(
       second.sets.map((set) => set.targetRecommendation?.sourceSetId),
@@ -565,7 +567,7 @@ describe('workoutRepository', () => {
       localDate: testLocalDate,
     })
 
-    expect(second.sets[0].metricValues.weight).toBe(95)
+    expect(second.sets[0].metricValues.weight).toBeUndefined()
   })
 
   it('records applied structural changes separately from workout completion', async () => {

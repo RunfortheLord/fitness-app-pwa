@@ -6,10 +6,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from '@app/App'
 import { db } from '@db/database'
 import { SettingsPage } from '@pages/SettingsPage'
+import { settingsRepository } from '@repositories/settingsRepository'
 import { initializeAppData } from '@services/appInitializationService'
+import { backupService } from '@services/backupService'
+import { testUsdaApiKey } from '@services/foodProviderClient'
 import { seedFood } from '@test/seedFactories'
 
+vi.mock('@services/foodProviderClient', () => ({
+  FoodProviderClientError: class FoodProviderClientError extends Error {
+    readonly code: string
+
+    constructor(code: string, message: string) {
+      super(message)
+      this.name = 'FoodProviderClientError'
+      this.code = code
+    }
+  },
+  testUsdaApiKey: vi.fn(),
+}))
+
+const mockTestUsdaApiKey = vi.mocked(testUsdaApiKey)
+
 beforeEach(async () => {
+  mockTestUsdaApiKey.mockReset()
+  mockTestUsdaApiKey.mockResolvedValue({ status: 'connected' })
   await db.delete()
   await db.open()
   await initializeAppData()
@@ -81,6 +101,7 @@ describe('SettingsPage', () => {
     const reload = vi.fn()
     vi.stubGlobal('location', { ...window.location, reload })
     await seedFood(db)
+    await settingsRepository.saveUsdaApiKey('clear-secret-key', 'connected')
     renderSettings()
 
     await user.click(screen.getByRole('button', { name: 'Clear all data' }))
@@ -98,5 +119,56 @@ describe('SettingsPage', () => {
 
     await waitFor(() => expect(reload).toHaveBeenCalled())
     expect(await db.foods.count()).toBe(0)
+    await expect(
+      settingsRepository.getUsdaApiKeySettings(),
+    ).resolves.toBeUndefined()
+  })
+
+  it('saves, masks, replaces, tests, and removes a device-local USDA key', async () => {
+    const user = userEvent.setup()
+    renderSettings()
+
+    await user.type(await screen.findByLabelText('USDA API key'), 'first-key')
+    await user.click(screen.getByRole('button', { name: 'Save key' }))
+
+    expect(await screen.findByText('Connected')).toBeInTheDocument()
+    expect(screen.getByText('Saved and masked')).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('first-key')).not.toBeInTheDocument()
+    expect(mockTestUsdaApiKey).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKey: 'first-key' }),
+    )
+    await expect(
+      settingsRepository.getUsdaApiKeySettings(),
+    ).resolves.toMatchObject({ apiKey: 'first-key', status: 'connected' })
+
+    await user.click(screen.getByRole('button', { name: 'Test Connection' }))
+    await waitFor(() => expect(mockTestUsdaApiKey).toHaveBeenCalledTimes(2))
+
+    await user.click(screen.getByRole('button', { name: 'Replace Key' }))
+    await user.type(screen.getByLabelText('USDA API key'), 'second-key')
+    await user.click(screen.getByRole('button', { name: 'Save key' }))
+    await expect(
+      settingsRepository.getUsdaApiKeySettings(),
+    ).resolves.toMatchObject({ apiKey: 'second-key', status: 'connected' })
+
+    await user.click(screen.getByRole('button', { name: 'Remove Key' }))
+    await waitFor(() =>
+      expect(screen.getAllByText('Not configured')).toHaveLength(2),
+    )
+    expect(screen.getByRole('button', { name: 'Save key' })).toBeInTheDocument()
+    await expect(
+      settingsRepository.getUsdaApiKeySettings(),
+    ).resolves.toBeUndefined()
+  })
+
+  it('excludes USDA API keys from JSON backups and CSV exports', async () => {
+    await settingsRepository.saveUsdaApiKey('backup-secret-key', 'connected')
+
+    const json = await backupService.createJsonBackup()
+    expect(json.json).not.toContain('backup-secret-key')
+    expect(JSON.stringify(json.backup)).not.toContain('apiKeyIntegration')
+
+    const csv = await backupService.createCsvArchive()
+    expect(csv.files).not.toContain('apiKeyIntegrationSettings.csv')
   })
 })

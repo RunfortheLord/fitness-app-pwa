@@ -1,10 +1,9 @@
 import { handleFoodSearch } from '../../src/server/foodProviderApi.js'
 
-declare const process: { env: Record<string, string | undefined> }
-
 type VercelRequest = {
   method?: string
-  query: Record<string, string | string[] | undefined>
+  body?: unknown
+  headers?: Record<string, string | string[] | undefined>
 }
 
 type VercelResponse = {
@@ -21,7 +20,7 @@ type ProviderErrorResponse = {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Cache-Control', 'no-store')
 
-  if (req.method !== 'GET') {
+  if (req.method !== 'POST') {
     res.status(405).json({
       ok: false,
       error: { code: 'invalid_request', message: 'Method not allowed.' },
@@ -29,15 +28,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return
   }
 
+  const body = readBody(req.body)
   const result = await handleFoodSearch(
     {
-      query: readQueryValue(req.query.q) ?? '',
-      provider: readQueryValue(req.query.provider) as never,
-      page: readInteger(req.query.page),
-      pageSize: readInteger(req.query.pageSize),
-      allowFallback: readQueryValue(req.query.allowFallback) === 'true',
+      query: readString(body.query),
+      provider: readString(body.provider) as never,
+      page: readInteger(body.page),
+      pageSize: readInteger(body.pageSize),
+      allowFallback: body.allowFallback === true,
     },
-    { usdaApiKey: process.env.USDA_FDC_API_KEY },
+    { usdaApiKey: readApiKey(req) },
   )
 
   if (result.ok) {
@@ -49,24 +49,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.status(statusForError(errorResult.error.code)).json(errorResult)
 }
 
-function readQueryValue(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value
+function readBody(body: unknown): Record<string, unknown> {
+  return typeof body === 'object' && body !== null
+    ? (body as Record<string, unknown>)
+    : {}
 }
 
-function readInteger(value: string | string[] | undefined) {
-  const text = readQueryValue(value)
-  if (!text) {
-    return undefined
-  }
-  const parsed = Number(text)
-  return Number.isInteger(parsed) ? parsed : Number.NaN
+function readString(value: unknown) {
+  return typeof value === 'string' ? value : ''
+}
+
+function readInteger(value: unknown) {
+  const parsed = typeof value === 'number' ? value : Number.NaN
+  return Number.isInteger(parsed) ? parsed : undefined
+}
+
+function readApiKey(req: VercelRequest) {
+  const value = req.headers?.['x-usda-fdc-api-key']
+  return Array.isArray(value) ? value[0] : value
 }
 
 function statusForError(code: string) {
   switch (code) {
     case 'invalid_request':
     case 'query_too_short':
+    case 'missing_api_key':
       return 400
+    case 'invalid_api_key':
+      return 401
     case 'provider_rate_limited':
       return 429
     case 'provider_timeout':
