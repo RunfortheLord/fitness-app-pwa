@@ -35,7 +35,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     { usdaApiKey: process.env.USDA_FDC_API_KEY },
   )
 
-  res.status(result.ok ? 200 : statusForError(result.error.code)).json(result)
+  if (result.ok) {
+    res.status(200).json(result)
+    return
+  }
+
+  res.status(statusForError(result.error.code)).json(result)
 }
 
 function readQueryValue(value: string | string[] | undefined) {
