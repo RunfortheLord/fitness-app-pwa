@@ -594,6 +594,8 @@ function providerStatusMessage(status: ProviderSearchState['status']) {
       return 'Food providers are rate limited right now. Try again later.'
     case 'server_missing_configuration':
       return 'Food provider search is not configured on this deployment.'
+    case 'api_route_misconfigured':
+      return 'Food provider API routing is misconfigured on this deployment.'
     case 'normalization_failure':
       return 'Food provider results could not be normalized.'
     case 'unexpected_server_error':

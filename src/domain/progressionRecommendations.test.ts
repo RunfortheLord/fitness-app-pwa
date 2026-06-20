@@ -31,8 +31,8 @@ describe('current workout progression recommendations', () => {
       'below min without failure',
       { reps: 3 },
       false,
-      'below_minimum_without_failure_hold',
-      null,
+      'below_minimum_failed_reduce_difficulty',
+      180,
     ],
     [
       'below min with failure',

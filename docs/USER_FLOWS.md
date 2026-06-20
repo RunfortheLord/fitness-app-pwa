@@ -191,6 +191,20 @@
 6. Edits do not change the source program template.
 7. User may delete the historical workout only after confirmation.
 
+## Viewing Strength Graphs
+
+1. User opens History.
+2. User chooses Graphs.
+3. App lists exercises with eligible weighted-repetition history.
+4. User selects an exercise.
+5. App shows estimated one-repetition-maximum points for 1M, 3M, 6M, 1Y, or
+   All history ranges.
+6. User taps or focuses a point.
+7. App shows the local date, completed weight, completed repetitions, and
+   estimated 1RM for the selected workout point.
+8. Empty and one-point states avoid implying a trend when insufficient history
+   exists.
+
 ## Tracking a Run
 
 1. User opens Run.

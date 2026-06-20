@@ -355,6 +355,10 @@ See `docs/PROGRESSION_RECOMMENDATIONS.md` for deterministic rule definitions,
 supported tracking methods, increment handling, assisted-weight direction,
 added-weight semantics, and final programmed-set RIR behavior.
 
+Estimated one-repetition-maximum graph points are derived from completed workout
+history at read time. They are not stored as independent mutable records and do
+not rewrite completed `WorkoutHistorySet` values.
+
 ### Run
 
 - `id`

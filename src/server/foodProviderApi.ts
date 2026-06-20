@@ -1,4 +1,4 @@
-import { normalizeProviderQuery } from '@domain/foodProviderModels'
+import { normalizeProviderQuery } from '../domain/foodProviderModels'
 import {
   createOpenFoodFactsAdapter,
   createUsdaAdapter,

@@ -17,6 +17,7 @@ import type {
   RestTimerState,
   StructuralChangeDestination,
   TemplateWorkoutExercise,
+  TrackingMethodId,
   Workout,
   WorkoutExercise,
   WorkoutHistoryEntry,
@@ -111,6 +112,9 @@ export function createWorkoutRepository(
           database.workouts,
           database.workoutExercises,
           database.workoutSets,
+          database.workoutHistoryEntries,
+          database.workoutHistoryExercises,
+          database.workoutHistorySets,
         ],
         async () => {
           const existingActive = await database.workouts
@@ -171,23 +175,61 @@ export function createWorkoutRepository(
             )
             workoutExercises.push(workoutExercise)
             await database.workoutExercises.add(workoutExercise)
+            const previousSets = await getPreviousCompletedExerciseSets({
+              database,
+              exerciseId: sourceExercise.exerciseId,
+              exerciseName: sourceExercise.exerciseSnapshot.exerciseName,
+              trackingMethodId:
+                sourceExercise.exerciseSnapshot.trackingMethodId,
+              beforeStartedAt: now,
+            })
 
             for (
               let setNumber = 1;
               setNumber <= sourceExercise.targetSetCount;
               setNumber += 1
             ) {
+              const originalTarget = createOriginalTargetSnapshot(
+                sourceExercise,
+                sourceExercise.exerciseSnapshot.trackingMethodId,
+              )
+              const suggestedLoad = suggestedLoadForSetIndex({
+                previousSets,
+                setNumber,
+                trackingMethodId:
+                  sourceExercise.exerciseSnapshot.trackingMethodId,
+              })
+              const suggestedLoadMetricKey = loadMetricKey(
+                sourceExercise.exerciseSnapshot.trackingMethodId,
+              )
               const set: WorkoutSet = {
                 id: createId(),
                 workoutId: workout.id,
                 workoutExerciseId: workoutExercise.id,
                 setNumber,
-                targetSnapshot: createOriginalTargetSnapshot(
-                  sourceExercise,
-                  sourceExercise.exerciseSnapshot.trackingMethodId,
-                ),
-                targetRecommendation: null,
-                metricValues: {},
+                targetSnapshot: originalTarget,
+                targetRecommendation:
+                  suggestedLoad !== null && originalTarget
+                    ? {
+                        version: 1,
+                        originalTarget,
+                        suggestedTarget: {
+                          ...originalTarget,
+                          targetWeight: suggestedLoad,
+                        },
+                        userEditedTarget: null,
+                        reason: 'within_range_hold',
+                        explanation: `Suggested from your most recent completed ${sourceExercise.exerciseSnapshot.exerciseName} set ${setNumber}.`,
+                        sourceSetId: null,
+                        generatedAt: now,
+                      }
+                    : null,
+                metricValues:
+                  suggestedLoad === null || suggestedLoadMetricKey === null
+                    ? {}
+                    : {
+                        [suggestedLoadMetricKey]: suggestedLoad,
+                      },
                 rir: sourceExercise.targetRir,
                 completed: false,
                 completedAt: null,
@@ -249,30 +291,14 @@ export function createWorkoutRepository(
     },
 
     async getPreviousPerformance(exerciseId: string, beforeStartedAt: string) {
-      const previousExercise = await database.workoutHistoryExercises
-        .where({ exerciseId })
-        .toArray()
-        .then(async (historyExercises) => {
-          const candidates = await Promise.all(
-            historyExercises.map(async (exercise) => ({
-              exercise,
-              workout: await database.workoutHistoryEntries.get(
-                exercise.workoutId,
-              ),
-            })),
-          )
-          return candidates
-            .filter(
-              (candidate) =>
-                candidate.workout &&
-                candidate.workout.completedAt < beforeStartedAt,
-            )
-            .sort((first, second) =>
-              second.workout!.completedAt.localeCompare(
-                first.workout!.completedAt,
-              ),
-            )[0]?.exercise
-        })
+      const exercise = await database.exercises.get(exerciseId)
+      const previousExercise = await getPreviousCompletedExercise({
+        database,
+        exerciseId,
+        exerciseName: exercise?.name ?? '',
+        trackingMethodId: exercise?.trackingMethodId ?? 'weight_reps',
+        beforeStartedAt,
+      })
 
       if (!previousExercise) {
         return []
@@ -1161,7 +1187,9 @@ async function recomputeWorkoutExerciseRecommendations(
             sourceSetId: null,
             generatedAt,
           }
-        : null
+        : set.targetRecommendation?.sourceSetId === null
+          ? set.targetRecommendation
+          : null
     await database.workoutSets.update(set.id, {
       targetRecommendation,
       updatedAt: generatedAt,
@@ -1373,6 +1401,126 @@ function mapSetsByExercise(exercises: WorkoutExercise[], sets: WorkoutSet[]) {
         .sort((first, second) => first.setNumber - second.setNumber),
     ]),
   )
+}
+
+async function getPreviousCompletedExerciseSets({
+  database,
+  exerciseId,
+  exerciseName,
+  trackingMethodId,
+  beforeStartedAt,
+}: {
+  database: TrainingLogDatabase
+  exerciseId: string
+  exerciseName: string
+  trackingMethodId: TrackingMethodId
+  beforeStartedAt: string
+}) {
+  const previousExercise = await getPreviousCompletedExercise({
+    database,
+    exerciseId,
+    exerciseName,
+    trackingMethodId,
+    beforeStartedAt,
+  })
+  if (!previousExercise || previousExercise.skipped) {
+    return []
+  }
+  return database.workoutHistorySets
+    .where({ workoutExerciseId: previousExercise.id })
+    .sortBy('setNumber')
+}
+
+async function getPreviousCompletedExercise({
+  database,
+  exerciseId,
+  exerciseName,
+  trackingMethodId,
+  beforeStartedAt,
+}: {
+  database: TrainingLogDatabase
+  exerciseId: string
+  exerciseName: string
+  trackingMethodId: TrackingMethodId
+  beforeStartedAt: string
+}) {
+  const exactIdMatches = await database.workoutHistoryExercises
+    .where({ exerciseId })
+    .toArray()
+  const legacySnapshotMatches = isBuiltInExerciseId(exerciseId)
+    ? (await database.workoutHistoryExercises.toArray()).filter(
+        (exercise) =>
+          (!exercise.exerciseId || exercise.exerciseId !== exerciseId) &&
+          exercise.exerciseSnapshot.exerciseName === exerciseName,
+      )
+    : []
+  const candidates = await Promise.all(
+    [...exactIdMatches, ...legacySnapshotMatches]
+      .filter(
+        (exercise) =>
+          exercise.exerciseSnapshot.trackingMethodId === trackingMethodId,
+      )
+      .map(async (exercise) => ({
+        exercise,
+        workout: await database.workoutHistoryEntries.get(exercise.workoutId),
+      })),
+  )
+  return candidates
+    .filter(
+      (candidate) =>
+        candidate.workout && candidate.workout.completedAt < beforeStartedAt,
+    )
+    .sort((first, second) =>
+      second.workout!.completedAt.localeCompare(first.workout!.completedAt),
+    )[0]?.exercise
+}
+
+function suggestedLoadForSetIndex({
+  previousSets,
+  setNumber,
+  trackingMethodId,
+}: {
+  previousSets: WorkoutHistorySet[]
+  setNumber: number
+  trackingMethodId: TrackingMethodId
+}) {
+  const metricKey = loadMetricKey(trackingMethodId)
+  if (!metricKey) {
+    return null
+  }
+  const usable = previousSets.filter((set) => {
+    const value = set.metricValues[metricKey]
+    return (
+      set.completed &&
+      set.metricValues.failed !== true &&
+      typeof value === 'number' &&
+      Number.isFinite(value) &&
+      value > 0
+    )
+  })
+  const corresponding = usable.find((set) => set.setNumber === setNumber)
+  const fallback = usable.filter((set) => set.setNumber < setNumber).at(-1)
+  const value = (corresponding ?? fallback)?.metricValues[metricKey]
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : null
+}
+
+function loadMetricKey(trackingMethodId: TrackingMethodId) {
+  if (trackingMethodId === 'weight_reps') {
+    return 'weight'
+  }
+  if (trackingMethodId === 'assisted_weight_reps') {
+    return 'assistedWeight'
+  }
+  if (trackingMethodId === 'added_weight_reps') {
+    return 'addedWeight'
+  }
+  return null
+}
+
+function isBuiltInExerciseId(exerciseId: string) {
+  return exerciseId.startsWith('builtin:')
 }
 
 function hasOwn<T extends object, K extends PropertyKey>(

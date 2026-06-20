@@ -53,7 +53,6 @@ type LiveWorkoutState =
       exercises: WorkoutExercise[]
       setsByExercise: Record<string, WorkoutSet[]>
       sourcePrescriptionsByExercise: Record<string, ActiveCycleWorkoutExercise>
-      previousByExercise: Record<string, WorkoutSet[]>
     }
   | { status: 'error'; message: string }
 
@@ -85,26 +84,12 @@ export function LiveWorkoutPage() {
 
     void workoutRepository
       .getActiveWorkoutStructure()
-      .then(async (loaded) => {
+      .then((loaded) => {
         if (!isCurrent) {
           return
         }
         if (!loaded) {
           setState({ status: 'empty' })
-          return
-        }
-        const previousEntries = await Promise.all(
-          loaded.exercises.map(async (exercise) => [
-            exercise.id,
-            exercise.exerciseId
-              ? await workoutRepository.getPreviousPerformance(
-                  exercise.exerciseId,
-                  loaded.workout.startedAt,
-                )
-              : [],
-          ]),
-        )
-        if (!isCurrent) {
           return
         }
         setActiveExerciseId((current) => {
@@ -125,7 +110,6 @@ export function LiveWorkoutPage() {
           exercises: loaded.exercises,
           setsByExercise: loaded.setsByExercise,
           sourcePrescriptionsByExercise: loaded.sourcePrescriptionsByExercise,
-          previousByExercise: Object.fromEntries(previousEntries),
         })
       })
       .catch((caught: unknown) => {
@@ -412,7 +396,6 @@ export function LiveWorkoutPage() {
             )
           }
           prescription={activePrescription}
-          previous={state.previousByExercise[activeExercise.id] ?? []}
           sets={activeSets}
         />
       ) : (
@@ -558,7 +541,6 @@ function ExerciseWorkspace({
   onSkip,
   onUpdateNotes,
   prescription,
-  previous,
   sets,
 }: {
   canGoNext: boolean
@@ -581,11 +563,11 @@ function ExerciseWorkspace({
   onSkip: (skipped: boolean) => void
   onUpdateNotes: (notes: string) => void
   prescription: ActiveCycleWorkoutExercise | undefined
-  previous: WorkoutSet[]
   sets: WorkoutSet[]
 }) {
   const metrics = exercise.exerciseSnapshot.trackingMetrics
   const swipe = useSwipeNavigation({ onNext, onPrevious })
+  const finalProgrammedSetId = getFinalProgrammedSetId(sets)
 
   return (
     <Card
@@ -658,9 +640,7 @@ function ExerciseWorkspace({
         {sets.map((set) => (
           <SetRow
             exercise={exercise}
-            finalProgrammedSetNumber={
-              prescription?.targetSetCount ?? sets.length
-            }
+            finalProgrammedSetId={finalProgrammedSetId}
             key={set.id}
             metrics={metrics}
             onComplete={(completed) => onCompleteSet(set, completed)}
@@ -668,7 +648,6 @@ function ExerciseWorkspace({
             onMetricChange={(values) => onSetMetric(set, values)}
             onRirChange={(rir) => onSetRir(set, rir)}
             onTargetChange={(target) => onSetTarget(set, target)}
-            previous={previous[set.setNumber - 1]}
             prescription={prescription}
             set={set}
           />
@@ -685,19 +664,18 @@ function ExerciseWorkspace({
 
 function SetRow({
   exercise,
-  finalProgrammedSetNumber,
+  finalProgrammedSetId,
   metrics,
   onComplete,
   onDelete,
   onMetricChange,
   onRirChange,
   onTargetChange,
-  previous,
   prescription,
   set,
 }: {
   exercise: WorkoutExercise
-  finalProgrammedSetNumber: number
+  finalProgrammedSetId: string | null
   metrics: TrackingMetric[]
   onComplete: (completed: boolean) => void
   onDelete: () => void
@@ -706,12 +684,10 @@ function SetRow({
   onTargetChange: (
     values: Parameters<typeof workoutRepository.updateWorkoutSetTarget>[1],
   ) => void
-  previous: WorkoutSet | undefined
   prescription: ActiveCycleWorkoutExercise | undefined
   set: WorkoutSet
 }) {
-  const showRir =
-    supportsRir(metrics) && set.setNumber === finalProgrammedSetNumber
+  const showRir = supportsRir(metrics) && set.id === finalProgrammedSetId
   const repsPerSide = exerciseRecordsRepsPerSide(exercise)
   const effectiveTarget = getEffectiveTarget(set)
   const recommendation = set.targetRecommendation
@@ -725,9 +701,7 @@ function SetRow({
     >
       <div className="set-number">
         <strong>Set {set.setNumber}</strong>
-        <small>
-          {previous ? formatSetPerformance(previous, metrics) : 'No previous'}
-        </small>
+        <small>{set.targetSnapshot ? 'Programmed' : 'Added'}</small>
       </div>
       <div className="set-target">
         <span>
@@ -785,15 +759,14 @@ function SetRow({
         />
         <span>Failed</span>
       </label>
-      <p className="set-status">
-        {set.completed
-          ? 'Completed'
-          : exercise.skipped
-            ? 'Exercise skipped'
-            : 'Not complete'}
-      </p>
       <IconButton
         aria-label={`${set.completed ? 'Mark incomplete' : 'Complete'} set ${set.setNumber}`}
+        aria-pressed={set.completed}
+        className={
+          set.completed
+            ? 'set-complete-button completed'
+            : 'set-complete-button'
+        }
         onClick={() => onComplete(!set.completed)}
       >
         {set.completed ? (
@@ -1183,21 +1156,17 @@ function formatMetricInput(value: WorkoutSet['metricValues'][string]) {
   return typeof value === 'number' ? String(value) : ''
 }
 
-function formatSetPerformance(set: WorkoutSet, metrics: TrackingMetric[]) {
-  const values = metrics
-    .map((metric) => {
-      const value = set.metricValues[metric.key]
-      if (typeof value !== 'number') {
-        return null
-      }
-      return `${value}${metric.unit ? ` ${metric.unit}` : ''}`
-    })
-    .filter(Boolean)
-  return values.length ? values.join(' / ') : 'Previous logged'
-}
-
 function supportsRir(metrics: TrackingMetric[]) {
   return metrics.some((metric) => metric.key === 'reps')
+}
+
+function getFinalProgrammedSetId(sets: WorkoutSet[]) {
+  return (
+    sets
+      .filter((set) => set.targetSnapshot)
+      .sort((first, second) => first.setNumber - second.setNumber)
+      .at(-1)?.id ?? null
+  )
 }
 
 function exerciseRecordsRepsPerSide(exercise: WorkoutExercise) {

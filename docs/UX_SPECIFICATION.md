@@ -280,6 +280,14 @@
   details.
 - Summary text includes first value, latest value, net change, and date range
   when enough data exists.
+- Strength Graphs is reachable from History and shows estimated 1RM for
+  weighted-repetition exercises with eligible completed history.
+- Strength graph range controls are 1M, 3M, 6M, 1Y, and All.
+- The chart plots one point per completed workout per exercise, selected from
+  the highest eligible Epley estimate in that workout.
+- Empty, one-point, tap detail, and accessible text summary states are shown.
+- The detail view lists local date, completed weight, repetitions, estimated
+  1RM, latest value, and all-time best.
 
 ## Run Screen
 

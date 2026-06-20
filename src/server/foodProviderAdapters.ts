@@ -12,7 +12,7 @@ import {
   type NormalizedFoodMacros,
   type NormalizedFoodPortion,
   type NormalizedFoodResult,
-} from '@domain/foodProviderModels'
+} from '../domain/foodProviderModels'
 import { ProviderError } from './foodProviderErrors'
 
 export type ProviderSearchInput = {

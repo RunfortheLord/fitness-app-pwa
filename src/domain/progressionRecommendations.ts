@@ -189,23 +189,22 @@ export function evaluateCurrentWorkoutRecommendation({
       `You completed ${reps} within the programmed ${min}-${max} range; the next target is held.`,
     )
   }
-  if (sourceSet.metricValues.failed === true) {
+  if (reps < min) {
     const suggested = {
       ...originalTarget,
       targetWeight: adjustDifficulty(load, increment, trackingMethodId, 'down'),
       targetRepsMin: min,
       targetRepsMax: min,
     }
+    const failedText =
+      sourceSet.metricValues.failed === true ? ' and marked it failed' : ''
     return {
       reason: 'below_minimum_failed_reduce_difficulty',
       suggestedTarget: suggested,
-      explanation: `${formatCompleted(exerciseName, trackingMethodId, load, reps)} and marked the set failed, below the programmed minimum of ${min}. Suggested next set: ${formatTarget(trackingMethodId, suggested)}.`,
+      explanation: `${formatCompleted(exerciseName, trackingMethodId, load, reps)}${failedText}, below the programmed minimum of ${min}. Suggested next set: ${formatTarget(trackingMethodId, suggested)}.`,
     }
   }
-  return hold(
-    'below_minimum_without_failure_hold',
-    `You completed ${reps}, below the programmed minimum of ${min}, but no failed-set reduction was applied.`,
-  )
+  return hold('within_range_hold', 'The next target is held.')
 }
 
 export function buildSetRecommendation(

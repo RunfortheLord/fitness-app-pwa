@@ -91,6 +91,10 @@ as passed from desktop emulation, Playwright, or simulator testing.
 - [ ] Confirm no route samples appear in console logs or external network requests.
 - [ ] Physical-device GPS accuracy, permission, and background-suspension behavior still require this manual iPhone pass.
 - [ ] View bodyweight progress history.
+- [ ] Open History Graphs and select a weighted exercise.
+- [ ] Change 1M, 3M, 6M, 1Y, and All strength ranges.
+- [ ] Tap estimated 1RM graph points and confirm date, completed weight, reps,
+      and estimated 1RM details remain readable.
 
 ## Persistence
 

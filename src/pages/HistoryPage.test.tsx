@@ -118,6 +118,39 @@ describe('HistoryPage', () => {
     await expect(db.bodyweightEntries.count()).resolves.toBe(36)
   })
 
+  it('shows estimated one-repetition-maximum strength graphs from workout history', async () => {
+    const user = userEvent.setup()
+    const repository = createWorkoutRepository(db)
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    await completeSeedWorkout(repository, active.cycle.id, active.days[0].id, {
+      localDate: '2026-06-17',
+      weight: 100,
+      reps: 5,
+    })
+    await completeSeedWorkout(repository, active.cycle.id, active.days[0].id, {
+      localDate: '2026-06-19',
+      weight: 120,
+      reps: 1,
+    })
+
+    renderHistory('/history?view=graphs')
+
+    expect(await screen.findByText('Strength graphs')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Strength summary')).toHaveTextContent(
+      'Latest - 2026-06-19',
+    )
+    await user.click(
+      screen.getByRole('button', {
+        name: '2026-06-19 120 lb estimated one-repetition maximum',
+      }),
+    )
+    expect(screen.getAllByText('Estimated 1RM').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('120 lb').length).toBeGreaterThan(0)
+  })
+
   it('orders completed workouts by local workout date', async () => {
     const repository = createWorkoutRepository(db)
     const program = await seedProgram(db)

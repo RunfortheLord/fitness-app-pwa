@@ -92,6 +92,11 @@ Bodyweight logging supports multiple timestamped entries per local date. Home
 shows current weight plus a compact trend, and History includes a lightweight
 bodyweight graph with 1M, 3M, 6M, and All ranges.
 
+History also includes lightweight estimated one-repetition-maximum graphs for
+eligible weighted-repetition exercises. Estimates use completed historical sets
+only, apply the Epley formula, plot the highest eligible set per workout, and
+are derived at read time without rewriting workout history.
+
 The app is deployed at the origin root to preserve PWA paths and scope:
 `/manifest.webmanifest`, `/sw.js`, `/apple-touch-icon.png`, `/icons/icon-192.png`,
 `/icons/icon-512.png`, manifest `start_url: "/"`, and manifest `scope: "/"`.

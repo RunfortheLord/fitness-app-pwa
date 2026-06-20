@@ -100,6 +100,10 @@ and walking/rest classifications. Location history is sensitive data and stays
 inside the user-initiated local export file; the app does not upload route
 samples.
 
+Estimated one-repetition-maximum graph values are derived from exported
+workout-history sets after restore. They are not a separate backup table and do
+not change the backup format version.
+
 Nutrition CSV and JSON exports use stored historical food-log snapshots. They
 include enough snapshot information to reconstruct local date, log timestamp,
 food name, optional brand or restaurant, provider identity when known, serving

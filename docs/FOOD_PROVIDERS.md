@@ -45,6 +45,11 @@ Resolve parameters:
 
 The routes return normalized application records only. They do not forward raw provider payloads, accept arbitrary upstream URLs, or expose provider credentials.
 
+The Vercel server functions import server and domain modules through relative
+paths so they do not depend on Vite-only path alias resolution. If a deployed
+API route returns the SPA HTML shell instead of JSON, the client reports a typed
+API-routing misconfiguration instead of a generic provider failure.
+
 ## Environment
 
 Required server-only variable:

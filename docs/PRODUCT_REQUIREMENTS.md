@@ -193,10 +193,14 @@
 - Users must be able to view full workout details.
 - Users must be able to safely edit notes and recorded performance values without changing original program templates.
 - Deleting a historical workout must require confirmation.
-- History must not show weekly adherence score, strength score, estimated 1RM,
-  automated trend, opaque coaching recommendation, or non-bodyweight graphs in
-  the first release. Completed workouts may show deterministic progression
-  review reasons and recommendation audit metadata.
+- History must include estimated one-repetition-maximum graphs for eligible
+  weighted-repetition exercises. The graph uses completed historical sets only,
+  applies the Epley formula, plots the highest eligible estimate per workout,
+  and does not rewrite workout records.
+- History must not show weekly adherence score, strength score, automated
+  trend, opaque coaching recommendation, or non-history graphs in the first
+  release. Completed workouts may show deterministic progression review reasons
+  and recommendation audit metadata.
 
 ### Backup and Portability
 
@@ -222,7 +226,7 @@
 
 ## Out of Scope
 
-- Account creation, login, backend server, cloud sync, social features, friends, followers, public profiles, subscriptions, advertisements, wearable integrations, Apple Health integration, AI coaching, AI food-photo analysis, external food database, barcode scanner, micronutrients, automatic calorie adjustment, automated training progression, automatic program advancement, estimated one-repetition maximum, trend-weight calculations, weekly adherence percentage, non-bodyweight graphs, route maps or external map tiles, reliable fully backgrounded GPS tracking, public App Store distribution, and push-notification dependency.
+- Account creation, login, backend server, cloud sync, social features, friends, followers, public profiles, subscriptions, advertisements, wearable integrations, Apple Health integration, AI coaching, AI food-photo analysis, external food database, barcode scanner, micronutrients, automatic calorie adjustment, automated training progression, automatic program advancement, trend-weight calculations, weekly adherence percentage, non-history graphs, route maps or external map tiles, reliable fully backgrounded GPS tracking, public App Store distribution, and push-notification dependency.
 
 ## Acceptance Criteria
 

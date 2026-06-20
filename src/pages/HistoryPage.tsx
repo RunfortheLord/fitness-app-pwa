@@ -25,6 +25,16 @@ import {
   type BodyweightRange,
 } from '@domain/bodyweightProgress'
 import {
+  createStrengthGraphModel,
+  createStrengthGraphPoints,
+  filterStrengthPointsForRange,
+  formatEstimatedMax,
+  listStrengthExerciseOptions,
+  strengthEstimateLimitText,
+  type StrengthGraphPoint,
+  type StrengthRange,
+} from '@domain/strengthProgress'
+import {
   formatDistance,
   formatDuration as formatRunDuration,
   formatPace,
@@ -87,6 +97,17 @@ const bodyweightRangeOptions: Array<{
   { label: 'All', value: 'all' },
 ]
 
+const strengthRangeOptions: Array<{
+  label: string
+  value: StrengthRange
+}> = [
+  { label: '1M', value: '1m' },
+  { label: '3M', value: '3m' },
+  { label: '6M', value: '6m' },
+  { label: '1Y', value: '1y' },
+  { label: 'All', value: 'all' },
+]
+
 export function HistoryPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [state, setState] = useState<HistoryState>({ status: 'loading' })
@@ -100,7 +121,10 @@ export function HistoryPage() {
   const [deleteRequested, setDeleteRequested] = useState(false)
 
   useEffect(() => {
-    if (searchParams.get('view') === 'bodyweight') {
+    if (
+      searchParams.get('view') === 'bodyweight' ||
+      searchParams.get('view') === 'graphs'
+    ) {
       return
     }
 
@@ -283,6 +307,17 @@ export function HistoryPage() {
     )
   }
 
+  if (searchParams.get('view') === 'graphs') {
+    return (
+      <StrengthGraphsView
+        onShowWorkouts={() => {
+          setSearchParams({})
+          setRevision((current) => current + 1)
+        }}
+      />
+    )
+  }
+
   if (state.status === 'loading') {
     return (
       <PageContainer>
@@ -317,7 +352,25 @@ export function HistoryPage() {
 
   return (
     <PageContainer>
-      <SectionHeader title="History" />
+      <SectionHeader
+        title="History"
+        action={
+          <div className="button-row">
+            <SecondaryButton
+              type="button"
+              onClick={() => setSearchParams({ view: 'graphs' })}
+            >
+              Graphs
+            </SecondaryButton>
+            <SecondaryButton
+              type="button"
+              onClick={() => setSearchParams({ view: 'bodyweight' })}
+            >
+              Bodyweight
+            </SecondaryButton>
+          </div>
+        }
+      />
       {editError ? <ValidationMessage message={editError} /> : null}
       <div className="history-layout">
         <Card title="History">
@@ -637,6 +690,242 @@ function BodyweightProgressView({
         ) : null}
       </Card>
     </PageContainer>
+  )
+}
+
+function StrengthGraphsView({
+  onShowWorkouts,
+}: {
+  onShowWorkouts: () => void
+}) {
+  const [range, setRange] = useState<StrengthRange>('3m')
+  const [points, setPoints] = useState<StrengthGraphPoint[]>([])
+  const [selectedExerciseId, setSelectedExerciseId] = useState('')
+  const [selectedPointId, setSelectedPointId] = useState<string | null>(null)
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  const today = formatLocalDate(new Date())
+
+  useEffect(() => {
+    let isCurrent = true
+    void workoutRepository
+      .listRecentCompletedWorkouts(500)
+      .then(async (workouts) => {
+        const structures = await Promise.all(
+          workouts.map((workout) =>
+            workoutRepository.getWorkoutHistoryStructure(workout.id),
+          ),
+        )
+        if (!isCurrent) {
+          return
+        }
+        const nextPoints = createStrengthGraphPoints(structures)
+        const options = listStrengthExerciseOptions(nextPoints)
+        setPoints(nextPoints)
+        setSelectedExerciseId(
+          (current) => current || options[0]?.exerciseId || '',
+        )
+        setSelectedPointId(
+          (current) => current ?? nextPoints.at(-1)?.id ?? null,
+        )
+        setStatus('ready')
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setStatus('error')
+        }
+      })
+
+    return () => {
+      isCurrent = false
+    }
+  }, [])
+
+  const options = listStrengthExerciseOptions(points)
+  const selectedExercise = selectedExerciseId || options[0]?.exerciseId || ''
+  const exercisePoints = points.filter(
+    (point) => point.exerciseId === selectedExercise,
+  )
+  const rangedPoints = filterStrengthPointsForRange({
+    points: exercisePoints,
+    range,
+    today,
+  })
+  const model = createStrengthGraphModel(rangedPoints)
+  const selectedPoint =
+    model.status === 'empty'
+      ? null
+      : (model.points.find((point) => point.id === selectedPointId) ??
+        model.points.at(-1) ??
+        null)
+
+  return (
+    <PageContainer>
+      <SectionHeader
+        title="Strength graphs"
+        action={
+          <SecondaryButton type="button" onClick={onShowWorkouts}>
+            Workouts
+          </SecondaryButton>
+        }
+      />
+      <Card title="Estimated 1RM">
+        <SegmentedControl
+          label="Strength graph range"
+          onChange={(value) => {
+            setRange(value as StrengthRange)
+            setSelectedPointId(null)
+          }}
+          options={strengthRangeOptions}
+          value={range}
+        />
+        {status === 'loading' ? (
+          <LoadingState label="Loading strength graphs" />
+        ) : null}
+        {status === 'error' ? (
+          <StatusMessage tone="warning">
+            Strength graphs could not load.
+          </StatusMessage>
+        ) : null}
+        {status === 'ready' && options.length ? (
+          <>
+            <FormField id="strength-exercise" label="Exercise">
+              <select
+                id="strength-exercise"
+                onChange={(event) => {
+                  setSelectedExerciseId(event.target.value)
+                  setSelectedPointId(null)
+                }}
+                value={selectedExercise}
+              >
+                {options.map((option) => (
+                  <option key={option.exerciseId} value={option.exerciseId}>
+                    {option.exerciseName}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+            <StrengthChart
+              model={model}
+              onSelect={(point) => setSelectedPointId(point.id)}
+              selectedPoint={selectedPoint}
+            />
+            <p className="muted">{strengthEstimateLimitText()}</p>
+          </>
+        ) : null}
+        {status === 'ready' && !options.length ? (
+          <EmptyState
+            title="No weighted exercise history"
+            message="Complete weighted-repetition workout sets to build estimated 1RM graphs."
+          />
+        ) : null}
+      </Card>
+    </PageContainer>
+  )
+}
+
+function StrengthChart({
+  model,
+  onSelect,
+  selectedPoint,
+}: {
+  model: ReturnType<typeof createStrengthGraphModel>
+  onSelect: (point: StrengthGraphPoint) => void
+  selectedPoint: StrengthGraphPoint | null
+}) {
+  if (model.status === 'empty') {
+    return (
+      <EmptyState
+        title="No points in range"
+        message="Choose a longer range or complete another weighted workout."
+      />
+    )
+  }
+
+  const path = model.points
+    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+    .join(' ')
+
+  return (
+    <div className="bodyweight-chart-panel">
+      <p className="visually-hidden" aria-live="polite">
+        {model.summary}
+      </p>
+      <div className="bodyweight-chart-summary" aria-label="Strength summary">
+        <span>
+          <strong>
+            {formatEstimatedMax(model.latest.estimatedOneRepMax)} lb
+          </strong>
+          <small>Latest - {model.latest.localDate}</small>
+        </span>
+        <span>
+          <strong>
+            {formatEstimatedMax(model.allTimeBest.estimatedOneRepMax)} lb
+          </strong>
+          <small>Best - {model.allTimeBest.localDate}</small>
+        </span>
+        <span>
+          <strong>
+            {formatEstimatedMax(model.minEstimate)}-
+            {formatEstimatedMax(model.maxEstimate)} lb
+          </strong>
+          <small>Range</small>
+        </span>
+      </div>
+      <div className="bodyweight-chart" aria-label="Estimated 1RM graph">
+        <svg
+          aria-hidden="true"
+          focusable="false"
+          preserveAspectRatio="none"
+          viewBox="0 0 100 100"
+        >
+          <line x1="0" x2="100" y1="100" y2="100" />
+          {model.status === 'ready' ? <path d={path} /> : null}
+          {model.points.map((point) => (
+            <circle cx={point.x} cy={point.y} key={point.id} r="1.8" />
+          ))}
+        </svg>
+        {model.points.map((point) => (
+          <button
+            aria-label={`${point.localDate} ${formatEstimatedMax(
+              point.estimatedOneRepMax,
+            )} lb estimated one-repetition maximum`}
+            className="bodyweight-point-button"
+            key={point.id}
+            onClick={() => onSelect(point)}
+            style={{
+              left: `${point.x}%`,
+              top: `${point.y}%`,
+            }}
+            type="button"
+          />
+        ))}
+      </div>
+      <p className="muted">{model.summary}</p>
+      {model.status === 'single' ? (
+        <StatusMessage>
+          One estimated 1RM point is saved. Add another workout to show a line.
+        </StatusMessage>
+      ) : null}
+      {selectedPoint ? (
+        <dl className="history-detail-list bodyweight-detail">
+          <div>
+            <dt>Date</dt>
+            <dd>{selectedPoint.localDate}</dd>
+          </div>
+          <div>
+            <dt>Completed set</dt>
+            <dd>
+              {formatEstimatedMax(selectedPoint.weight)} lb x{' '}
+              {selectedPoint.repetitions}
+            </dd>
+          </div>
+          <div>
+            <dt>Estimated 1RM</dt>
+            <dd>{formatEstimatedMax(selectedPoint.estimatedOneRepMax)} lb</dd>
+          </div>
+        </dl>
+      ) : null}
+    </div>
   )
 }
 

@@ -22,6 +22,16 @@
 - Historical RIR values on non-final sets are preserved in storage and backups
   even when the current UI does not render an input for them.
 
+## Estimated 1RM Graphs
+
+- Estimated one-repetition maximum is now a derived History view rather than a
+  persisted record.
+- The calculation uses completed weighted-repetition history only, selects the
+  highest eligible estimated set per workout, and does not rewrite historical
+  workout records.
+- Repetition counts above 12 are excluded from the graph because high-rep Epley
+  estimates can be misleading for this app's first strength-progress view.
+
 ## Architecture and Scope Decisions
 
 - The app is a single-user, local-first Progressive Web App.
@@ -91,7 +101,7 @@
 - Micronutrients and meal plans.
 - Automated calorie adjustment.
 - Automated progression and automatic program advancement.
-- Estimated 1RM, strength scores, trend weight, adherence percentages, and graphs.
+- Strength scores, trend weight, adherence percentages, and non-history graphs.
 - Route maps, external map tiles, and reliable fully backgrounded GPS tracking.
 - Public App Store distribution.
 - Push-notification dependency.

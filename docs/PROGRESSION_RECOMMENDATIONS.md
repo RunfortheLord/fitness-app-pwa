@@ -51,9 +51,9 @@ Rules:
   the existing rep range.
 - Exactly at max: hold.
 - Within range, including exactly at min: hold.
-- Below min without failed state: hold.
-- Below min with failed state: suggest one increment easier and show the bottom
-  of the existing rep range.
+- Below min: suggest one increment easier and show the bottom of the existing
+  rep range. The Failed toggle remains independent and is preserved for review,
+  but it is not required for this current-workout reduction.
 - Skipped set or exercise: hold.
 - Missing rep range, target, reps, increment, or unsupported method: typed hold.
 
@@ -133,7 +133,7 @@ cycle and reusable template target consistently in one transaction.
 
 - Repetitions-only, duration, distance, and bodyweight-only progression rules are
   intentionally hold-only in this version.
-- Current-workout suggestions apply only to the next existing programmed set; no
+- Current-workout suggestions apply to remaining existing programmed sets; no
   extra set is fabricated.
 - Manual iPhone QA should cover compact row readability, target editing,
   restore-original behavior, reload/resume, horizontal swipe navigation, rest

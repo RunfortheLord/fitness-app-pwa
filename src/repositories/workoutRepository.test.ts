@@ -23,6 +23,9 @@ describe('workoutRepository', () => {
     const active = await createProgramRepository(database).activateTemplate(
       program.template.id,
     )
+    await database.activeCycleWorkoutExercises.update(active.exercises[0].id, {
+      exerciseId: 'builtin:bench-press',
+    })
     const repository = createWorkoutRepository(database)
 
     await repository.startWorkout({
@@ -46,6 +49,9 @@ describe('workoutRepository', () => {
     const active = await createProgramRepository(database).activateTemplate(
       program.template.id,
     )
+    await database.activeCycleWorkoutExercises.update(active.exercises[0].id, {
+      exerciseId: 'builtin:bench-press',
+    })
     const repository = createWorkoutRepository(database)
 
     const started = await repository.startWorkout({
@@ -461,9 +467,7 @@ describe('workoutRepository', () => {
     })
     await repository.completeWorkout({
       workoutId: first.workout.id,
-      completedAt: new Date(
-        Date.parse(first.workout.startedAt) + 20 * 60 * 1000,
-      ).toISOString(),
+      completedAt: '2026-01-01T00:00:00.000Z',
     })
 
     const second = await repository.startWorkout({
@@ -479,6 +483,89 @@ describe('workoutRepository', () => {
     )
 
     expect(previous[0].metricValues).toEqual({ weight: 135, reps: 8 })
+  })
+
+  it('prefills starting weights from corresponding completed history sets', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    const repository = createWorkoutRepository(database)
+    const first = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(first.sets[0].id, {
+      metricValues: { weight: 135, reps: 8 },
+      completed: true,
+    })
+    await repository.updateWorkoutSet(first.sets[1].id, {
+      metricValues: { weight: 145, reps: 8 },
+      completed: true,
+    })
+    await repository.addSet(first.exercises[0].id)
+    const extra = (await repository.getActiveWorkoutStructure())!
+      .setsByExercise[first.exercises[0].id][2]
+    await repository.updateWorkoutSet(extra.id, {
+      metricValues: { weight: 155, reps: 8 },
+      completed: true,
+    })
+    await repository.completeWorkout({
+      workoutId: first.workout.id,
+      completedAt: first.workout.startedAt,
+    })
+
+    await database.activeCycleWorkoutExercises.update(active.exercises[0].id, {
+      targetSetCount: 3,
+    })
+    const second = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+
+    expect(second.sets.map((set) => set.metricValues.weight)).toEqual([
+      135, 145, 155,
+    ])
+    expect(
+      second.sets.map((set) => set.targetRecommendation?.sourceSetId),
+    ).toEqual([null, null, null])
+  })
+
+  it('matches legacy built-in history by exact exercise snapshot name', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    await database.activeCycleWorkoutExercises.update(active.exercises[0].id, {
+      exerciseId: 'builtin:bench-press',
+    })
+    const repository = createWorkoutRepository(database)
+    const first = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(first.sets[0].id, {
+      metricValues: { weight: 95, reps: 8 },
+      completed: true,
+    })
+    await repository.completeWorkout({
+      workoutId: first.workout.id,
+      completedAt: '2026-01-01T00:00:00.000Z',
+    })
+    await database.workoutHistoryExercises.update(first.exercises[0].id, {
+      exerciseId: null,
+    })
+
+    const second = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+
+    expect(second.sets[0].metricValues.weight).toBe(95)
   })
 
   it('records applied structural changes separately from workout completion', async () => {

@@ -13,6 +13,7 @@ export type FoodProviderClientErrorCode =
   | 'provider_unavailable'
   | 'provider_rate_limited'
   | 'server_missing_configuration'
+  | 'api_route_misconfigured'
   | 'normalization_failure'
   | 'unexpected_server_error'
 
@@ -87,8 +88,22 @@ export async function resolveProviderFood(input: {
 async function readProviderResponse<T>(response: Response): Promise<T> {
   let payload: unknown
   try {
+    const contentType = response.headers.get('content-type') ?? ''
+    if (!contentType.includes('application/json')) {
+      throw new FoodProviderClientError(
+        response.url.includes('/api/')
+          ? 'api_route_misconfigured'
+          : 'unexpected_server_error',
+        response.url.includes('/api/')
+          ? 'Food provider API route returned the app shell instead of JSON.'
+          : 'Food provider returned a non-JSON response.',
+      )
+    }
     payload = await response.json()
-  } catch {
+  } catch (error) {
+    if (error instanceof FoodProviderClientError) {
+      throw error
+    }
     throw new FoodProviderClientError(
       'unexpected_server_error',
       'Food provider returned an unreadable response.',
