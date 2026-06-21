@@ -169,8 +169,8 @@ describe('HistoryPage', () => {
     renderHistory()
 
     const items = await screen.findAllByRole('button', { name: /Upper/ })
-    expect(items[0]).toHaveTextContent('2026-06-19')
-    expect(items[1]).toHaveTextContent('2026-06-17')
+    expect(items[0]).toHaveTextContent('Jun 19, 2026')
+    expect(items[1]).toHaveTextContent('Jun 17, 2026')
   })
 
   it('shows completed runs with dedicated run detail', async () => {
@@ -420,8 +420,8 @@ describe('HistoryPage', () => {
 
     renderHistory(`/history?workout=${completed.history.id}`)
 
-    expect(await screen.findByText('Plank')).toBeInTheDocument()
-    expect(screen.getByText('Carry')).toBeInTheDocument()
+    expect((await screen.findAllByText('Plank')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Carry').length).toBeGreaterThan(0)
     expect(screen.getAllByLabelText('Set 1 Duration')[0]).toHaveValue('45')
     expect(screen.getByLabelText('Set 1 Distance')).toHaveValue('0.25')
   })

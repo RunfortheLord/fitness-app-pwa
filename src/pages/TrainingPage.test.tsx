@@ -38,6 +38,9 @@ describe('TrainingPage', () => {
     const user = userEvent.setup()
     renderTraining()
 
+    await user.click(
+      await screen.findByRole('button', { name: 'Exercise Library' }),
+    )
     expect(await screen.findByText('Barbell Bench Press')).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'Edit Barbell Bench Press' }),
@@ -129,6 +132,9 @@ describe('TrainingPage', () => {
     await seedExercise(db)
     renderTraining()
 
+    await user.click(
+      await screen.findByRole('button', { name: 'Exercise Library' }),
+    )
     expect(await screen.findByText('Barbell Bench Press')).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'Hide Barbell Bench Press' }),
@@ -143,7 +149,6 @@ describe('TrainingPage', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'Hidden' }))
-    expect(await screen.findByText('Hidden exercises')).toBeInTheDocument()
     expect(
       await screen.findByRole(
         'button',

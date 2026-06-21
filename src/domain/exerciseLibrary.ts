@@ -634,7 +634,7 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
     perSide: true,
     rest: shortIsolation,
   }),
-  exercise('farmers-carry', 'Farmer Carry', 'dumbbell', ['forearms'], {
+  exercise('farmers-carry', "Farmer's Carry", 'dumbbell', ['forearms'], {
     increment: null,
     rest: moderateCompound,
     secondary: ['traps', 'core'],
@@ -1420,6 +1420,635 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
     secondary: ['glutes', 'hamstrings', 'calves'],
     tracking: 'duration',
   }),
+  exercise('trap-bar-deadlift', 'Trap Bar Deadlift', 'barbell', ['glutes'], {
+    rest: largeCompound,
+    secondary: ['hamstrings', 'quadriceps', 'back'],
+  }),
+  exercise(
+    'barbell-front-squat',
+    'Barbell Front Squat',
+    'barbell',
+    ['quadriceps'],
+    {
+      rest: largeCompound,
+      secondary: ['glutes', 'core'],
+    },
+  ),
+  exercise('safety-bar-squat', 'Safety Bar Squat', 'barbell', ['quadriceps'], {
+    rest: largeCompound,
+    secondary: ['glutes', 'back'],
+  }),
+  exercise('box-squat', 'Box Squat', 'barbell', ['glutes'], {
+    rest: largeCompound,
+    secondary: ['quadriceps', 'hamstrings'],
+  }),
+  exercise(
+    'bent-over-barbell-row',
+    'Bent-Over Barbell Row',
+    'barbell',
+    ['back'],
+    {
+      rest: largeCompound,
+      secondary: ['biceps', 'traps'],
+    },
+  ),
+  exercise(
+    'incline-barbell-bench-press',
+    'Incline Barbell Bench Press',
+    'barbell',
+    ['chest'],
+    {
+      rest: largeCompound,
+      secondary: ['shoulders', 'triceps'],
+    },
+  ),
+  exercise('larsen-press', 'Larsen Press', 'barbell', ['chest'], {
+    rest: largeCompound,
+    secondary: ['triceps'],
+  }),
+  exercise('push-press', 'Push Press', 'barbell', ['shoulders'], {
+    rest: largeCompound,
+    secondary: ['triceps', 'quadriceps'],
+  }),
+  exercise('good-morning', 'Good Morning', 'barbell', ['hamstrings'], {
+    secondary: ['glutes', 'back'],
+  }),
+  exercise(
+    'snatch-grip-romanian-deadlift',
+    'Snatch-Grip Romanian Deadlift',
+    'barbell',
+    ['hamstrings'],
+    {
+      rest: largeCompound,
+      secondary: ['glutes', 'back'],
+    },
+  ),
+  exercise(
+    'swiss-bar-bench-press',
+    'Swiss Bar Bench Press',
+    'barbell',
+    ['chest'],
+    {
+      rest: largeCompound,
+      secondary: ['triceps'],
+    },
+  ),
+  exercise(
+    'flat-dumbbell-bench-press',
+    'Flat Dumbbell Bench Press',
+    'dumbbell',
+    ['chest'],
+    {
+      rest: largeCompound,
+      secondary: ['triceps', 'shoulders'],
+    },
+  ),
+  exercise(
+    'incline-dumbbell-bench-press',
+    'Incline Dumbbell Bench Press',
+    'dumbbell',
+    ['chest'],
+    {
+      rest: largeCompound,
+      secondary: ['shoulders', 'triceps'],
+    },
+  ),
+  exercise(
+    'bulgarian-split-squat',
+    'Bulgarian Split Squat',
+    'dumbbell',
+    ['quadriceps'],
+    {
+      perSide: true,
+      secondary: ['glutes'],
+    },
+  ),
+  exercise('goblet-squat', 'Goblet Squat', 'dumbbell', ['quadriceps'], {
+    secondary: ['glutes', 'core'],
+  }),
+  exercise(
+    'dumbbell-triceps-extension',
+    'Dumbbell Triceps Extension',
+    'dumbbell',
+    ['triceps'],
+    {
+      rest: isolation,
+    },
+  ),
+  exercise(
+    'dumbbell-rear-delt-fly',
+    'Dumbbell Rear Delt Fly',
+    'dumbbell',
+    ['shoulders'],
+    {
+      rest: isolation,
+      secondary: ['traps'],
+    },
+  ),
+  exercise('farmers-hold', "Farmer's Hold", 'dumbbell', ['forearms'], {
+    increment: null,
+    secondary: ['traps', 'core'],
+    tracking: 'duration',
+  }),
+  exercise(
+    'single-arm-lat-pulldown',
+    'Single-Arm Lat Pulldown',
+    'cable',
+    ['back'],
+    {
+      perSide: true,
+      secondary: ['biceps'],
+    },
+  ),
+  exercise(
+    'single-arm-cable-lateral-raise',
+    'Single-Arm Cable Lateral Raise',
+    'cable',
+    ['shoulders'],
+    {
+      perSide: true,
+      rest: isolation,
+    },
+  ),
+  exercise('cable-chest-fly', 'Cable Chest Fly', 'cable', ['chest'], {
+    rest: isolation,
+  }),
+  exercise(
+    'rope-triceps-pressdown',
+    'Rope Triceps Pressdown',
+    'cable',
+    ['triceps'],
+    {
+      rest: isolation,
+    },
+  ),
+  exercise(
+    'straight-bar-triceps-pressdown',
+    'Straight-Bar Triceps Pressdown',
+    'cable',
+    ['triceps'],
+    {
+      rest: isolation,
+    },
+  ),
+  exercise(
+    'single-arm-triceps-pressdown',
+    'Single-Arm Triceps Pressdown',
+    'cable',
+    ['triceps'],
+    {
+      perSide: true,
+      rest: isolation,
+    },
+  ),
+  exercise(
+    'cable-overhead-triceps-extension',
+    'Cable Overhead Triceps Extension',
+    'cable',
+    ['triceps'],
+    {
+      rest: isolation,
+    },
+  ),
+  exercise('cable-hammer-curl', 'Cable Hammer Curl', 'cable', ['biceps'], {
+    rest: isolation,
+    secondary: ['forearms'],
+  }),
+  exercise('pallof-press', 'Pallof Press', 'cable', ['core'], {
+    perSide: true,
+    rest: isolation,
+  }),
+  exercise('cable-wood-chop', 'Cable Wood Chop', 'cable', ['core'], {
+    perSide: true,
+    rest: isolation,
+  }),
+  exercise(
+    'incline-machine-chest-press',
+    'Incline Machine Chest Press',
+    'machine',
+    ['chest'],
+    {
+      secondary: ['shoulders', 'triceps'],
+    },
+  ),
+  exercise('pec-deck', 'Pec Deck', 'machine', ['chest'], {
+    rest: isolation,
+  }),
+  exercise(
+    'chest-supported-machine-row',
+    'Chest-Supported Machine Row',
+    'machine',
+    ['back'],
+    {
+      secondary: ['biceps'],
+    },
+  ),
+  exercise(
+    'single-leg-leg-press',
+    'Single-Leg Leg Press',
+    'machine',
+    ['quadriceps'],
+    {
+      perSide: true,
+      secondary: ['glutes'],
+    },
+  ),
+  exercise('pendulum-squat', 'Pendulum Squat', 'machine', ['quadriceps'], {
+    rest: largeCompound,
+    secondary: ['glutes'],
+  }),
+  exercise('belt-squat', 'Belt Squat', 'machine', ['quadriceps'], {
+    rest: largeCompound,
+    secondary: ['glutes'],
+  }),
+  exercise('hip-abduction', 'Hip Abduction', 'machine', ['hip abductors'], {
+    rest: isolation,
+  }),
+  exercise('hip-adduction', 'Hip Adduction', 'machine', ['hip adductors'], {
+    rest: isolation,
+  }),
+  exercise(
+    'glute-kickback-machine',
+    'Glute Kickback Machine',
+    'machine',
+    ['glutes'],
+    {
+      perSide: true,
+      rest: isolation,
+    },
+  ),
+  exercise('seated-calf-raise', 'Seated Calf Raise', 'machine', ['calves'], {
+    rest: isolation,
+  }),
+  exercise(
+    'plyometric-push-up',
+    'Plyometric Push-Up',
+    'bodyweight',
+    ['chest'],
+    {
+      tracking: 'reps_only',
+    },
+  ),
+  exercise('overhand-pull-up', 'Overhand Pull-Up', 'bodyweight', ['back'], {
+    tracking: 'reps_only',
+    secondary: ['biceps'],
+  }),
+  exercise(
+    'scapular-push-up',
+    'Scapular Push-Up',
+    'bodyweight',
+    ['shoulders'],
+    {
+      tracking: 'reps_only',
+      secondary: ['chest'],
+    },
+  ),
+  exercise(
+    'bodyweight-split-squat',
+    'Bodyweight Split Squat',
+    'bodyweight',
+    ['quadriceps'],
+    {
+      perSide: true,
+      tracking: 'reps_only',
+      secondary: ['glutes'],
+    },
+  ),
+  exercise('glute-ham-raise', 'Glute Ham Raise', 'bodyweight', ['hamstrings'], {
+    tracking: 'reps_only',
+    secondary: ['glutes'],
+  }),
+  exercise('hollow-body-hold', 'Hollow Body Hold', 'bodyweight', ['core'], {
+    increment: null,
+    tracking: 'duration',
+  }),
+  exercise('ab-wheel-rollout', 'Ab Wheel Rollout', 'bodyweight', ['core'], {
+    tracking: 'reps_only',
+    secondary: ['shoulders'],
+  }),
+  exercise('mountain-climber', 'Mountain Climber', 'bodyweight', ['core'], {
+    tracking: 'reps_only',
+  }),
+  exercise('kettlebell-swing', 'Kettlebell Swing', 'dumbbell', ['glutes'], {
+    secondary: ['hamstrings'],
+  }),
+  exercise(
+    'kettlebell-goblet-squat',
+    'Kettlebell Goblet Squat',
+    'dumbbell',
+    ['quadriceps'],
+    {
+      secondary: ['glutes'],
+    },
+  ),
+  exercise('kettlebell-clean', 'Kettlebell Clean', 'dumbbell', ['shoulders'], {
+    perSide: true,
+    secondary: ['glutes'],
+  }),
+  exercise('kettlebell-press', 'Kettlebell Press', 'dumbbell', ['shoulders'], {
+    perSide: true,
+    secondary: ['triceps'],
+  }),
+  exercise(
+    'kettlebell-snatch',
+    'Kettlebell Snatch',
+    'dumbbell',
+    ['shoulders'],
+    {
+      perSide: true,
+      secondary: ['glutes'],
+    },
+  ),
+  exercise('turkish-get-up', 'Turkish Get-Up', 'dumbbell', ['core'], {
+    perSide: true,
+    secondary: ['shoulders', 'glutes'],
+  }),
+  exercise('band-pull-apart', 'Band Pull-Apart', 'cable', ['shoulders'], {
+    rest: isolation,
+    tracking: 'reps_only',
+  }),
+  exercise('band-face-pull', 'Band Face Pull', 'cable', ['shoulders'], {
+    rest: isolation,
+    tracking: 'reps_only',
+  }),
+  exercise(
+    'band-external-rotation',
+    'Band External Rotation',
+    'cable',
+    ['shoulders'],
+    {
+      perSide: true,
+      rest: isolation,
+      tracking: 'reps_only',
+    },
+  ),
+  exercise(
+    'banded-lateral-walk',
+    'Banded Lateral Walk',
+    'bodyweight',
+    ['hip abductors'],
+    {
+      tracking: 'reps_only',
+      secondary: ['glutes'],
+    },
+  ),
+  exercise('banded-leg-curl', 'Banded Leg Curl', 'cable', ['hamstrings'], {
+    tracking: 'reps_only',
+  }),
+  exercise('sled-pull', 'Sled Pull', 'machine', ['quadriceps'], {
+    increment: null,
+    secondary: ['glutes'],
+    tracking: 'distance_duration',
+  }),
+  exercise(
+    'backward-sled-drag',
+    'Backward Sled Drag',
+    'machine',
+    ['quadriceps'],
+    {
+      increment: null,
+      secondary: ['glutes'],
+      tracking: 'distance_duration',
+    },
+  ),
+  exercise(
+    'medicine-ball-chest-pass',
+    'Medicine Ball Chest Pass',
+    'dumbbell',
+    ['chest'],
+    {
+      increment: null,
+      tracking: 'distance_duration',
+    },
+  ),
+  exercise(
+    'medicine-ball-overhead-throw',
+    'Medicine Ball Overhead Throw',
+    'dumbbell',
+    ['shoulders'],
+    {
+      increment: null,
+      tracking: 'distance_duration',
+    },
+  ),
+  exercise(
+    'medicine-ball-rotational-throw',
+    'Medicine Ball Rotational Throw',
+    'dumbbell',
+    ['core'],
+    {
+      increment: null,
+      perSide: true,
+      tracking: 'distance_duration',
+    },
+  ),
+  exercise('medicine-ball-slam', 'Medicine Ball Slam', 'dumbbell', ['core'], {
+    tracking: 'reps_only',
+    secondary: ['shoulders'],
+  }),
+  exercise('outdoor-run', 'Outdoor Run', 'bodyweight', ['quadriceps'], {
+    increment: null,
+    secondary: ['glutes', 'hamstrings', 'calves'],
+    tracking: 'duration',
+  }),
+  exercise('treadmill-run', 'Treadmill Run', 'machine', ['quadriceps'], {
+    increment: null,
+    secondary: ['glutes', 'hamstrings', 'calves'],
+    tracking: 'duration',
+  }),
+  exercise('stationary-bike', 'Stationary Bike', 'machine', ['quadriceps'], {
+    increment: null,
+    tracking: 'duration',
+  }),
+  exercise('outdoor-cycling', 'Outdoor Cycling', 'bodyweight', ['quadriceps'], {
+    increment: null,
+    tracking: 'duration',
+  }),
+  exercise('rowing-ergometer', 'Rowing Ergometer', 'machine', ['back'], {
+    increment: null,
+    secondary: ['quadriceps'],
+    tracking: 'duration',
+  }),
+  exercise('stair-climber', 'Stair Climber', 'machine', ['quadriceps'], {
+    increment: null,
+    tracking: 'duration',
+  }),
+  exercise('elliptical', 'Elliptical', 'machine', ['quadriceps'], {
+    increment: null,
+    tracking: 'duration',
+  }),
+  exercise('assault-bike', 'Assault Bike', 'machine', ['quadriceps'], {
+    increment: null,
+    tracking: 'duration',
+  }),
+  exercise('ski-erg', 'Ski Erg', 'machine', ['back'], {
+    increment: null,
+    secondary: ['shoulders'],
+    tracking: 'duration',
+  }),
+  exercise('jump-rope', 'Jump Rope', 'bodyweight', ['calves'], {
+    increment: null,
+    tracking: 'duration',
+  }),
+  exercise('shuttle-run', 'Shuttle Run', 'bodyweight', ['quadriceps'], {
+    increment: null,
+    secondary: ['glutes', 'hamstrings'],
+    tracking: 'duration',
+  }),
+  exercise('hill-sprint', 'Hill Sprint', 'bodyweight', ['quadriceps'], {
+    increment: null,
+    secondary: ['glutes', 'hamstrings'],
+    tracking: 'duration',
+  }),
+  exercise('40-yd-sprint', '40 yd Sprint', 'bodyweight', ['quadriceps'], {
+    increment: null,
+    secondary: ['glutes', 'hamstrings'],
+    tracking: 'distance_duration',
+  }),
+  exercise('broad-jump', 'Broad Jump', 'bodyweight', ['glutes'], {
+    increment: null,
+    secondary: ['quadriceps', 'hamstrings'],
+    tracking: 'distance_duration',
+  }),
+  exercise('triple-broad-jump', 'Triple Broad Jump', 'bodyweight', ['glutes'], {
+    increment: null,
+    secondary: ['quadriceps', 'hamstrings'],
+    tracking: 'distance_duration',
+  }),
+  exercise('box-jump', 'Box Jump', 'bodyweight', ['quadriceps'], {
+    increment: null,
+    tracking: 'distance_duration',
+  }),
+  exercise('depth-jump', 'Depth Jump', 'bodyweight', ['quadriceps'], {
+    increment: null,
+    tracking: 'distance_duration',
+  }),
+  exercise('vertical-jump', 'Vertical Jump', 'bodyweight', ['quadriceps'], {
+    increment: null,
+    tracking: 'distance_duration',
+  }),
+  exercise('lateral-bound', 'Lateral Bound', 'bodyweight', ['glutes'], {
+    increment: null,
+    perSide: true,
+    tracking: 'distance_duration',
+  }),
+  exercise('pogo-jump', 'Pogo Jump', 'bodyweight', ['calves'], {
+    tracking: 'reps_only',
+  }),
+  exercise(
+    'hand-gripper-crushing',
+    'Hand Gripper Crushing',
+    'dumbbell',
+    ['forearms'],
+    {
+      tracking: 'reps_only',
+    },
+  ),
+  exercise('towel-hang', 'Towel Hang', 'bodyweight', ['forearms'], {
+    increment: null,
+    secondary: ['back'],
+    tracking: 'duration',
+  }),
+  exercise('wrist-roller', 'Wrist Roller', 'dumbbell', ['forearms'], {
+    rest: isolation,
+  }),
+  exercise('seated-wrist-curl', 'Seated Wrist Curl', 'dumbbell', ['forearms'], {
+    rest: isolation,
+  }),
+  exercise(
+    'seated-wrist-extension',
+    'Seated Wrist Extension',
+    'dumbbell',
+    ['forearms'],
+    {
+      rest: isolation,
+    },
+  ),
+  exercise(
+    'plate-weighted-neck-curl',
+    'Plate-Weighted Neck Curl',
+    'dumbbell',
+    ['traps'],
+    {
+      rest: isolation,
+    },
+  ),
+  exercise(
+    'head-harness-neck-extension',
+    'Head Harness Neck Extension',
+    'dumbbell',
+    ['traps'],
+    {
+      rest: isolation,
+    },
+  ),
+  exercise(
+    'neck-isometric-flexion',
+    'Neck Isometric Flexion',
+    'bodyweight',
+    ['traps'],
+    {
+      increment: null,
+      tracking: 'duration',
+    },
+  ),
+  exercise(
+    'neck-isometric-extension',
+    'Neck Isometric Extension',
+    'bodyweight',
+    ['traps'],
+    {
+      increment: null,
+      tracking: 'duration',
+    },
+  ),
+  exercise(
+    'neck-isometric-lateral-flexion',
+    'Neck Isometric Lateral Flexion',
+    'bodyweight',
+    ['traps'],
+    {
+      increment: null,
+      perSide: true,
+      tracking: 'duration',
+    },
+  ),
+  exercise('wall-slide', 'Wall Slide', 'bodyweight', ['shoulders'], {
+    tracking: 'reps_only',
+  }),
+  exercise(
+    'cable-external-rotation',
+    'Cable External Rotation',
+    'cable',
+    ['shoulders'],
+    {
+      perSide: true,
+      rest: isolation,
+    },
+  ),
+  exercise('prone-y-raise', 'Prone Y-Raise', 'bodyweight', ['shoulders'], {
+    tracking: 'reps_only',
+    secondary: ['traps'],
+  }),
+  exercise(
+    'chest-supported-y-raise',
+    'Chest-Supported Y-Raise',
+    'dumbbell',
+    ['shoulders'],
+    {
+      rest: isolation,
+      secondary: ['traps'],
+    },
+  ),
+  exercise(
+    'serratus-wall-slide',
+    'Serratus Wall Slide',
+    'bodyweight',
+    ['shoulders'],
+    {
+      tracking: 'reps_only',
+    },
+  ),
 ]
 
 export function validateBuiltInExercises(
@@ -1451,7 +2080,7 @@ export function validateBuiltInExercises(
     }
     ids.add(seed.id)
 
-    const normalizedName = seed.name.trim().toLocaleLowerCase()
+    const normalizedName = normalizeBuiltInExerciseName(seed.name)
     if (names.has(normalizedName)) {
       errors.push(`Duplicate exercise name ${seed.name}.`)
     }
@@ -1513,4 +2142,15 @@ export function validateBuiltInExercises(
   if (errors.length) {
     throw new Error(errors.join('\n'))
   }
+}
+
+export function normalizeBuiltInExerciseName(name: string) {
+  return name
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[\u2018\u2019']/gu, '')
+    .replace(/[\u2010-\u2015-]/gu, ' ')
+    .replace(/[^\p{L}\p{N}#]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }

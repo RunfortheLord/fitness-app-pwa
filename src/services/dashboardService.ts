@@ -49,6 +49,11 @@ export type DashboardData = {
         exerciseCount: number
       }
     | undefined
+  recentCompletedWorkoutSummaries: Record<
+    string,
+    { completedSetCount: number; exerciseCount: number }
+  >
+  recentCompletedWorkouts: WorkoutHistoryEntry[]
   recentActivity: Array<
     | {
         id: string
@@ -135,6 +140,15 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
           bodyweightEntries,
           foodLogs,
           completedWorkouts,
+        ),
+        recentCompletedWorkouts: completedWorkouts,
+        recentCompletedWorkoutSummaries: Object.fromEntries(
+          await Promise.all(
+            completedWorkouts.map(async (workout) => [
+              workout.id,
+              await getWorkoutSummary(database, workout.id),
+            ]),
+          ),
         ),
       }
     },

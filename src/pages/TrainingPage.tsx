@@ -1,10 +1,12 @@
 import {
   Archive,
   ArrowLeft,
+  ChevronDown,
   Copy,
   Dumbbell,
   Edit2,
   EyeOff,
+  Filter,
   Plus,
   RotateCcw,
   Search,
@@ -33,8 +35,11 @@ import { TRACKING_METHODS, getTrackingMethod } from '@domain/trackingMethods'
 import { formatLocalDate } from '@domain/dates'
 import {
   defaultExerciseResults,
+  filterExerciseLibrary,
   hasSearchableQuery,
+  primaryMuscleLabel,
   searchExercises,
+  type ExerciseTrackingCategory,
   type ExerciseUsageSummary,
 } from '@domain/exerciseSearch'
 import {
@@ -56,6 +61,7 @@ import type {
   ProgramTemplateDay,
   TemplateWorkoutExercise,
   TrackingMethodId,
+  MuscleGroup,
 } from '@shared-types/app'
 
 type ExerciseView = 'active' | 'hidden'
@@ -148,6 +154,11 @@ export function TrainingPage() {
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [view, setView] = useState<ExerciseView>('active')
+  const [isLibraryExpanded, setIsLibraryExpanded] = useState(false)
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false)
+  const [trackingCategory, setTrackingCategory] =
+    useState<ExerciseTrackingCategory>('all')
+  const [primaryMuscle, setPrimaryMuscle] = useState<MuscleGroup | 'all'>('all')
   const [sheet, setSheet] = useState<SheetState>(null)
   const [programConfirmation, setProgramConfirmation] =
     useState<ProgramConfirmation>(null)
@@ -283,6 +294,8 @@ export function TrainingPage() {
 
       <ExerciseLibraryCard
         exercises={loadState.exercises}
+        isExpanded={isLibraryExpanded}
+        isFilterPanelOpen={isFilterPanelOpen}
         loadStatus={loadState.status}
         onCreateExercise={() => setSheet({ type: 'exercise', exercise: null })}
         onEditExercise={(exercise) => setSheet({ type: 'exercise', exercise })}
@@ -298,9 +311,31 @@ export function TrainingPage() {
             reload()
           })
         }}
+        onToggleExpanded={() => {
+          setIsLibraryExpanded((current) => {
+            const next = !current
+            if (!next) {
+              setQuery('')
+              setTrackingCategory('all')
+              setPrimaryMuscle('all')
+              setIsFilterPanelOpen(false)
+            }
+            return next
+          })
+        }}
+        primaryMuscle={primaryMuscle}
         query={query}
+        setFilterPanelOpen={setIsFilterPanelOpen}
+        setPrimaryMuscle={setPrimaryMuscle}
         setQuery={setQuery}
+        setTrackingCategory={(value) => {
+          setTrackingCategory(value)
+          if (value !== 'strength') {
+            setPrimaryMuscle('all')
+          }
+        }}
         setView={setView}
+        trackingCategory={trackingCategory}
         view={view}
       />
 
@@ -1747,104 +1782,206 @@ function WorkoutDayDetailSheet({
 
 function ExerciseLibraryCard({
   exercises,
+  isExpanded,
+  isFilterPanelOpen,
   loadStatus,
   onCreateExercise,
   onEditExercise,
   onHideExercise,
   onRestoreExercise,
+  onToggleExpanded,
+  primaryMuscle,
   query,
+  setFilterPanelOpen,
+  setPrimaryMuscle,
   setQuery,
+  setTrackingCategory,
   setView,
+  trackingCategory,
   view,
 }: {
   exercises: Exercise[]
+  isExpanded: boolean
+  isFilterPanelOpen: boolean
   loadStatus: LoadState['status']
   onCreateExercise: () => void
   onEditExercise: (exercise: Exercise) => void
   onHideExercise: (exercise: Exercise) => void
   onRestoreExercise: (exercise: Exercise) => void
+  onToggleExpanded: () => void
+  primaryMuscle: MuscleGroup | 'all'
   query: string
+  setFilterPanelOpen: (isOpen: boolean) => void
+  setPrimaryMuscle: (muscle: MuscleGroup | 'all') => void
   setQuery: (query: string) => void
+  setTrackingCategory: (category: ExerciseTrackingCategory) => void
   setView: (view: ExerciseView) => void
+  trackingCategory: ExerciseTrackingCategory
   view: ExerciseView
 }) {
+  const visibleExercises = filterExerciseLibrary(exercises, {
+    primaryMuscle,
+    query,
+    trackingCategory,
+  })
+  const primaryMuscles = Array.from(
+    new Set(
+      exercises
+        .filter(
+          (exercise) =>
+            filterExerciseLibrary([exercise], {
+              primaryMuscle: 'all',
+              query,
+              trackingCategory: 'strength',
+            }).length,
+        )
+        .map((exercise) => exercise.primaryMuscleGroups[0])
+        .filter((muscle): muscle is MuscleGroup => Boolean(muscle)),
+    ),
+  ).sort((left, right) =>
+    primaryMuscleLabel(left).localeCompare(primaryMuscleLabel(right)),
+  )
+
   return (
-    <Card title={view === 'active' ? 'Active exercises' : 'Hidden exercises'}>
-      <div className="button-row library-filter-row" role="group">
-        <SecondaryButton
-          aria-pressed={view === 'active'}
-          type="button"
-          onClick={() => setView('active')}
-        >
-          Active
-        </SecondaryButton>
-        <SecondaryButton
-          aria-pressed={view === 'hidden'}
-          type="button"
-          onClick={() => setView('hidden')}
-        >
-          Hidden
-        </SecondaryButton>
-      </div>
+    <Card className="exercise-library-card">
+      <button
+        aria-controls="exercise-library-panel"
+        aria-expanded={isExpanded}
+        className="card-accordion-header"
+        onClick={onToggleExpanded}
+        type="button"
+      >
+        <strong>Exercise Library</strong>
+        <ChevronDown aria-hidden="true" className="accordion-chevron" />
+      </button>
+      {isExpanded ? (
+        <div id="exercise-library-panel" className="exercise-library-panel">
+          <div className="button-row library-filter-row" role="group">
+            <SecondaryButton
+              aria-pressed={view === 'active'}
+              type="button"
+              onClick={() => setView('active')}
+            >
+              Active
+            </SecondaryButton>
+            <SecondaryButton
+              aria-pressed={view === 'hidden'}
+              type="button"
+              onClick={() => setView('hidden')}
+            >
+              Hidden
+            </SecondaryButton>
+          </div>
 
-      <FormField id="exercise-search" label="Search exercises">
-        <div className="input-icon-row">
-          <Search aria-hidden="true" size={18} />
-          <input
-            id="exercise-search"
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search your exercises"
-            type="search"
-            value={query}
-          />
-        </div>
-      </FormField>
+          <FormField id="exercise-search" label="Search exercises">
+            <div className="input-icon-row exercise-search-row">
+              <Search aria-hidden="true" size={18} />
+              <input
+                id="exercise-search"
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search your exercises"
+                type="search"
+                value={query}
+              />
+              <IconButton
+                aria-expanded={isFilterPanelOpen}
+                aria-label="Filters"
+                onClick={() => setFilterPanelOpen(!isFilterPanelOpen)}
+              >
+                <Filter aria-hidden="true" size={18} />
+              </IconButton>
+            </div>
+          </FormField>
 
-      {loadStatus === 'loading' ? (
-        <LoadingState label="Loading exercises" />
-      ) : null}
-      {loadStatus === 'error' ? (
-        <StatusMessage tone="warning">
-          Exercise library could not load.
-        </StatusMessage>
-      ) : null}
+          {isFilterPanelOpen ? (
+            <div className="exercise-filter-panel">
+              <div className="segmented-control" aria-label="Tracking Method">
+                {(['all', 'strength', 'cardio', 'distance'] as const).map(
+                  (category) => (
+                    <button
+                      aria-pressed={trackingCategory === category}
+                      key={category}
+                      onClick={() => setTrackingCategory(category)}
+                      type="button"
+                    >
+                      {category === 'all'
+                        ? 'All'
+                        : category[0].toUpperCase() + category.slice(1)}
+                    </button>
+                  ),
+                )}
+              </div>
+              {trackingCategory === 'strength' && primaryMuscles.length ? (
+                <FormField id="primary-muscle-filter" label="Primary Muscle">
+                  <select
+                    id="primary-muscle-filter"
+                    onChange={(event) =>
+                      setPrimaryMuscle(event.currentTarget.value as MuscleGroup)
+                    }
+                    value={primaryMuscle}
+                  >
+                    <option value="all">All</option>
+                    {primaryMuscles.map((muscle) => (
+                      <option key={muscle} value={muscle}>
+                        {primaryMuscleLabel(muscle)}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+              ) : null}
+            </div>
+          ) : null}
 
-      {loadStatus === 'ready' && exercises.length ? (
-        <div className="exercise-list">
-          {exercises.map((exercise) => (
-            <ExerciseLibraryRow
-              exercise={exercise}
-              key={exercise.id}
-              onEdit={() => onEditExercise(exercise)}
-              onHide={() => onHideExercise(exercise)}
-              onRestore={() => onRestoreExercise(exercise)}
+          {loadStatus === 'loading' ? (
+            <LoadingState label="Loading exercises" />
+          ) : null}
+          {loadStatus === 'error' ? (
+            <StatusMessage tone="warning">
+              Exercise library could not load.
+            </StatusMessage>
+          ) : null}
+
+          {loadStatus === 'ready' && visibleExercises.length ? (
+            <div className="exercise-list">
+              {visibleExercises.map((exercise) => (
+                <ExerciseLibraryRow
+                  exercise={exercise}
+                  key={exercise.id}
+                  onEdit={() => onEditExercise(exercise)}
+                  onHide={() => onHideExercise(exercise)}
+                  onRestore={() => onRestoreExercise(exercise)}
+                />
+              ))}
+            </div>
+          ) : null}
+
+          {loadStatus === 'ready' && !visibleExercises.length ? (
+            <EmptyState
+              title={
+                query.trim()
+                  ? 'No exercises found'
+                  : view === 'active'
+                    ? 'No exercises yet'
+                    : 'No hidden exercises'
+              }
+              message={
+                view === 'active'
+                  ? 'Create a custom exercise to use in programs and workouts.'
+                  : 'Hidden custom exercises stay available for restore when needed.'
+              }
+              action={
+                view === 'active' ? (
+                  <SecondaryButton type="button" onClick={onCreateExercise}>
+                    Create exercise
+                  </SecondaryButton>
+                ) : undefined
+              }
             />
-          ))}
+          ) : null}
+          <SecondaryButton type="button" onClick={onToggleExpanded}>
+            Hide Library
+          </SecondaryButton>
         </div>
-      ) : null}
-
-      {loadStatus === 'ready' && !exercises.length ? (
-        <EmptyState
-          title={
-            query.trim()
-              ? 'No exercises found'
-              : view === 'active'
-                ? 'No exercises yet'
-                : 'No hidden exercises'
-          }
-          message={
-            view === 'active'
-              ? 'Create a custom exercise to use in programs and workouts.'
-              : 'Hidden custom exercises stay available for restore when needed.'
-          }
-          action={
-            view === 'active' ? (
-              <SecondaryButton type="button" onClick={onCreateExercise}>
-                Create exercise
-              </SecondaryButton>
-            ) : undefined
-          }
-        />
       ) : null}
     </Card>
   )

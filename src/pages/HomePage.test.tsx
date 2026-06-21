@@ -210,7 +210,7 @@ describe('HomePage', () => {
     expect(await screen.findAllByText('188 lb')).not.toHaveLength(0)
   })
 
-  it('shows the most recent workout from completed history', async () => {
+  it('shows compact recent workout history from completed history', async () => {
     const program = await seedProgram(db)
     const active = await createProgramRepository(db).activateTemplate(
       program.template.id,
@@ -235,12 +235,14 @@ describe('HomePage', () => {
     renderHome()
     await waitForDashboardReady()
 
-    expect(screen.getByLabelText('Most recent workout')).toHaveTextContent(
-      'Upper',
-    )
-    expect(screen.getByLabelText('Most recent workout')).toHaveTextContent(
-      '1 exercises - 1 completed sets',
-    )
+    const workoutRow = screen
+      .getAllByRole('button', { name: /Upper/ })
+      .find((button) =>
+        button.getAttribute('aria-controls')?.startsWith('home-history-'),
+      )
+    expect(workoutRow).toBeTruthy()
+    expect(workoutRow).toHaveTextContent('Upper')
+    expect(workoutRow).toHaveTextContent('1 exercises')
   })
 })
 

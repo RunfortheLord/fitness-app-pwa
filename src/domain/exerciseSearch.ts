@@ -1,4 +1,10 @@
-import type { Exercise } from '@shared-types/app'
+import type { Exercise, MuscleGroup } from '@shared-types/app'
+
+export type ExerciseTrackingCategory =
+  | 'all'
+  | 'strength'
+  | 'cardio'
+  | 'distance'
 
 export type ExerciseUsageSummary = Record<
   string,
@@ -102,6 +108,78 @@ export function searchExercises(
     .map(({ exercise, reason }) => ({ exercise, reason }))
 }
 
+export function filterExerciseLibrary(
+  exercises: Exercise[],
+  {
+    primaryMuscle,
+    query,
+    trackingCategory,
+  }: {
+    primaryMuscle: MuscleGroup | 'all'
+    query: string
+    trackingCategory: ExerciseTrackingCategory
+  },
+) {
+  const normalizedQuery = normalizeExerciseSearchText(query)
+  return uniqueById(exercises)
+    .filter((exercise) => {
+      if (!normalizedQuery) {
+        return true
+      }
+      return normalizeExerciseSearchText(exercise.name).includes(
+        normalizedQuery,
+      )
+    })
+    .filter((exercise) => {
+      if (trackingCategory === 'all') {
+        return true
+      }
+      return getExerciseTrackingCategory(exercise) === trackingCategory
+    })
+    .filter((exercise) => {
+      if (trackingCategory !== 'strength' || primaryMuscle === 'all') {
+        return true
+      }
+      return exercise.primaryMuscleGroups[0] === primaryMuscle
+    })
+    .sort((left, right) => left.name.localeCompare(right.name))
+}
+
+export function getExerciseTrackingCategory(
+  exercise: Pick<Exercise, 'name' | 'trackingMethodId'>,
+): Exclude<ExerciseTrackingCategory, 'all'> {
+  if (exercise.trackingMethodId === 'distance_duration') {
+    return 'distance'
+  }
+  if (
+    exercise.trackingMethodId === 'duration' &&
+    cardioNamePattern.test(normalizeExerciseSearchText(exercise.name))
+  ) {
+    return 'cardio'
+  }
+  return 'strength'
+}
+
+export function primaryMuscleLabel(muscle: MuscleGroup) {
+  const labels: Record<MuscleGroup, string> = {
+    back: 'Back',
+    biceps: 'Biceps',
+    calves: 'Calves',
+    chest: 'Chest',
+    core: 'Core',
+    forearms: 'Forearms / Grip',
+    glutes: 'Glutes',
+    hamstrings: 'Hamstrings',
+    'hip abductors': 'Hip Abductors',
+    'hip adductors': 'Hip Adductors',
+    quadriceps: 'Quadriceps',
+    shoulders: 'Shoulders',
+    traps: 'Other',
+    triceps: 'Triceps',
+  }
+  return labels[muscle]
+}
+
 export function defaultExerciseResults(
   exercises: Exercise[],
   usage: ExerciseUsageSummary = {},
@@ -136,3 +214,6 @@ function uniqueById(exercises: Exercise[]) {
   }
   return Array.from(byId.values())
 }
+
+const cardioNamePattern =
+  /\b(run|running|bike|cycling|row|ergometer|stair|elliptical|jump rope|assault bike|ski erg|shuttle|sprint)\b/u

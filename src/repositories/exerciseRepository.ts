@@ -2,6 +2,7 @@ import { db, type TrainingLogDatabase } from '@db/database'
 import {
   BUILT_IN_EXERCISES,
   BUILT_IN_EXERCISE_SEED_VERSION,
+  normalizeBuiltInExerciseName,
   validateBuiltInExercises,
 } from '@domain/exerciseLibrary'
 import { createId } from '@domain/ids'
@@ -273,13 +274,20 @@ export const exerciseRepository = createExerciseRepository()
 async function seedBuiltInExerciseRecords(database: TrainingLogDatabase) {
   validateBuiltInExercises()
   await database.transaction('rw', database.exercises, async () => {
+    const existingBuiltInsByName = new Map(
+      (await database.exercises.where({ origin: 'built_in' }).toArray()).map(
+        (exercise) => [normalizeBuiltInExerciseName(exercise.name), exercise],
+      ),
+    )
     const existingRecords = await database.exercises.bulkGet(
       BUILT_IN_EXERCISES.map((seed) => seed.id),
     )
     const recordsToPut: Exercise[] = []
 
     for (const [index, seed] of BUILT_IN_EXERCISES.entries()) {
-      const existing = existingRecords[index]
+      const existing =
+        existingRecords[index] ??
+        existingBuiltInsByName.get(normalizeBuiltInExerciseName(seed.name))
       if (!existing) {
         recordsToPut.push(seed)
         continue
@@ -290,6 +298,7 @@ async function seedBuiltInExerciseRecords(database: TrainingLogDatabase) {
       if ((existing.seedDataVersion ?? 0) < BUILT_IN_EXERCISE_SEED_VERSION) {
         recordsToPut.push({
           ...seed,
+          id: existing.id,
           createdAt: existing.createdAt,
           status: 'active',
         })

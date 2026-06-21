@@ -1,4 +1,4 @@
-import { Trash2 } from 'lucide-react'
+import { ChevronDown, Trash2 } from 'lucide-react'
 import { useContext, useEffect, useMemo, useState } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 
@@ -40,6 +40,15 @@ import {
   formatDuration as formatRunDuration,
   formatPace,
 } from '@domain/runFormatting'
+import {
+  exerciseHistorySummary,
+  formatHistoryDate,
+  formatHistoryDuration,
+  formatHistorySetMetric,
+  historyMetricsForExercise,
+  summarizeHistoryWorkout,
+  workoutHistoryType,
+} from '@domain/historyDisplay'
 import { bodyweightRepository } from '@repositories/bodyweightRepository'
 import { runRepository, type RunStructure } from '@repositories/runRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
@@ -401,26 +410,25 @@ export function HistoryPage() {
                         </small>
                       </button>
                     ) : (
-                      <button
-                        aria-current={item.workout.id === state.selected?.id}
+                      <WorkoutHistoryListAccordion
+                        exercises={
+                          item.workout.id === state.selected?.id
+                            ? state.exercises
+                            : []
+                        }
+                        isExpanded={item.workout.id === state.selected?.id}
                         key={item.workout.id}
-                        onClick={() =>
+                        onOpen={() =>
                           setSearchParams({ workout: item.workout.id })
                         }
-                        type="button"
-                      >
-                        <strong>{item.workout.name}</strong>
-                        <small>{formatSourceLabel(item.workout)}</small>
-                        <small>
-                          {item.workout.localDate} -{' '}
-                          {formatDuration(item.workout.durationSeconds)} -{' '}
-                          {state.summaries[item.workout.id]?.exerciseCount ?? 0}{' '}
-                          exercises -{' '}
-                          {state.summaries[item.workout.id]
-                            ?.completedSetCount ?? 0}{' '}
-                          completed sets
-                        </small>
-                      </button>
+                        setsByExercise={
+                          item.workout.id === state.selected?.id
+                            ? state.setsByExercise
+                            : {}
+                        }
+                        summary={state.summaries[item.workout.id]}
+                        workout={item.workout}
+                      />
                     ),
                   )}
                 </section>
@@ -619,6 +627,167 @@ export function HistoryPage() {
         </p>
       </ModalConfirmationDialog>
     </PageContainer>
+  )
+}
+
+function WorkoutHistoryListAccordion({
+  exercises,
+  isExpanded,
+  onOpen,
+  setsByExercise,
+  summary,
+  workout,
+}: {
+  exercises: WorkoutHistoryExercise[]
+  isExpanded: boolean
+  onOpen: () => void
+  setsByExercise: Record<string, WorkoutHistorySet[]>
+  summary: WorkoutSummary | undefined
+  workout: WorkoutHistoryEntry
+}) {
+  const [openExercises, setOpenExercises] = useState<Set<string>>(new Set())
+  const panelId = `history-list-panel-${workout.id}`
+  const duration = formatHistoryDuration(workout.durationSeconds)
+
+  return (
+    <article className="history-accordion-item">
+      <button
+        aria-controls={panelId}
+        aria-current={isExpanded}
+        aria-expanded={isExpanded}
+        className="history-accordion-trigger"
+        onClick={onOpen}
+        type="button"
+      >
+        <span className="history-accordion-main">
+          <strong>{formatHistoryDate(workout.localDate)}</strong>
+          <small>
+            {workout.name} - {workoutHistoryType(workout)}
+          </small>
+          <small>
+            {[duration, `${summary?.exerciseCount ?? 0} exercises`]
+              .filter(Boolean)
+              .join(' - ')}
+          </small>
+        </span>
+        <ChevronDown aria-hidden="true" className="accordion-chevron" />
+      </button>
+      {isExpanded ? (
+        <div className="history-accordion-panel" id={panelId}>
+          <dl className="history-detail-list">
+            <div>
+              <dt>Workout</dt>
+              <dd>{workout.name}</dd>
+            </div>
+            <div>
+              <dt>Type</dt>
+              <dd>{workoutHistoryType(workout)}</dd>
+            </div>
+            <div>
+              <dt>Date</dt>
+              <dd>{formatHistoryDate(workout.localDate)}</dd>
+            </div>
+            {duration ? (
+              <div>
+                <dt>Duration</dt>
+                <dd>{duration}</dd>
+              </div>
+            ) : null}
+            {workout.notes ? (
+              <div>
+                <dt>Notes</dt>
+                <dd>{workout.notes}</dd>
+              </div>
+            ) : null}
+            <div>
+              <dt>Exercises</dt>
+              <dd>
+                {
+                  summarizeHistoryWorkout({
+                    workout,
+                    exercises,
+                    setsByExercise,
+                  }).exerciseCount
+                }
+              </dd>
+            </div>
+          </dl>
+          <div className="history-exercise-accordion-list">
+            {exercises.map((exercise) => {
+              const sets = setsByExercise[exercise.id] ?? []
+              const exerciseExpanded = openExercises.has(exercise.id)
+              const exercisePanelId = `history-list-exercise-${exercise.id}`
+              return (
+                <article
+                  className="history-exercise-accordion"
+                  key={exercise.id}
+                >
+                  <button
+                    aria-controls={exercisePanelId}
+                    aria-expanded={exerciseExpanded}
+                    className="history-exercise-trigger"
+                    onClick={() =>
+                      setOpenExercises((current) => {
+                        const next = new Set(current)
+                        if (next.has(exercise.id)) {
+                          next.delete(exercise.id)
+                        } else {
+                          next.add(exercise.id)
+                        }
+                        return next
+                      })
+                    }
+                    type="button"
+                  >
+                    <span>
+                      <strong>{exercise.exerciseSnapshot.exerciseName}</strong>
+                      <small>{exerciseHistorySummary(exercise, sets)}</small>
+                    </span>
+                    <ChevronDown
+                      aria-hidden="true"
+                      className="accordion-chevron"
+                    />
+                  </button>
+                  {exerciseExpanded ? (
+                    <div
+                      className="history-exercise-panel"
+                      id={exercisePanelId}
+                    >
+                      {exercise.notes ? (
+                        <p className="muted">{exercise.notes}</p>
+                      ) : null}
+                      {sets.map((set) => (
+                        <div className="history-readonly-set" key={set.id}>
+                          <strong>Set {set.setNumber}</strong>
+                          <small>
+                            {set.completed ? 'Completed' : 'Not completed'}
+                          </small>
+                          {exercise.skipped ? <small>Skipped</small> : null}
+                          {historyMetricsForExercise(exercise)
+                            .map((metric) =>
+                              formatHistorySetMetric(
+                                metric,
+                                set.metricValues[metric.key],
+                              ),
+                            )
+                            .filter(Boolean)
+                            .map((label) => (
+                              <small key={label}>{label}</small>
+                            ))}
+                          {typeof set.rir === 'number' ? (
+                            <small>RIR: {set.rir}</small>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </article>
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
+    </article>
   )
 }
 
@@ -1451,15 +1620,6 @@ function ChangeReview({
       ) : null}
     </Card>
   )
-}
-
-function formatSourceLabel(workout: WorkoutHistoryEntry) {
-  const program =
-    workout.workoutSnapshot.templateName ??
-    workout.workoutSnapshot.activeCycleName
-  return program
-    ? `${program} - ${workout.workoutSnapshot.dayName}`
-    : 'No program source'
 }
 
 function groupHistoryItemsByDate(workouts: WorkoutHistoryEntry[], runs: Run[]) {

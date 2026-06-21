@@ -89,6 +89,7 @@ test('loads cached app shell and navigates while offline', async ({
   await expect(
     page.getByRole('heading', { level: 1, name: 'Training' }),
   ).toBeVisible()
+  await page.getByRole('button', { name: 'Exercise Library' }).click()
   await expect(
     page.getByText('Barbell Bench Press', { exact: true }),
   ).toBeVisible()
@@ -123,6 +124,7 @@ test('persists IndexedDB records created while offline', async ({
   })
 
   await page.reload()
+  await waitForExerciseLibrary(page)
   await expect(page.getByText('Offline DB press')).toBeVisible()
 })
 
@@ -289,6 +291,11 @@ async function createActiveWorkout(page: Page) {
 }
 
 async function waitForExerciseLibrary(page: Page) {
+  const libraryToggle = page.getByRole('button', { name: 'Exercise Library' })
+  await expect(libraryToggle).toBeVisible({ timeout: 30_000 })
+  if ((await libraryToggle.getAttribute('aria-expanded')) !== 'true') {
+    await libraryToggle.click()
+  }
   await expect(
     page.getByText('Barbell Bench Press', { exact: true }),
   ).toBeVisible({

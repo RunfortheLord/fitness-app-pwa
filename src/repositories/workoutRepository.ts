@@ -1,4 +1,8 @@
 import { db, type TrainingLogDatabase } from '@db/database'
+import {
+  qualifiesForWorkoutHistory,
+  type WorkoutHistoryStructure,
+} from '@domain/historyDisplay'
 import { createId } from '@domain/ids'
 import { buildSetMetricPropagationUpdates } from '@domain/setPropagation'
 import {
@@ -1131,45 +1135,28 @@ export function createWorkoutRepository(
     },
 
     async getWorkoutHistoryStructure(workoutId: string) {
-      const workout = await database.workoutHistoryEntries.get(workoutId)
-      if (!workout) {
-        throw new Error(`Workout history ${workoutId} was not found.`)
-      }
-      const exercises = await database.workoutHistoryExercises
-        .where({ workoutId })
-        .sortBy('orderIndex')
-      const sets = await database.workoutHistorySets
-        .where({ workoutId })
-        .toArray()
-
-      return {
-        workout,
-        exercises,
-        setsByExercise: Object.fromEntries(
-          exercises.map((exercise) => [
-            exercise.id,
-            sets
-              .filter((set) => set.workoutExerciseId === exercise.id)
-              .sort((first, second) => first.setNumber - second.setNumber),
-          ]),
-        ),
-      }
+      return loadWorkoutHistoryStructure(database, workoutId)
     },
 
     getActiveWorkout() {
       return database.workouts.where({ status: 'active' }).first()
     },
 
-    getMostRecentCompletedWorkout() {
-      return database.workoutHistoryEntries
-        .orderBy('completedAt')
-        .reverse()
-        .first()
+    async getMostRecentCompletedWorkout() {
+      const workouts = await this.listRecentCompletedWorkouts(1)
+      return workouts[0]
     },
 
     async listRecentCompletedWorkouts(limit = 5) {
       const workouts = await database.workoutHistoryEntries.toArray()
-      return workouts
+      const structures = await Promise.all(
+        workouts.map((workout) =>
+          loadWorkoutHistoryStructure(database, workout.id),
+        ),
+      )
+      return structures
+        .filter(qualifiesForWorkoutHistory)
+        .map((structure) => structure.workout)
         .sort(
           (first, second) =>
             second.localDate.localeCompare(first.localDate) ||
@@ -2149,6 +2136,33 @@ async function updateRestTimer(
     })
     return activeRestTimer
   })
+}
+
+async function loadWorkoutHistoryStructure(
+  database: TrainingLogDatabase,
+  workoutId: string,
+): Promise<WorkoutHistoryStructure> {
+  const workout = await database.workoutHistoryEntries.get(workoutId)
+  if (!workout) {
+    throw new Error(`Workout history ${workoutId} was not found.`)
+  }
+  const exercises = await database.workoutHistoryExercises
+    .where({ workoutId })
+    .sortBy('orderIndex')
+  const sets = await database.workoutHistorySets.where({ workoutId }).toArray()
+
+  return {
+    workout,
+    exercises,
+    setsByExercise: Object.fromEntries(
+      exercises.map((exercise) => [
+        exercise.id,
+        sets
+          .filter((set) => set.workoutExerciseId === exercise.id)
+          .sort((first, second) => first.setNumber - second.setNumber),
+      ]),
+    ),
+  }
 }
 
 export const workoutRepository = createWorkoutRepository()

@@ -11,7 +11,13 @@ import {
   TimerOff,
   Trash2,
 } from 'lucide-react'
-import { useEffect, useRef, useState, type PointerEvent } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FocusEvent,
+  type PointerEvent,
+} from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import {
@@ -621,7 +627,6 @@ function SetRow({
             )}`}
             disabled={set.completed}
             invalid={invalidMetricKeys.has(metric.key)}
-            key={`${metric.key}:${formatMetricInput(set.metricValues[metric.key])}`}
             onValueChange={(value) => onMetricChange(metric.key, value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
@@ -635,6 +640,7 @@ function SetRow({
                 : undefined
             }
             value={formatMetricInput(set.metricValues[metric.key])}
+            valueType={metric.valueType}
           />
         </label>
       ))}
@@ -690,6 +696,7 @@ function MetricNumericInput({
   onValueChange,
   placeholder,
   value,
+  valueType,
   ...props
 }: Omit<
   React.ComponentProps<typeof NumericInput>,
@@ -698,18 +705,49 @@ function MetricNumericInput({
   invalid: boolean
   onValueChange: (value: WorkoutSetMetricValue) => void
   value: string
+  valueType: TrackingMetric['valueType']
 }) {
   const [draft, setDraft] = useState(value)
+  const isEditingRef = useRef(false)
+  const lastPropValueRef = useRef(value)
+
+  useEffect(() => {
+    if (value === lastPropValueRef.current) {
+      return
+    }
+    lastPropValueRef.current = value
+    if (!isEditingRef.current) {
+      setDraft(value)
+    }
+  }, [value])
+
+  function selectCurrentValue(event: FocusEvent<HTMLInputElement>) {
+    if (event.currentTarget.value) {
+      event.currentTarget.select()
+    }
+  }
 
   return (
     <NumericInput
       {...props}
       aria-invalid={invalid}
       disabled={disabled}
+      onBlur={() => {
+        isEditingRef.current = false
+        lastPropValueRef.current = value
+      }}
       onChange={(event) => {
-        const next = event.currentTarget.value
+        const next =
+          valueType === 'integer'
+            ? event.currentTarget.value.replace(/\D+/g, '')
+            : event.currentTarget.value
+        isEditingRef.current = true
         setDraft(next)
-        onValueChange(parseMetricValue(next))
+        onValueChange(parseMetricValue(next, valueType))
+      }}
+      onFocus={(event) => {
+        isEditingRef.current = true
+        selectCurrentValue(event)
       }}
       onKeyDown={onKeyDown}
       placeholder={placeholder}
@@ -987,13 +1025,22 @@ function formatMetricLabel(metric: TrackingMetric, repsPerSide: boolean) {
   return metric.label
 }
 
-function parseMetricValue(value: string) {
+function parseMetricValue(
+  value: string,
+  valueType: TrackingMetric['valueType'] = 'number',
+) {
   const trimmed = value.trim()
   if (!trimmed) {
     return null
   }
   const parsed = Number(trimmed)
-  return Number.isFinite(parsed) ? parsed : null
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null
+  }
+  if (valueType === 'integer' && !Number.isInteger(parsed)) {
+    return null
+  }
+  return parsed
 }
 
 function parseNullableNumber(value: string) {

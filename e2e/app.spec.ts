@@ -117,19 +117,21 @@ test('creates and persists a custom exercise from the Add sheet', async ({
   await page.getByRole('button', { name: 'Open quick actions' }).click()
   await page.getByRole('button', { name: /Create exercise/ }).click()
   await expect(page).toHaveURL(/\/training/)
-  await waitForExerciseLibrary(page)
   await page.getByRole('textbox', { name: 'Name' }).fill('E2E Bench press')
   await fillRestInputs(page, '150')
   await page.getByLabel('Tracking preset').selectOption('weight_reps')
   await expect(page.getByText(/external weight and repetitions/)).toBeVisible()
   await page.getByRole('button', { name: 'Save exercise' }).click()
 
+  await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 15_000 })
+  await waitForExerciseLibrary(page)
   await expect(page.getByText('E2E Bench press')).toBeVisible({
     timeout: 15_000,
   })
   await expect(page.getByText(/Weight \+ reps - 150s rest/)).toBeVisible()
 
   await page.reload()
+  await waitForExerciseLibrary(page)
   await expect(page.getByText('E2E Bench press')).toBeVisible()
 })
 
@@ -665,6 +667,11 @@ async function closeBuilder(builder: Locator) {
 }
 
 async function waitForExerciseLibrary(page: Page) {
+  const libraryToggle = page.getByRole('button', { name: 'Exercise Library' })
+  await expect(libraryToggle).toBeVisible({ timeout: 30_000 })
+  if ((await libraryToggle.getAttribute('aria-expanded')) !== 'true') {
+    await libraryToggle.click()
+  }
   await expect(
     page.getByText('Barbell Bench Press', { exact: true }),
   ).toBeVisible({

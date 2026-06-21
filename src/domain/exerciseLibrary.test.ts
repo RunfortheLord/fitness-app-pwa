@@ -9,8 +9,8 @@ import {
 describe('built-in exercise library', () => {
   it('contains a validated seed set in the intended size range', () => {
     expect(() => validateBuiltInExercises()).not.toThrow()
-    expect(BUILT_IN_EXERCISES.length).toBeGreaterThanOrEqual(150)
-    expect(BUILT_IN_EXERCISES.length).toBeLessThanOrEqual(250)
+    expect(BUILT_IN_EXERCISES.length).toBeGreaterThanOrEqual(250)
+    expect(BUILT_IN_EXERCISES.length).toBeLessThanOrEqual(350)
   })
 
   it('uses stable built-in IDs and covers required equipment categories', () => {

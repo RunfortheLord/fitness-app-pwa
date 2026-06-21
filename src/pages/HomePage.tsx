@@ -1,4 +1,4 @@
-import { Activity, Dumbbell, LineChart, Scale, Settings } from 'lucide-react'
+import { Activity, ChevronDown, LineChart, Scale, Settings } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -25,11 +25,23 @@ import {
   formatWeight,
   type BodyweightTrendSummary,
 } from '@domain/bodyweightProgress'
+import {
+  exerciseHistorySummary,
+  formatHistoryDate,
+  formatHistoryDuration,
+  formatHistorySetMetric,
+  historyMetricsForExercise,
+  summarizeHistoryWorkout,
+  workoutHistoryType,
+  type WorkoutHistoryStructure,
+} from '@domain/historyDisplay'
 import { useDashboardContext } from '@hooks/useDashboardContext'
+import { workoutRepository } from '@repositories/workoutRepository'
 import {
   dashboardService,
   type DashboardData,
 } from '@services/dashboardService'
+import type { WorkoutHistoryEntry } from '@shared-types/app'
 
 type DashboardLoadState =
   | { status: 'loading'; selectedDate: null }
@@ -53,6 +65,11 @@ export function HomePage() {
     status: 'loading',
     selectedDate: null,
   })
+  const [expandedWorkoutId, setExpandedWorkoutId] = useState<string | null>(
+    null,
+  )
+  const [expandedStructure, setExpandedStructure] =
+    useState<WorkoutHistoryStructure | null>(null)
 
   useEffect(() => {
     let isCurrent = true
@@ -69,6 +86,8 @@ export function HomePage() {
           selectedDate,
           dashboard,
         })
+        setExpandedWorkoutId(null)
+        setExpandedStructure(null)
       })
       .catch(() => {
         if (!isCurrent) {
@@ -291,35 +310,31 @@ export function HomePage() {
         </div>
       </Card>
 
-      <Card title="Most recent workout">
-        {dashboard?.mostRecentCompletedWorkout ? (
-          <div className="card-row">
-            <span className="quick-action-icon">
-              <Dumbbell aria-hidden="true" size={20} />
-            </span>
-            <div>
-              <p className="metric-value metric-value-small">
-                {dashboard.mostRecentCompletedWorkout.name}
-              </p>
-              <p className="muted">
-                {dashboard.mostRecentCompletedWorkout.localDate} -{' '}
-                {Math.round(
-                  dashboard.mostRecentCompletedWorkout.durationSeconds / 60,
-                )}{' '}
-                min
-              </p>
-              {dashboard.mostRecentCompletedWorkoutSummary ? (
-                <p className="muted">
-                  {dashboard.mostRecentCompletedWorkoutSummary.exerciseCount}{' '}
-                  exercises -{' '}
-                  {
-                    dashboard.mostRecentCompletedWorkoutSummary
-                      .completedSetCount
-                  }{' '}
-                  completed sets
-                </p>
-              ) : null}
-            </div>
+      <Card title="Workout history">
+        {dashboard?.recentCompletedWorkouts.length ? (
+          <div className="history-accordion-list">
+            {dashboard.recentCompletedWorkouts.map((workout) => (
+              <WorkoutHistoryAccordionRow
+                expanded={expandedWorkoutId === workout.id}
+                key={workout.id}
+                onToggle={() => {
+                  const nextId =
+                    expandedWorkoutId === workout.id ? null : workout.id
+                  setExpandedWorkoutId(nextId)
+                  setExpandedStructure(null)
+                  if (nextId) {
+                    void workoutRepository
+                      .getWorkoutHistoryStructure(nextId)
+                      .then(setExpandedStructure)
+                  }
+                }}
+                structure={
+                  expandedWorkoutId === workout.id ? expandedStructure : null
+                }
+                summary={dashboard.recentCompletedWorkoutSummaries[workout.id]}
+                workout={workout}
+              />
+            ))}
           </div>
         ) : (
           <EmptyState
@@ -407,6 +422,164 @@ export function HomePage() {
         </div>
       </Card>
     </PageContainer>
+  )
+}
+
+function WorkoutHistoryAccordionRow({
+  expanded,
+  onToggle,
+  structure,
+  summary,
+  workout,
+}: {
+  expanded: boolean
+  onToggle: () => void
+  structure: WorkoutHistoryStructure | null
+  summary: { completedSetCount: number; exerciseCount: number } | undefined
+  workout: WorkoutHistoryEntry
+}) {
+  const panelId = `home-history-${workout.id}`
+  const duration = formatHistoryDuration(workout.durationSeconds)
+
+  return (
+    <article className="history-accordion-item">
+      <button
+        aria-controls={panelId}
+        aria-expanded={expanded}
+        className="history-accordion-trigger"
+        onClick={onToggle}
+        type="button"
+      >
+        <span className="history-accordion-main">
+          <strong>{formatHistoryDate(workout.localDate)}</strong>
+          <small>
+            {workout.name} - {workoutHistoryType(workout)}
+          </small>
+          <small>
+            {[duration, `${summary?.exerciseCount ?? 0} exercises`]
+              .filter(Boolean)
+              .join(' - ')}
+          </small>
+        </span>
+        <ChevronDown aria-hidden="true" className="accordion-chevron" />
+      </button>
+      {expanded ? (
+        <div className="history-accordion-panel" id={panelId}>
+          {structure ? (
+            <ReadOnlyWorkoutDetails structure={structure} />
+          ) : (
+            <LoadingState label="Loading workout details" />
+          )}
+        </div>
+      ) : null}
+    </article>
+  )
+}
+
+function ReadOnlyWorkoutDetails({
+  structure,
+}: {
+  structure: WorkoutHistoryStructure
+}) {
+  const summary = summarizeHistoryWorkout(structure)
+  const [openExercises, setOpenExercises] = useState<Set<string>>(new Set())
+  return (
+    <div className="history-readonly-detail">
+      <dl className="history-detail-list">
+        <div>
+          <dt>Workout</dt>
+          <dd>{structure.workout.name}</dd>
+        </div>
+        <div>
+          <dt>Type</dt>
+          <dd>{workoutHistoryType(structure.workout)}</dd>
+        </div>
+        <div>
+          <dt>Date</dt>
+          <dd>{formatHistoryDate(structure.workout.localDate)}</dd>
+        </div>
+        {formatHistoryDuration(structure.workout.durationSeconds) ? (
+          <div>
+            <dt>Duration</dt>
+            <dd>{formatHistoryDuration(structure.workout.durationSeconds)}</dd>
+          </div>
+        ) : null}
+        <div>
+          <dt>Exercises</dt>
+          <dd>{summary.exerciseCount}</dd>
+        </div>
+        {structure.workout.notes ? (
+          <div>
+            <dt>Notes</dt>
+            <dd>{structure.workout.notes}</dd>
+          </div>
+        ) : null}
+      </dl>
+      <div className="history-exercise-accordion-list">
+        {structure.exercises.map((exercise) => {
+          const sets = structure.setsByExercise[exercise.id] ?? []
+          const expanded = openExercises.has(exercise.id)
+          const panelId = `exercise-history-${exercise.id}`
+          return (
+            <article className="history-exercise-accordion" key={exercise.id}>
+              <button
+                aria-controls={panelId}
+                aria-expanded={expanded}
+                className="history-exercise-trigger"
+                onClick={() =>
+                  setOpenExercises((current) => {
+                    const next = new Set(current)
+                    if (next.has(exercise.id)) {
+                      next.delete(exercise.id)
+                    } else {
+                      next.add(exercise.id)
+                    }
+                    return next
+                  })
+                }
+                type="button"
+              >
+                <span>
+                  <strong>{exercise.exerciseSnapshot.exerciseName}</strong>
+                  <small>{exerciseHistorySummary(exercise, sets)}</small>
+                </span>
+                <ChevronDown aria-hidden="true" className="accordion-chevron" />
+              </button>
+              {expanded ? (
+                <div className="history-exercise-panel" id={panelId}>
+                  {exercise.notes ? (
+                    <p className="muted">{exercise.notes}</p>
+                  ) : null}
+                  {sets.map((set) => (
+                    <div className="history-readonly-set" key={set.id}>
+                      <strong>Set {set.setNumber}</strong>
+                      <small>
+                        {set.completed ? 'Completed' : 'Not completed'}
+                      </small>
+                      {exercise.skipped ? <small>Skipped</small> : null}
+                      {historyMetricsForExercise(exercise)
+                        .map((metric) =>
+                          formatHistorySetMetric(
+                            metric,
+                            set.metricValues[metric.key],
+                          ),
+                        )
+                        .filter(Boolean)
+                        .map((label) => (
+                          <small key={label}>{label}</small>
+                        ))}
+                      {typeof set.rir === 'number' ? (
+                        <small>RIR: {set.rir}</small>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </article>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
