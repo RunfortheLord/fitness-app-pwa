@@ -34,4 +34,23 @@ describe('settingsRepository', () => {
     await expect(database.nutritionTargets.toArray()).resolves.toEqual([])
     await expect(database.userSettings.get('settings')).resolves.toBeUndefined()
   })
+
+  it('persists timer sound preferences on user settings', async () => {
+    const repository = createSettingsRepository(database)
+
+    await expect(repository.ensureSettings()).resolves.toMatchObject({
+      timerSoundEnabled: true,
+      selectedTimerSoundId: 'rest-complete-chime',
+    })
+
+    await repository.saveTimerSettings({
+      timerSoundEnabled: false,
+      selectedTimerSoundId: 'clear-ding',
+    })
+
+    await expect(database.userSettings.get('settings')).resolves.toMatchObject({
+      timerSoundEnabled: false,
+      selectedTimerSoundId: 'clear-ding',
+    })
+  })
 })

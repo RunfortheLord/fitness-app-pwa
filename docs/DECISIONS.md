@@ -1,5 +1,18 @@
 # Decisions
 
+## 2026-06-21: Barcode Cache, Serving Preferences, And Timer Sounds
+
+- Remembered food units, cached barcode products, custom barcode associations,
+  selected timer sound, timer sound enabled state, and active-program references
+  are included in JSON backups because they are local user workflow state.
+- USDA API keys remain excluded from backups, CSV exports, diagnostics, and
+  source code.
+- Barcode scans use browser camera APIs plus ZXing. Product lookup queries USDA
+  branded foods and Open Food Facts; USDA wins conflicts when both are complete.
+- Timer completion audio is best effort and plays once after timer completion
+  when browser autoplay policy allows it. iOS PWA locked-screen audio is not
+  guaranteed.
+
 ## 2026-06-19 Food Provider Sources
 
 - USDA FoodData Central is the primary external food provider because its

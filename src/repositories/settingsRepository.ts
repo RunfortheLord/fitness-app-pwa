@@ -28,6 +28,10 @@ export type SettingsRepository = {
     status: IntegrationConnectionStatus,
   ): Promise<ApiKeyIntegrationSettings | undefined>
   removeUsdaApiKey(): Promise<void>
+  saveTimerSettings(input: {
+    timerSoundEnabled: boolean
+    selectedTimerSoundId: string
+  }): Promise<UserSettings>
 }
 
 export type SettingsRepositoryTestHooks = {
@@ -41,7 +45,22 @@ export function createSettingsRepository(
   async function ensureSettings() {
     const existing = await database.userSettings.get('settings')
     if (existing) {
-      return existing
+      if (
+        existing.timerSoundEnabled !== undefined &&
+        existing.selectedTimerSoundId
+      ) {
+        return existing
+      }
+      const now = new Date().toISOString()
+      const upgraded: UserSettings = {
+        ...existing,
+        timerSoundEnabled: existing.timerSoundEnabled ?? true,
+        selectedTimerSoundId:
+          existing.selectedTimerSoundId ?? 'rest-complete-chime',
+        updatedAt: now,
+      }
+      await database.userSettings.put(upgraded)
+      return upgraded
     }
 
     const now = new Date().toISOString()
@@ -50,6 +69,8 @@ export function createSettingsRepository(
       weightUnit: 'lb',
       energyUnit: 'kcal',
       nutritionTargets: defaultNutritionTargets,
+      timerSoundEnabled: true,
+      selectedTimerSoundId: 'rest-complete-chime',
       createdAt: now,
       updatedAt: now,
     }
@@ -138,6 +159,19 @@ export function createSettingsRepository(
 
     removeUsdaApiKey() {
       return database.apiKeyIntegrationSettings.delete('usda_fooddata_central')
+    },
+
+    async saveTimerSettings(input) {
+      const settings = await ensureSettings()
+      const now = new Date().toISOString()
+      const updated: UserSettings = {
+        ...settings,
+        timerSoundEnabled: input.timerSoundEnabled,
+        selectedTimerSoundId: input.selectedTimerSoundId,
+        updatedAt: now,
+      }
+      await database.userSettings.put(updated)
+      return updated
     },
   }
 }

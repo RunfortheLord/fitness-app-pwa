@@ -47,6 +47,8 @@ foreign-key ID fields and sort indexes.
 - `weightUnit`: default `lb`
 - `energyUnit`: default `kcal`
 - `nutritionTargets`
+- `timerSoundEnabled`
+- `selectedTimerSoundId`
 - `createdAt`
 - `updatedAt`
 
@@ -87,7 +89,8 @@ and restore payloads.
 - Optional `brandName` for private custom foods.
 - Optional provider metadata: `brandName`, `sourceType`, `provider`,
   `providerRecordId`, `providerDataType`, `sourceName`, `sourceUrl`, `barcode`,
-  `sourceUpdatedAt`, `providerIngestedAt`, and `normalizerVersion`
+  `barcodeSource`, `sourceUpdatedAt`, `providerIngestedAt`, and
+  `normalizerVersion`
 - Optional serving conversion metadata: `gramsPerServing`, `ouncesPerServing`,
   `servingConversionReliable`, and `servingConversionSource`
 - Optional classification metadata: `macroBasis` and `rawCookedStatus`
@@ -104,6 +107,30 @@ or previously used search results.
 Private custom food creation requires name, serving quantity, serving unit, and
 calories. Optional macros default to zero when left blank. Active private custom
 food names are unique after trimming and case folding.
+
+### FoodUnitPreference
+
+- `id`: same as `foodId`
+- `foodId`
+- `unitKey`
+- `amount`
+- `updatedAt`
+
+This stores the user's most recently selected logging unit for a food.
+
+### BarcodeProductCache
+
+- `id`: barcode
+- `barcode`
+- `foodId`
+- `sourceProvider`: `usda`, `open_food_facts`, or `custom`
+- `sourceName`
+- `retrievedAt`
+- `updatedAt`
+
+This local cache lets previously scanned products and custom barcode
+associations reopen offline. User-created barcode associations are never
+uploaded to a shared database.
 
 ### FoodLogEntry
 
@@ -511,6 +538,10 @@ not add distance or moving time.
   ownership maps to empty objects for active and historical workout sets without
   changing stored set values, completed state, history, exercises, nutrition,
   bodyweight, runs, settings, API-key settings, or object-store names.
+- Schema version 8 adds local food-unit preferences, local barcode product
+  cache, optional food barcode source metadata, and timer sound preferences.
+  The migration is additive and initializes missing timer settings without
+  changing existing foods, logs, programs, active workouts, or history.
 
 ## Transaction Boundaries
 
@@ -534,11 +565,15 @@ not add distance or moving time.
 
 ## Backup Model
 
-- JSON backup includes metadata, schema versions, exportedAt timestamp, settings, foods, food logs, bodyweight entries, exercises, program templates, active cycles, active workout if present, workout history, active and completed runs, run samples, pauses, splits, and classifications.
+- JSON backup includes metadata, schema versions, exportedAt timestamp,
+  settings, foods, food logs, remembered food-unit preferences, cached barcode
+  products, custom barcode associations, bodyweight entries, exercises, program
+  templates, active cycles, active workout if present, workout history, active
+  and completed runs, run samples, pauses, splits, and classifications.
 - JSON backup is authoritative and full fidelity.
 - CSV export is derived from stores for readability and does not need to support restore.
 - Import preview summarizes counts, schema versions, conflicts, and whether merge or replace is selected.
-- Current backup format version is `1`, separate from IndexedDB schema version `6`.
+- Current backup format version is `1`, separate from IndexedDB schema version `8`.
 - Backup root fields are `backupFormatVersion`, `databaseSchemaVersion`,
   `applicationVersion`, `exportedAt`, and `data`.
 - Restore supports backup format version `1` when the backup database schema

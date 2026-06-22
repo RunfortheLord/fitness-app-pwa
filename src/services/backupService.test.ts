@@ -148,6 +148,8 @@ describe('backupService', () => {
       'nutritionTargets',
       'foods',
       'foodLogEntries',
+      'foodUnitPreferences',
+      'barcodeProductCache',
       'bodyweightEntries',
       'exercises',
       'programTemplates',

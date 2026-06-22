@@ -69,6 +69,8 @@ export type UserSettings = {
   weightUnit: WeightUnit
   energyUnit: EnergyUnit
   nutritionTargets: NutritionTargetValues
+  timerSoundEnabled?: boolean
+  selectedTimerSoundId?: string
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }
@@ -111,6 +113,7 @@ export type Food = {
   sourceName?: string | null
   sourceUrl?: string | null
   barcode?: string | null
+  barcodeSource?: FoodProviderId | 'custom' | null
   sourceUpdatedAt?: IsoTimestamp | null
   providerIngestedAt?: IsoTimestamp | null
   normalizerVersion?: number | null
@@ -119,6 +122,24 @@ export type Food = {
   notes: string
   status: EntityStatus
   createdAt: IsoTimestamp
+  updatedAt: IsoTimestamp
+}
+
+export type FoodUnitPreference = {
+  id: string
+  foodId: string
+  unitKey: string
+  amount: number
+  updatedAt: IsoTimestamp
+}
+
+export type BarcodeProductCache = {
+  id: string
+  barcode: string
+  foodId: string
+  sourceProvider: FoodProviderId | 'custom'
+  sourceName: string
+  retrievedAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }
 

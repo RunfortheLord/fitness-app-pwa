@@ -2,6 +2,8 @@ import { normalizeProviderQuery } from '../domain/foodProviderModels.js'
 import {
   createOpenFoodFactsAdapter,
   createUsdaAdapter,
+  lookupOpenFoodFactsBarcode,
+  lookupUsdaBarcode,
   resolveUsdaFood,
   type ProviderAdapter,
 } from './foodProviderAdapters.js'
@@ -26,6 +28,10 @@ export type FoodSearchRequest = {
 export type FoodResolveRequest = {
   provider: 'usda'
   providerRecordId: string
+}
+
+export type FoodBarcodeRequest = {
+  barcode: string
 }
 
 export type FoodProviderResponse =
@@ -91,6 +97,44 @@ export async function handleFoodResolve(
   }
 }
 
+export async function handleFoodBarcodeLookup(
+  request: FoodBarcodeRequest,
+  config: FoodProviderApiConfig,
+  signal?: AbortSignal,
+): Promise<FoodProviderResponse> {
+  try {
+    const barcode = validateBarcode(request.barcode)
+    const fetcher = config.fetcher ?? fetch
+    const [usda, openFoodFacts] = await Promise.allSettled([
+      lookupUsdaBarcode(config.usdaApiKey, barcode, signal, fetcher),
+      lookupOpenFoodFactsBarcode(barcode, signal, fetcher),
+    ])
+    const usdaFood = usda.status === 'fulfilled' ? usda.value : null
+    const offFood =
+      openFoodFacts.status === 'fulfilled' ? openFoodFacts.value : null
+    const food = usdaFood ?? offFood
+    if (!food) {
+      throw new ProviderError(
+        'no_acceptable_results',
+        'No complete barcode product was found.',
+        404,
+      )
+    }
+    return {
+      ok: true,
+      data: {
+        barcode,
+        result: food,
+        alternate:
+          usdaFood && offFood && usdaFood.id !== offFood.id ? offFood : null,
+        sourcePreference: usdaFood ? 'usda' : 'open_food_facts',
+      },
+    }
+  } catch (error) {
+    return formatError(error)
+  }
+}
+
 export function validateSearchRequest(request: FoodSearchRequest) {
   const query = normalizeProviderQuery(request.query ?? '')
   if (!query) {
@@ -143,6 +187,17 @@ function containsControlCharacter(value: string) {
     const code = character.charCodeAt(0)
     return code < 32 || code === 127
   })
+}
+
+function validateBarcode(value: string) {
+  const barcode = String(value ?? '').trim()
+  if (!/^\d{8,14}$/.test(barcode)) {
+    throw new ProviderError(
+      'invalid_request',
+      'Barcode must be 8 to 14 digits.',
+    )
+  }
+  return barcode
 }
 
 async function searchWithFallback(

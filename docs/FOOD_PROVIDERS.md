@@ -30,6 +30,7 @@ Open Food Facts database data is available under the Open Database License, with
 - `POST /api/foods/test-key`
 - `POST /api/foods/search`
 - `POST /api/foods/details`
+- `POST /api/foods/barcode`
 
 Search parameters:
 
@@ -43,6 +44,16 @@ Resolve parameters:
 
 - `provider`: currently `usda`.
 - `providerRecordId`: USDA FDC numeric ID.
+
+Barcode lookup parameters:
+
+- `barcode`: UPC/EAN digits, 8 through 14 characters.
+
+Barcode lookup searches USDA branded foods and Open Food Facts. When both
+providers return complete but conflicting records, USDA is preferred. Open Food
+Facts is used as fallback or supplementary data only; values are not averaged.
+Successful barcode results are normalized into the app food model and cached in
+local IndexedDB so the same scanned product can be reopened offline.
 
 The routes return normalized application records only. They do not forward raw provider payloads, accept arbitrary upstream URLs, or expose provider credentials.
 
@@ -100,7 +111,15 @@ Open Food Facts extraction uses explicit kcal fields when present and converts e
 
 ## Serving And Conversion
 
-Provider serving units are preserved. Grams and mass ounces convert only when a reliable provider gram weight exists. Fluid ounces remain a volume unit and are not converted to grams without density. Volume servings without reliable weight stay unconverted. Precision is retained internally and display code should round only for presentation.
+Provider serving units are preserved. Practical household defaults are selected
+for common foods when a reliable weight or source portion exists: cooked chicken
+breast defaults to 4 oz cooked, raw chicken breast defaults to 4 oz raw, cooked
+rice defaults to 1 cup, meat and fish prefer ounces, and branded products prefer
+their label serving. Grams, mass ounces, and 100 g remain available as secondary
+units when reliable conversion data exists. Fluid ounces remain a volume unit
+and are not converted to grams without density. Volume servings without
+reliable weight stay unconverted. Precision is retained internally and display
+code should round only for presentation.
 
 ## Raw/Cooked And Ranking
 
@@ -127,11 +146,11 @@ Previously used provider foods may be retained in the local IndexedDB `foods` ta
 
 ## Search UI Behavior
 
-The Nutrition screen searches local recent, custom, and previously used foods immediately. Remote USDA search starts only after at least three normalized characters, is debounced, requires a configured key, and cancels stale requests.
+The Nutrition screen searches local recent, custom, and previously used foods immediately. Remote USDA search starts only after at least three normalized characters, is debounced, requires a configured key, and cancels stale requests. Broad generic searches rank common generic foods and cooked preparations ahead of branded or restaurant items, and hide uncommon animal parts unless the query asks for them.
 
 Collapsed search rows show food name, optional brand or restaurant, serving size, and calories. Selecting a row opens details with calories, protein, total carbohydrates, fat, editable serving amount, and available serving units. Gram and mass-ounce options appear only when the normalized record has reliable gram conversion metadata.
 
-Provider duplicate groups show the primary representative first and expose alternates through a compact More Results control.
+Provider duplicate groups show the primary representative first and expose alternates through a compact More Results control. Barcode scans open a confirmation flow and never immediately log food. Unknown barcodes open the custom-food form with the barcode associated locally.
 
 ## Security
 
@@ -146,4 +165,6 @@ in generated assets, service-worker output, manifest, or source maps.
 - Live provider verification requires a real USDA key and was not performed unless a key is already configured securely.
 - Open Food Facts data is community-contributed and may be incomplete or inaccurate.
 - Restaurant and fast-food coverage is limited to records supplied by allowed providers.
-- Barcode scanning, barcode submission, and offline remote-provider search are deferred.
+- Physical-device camera behavior depends on browser permission support.
+  iPhone locked-screen scanning and audio playback are not guaranteed by Safari
+  PWA policies.

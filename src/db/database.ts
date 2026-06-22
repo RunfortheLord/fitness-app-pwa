@@ -8,6 +8,7 @@ import type {
   ApiKeyIntegrationSettings,
   AppMetadata,
   AppliedWorkoutChange,
+  BarcodeProductCache,
   BackupMetadata,
   BodyweightEntry,
   DetectedWorkoutChange,
@@ -15,6 +16,7 @@ import type {
   ExerciseEquipmentType,
   Food,
   FoodLogEntry,
+  FoodUnitPreference,
   NutritionTarget,
   ProgramTemplate,
   ProgramTemplateDay,
@@ -33,7 +35,7 @@ import type {
   WorkoutSet,
 } from '@shared-types/app'
 
-export const DATABASE_SCHEMA_VERSION = 7
+export const DATABASE_SCHEMA_VERSION = 8
 export const BACKUP_SCHEMA_VERSION = 1
 export const DATABASE_NAME = 'training-log'
 
@@ -43,6 +45,8 @@ export class TrainingLogDatabase extends Dexie {
   nutritionTargets!: EntityTable<NutritionTarget, 'id'>
   foods!: EntityTable<Food, 'id'>
   foodLogEntries!: EntityTable<FoodLogEntry, 'id'>
+  foodUnitPreferences!: EntityTable<FoodUnitPreference, 'id'>
+  barcodeProductCache!: EntityTable<BarcodeProductCache, 'id'>
   bodyweightEntries!: EntityTable<BodyweightEntry, 'id'>
   exercises!: EntityTable<Exercise, 'id'>
   programTemplates!: EntityTable<ProgramTemplate, 'id'>
@@ -352,6 +356,8 @@ export class TrainingLogDatabase extends Dexie {
         nutritionTargets: '&id, updatedAt',
         foods: '&id, status, name, updatedAt',
         foodLogEntries: '&id, localDate, foodId, createdAt',
+        foodUnitPreferences: '&id, foodId, updatedAt',
+        barcodeProductCache: '&id, &barcode, foodId, updatedAt',
         bodyweightEntries: '&id, localDate, createdAt, updatedAt',
         exercises:
           '&id, status, origin, seedDataVersion, name, trackingMethodId, updatedAt',
@@ -387,6 +393,27 @@ export class TrainingLogDatabase extends Dexie {
       })
       .upgrade(async (tx) => {
         const now = new Date().toISOString()
+        const settings = await tx
+          .table<Partial<UserSettings>>('userSettings')
+          .get('settings')
+        if (settings) {
+          await tx.table<UserSettings>('userSettings').put({
+            id: 'settings',
+            weightUnit: settings.weightUnit ?? 'lb',
+            energyUnit: settings.energyUnit ?? 'kcal',
+            nutritionTargets: settings.nutritionTargets ?? {
+              calories: 0,
+              proteinGrams: 0,
+              carbohydrateGrams: 0,
+              fatGrams: 0,
+            },
+            timerSoundEnabled: settings.timerSoundEnabled ?? true,
+            selectedTimerSoundId:
+              settings.selectedTimerSoundId ?? 'rest-complete-chime',
+            createdAt: settings.createdAt ?? now,
+            updatedAt: now,
+          })
+        }
         const workoutSets = await tx.table<WorkoutSet>('workoutSets').toArray()
         const workoutHistorySets = await tx
           .table<WorkoutHistorySet>('workoutHistorySets')

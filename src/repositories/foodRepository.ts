@@ -3,7 +3,13 @@ import type { NormalizedFoodResult } from '@domain/foodProviderModels'
 import type { LocalDateString } from '@domain/dates'
 import { createId } from '@domain/ids'
 import { snapshotFood } from '@domain/snapshots'
-import type { Food, FoodLogEntry } from '@shared-types/app'
+import type {
+  BarcodeProductCache,
+  Food,
+  FoodLogEntry,
+  FoodProviderId,
+  FoodUnitPreference,
+} from '@shared-types/app'
 
 export type CreateFoodInput = Omit<
   Food,
@@ -28,6 +34,12 @@ export type LogExternalFoodInput = {
 export type UpdateFoodLogInput = {
   servingMultiplier: number
   notes?: string
+}
+
+export type RememberFoodUnitInput = {
+  foodId: string
+  unitKey: string
+  amount: number
 }
 
 export type FoodRepositoryTestHooks = {
@@ -163,6 +175,7 @@ export function createFoodRepository(
         sourceName: input.source.sourceName,
         sourceUrl: input.source.sourceUrl,
         barcode: input.source.barcode,
+        barcodeSource: input.source.barcode ? input.source.provider : null,
         sourceUpdatedAt: input.source.sourceUpdatedAt,
         providerIngestedAt: input.source.ingestedAt,
         normalizerVersion: input.normalizerVersion,
@@ -224,6 +237,66 @@ export function createFoodRepository(
         servingMultiplier: input.servingMultiplier,
         notes: input.notes,
       })
+    },
+
+    async rememberFoodUnit(input: RememberFoodUnitInput) {
+      if (
+        !input.unitKey.trim() ||
+        input.amount <= 0 ||
+        !Number.isFinite(input.amount)
+      ) {
+        throw new Error('Food unit preference is invalid.')
+      }
+      const now = new Date().toISOString()
+      const preference: FoodUnitPreference = {
+        id: input.foodId,
+        foodId: input.foodId,
+        unitKey: input.unitKey,
+        amount: input.amount,
+        updatedAt: now,
+      }
+      await database.foodUnitPreferences.put(preference)
+      return preference
+    },
+
+    getRememberedFoodUnit(foodId: string) {
+      return database.foodUnitPreferences.get(foodId)
+    },
+
+    async cacheBarcodeProduct(input: {
+      barcode: string
+      foodId: string
+      sourceProvider: FoodProviderId | 'custom'
+      sourceName: string
+    }) {
+      const now = new Date().toISOString()
+      const cache: BarcodeProductCache = {
+        id: input.barcode,
+        barcode: input.barcode,
+        foodId: input.foodId,
+        sourceProvider: input.sourceProvider,
+        sourceName: input.sourceName,
+        retrievedAt: now,
+        updatedAt: now,
+      }
+      await database.barcodeProductCache.put(cache)
+      return cache
+    },
+
+    async getFoodByBarcode(barcode: string) {
+      const cache = await database.barcodeProductCache.get(barcode)
+      if (cache) {
+        const food = await database.foods.get(cache.foodId)
+        if (food?.status === 'active') {
+          return { food, cache }
+        }
+      }
+      const food = await database.foods
+        .where('status')
+        .equals('active')
+        .filter((candidate) => candidate.barcode === barcode)
+        .first()
+      return food ? { food, cache: null } : null
     },
 
     async archiveFood(id: string) {

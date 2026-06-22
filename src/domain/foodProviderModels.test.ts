@@ -154,6 +154,38 @@ describe('food provider model utilities', () => {
       ),
     )
   })
+
+  it('ranks common cooked chicken cuts before raw and branded broad results', () => {
+    const ranked = rankFoods(
+      [
+        makeFood('usda:feet', 'Chicken feet, cooked', 'cooked', 100),
+        makeFood('usda:raw', 'Chicken breast, raw', 'raw', 100),
+        makeFood('usda:breast', 'Chicken breast, cooked', 'cooked', 100),
+        makeFood('usda:thigh', 'Chicken thigh, cooked', 'cooked', 100),
+        makeFood('brand:nugget', 'Chicken nuggets', 'unknown', 50, 'Store'),
+      ],
+      'chicken',
+    )
+
+    expect(ranked.map((food) => food.name)).toEqual([
+      'Chicken breast, cooked',
+      'Chicken thigh, cooked',
+      'Chicken breast, raw',
+      'Chicken nuggets',
+    ])
+  })
+
+  it('allows uncommon animal parts when the query asks for them', () => {
+    const ranked = rankFoods(
+      [
+        makeFood('usda:feet', 'Chicken feet, cooked', 'cooked', 100),
+        makeFood('usda:breast', 'Chicken breast, cooked', 'cooked', 100),
+      ],
+      'chicken feet',
+    )
+
+    expect(ranked.map((food) => food.name)).toContain('Chicken feet, cooked')
+  })
 })
 
 function makeFood(

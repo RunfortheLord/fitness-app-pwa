@@ -559,28 +559,18 @@ test('completes the release workflow through backup restore', async ({
   await page.getByRole('button', { name: 'Previous' }).click()
   await expect(page.getByRole('heading', { name: 'Audit row' })).toBeVisible()
   await expect(page.getByRole('textbox', { name: 'Set 4 Weight' })).toHaveValue(
-    '200',
+    '',
   )
+  await page.getByRole('textbox', { name: 'Set 1 Weight' }).fill('145')
+  await page.getByRole('textbox', { name: 'Set 1 Reps' }).fill('10')
+  await page.getByRole('button', { name: 'Complete set 1' }).click()
 
   await page.getByRole('button', { name: 'Finish Workout' }).click()
   await expect(page).toHaveURL(/\/history\?workout=/)
-  await expect(page.getByText('Added 4th Audit squat set')).toBeVisible()
   await expect(
     page.getByText('Replaced Audit squat with Audit row'),
   ).toBeVisible()
   await expect(page.getByText('Skipped Audit curl')).toBeVisible()
-  await page
-    .locator('.change-review-item', {
-      hasText: 'Added 4th Audit squat set',
-    })
-    .locator('input[type="checkbox"]')
-    .check()
-  await page
-    .locator('.change-review-item', {
-      hasText: 'Added 4th Audit squat set',
-    })
-    .getByLabel('Destination')
-    .selectOption('cycle_only')
   await page
     .locator('.change-review-item', {
       hasText: 'Replaced Audit squat with Audit row',
@@ -628,7 +618,6 @@ test('completes the release workflow through backup restore', async ({
   await expect(page.getByRole('button', { name: /Audit A/ })).toBeVisible()
   await page.getByRole('button', { name: /Audit A/ }).click()
   await expect(page.getByRole('heading', { name: 'Audit row' })).toBeVisible()
-  await expect(page.getByText('Added 4th Audit squat set')).toBeVisible()
   await page.goto('/nutrition')
   await expect(page.getByText(/1.25x 1 cup .* 250 kcal/)).toBeVisible()
 })

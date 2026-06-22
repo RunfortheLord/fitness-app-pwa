@@ -1509,7 +1509,7 @@ function ChangeReview({
     return (
       <Card title="Changes detected">
         <StatusMessage tone="success">
-          No structural changes detected.
+          No program changes detected
         </StatusMessage>
       </Card>
     )

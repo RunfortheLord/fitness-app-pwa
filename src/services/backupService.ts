@@ -14,11 +14,13 @@ import type {
   ActiveProgramCycle,
   AppMetadata,
   AppliedWorkoutChange,
+  BarcodeProductCache,
   BodyweightEntry,
   DetectedWorkoutChange,
   Exercise,
   Food,
   FoodLogEntry,
+  FoodUnitPreference,
   NutritionTarget,
   ProgramTemplate,
   ProgramTemplateDay,
@@ -46,6 +48,8 @@ const tableNames = [
   'nutritionTargets',
   'foods',
   'foodLogEntries',
+  'foodUnitPreferences',
+  'barcodeProductCache',
   'bodyweightEntries',
   'exercises',
   'programTemplates',
@@ -76,6 +80,8 @@ export type BackupData = {
   nutritionTargets: NutritionTarget[]
   foods: Food[]
   foodLogEntries: FoodLogEntry[]
+  foodUnitPreferences: FoodUnitPreference[]
+  barcodeProductCache: BarcodeProductCache[]
   bodyweightEntries: BodyweightEntry[]
   exercises: Exercise[]
   programTemplates: ProgramTemplate[]
@@ -204,6 +210,8 @@ const userSettingsSchema = z.object({
   weightUnit: weightUnitSchema,
   energyUnit: energyUnitSchema,
   nutritionTargets: nutritionTargetValuesSchema,
+  timerSoundEnabled: z.boolean().optional().default(true),
+  selectedTimerSoundId: z.string().optional().default('rest-complete-chime'),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })
@@ -266,8 +274,28 @@ const foodSchema = foodSnapshotSchema.omit({ foodName: true }).extend({
   sourceName: z.union([z.string(), z.null()]).optional().default(null),
   sourceUrl: z.union([z.string(), z.null()]).optional().default(null),
   barcode: z.union([z.string(), z.null()]).optional().default(null),
+  barcodeSource: z
+    .union([foodProviderSchema, z.literal('custom'), z.null()])
+    .optional()
+    .default(null),
   status: entityStatusSchema,
   createdAt: isoTimestampSchema,
+  updatedAt: isoTimestampSchema,
+})
+const foodUnitPreferenceSchema = z.object({
+  id: idSchema,
+  foodId: idSchema,
+  unitKey: z.string().min(1),
+  amount: z.number().finite().positive(),
+  updatedAt: isoTimestampSchema,
+})
+const barcodeProductCacheSchema = z.object({
+  id: idSchema,
+  barcode: z.string().regex(/^\d{8,14}$/),
+  foodId: idSchema,
+  sourceProvider: z.union([foodProviderSchema, z.literal('custom')]),
+  sourceName: z.string(),
+  retrievedAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })
 const foodLogEntrySchema = z.object({
@@ -644,6 +672,11 @@ const backupDataSchema = z.object({
   nutritionTargets: z.array(nutritionTargetSchema),
   foods: z.array(foodSchema),
   foodLogEntries: z.array(foodLogEntrySchema),
+  foodUnitPreferences: z.array(foodUnitPreferenceSchema).optional().default([]),
+  barcodeProductCache: z
+    .array(barcodeProductCacheSchema)
+    .optional()
+    .default([]),
   bodyweightEntries: z.array(bodyweightEntrySchema),
   exercises: z.array(exerciseSchema),
   programTemplates: z.array(programTemplateSchema),
@@ -856,6 +889,8 @@ async function readBackupData(
       nutritionTargets: await sortedTable(database.nutritionTargets),
       foods: await sortedTable(database.foods),
       foodLogEntries: await sortedTable(database.foodLogEntries),
+      foodUnitPreferences: await sortedTable(database.foodUnitPreferences),
+      barcodeProductCache: await sortedTable(database.barcodeProductCache),
       bodyweightEntries: await sortedTable(database.bodyweightEntries),
       exercises: await sortedTable(database.exercises),
       programTemplates: await sortedTable(database.programTemplates),
@@ -904,6 +939,8 @@ async function putBackupData(database: TrainingLogDatabase, data: BackupData) {
   await database.nutritionTargets.bulkPut(data.nutritionTargets)
   await database.foods.bulkPut(data.foods)
   await database.foodLogEntries.bulkPut(data.foodLogEntries)
+  await database.foodUnitPreferences.bulkPut(data.foodUnitPreferences)
+  await database.barcodeProductCache.bulkPut(data.barcodeProductCache)
   await database.bodyweightEntries.bulkPut(data.bodyweightEntries)
   await database.exercises.bulkPut(data.exercises)
   await database.programTemplates.bulkPut(data.programTemplates)

@@ -847,6 +847,30 @@ textarea:focus-visible {
   margin-top: var(--space-4);
 }
 
+.scanner-frame {
+  position: relative;
+  overflow: hidden;
+  min-height: 220px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #050608;
+}
+
+.scanner-frame::after {
+  position: absolute;
+  inset: 22%;
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  content: '';
+  pointer-events: none;
+}
+
+.scanner-frame video {
+  width: 100%;
+  min-height: 220px;
+  object-fit: cover;
+}
+
 .button,
 .icon-button,
 .icon-link,

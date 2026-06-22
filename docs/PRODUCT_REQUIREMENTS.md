@@ -85,8 +85,9 @@
 - Logging an external provider food must store an immutable nutrition snapshot
   so historical logs work offline and do not change when provider data changes.
 - The app must display calories, protein, total carbohydrates, and fat only.
-- The first release must exclude barcode scanning, barcode submission, AI
-  food-photo analysis, automatic calorie adjustments, bundled bulk food
+- The first release includes local barcode scanning for UPC/EAN lookup through
+  USDA branded foods and Open Food Facts fallback. It must exclude barcode
+  submission, AI food-photo analysis, automatic calorie adjustments, bundled bulk food
   databases, micronutrients, search-as-you-type Open Food Facts calls, and meal
   recommendations.
 
@@ -236,7 +237,7 @@
 
 ## Out of Scope
 
-- Account creation, login, persistent backend server, cloud sync, social features, friends, followers, public profiles, subscriptions, advertisements, wearable integrations, Apple Health integration, AI coaching, AI food-photo analysis, bundled external food database, barcode scanner, micronutrients, automatic calorie adjustment, automated training progression, automatic program advancement, trend-weight calculations, weekly adherence percentage, non-history graphs, route maps or external map tiles, reliable fully backgrounded GPS tracking, public App Store distribution, and push-notification dependency.
+- Account creation, login, persistent backend server, cloud sync, social features, friends, followers, public profiles, subscriptions, advertisements, wearable integrations, Apple Health integration, AI coaching, AI food-photo analysis, bundled external food database, barcode submission, micronutrients, automatic calorie adjustment, automated training progression, automatic program advancement, trend-weight calculations, weekly adherence percentage, non-history graphs, route maps or external map tiles, reliable fully backgrounded GPS tracking, public App Store distribution, and push-notification dependency.
 
 ## Acceptance Criteria
 

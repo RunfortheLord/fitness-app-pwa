@@ -108,13 +108,11 @@ describe('NutritionPage', () => {
     })
 
     await user.click(screen.getByRole('button', { name: 'Edit Rice log' }))
-    await user.clear(
-      screen.getByRole('textbox', { name: 'Serving multiplier' }),
-    )
-    await user.type(
-      screen.getByRole('textbox', { name: 'Serving multiplier' }),
-      '2',
-    )
+    const servingMultiplier = await screen.findByRole('textbox', {
+      name: 'Serving multiplier',
+    })
+    await user.clear(servingMultiplier)
+    await user.type(servingMultiplier, '2')
     await user.click(screen.getByRole('button', { name: 'Save log' }))
     await waitFor(async () => {
       const [entry] = await db.foodLogEntries.toArray()

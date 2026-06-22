@@ -36,6 +36,13 @@ export type FoodSearchResponse = {
   fallbackUsed: boolean
 }
 
+export type BarcodeLookupResponse = {
+  barcode: string
+  result: NormalizedFoodResult
+  alternate: NormalizedFoodResult | null
+  sourcePreference: FoodProviderId
+}
+
 export type SearchFoodsInput = {
   query: string
   apiKey: string
@@ -104,6 +111,25 @@ export async function testUsdaApiKey(input: {
         'X-USDA-FDC-API-Key': input.apiKey,
       },
       body: JSON.stringify({}),
+    }),
+  )
+}
+
+export async function lookupBarcodeProduct(input: {
+  barcode: string
+  apiKey: string
+  signal?: AbortSignal
+}) {
+  return readProviderResponse<BarcodeLookupResponse>(
+    await fetch('/api/foods/barcode', {
+      method: 'POST',
+      signal: input.signal,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-USDA-FDC-API-Key': input.apiKey,
+      },
+      body: JSON.stringify({ barcode: input.barcode }),
     }),
   )
 }

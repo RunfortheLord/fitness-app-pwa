@@ -249,13 +249,17 @@ export function rankFoods(
 ): NormalizedFoodResult[] {
   const normalizedQuery = normalizeFoodText(query)
   const ranked = foods
+    .filter((food) => shouldShowFoodForQuery(food, normalizedQuery))
     .map((food) => ({
       ...food,
       relevanceScore:
         textRelevance(food.normalizedSearchName, normalizedQuery) +
         completeRestaurantItemBonus(food, normalizedQuery) +
         brandedCategoryBonus(food, normalizedQuery) +
-        cookedMeatBonus(food),
+        cookedMeatBonus(food) +
+        broadGenericBonus(food, normalizedQuery) +
+        providerTypeBonus(food, normalizedQuery) +
+        usefulPortionBonus(food),
     }))
     .sort(
       (left, right) =>
@@ -265,6 +269,123 @@ export function rankFoods(
         left.id.localeCompare(right.id),
     )
   return diversifyTopFoodResults(ranked)
+}
+
+function shouldShowFoodForQuery(food: NormalizedFoodResult, query: string) {
+  if (!isBroadGenericQuery(query)) {
+    return true
+  }
+  const uncommon = uncommonPartWords().find((word) =>
+    food.normalizedSearchName.includes(word),
+  )
+  if (!uncommon) {
+    return true
+  }
+  return query.includes(uncommon)
+}
+
+function broadGenericBonus(food: NormalizedFoodResult, query: string) {
+  if (!isBroadGenericQuery(query)) {
+    return 0
+  }
+  const name = food.normalizedSearchName
+  let score = 0
+  if (name.includes(query)) {
+    score += 2
+  }
+  const commonCuts = [
+    'breast',
+    'thigh',
+    'drumstick',
+    'wing',
+    'tender',
+    'strip',
+    'whole',
+    'rotisserie',
+    'ground',
+    'steak',
+    'loin',
+    'fillet',
+    'filet',
+    'cup',
+    'slice',
+    'egg',
+  ]
+  if (commonCuts.some((word) => name.includes(word))) {
+    score += 1
+  }
+  if (food.rawCookedStatus === 'cooked') {
+    score += 0.7
+  }
+  if (food.rawCookedStatus === 'raw') {
+    score -= 0.2
+  }
+  return score
+}
+
+function providerTypeBonus(food: NormalizedFoodResult, query: string) {
+  if (!isBroadGenericQuery(query)) {
+    return 0
+  }
+  const type = food.source.providerDataType
+  if (
+    type === 'Foundation' ||
+    type === 'Survey (FNDDS)' ||
+    type === 'SR Legacy'
+  ) {
+    return 1
+  }
+  if (type === 'Branded' || type === 'product') {
+    const category = normalizeFoodText(food.foodCategory ?? '')
+    if (category.includes('restaurant') || category.includes('fast food')) {
+      return -1
+    }
+    return -0.35
+  }
+  return 0
+}
+
+function usefulPortionBonus(food: NormalizedFoodResult) {
+  return food.serving.conversionReliable &&
+    food.serving.unit &&
+    !['g', 'gram', 'grams'].includes(normalizeFoodText(food.serving.unit))
+    ? 0.25
+    : 0
+}
+
+function isBroadGenericQuery(query: string) {
+  return [
+    'chicken',
+    'beef',
+    'pork',
+    'fish',
+    'rice',
+    'bread',
+    'pasta',
+    'potato',
+    'milk',
+    'cheese',
+    'eggs',
+    'egg',
+    'turkey',
+  ].includes(query)
+}
+
+function uncommonPartWords() {
+  return [
+    'feet',
+    'foot',
+    'liver',
+    'gizzard',
+    'gizzards',
+    'neck',
+    'backs',
+    'heart',
+    'kidney',
+    'tripe',
+    'tail',
+    'tongue',
+  ]
 }
 
 export function groupDuplicateFoods(

@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { handleFoodSearch, validateSearchRequest } from './foodProviderApi'
+import {
+  handleFoodBarcodeLookup,
+  handleFoodSearch,
+  validateSearchRequest,
+} from './foodProviderApi'
 import { TtlCache } from './foodProviderCache'
 
 describe('food provider API core', () => {
@@ -113,6 +117,56 @@ describe('food provider API core', () => {
     now = 2_000
     expect(cache.get('b')).toBeNull()
   })
+
+  it('prefers complete USDA barcode records over Open Food Facts conflicts', async () => {
+    const fetcher = vi.fn(async (url: URL | RequestInfo) => {
+      const href = String(url)
+      if (href.includes('api.nal.usda.gov')) {
+        return jsonResponse({
+          foods: [
+            {
+              fdcId: 42,
+              description: 'USDA Cereal Bar',
+              dataType: 'Branded',
+              brandOwner: 'USDA Brand',
+              gtinUpc: '012345678905',
+              servingSize: 40,
+              servingSizeUnit: 'g',
+              foodNutrients: usdaMacros(),
+            },
+          ],
+        })
+      }
+      return jsonResponse({
+        product: {
+          code: '012345678905',
+          product_name: 'Open Cereal Bar',
+          brands: 'Open Brand',
+          serving_size: '35 g',
+          serving_quantity: 35,
+          nutriments: {
+            'energy-kcal_serving': 130,
+            proteins_serving: 3,
+            carbohydrates_serving: 24,
+            fat_serving: 4,
+          },
+        },
+      })
+    })
+
+    await expect(
+      handleFoodBarcodeLookup(
+        { barcode: '012345678905' },
+        { usdaApiKey: 'USDA_FDC_API_KEY_TEST_SENTINEL', fetcher },
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      data: {
+        sourcePreference: 'usda',
+        result: { name: 'USDA Cereal Bar' },
+      },
+    })
+  })
 })
 
 function jsonResponse(payload: unknown) {
@@ -120,4 +174,13 @@ function jsonResponse(payload: unknown) {
     status: 200,
     headers: { 'content-type': 'application/json' },
   })
+}
+
+function usdaMacros() {
+  return [
+    { nutrientId: 1008, value: 150 },
+    { nutrientId: 1003, value: 4 },
+    { nutrientId: 1005, value: 25 },
+    { nutrientId: 1004, value: 5 },
+  ]
 }

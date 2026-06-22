@@ -36,7 +36,9 @@ import {
   ValidationMessage,
 } from '@components/ui'
 import { getRestTimerRemainingSeconds } from '@domain/restTimer'
+import { DEFAULT_TIMER_SOUND_ID, playTimerSoundOnce } from '@domain/timerSounds'
 import { exerciseRepository } from '@repositories/exerciseRepository'
+import { settingsRepository } from '@repositories/settingsRepository'
 import {
   workoutRepository,
   type WorkoutSetMetricValue,
@@ -81,6 +83,10 @@ export function LiveWorkoutPage() {
   const [error, setError] = useState<string | null>(null)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const [picker, setPicker] = useState<ExercisePickerState>(null)
+  const [timerSound, setTimerSound] = useState({
+    enabled: true,
+    soundId: DEFAULT_TIMER_SOUND_ID,
+  })
   const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null)
   const alertedTimerIds = useRef(new Set<string>())
 
@@ -134,6 +140,22 @@ export function LiveWorkoutPage() {
       isCurrent = false
     }
   }, [revision])
+
+  useEffect(() => {
+    let isCurrent = true
+    void settingsRepository.ensureSettings().then((settings) => {
+      if (!isCurrent) {
+        return
+      }
+      setTimerSound({
+        enabled: settings.timerSoundEnabled ?? true,
+        soundId: settings.selectedTimerSoundId ?? DEFAULT_TIMER_SOUND_ID,
+      })
+    })
+    return () => {
+      isCurrent = false
+    }
+  }, [])
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(new Date()), 1000)
@@ -221,7 +243,7 @@ export function LiveWorkoutPage() {
       return
     }
     alertedTimerIds.current.add(timer.id)
-    announceRestComplete()
+    announceRestComplete(timerSound)
     void workoutRepository
       .completeRestTimer(readyState.workout.id)
       .then(() => setRevision((current) => current + 1))
@@ -232,7 +254,7 @@ export function LiveWorkoutPage() {
             : 'Rest timer could not be completed.',
         )
       })
-  }, [readyState, restRemaining])
+  }, [readyState, restRemaining, timerSound])
 
   if (state.status === 'loading') {
     return (
@@ -377,6 +399,13 @@ export function LiveWorkoutPage() {
               workoutExerciseId: activeExercise.id,
             })
           }
+          onRemoveExercise={() =>
+            run(
+              workoutRepository.removeExerciseFromLiveWorkout(
+                activeExercise.id,
+              ),
+            )
+          }
           onSetMetric={(set, metricValues) => {
             run(
               workoutRepository.updateWorkoutSetMetricAndPropagate(
@@ -474,6 +503,7 @@ function ExerciseWorkspace({
   onNext,
   onPrevious,
   onReplaceExercise,
+  onRemoveExercise,
   onSetMetric,
   onSetRir,
   onSkip,
@@ -491,6 +521,7 @@ function ExerciseWorkspace({
   onNext: () => void
   onPrevious: () => void
   onReplaceExercise: () => void
+  onRemoveExercise: () => void
   onSetMetric: (
     set: WorkoutSet,
     value: { key: string; value: WorkoutSetMetricValue },
@@ -538,6 +569,13 @@ function ExerciseWorkspace({
           <SecondaryButton type="button" onClick={onReplaceExercise}>
             <RefreshCcw aria-hidden="true" size={16} />
             Replace Exercise
+          </SecondaryButton>
+          <SecondaryButton
+            className="button-danger"
+            type="button"
+            onClick={onRemoveExercise}
+          >
+            Remove Exercise
           </SecondaryButton>
           <SecondaryButton
             type="button"
@@ -840,7 +878,6 @@ function ExercisePickerSheet({
 }) {
   const [exercises, setExercises] = useState<Exercise[]>([])
   const [exerciseId, setExerciseId] = useState('')
-  const [keepCompatible, setKeepCompatible] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -871,7 +908,7 @@ function ExercisePickerSheet({
         : workoutRepository.replaceExercise({
             workoutExerciseId: picker.workoutExerciseId,
             exerciseId,
-            keepCompatibleSetValues: keepCompatible,
+            keepCompatibleSetValues: false,
           })
 
     void action
@@ -899,14 +936,7 @@ function ExercisePickerSheet({
         </select>
       </FormField>
       {picker?.mode === 'replace' ? (
-        <label className="checkbox-row">
-          <input
-            checked={keepCompatible}
-            onChange={(event) => setKeepCompatible(event.currentTarget.checked)}
-            type="checkbox"
-          />
-          Keep compatible set values
-        </label>
+        <p className="muted">Replacement exercises start blank.</p>
       ) : null}
       {error ? <ValidationMessage message={error} /> : null}
       <PrimaryButton disabled={!exerciseId} type="button" onClick={save}>
@@ -1152,34 +1182,19 @@ function isInteractiveElement(target: EventTarget | null) {
   )
 }
 
-function announceRestComplete() {
+function announceRestComplete(timerSound: {
+  enabled: boolean
+  soundId: string
+}) {
   if ('vibrate' in navigator) {
-    navigator.vibrate?.([160, 80, 160])
+    navigator.vibrate?.(180)
   }
-  playCompletionTone()
+  if (timerSound.enabled) {
+    void playTimerSoundOnce(timerSound.soundId).catch(() => {
+      // Browser autoplay policies can reject timer audio; the visual completion state remains authoritative.
+    })
+  }
   if ('Notification' in window && Notification.permission === 'granted') {
     new Notification('Rest timer complete')
-  }
-}
-
-function playCompletionTone() {
-  const AudioContextConstructor =
-    window.AudioContext ?? window.webkitAudioContext
-  if (!AudioContextConstructor) {
-    return
-  }
-  try {
-    const context = new AudioContextConstructor()
-    const oscillator = context.createOscillator()
-    const gain = context.createGain()
-    oscillator.frequency.value = 880
-    gain.gain.value = 0.04
-    oscillator.connect(gain)
-    gain.connect(context.destination)
-    oscillator.start()
-    oscillator.stop(context.currentTime + 0.18)
-    oscillator.addEventListener('ended', () => void context.close())
-  } catch {
-    // Browser autoplay policies can reject workout timer audio; vibration and UI still work.
   }
 }

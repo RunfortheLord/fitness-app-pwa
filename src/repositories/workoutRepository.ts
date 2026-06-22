@@ -653,25 +653,25 @@ export function createWorkoutRepository(
           await database.workoutExercises.put(updated)
 
           if (!input.keepCompatibleSetValues) {
-            const allowedKeys = new Set(
-              replacement.trackingMetrics.map((metric) => metric.key),
-            )
             const sets = await database.workoutSets
               .where({ workoutExerciseId: current.id })
               .toArray()
             await Promise.all(
               sets.map((set) =>
                 database.workoutSets.update(set.id, {
+                  targetSnapshot: null,
+                  targetRecommendation: null,
                   metricValues: Object.fromEntries(
-                    Object.entries(set.metricValues).filter(([key]) =>
-                      allowedKeys.has(key),
-                    ),
+                    replacement.trackingMetrics.map((metric) => [
+                      metric.key,
+                      null,
+                    ]),
                   ),
-                  metricValueSources: Object.fromEntries(
-                    Object.entries(set.metricValueSources ?? {}).filter(
-                      ([key]) => allowedKeys.has(key),
-                    ),
-                  ),
+                  metricValueSources: {},
+                  rir: null,
+                  completed: false,
+                  completedAt: null,
+                  restSecondsUsed: null,
                   updatedAt: now,
                 }),
               ),
@@ -680,6 +680,43 @@ export function createWorkoutRepository(
 
           await database.workouts.update(current.workoutId, { updatedAt: now })
           return updated
+        },
+      )
+    },
+
+    async removeExerciseFromLiveWorkout(workoutExerciseId: string) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        [database.workouts, database.workoutExercises, database.workoutSets],
+        async () => {
+          const exercise =
+            await database.workoutExercises.get(workoutExerciseId)
+          if (!exercise) {
+            throw new Error(
+              `Workout exercise ${workoutExerciseId} was not found.`,
+            )
+          }
+          const sets = await database.workoutSets
+            .where({ workoutExerciseId })
+            .toArray()
+          const completedSets = sets.filter((set) => set.completed)
+          const uncompletedSets = sets.filter((set) => !set.completed)
+          if (completedSets.length === 0) {
+            await database.workoutSets.where({ workoutExerciseId }).delete()
+            await database.workoutExercises.delete(workoutExerciseId)
+          } else {
+            await database.workoutSets.bulkDelete(
+              uncompletedSets.map((set) => set.id),
+            )
+            await database.workoutExercises.put({
+              ...exercise,
+              skipped: true,
+              updatedAt: now,
+            })
+          }
+          await reindexWorkoutExercises(database, exercise.workoutId, now)
+          await database.workouts.update(exercise.workoutId, { updatedAt: now })
         },
       )
     },
@@ -2061,6 +2098,24 @@ async function updateTemplateExerciseOrder(
       updatedAt: now,
     })
   }
+}
+
+async function reindexWorkoutExercises(
+  database: TrainingLogDatabase,
+  workoutId: string,
+  now: string,
+) {
+  const exercises = await database.workoutExercises
+    .where({ workoutId })
+    .sortBy('orderIndex')
+  await Promise.all(
+    exercises.map((exercise, orderIndex) =>
+      database.workoutExercises.update(exercise.id, {
+        orderIndex,
+        updatedAt: now,
+      }),
+    ),
+  )
 }
 
 async function sourceTemplateExerciseIdFromActivePath(

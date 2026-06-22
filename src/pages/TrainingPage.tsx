@@ -275,7 +275,10 @@ export function TrainingPage() {
             target: { mode: 'template', templateId },
           })
         }
-        templates={loadState.templates}
+        templates={loadState.templates.filter(
+          (template) =>
+            template.id !== loadState.currentCycle?.cycle.sourceTemplateId,
+        )}
       />
 
       <SectionHeader
@@ -517,10 +520,11 @@ function ProgramOverview({
           ) : null}
           <div className="button-row program-action-row">
             <SecondaryButton
+              aria-label="Edit current cycle"
               type="button"
               onClick={() => onEditCycle(currentCycle.cycle.id)}
             >
-              Edit current cycle
+              Edit active program
             </SecondaryButton>
           </div>
           {currentCycle.days.length ? (

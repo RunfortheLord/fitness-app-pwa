@@ -33,6 +33,7 @@ type Fetcher = typeof fetch
 const USDA_SEARCH_URL = 'https://api.nal.usda.gov/fdc/v1/foods/search'
 const USDA_FOOD_URL = 'https://api.nal.usda.gov/fdc/v1/food'
 const OFF_SEARCH_URL = 'https://world.openfoodfacts.org/cgi/search.pl'
+const OFF_PRODUCT_URL = 'https://world.openfoodfacts.org/api/v2/product'
 const USER_AGENT = 'FitnessLog/0.0.0 (local-first fitness PWA)'
 
 export function createUsdaAdapter(
@@ -166,6 +167,59 @@ export async function resolveUsdaFood(
     )
   }
   return food
+}
+
+export async function lookupUsdaBarcode(
+  apiKey: string | undefined,
+  barcode: string,
+  signal?: AbortSignal,
+  fetcher: Fetcher = fetch,
+) {
+  const adapter = createUsdaAdapter(apiKey, fetcher)
+  const results = await adapter.search({
+    query: barcode,
+    page: 1,
+    pageSize: 10,
+    signal,
+  })
+  return (
+    results.find((result) => result.source.barcode === barcode) ??
+    results[0] ??
+    null
+  )
+}
+
+export async function lookupOpenFoodFactsBarcode(
+  barcode: string,
+  signal?: AbortSignal,
+  fetcher: Fetcher = fetch,
+) {
+  const url = new URL(`${OFF_PRODUCT_URL}/${encodeURIComponent(barcode)}.json`)
+  url.searchParams.set(
+    'fields',
+    [
+      'code',
+      'product_name',
+      'generic_name',
+      'brands',
+      'brands_tags',
+      'categories',
+      'serving_size',
+      'serving_quantity',
+      'nutriments',
+      'last_modified_t',
+      'url',
+    ].join(','),
+  )
+  const response = await fetchWithTimeout(
+    fetcher,
+    url,
+    { headers: { Accept: 'application/json', 'User-Agent': USER_AGENT } },
+    signal,
+  )
+  const payload = await readProviderJson(response)
+  const product = isRecord(payload) ? payload.product : null
+  return normalizeOpenFoodFactsFood(product, new Date())
 }
 
 export function normalizeUsdaFood(

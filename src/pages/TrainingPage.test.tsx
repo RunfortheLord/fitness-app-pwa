@@ -261,7 +261,9 @@ describe('TrainingPage', () => {
       '10',
     )
     await user.click(screen.getByRole('button', { name: 'Save prescription' }))
-    expect(await screen.findByText('Bench press')).toBeInTheDocument()
+    await waitFor(async () => {
+      await expect(db.templateWorkoutExercises.count()).resolves.toBe(1)
+    })
     await user.click(within(builder).getByRole('button', { name: /Close/ }))
 
     await user.click(screen.getByRole('button', { name: 'Activate PPL' }))

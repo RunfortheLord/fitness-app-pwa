@@ -81,6 +81,8 @@
 
 - Date selector at top.
 - Daily total card with calories and macros.
+- Prominent barcode scanner entry near the top of Nutrition. USDA key
+  management remains available from Settings -> Integrations.
 - Search input for recent, custom, previously used, and provider foods.
 - Remote provider search waits for at least three normalized characters, a saved
   USDA FoodData Central API key, and debounces requests.
@@ -122,10 +124,24 @@
 - Shows selected food and serving definition.
 - Selected provider or local food opens a detail sheet with calories, protein,
   total carbohydrates, fat, editable serving amount, and serving unit selector.
-- Gram and mass-ounce serving options appear only when a reliable gram weight
-  exists. Fluid ounces are not treated as mass ounces.
+- Practical household servings are primary when reliable. Grams, 100 g, and
+  mass-ounce options are secondary when a reliable gram weight exists. Fluid
+  ounces are not treated as mass ounces.
 - Preview displays computed calories and macros.
 - Save logs the snapshot to the selected date.
+
+### Barcode Scanner
+
+- Scanner opens from the Nutrition screen and requests camera access only after
+  user action.
+- The scanner shows a visible frame, cancel control, retry path, permission
+  denied state, no-camera state, duplicate-scan suppression, and cleanup when
+  closed.
+- A successful scan opens a food confirmation sheet with product name, brand,
+  barcode, serving options, quantity, calories, protein, total carbohydrates,
+  fat, and source. It never logs immediately.
+- Unknown or incomplete barcode records open the custom-food form with the
+  barcode associated locally.
 
 ## Training Screen
 
@@ -306,6 +322,8 @@
 ## Settings Screen
 
 - Nutrition targets.
+- Timer completion sound on/off, sound selection, selected-state display, and
+  one-shot preview.
 - Backup export.
 - CSV export.
 - Restore backup.

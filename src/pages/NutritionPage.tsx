@@ -1,5 +1,6 @@
 import {
   Archive,
+  Camera,
   CopyPlus,
   Edit2,
   Plus,
@@ -7,7 +8,8 @@ import {
   Trash2,
   Utensils,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { BrowserMultiFormatReader } from '@zxing/browser'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import {
@@ -35,6 +37,13 @@ import {
   type LocalDateString,
 } from '@domain/dates'
 import {
+  formatCalories,
+  formatFoodServingLabel,
+  formatMacroGram,
+  servingOptionsForFood,
+  type FoodServingOption,
+} from '@domain/foodServings'
+import {
   normalizeProviderQuery,
   type GroupedFoodResult,
   type NormalizedFoodResult,
@@ -47,6 +56,7 @@ import {
 import { settingsRepository } from '@repositories/settingsRepository'
 import {
   FoodProviderClientError,
+  lookupBarcodeProduct,
   searchProviderFoods,
   type FoodProviderClientErrorCode,
 } from '@services/foodProviderClient'
@@ -66,6 +76,7 @@ type SheetState =
   | { type: 'food'; food: Food | null; initialForm?: FoodFormState }
   | { type: 'select'; result: FoodSearchResult }
   | { type: 'entry'; entry: FoodLogEntry }
+  | { type: 'scanner' }
   | null
 
 type FoodFormState = {
@@ -78,6 +89,7 @@ type FoodFormState = {
   carbohydrateGramsPerServing: string
   fatGramsPerServing: string
   notes: string
+  barcode: string
 }
 
 type FoodSearchResult =
@@ -120,6 +132,7 @@ const emptyFoodForm: FoodFormState = {
   carbohydrateGramsPerServing: '',
   fatGramsPerServing: '',
   notes: '',
+  barcode: '',
 }
 
 const emptyTargets = {
@@ -337,10 +350,11 @@ export function NutritionPage() {
       ) : null}
       {message ? <StatusMessage tone="success">{message}</StatusMessage> : null}
 
-      <UsdaStatusRow
+      <BarcodeEntryCard
         configured={usdaKey.configured}
         status={usdaKey.status}
-        onManage={() => void navigate('/settings?section=usda')}
+        onManageKey={() => void navigate('/settings?section=usda')}
+        onOpenScanner={() => setSheet({ type: 'scanner' })}
       />
 
       {mode === 'day' ? (
@@ -451,6 +465,23 @@ export function NutritionPage() {
             setSheet(null)
             reload()
           }}
+        />
+      ) : null}
+
+      {sheet?.type === 'scanner' ? (
+        <BarcodeScannerSheet
+          apiKey={usdaKey.apiKey}
+          isOpen
+          localDate={selectedDate}
+          onClose={() => setSheet(null)}
+          onCreateCustom={(barcode) =>
+            setSheet({
+              type: 'food',
+              food: null,
+              initialForm: { ...emptyFoodForm, barcode },
+            })
+          }
+          onFound={(result) => setSheet({ type: 'select', result })}
         />
       ) : null}
 
@@ -616,29 +647,40 @@ function FoodSearchCard({
   )
 }
 
-function UsdaStatusRow({
+function BarcodeEntryCard({
   configured,
-  onManage,
+  onManageKey,
+  onOpenScanner,
   status,
 }: {
   configured: boolean
-  onManage: () => void
+  onManageKey: () => void
+  onOpenScanner: () => void
   status: IntegrationConnectionStatus
 }) {
   return (
     <Card>
       <div className="settings-access-row">
         <div>
-          <strong>USDA FoodData Central</strong>
+          <strong>Scan barcode</strong>
           <p className="muted">
             {configured
-              ? usdaStatusLabel(status)
-              : 'API key required for remote USDA search.'}
+              ? `USDA ${usdaStatusLabel(status)}. Cached scans work offline.`
+              : 'Add a USDA key for best barcode matches. Open Food Facts fallback is also checked.'}
           </p>
+          {configured ? (
+            <span className="visually-hidden">{usdaStatusLabel(status)}</span>
+          ) : null}
         </div>
-        <SecondaryButton type="button" onClick={onManage}>
-          {configured ? 'Manage Key' : 'Add USDA API Key'}
-        </SecondaryButton>
+        <div className="button-row">
+          <PrimaryButton type="button" onClick={onOpenScanner}>
+            <Camera aria-hidden="true" size={18} />
+            Scan
+          </PrimaryButton>
+          <SecondaryButton type="button" onClick={onManageKey}>
+            USDA Key
+          </SecondaryButton>
+        </div>
       </div>
     </Card>
   )
@@ -717,6 +759,160 @@ function providerStatusMessage(status: ProviderSearchState['status']) {
   }
 }
 
+function BarcodeScannerSheet({
+  apiKey,
+  isOpen,
+  onClose,
+  onCreateCustom,
+  onFound,
+}: {
+  apiKey: string | null
+  isOpen: boolean
+  localDate: LocalDateString
+  onClose: () => void
+  onCreateCustom: (barcode: string) => void
+  onFound: (result: FoodSearchResult) => void
+}) {
+  const videoRef = useState<HTMLVideoElement | null>(null)
+  const [video, setVideo] = videoRef
+  const [status, setStatus] = useState(
+    'Camera access is needed to scan a barcode.',
+  )
+  const [error, setError] = useState<string | null>(null)
+  const [scanning, setScanning] = useState(false)
+  const processedRef = useRef(new Set<string>())
+
+  const handleBarcode = useCallback(
+    async (barcode: string) => {
+      setStatus(`Looking up ${barcode}.`)
+      const cached = await foodRepository.getFoodByBarcode(barcode)
+      if (cached) {
+        onFound({ type: 'local', food: cached.food, section: 'used' })
+        return
+      }
+      if (!navigator.onLine) {
+        onCreateCustom(barcode)
+        return
+      }
+      try {
+        const response = await lookupBarcodeProduct({
+          barcode,
+          apiKey: apiKey ?? '',
+        })
+        const food = await foodRepository.upsertProviderFood(response.result)
+        await foodRepository.cacheBarcodeProduct({
+          barcode,
+          foodId: food.id,
+          sourceProvider: response.result.source.provider,
+          sourceName: response.result.source.sourceName,
+        })
+        onFound({
+          type: 'external',
+          food: { ...response.result, alternates: [] },
+        })
+      } catch {
+        onCreateCustom(barcode)
+      }
+    },
+    [apiKey, onCreateCustom, onFound],
+  )
+
+  useEffect(() => {
+    if (!isOpen || !scanning || !video) {
+      return
+    }
+    const reader = new BrowserMultiFormatReader()
+    let controls: { stop: () => void } | null = null
+    let stopped = false
+    void reader
+      .decodeFromVideoDevice(undefined, video, (result) => {
+        const barcode = result?.getText()
+        if (!barcode || processedRef.current.has(barcode) || stopped) {
+          return
+        }
+        processedRef.current.add(barcode)
+        stopped = true
+        controls?.stop()
+        void handleBarcode(barcode)
+      })
+      .then((nextControls) => {
+        controls = nextControls
+      })
+      .catch((caught: unknown) => {
+        setScanning(false)
+        setError(
+          caught instanceof Error
+            ? permissionMessage(caught)
+            : 'Camera scanning is not supported in this browser.',
+        )
+      })
+    return () => {
+      stopped = true
+      controls?.stop()
+      stopVideo(video)
+    }
+  }, [handleBarcode, isOpen, scanning, video])
+
+  return (
+    <Sheet isOpen={isOpen} onClose={onClose} title="Scan barcode">
+      <p className="muted">{status}</p>
+      <div className="scanner-frame">
+        <video
+          ref={setVideo}
+          aria-label="Barcode scanner camera preview"
+          muted
+          playsInline
+        />
+      </div>
+      {error ? <ValidationMessage message={error} /> : null}
+      <div className="button-row">
+        <PrimaryButton
+          type="button"
+          onClick={() => {
+            processedRef.current = new Set<string>()
+            setError(null)
+            setStatus('Point the camera at the product barcode.')
+            setScanning(true)
+          }}
+        >
+          Request camera access
+        </PrimaryButton>
+        <SecondaryButton
+          type="button"
+          onClick={() => {
+            setScanning(false)
+            if (video) {
+              stopVideo(video)
+            }
+            onClose()
+          }}
+        >
+          Cancel
+        </SecondaryButton>
+      </div>
+    </Sheet>
+  )
+}
+
+function permissionMessage(error: Error) {
+  if (error.name === 'NotAllowedError') {
+    return 'Camera permission was denied. Allow camera access in browser settings and retry.'
+  }
+  if (error.name === 'NotFoundError') {
+    return 'No camera was found on this device.'
+  }
+  return 'Camera scanning is unavailable. Try again from a supported mobile browser.'
+}
+
+function stopVideo(video: HTMLVideoElement) {
+  for (const track of video.srcObject instanceof MediaStream
+    ? video.srcObject.getTracks()
+    : []) {
+    track.stop()
+  }
+  video.srcObject = null
+}
+
 function usdaStatusLabel(status: IntegrationConnectionStatus) {
   switch (status) {
     case 'not_configured':
@@ -788,7 +984,7 @@ function resultDisplay(result: FoodSearchResult) {
     return {
       name: result.food.name,
       brand: result.food.brandName ?? null,
-      serving: servingLabel(result.food),
+      serving: formatFoodServingLabel(result.food),
       calories: result.food.caloriesPerServing,
     }
   }
@@ -797,7 +993,7 @@ function resultDisplay(result: FoodSearchResult) {
   return {
     name: result.food.name,
     brand: result.food.brandName,
-    serving: providerServingLabel(result.food),
+    serving: formatFoodServingLabel(result.food),
     calories: macros?.calories ?? 0,
   }
 }
@@ -883,9 +1079,7 @@ function resultKey(result: FoodSearchResult) {
 }
 
 function providerServingLabel(food: NormalizedFoodResult) {
-  return `${roundMacro(food.serving.quantity)} ${
-    food.serving.unit || food.serving.description || 'serving'
-  }`
+  return formatFoodServingLabel(food)
 }
 
 function LoggedFoodsCard({
@@ -969,6 +1163,7 @@ function FoodFormSheet({
           carbohydrateGramsPerServing: String(food.carbohydrateGramsPerServing),
           fatGramsPerServing: String(food.fatGramsPerServing),
           notes: food.notes,
+          barcode: food.barcode ?? '',
         }
       : (initialForm ?? emptyFoodForm),
   )
@@ -993,11 +1188,23 @@ function FoodFormSheet({
       ? foodRepository.updateFood(food.id, parsed.value)
       : foodRepository.createFood(parsed.value)
 
-    void action.then(onSaved).catch((caught: unknown) => {
-      setError(
-        caught instanceof Error ? caught.message : 'Food could not save.',
-      )
-    })
+    void action
+      .then(async (savedFood) => {
+        if (parsed.value.barcode) {
+          await foodRepository.cacheBarcodeProduct({
+            barcode: parsed.value.barcode,
+            foodId: savedFood.id,
+            sourceProvider: 'custom',
+            sourceName: 'Custom food',
+          })
+        }
+        onSaved()
+      })
+      .catch((caught: unknown) => {
+        setError(
+          caught instanceof Error ? caught.message : 'Food could not save.',
+        )
+      })
   }
 
   function archiveFood() {
@@ -1197,7 +1404,20 @@ function SelectedFoodSheet({
   onClose: () => void
   onSaved: () => void
 }) {
-  const options = servingOptionsForResult(result)
+  const foodId = result.type === 'local' ? result.food.id : result.food.id
+  const [rememberedUnit, setRememberedUnit] = useState<string | null>(null)
+  useEffect(() => {
+    let isCurrent = true
+    void foodRepository.getRememberedFoodUnit(foodId).then((preference) => {
+      if (isCurrent) {
+        setRememberedUnit(preference?.unitKey ?? null)
+      }
+    })
+    return () => {
+      isCurrent = false
+    }
+  }, [foodId])
+  const options = servingOptionsForResult(result, rememberedUnit)
   const [amount, setAmount] = useState(() => String(options[0]?.amount ?? 1))
   const [unit, setUnit] = useState(() => options[0]?.key ?? 'serving')
   const [error, setError] = useState<string | null>(null)
@@ -1224,7 +1444,7 @@ function SelectedFoodSheet({
     (result.type === 'local' && result.food.sourceType === 'provider')
 
   function saveLog() {
-    if (!servingMultiplier) {
+    if (!parsedAmount || !servingMultiplier) {
       setError('Serving amount must be greater than zero.')
       return
     }
@@ -1242,9 +1462,20 @@ function SelectedFoodSheet({
             servingMultiplier,
           })
 
-    void action.then(onSaved).catch((caught: unknown) => {
-      setError(caught instanceof Error ? caught.message : 'Food could not log.')
-    })
+    void action
+      .then(async (entry) => {
+        await foodRepository.rememberFoodUnit({
+          foodId: entry.foodId ?? foodId,
+          unitKey: selectedOption.key,
+          amount: parsedAmount,
+        })
+        onSaved()
+      })
+      .catch((caught: unknown) => {
+        setError(
+          caught instanceof Error ? caught.message : 'Food could not log.',
+        )
+      })
   }
 
   return (
@@ -1257,10 +1488,10 @@ function SelectedFoodSheet({
         <span className="muted">{display.serving} source serving</span>
       </p>
       <div className="macro-row nutrition-row">
-        <span>Calories {roundMacro(base?.calories)} kcal</span>
-        <span>Protein {roundMacro(base?.protein)} g</span>
-        <span>Carbs {roundMacro(base?.carbs)} g</span>
-        <span>Fat {roundMacro(base?.fat)} g</span>
+        <span>Calories {formatCalories(base?.calories)} kcal</span>
+        <span>Protein {formatMacroGram(base?.protein)} g</span>
+        <span>Carbs {formatMacroGram(base?.carbs)} g</span>
+        <span>Fat {formatMacroGram(base?.fat)} g</span>
       </div>
       <FormField id="serving-amount" label="Serving amount">
         <NumericInput
@@ -1292,9 +1523,9 @@ function SelectedFoodSheet({
       </FormField>
       {preview ? (
         <p className="muted">
-          Preview: {roundMacro(preview.calories)} kcal - P{' '}
-          {roundMacro(preview.protein)} C {roundMacro(preview.carbs)} F{' '}
-          {roundMacro(preview.fat)}
+          Preview: {formatCalories(preview.calories)} kcal - P{' '}
+          {formatMacroGram(preview.protein)} C {formatMacroGram(preview.carbs)}{' '}
+          F {formatMacroGram(preview.fat)}
         </p>
       ) : null}
       {result.type === 'external' && result.food.alternates.length > 0 ? (
@@ -1343,81 +1574,14 @@ function SelectedFoodSheet({
   )
 }
 
-type ServingOption = {
-  amount: number
-  key: string
-  label: string
-  toServingMultiplier: (amount: number) => number | null
-}
-
-function servingOptionsForResult(result: FoodSearchResult): ServingOption[] {
+function servingOptionsForResult(
+  result: FoodSearchResult,
+  rememberedUnitKey: string | null,
+): FoodServingOption[] {
   if (result.type === 'local') {
-    const options: ServingOption[] = [
-      {
-        amount: result.food.servingQuantity,
-        key: 'serving',
-        label: result.food.servingUnit || result.food.servingDescription,
-        toServingMultiplier: (amount) => amount / result.food.servingQuantity,
-      },
-    ]
-    if (
-      result.food.servingConversionReliable &&
-      result.food.gramsPerServing &&
-      result.food.ouncesPerServing
-    ) {
-      const gramsPerServing = result.food.gramsPerServing
-      const ouncesPerServing = result.food.ouncesPerServing
-      options.push(
-        {
-          amount: gramsPerServing,
-          key: 'g',
-          label: 'g',
-          toServingMultiplier: (amount) => amount / gramsPerServing,
-        },
-        {
-          amount: ouncesPerServing,
-          key: 'oz',
-          label: 'oz',
-          toServingMultiplier: (amount) => amount / ouncesPerServing,
-        },
-      )
-    }
-    return options
+    return servingOptionsForFood(result.food, rememberedUnitKey)
   }
-
-  const options: ServingOption[] = [
-    {
-      amount: result.food.serving.quantity,
-      key: 'serving',
-      label: result.food.serving.unit || result.food.serving.description,
-      toServingMultiplier: (amount) => amount / result.food.serving.quantity,
-    },
-  ]
-
-  if (
-    result.food.serving.conversionReliable &&
-    result.food.serving.gramsPerServing &&
-    result.food.serving.ouncesPerServing
-  ) {
-    const gramsPerServing = result.food.serving.gramsPerServing
-    const ouncesPerServing = result.food.serving.ouncesPerServing
-    options.push(
-      {
-        amount: gramsPerServing,
-        key: 'g',
-        label: 'g',
-        toServingMultiplier: (amount) => amount / gramsPerServing,
-      },
-      {
-        amount: ouncesPerServing,
-        key: 'oz',
-        label: 'oz',
-        toServingMultiplier: (amount) => amount / ouncesPerServing,
-      },
-    )
-  }
-
-  return options
+  return servingOptionsForFood(result.food, rememberedUnitKey)
 }
 
 function baseMacrosForResult(result: FoodSearchResult) {
@@ -1456,6 +1620,7 @@ function foodFormFromExternal(
     carbohydrateGramsPerServing: String(macros?.carbohydrateGrams ?? ''),
     fatGramsPerServing: String(macros?.fatGrams ?? ''),
     notes: '',
+    barcode: food.source.barcode ?? '',
   }
 }
 
@@ -1470,6 +1635,7 @@ function foodFormFromLocal(food: Food): FoodFormState {
     carbohydrateGramsPerServing: String(food.carbohydrateGramsPerServing),
     fatGramsPerServing: String(food.fatGramsPerServing),
     notes: '',
+    barcode: food.barcode ?? '',
   }
 }
 
@@ -1694,6 +1860,8 @@ function parseFoodForm(
       carbohydrateGramsPerServing,
       fatGramsPerServing,
       notes: form.notes.trim(),
+      barcode: form.barcode.trim() || null,
+      barcodeSource: form.barcode.trim() ? 'custom' : null,
     },
   }
 }
@@ -1768,12 +1936,6 @@ function parseOptionalMacro(value: string) {
 
 function roundMacro(value: number | undefined) {
   return Math.round((value ?? 0) * 10) / 10
-}
-
-function servingLabel(food: Food) {
-  return `${roundMacro(food.servingQuantity)} ${
-    food.servingUnit || food.servingDescription
-  }`
 }
 
 function snapshotServingLabel(entry: FoodLogEntry) {

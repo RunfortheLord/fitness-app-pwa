@@ -3,7 +3,7 @@
 ## Current Versions
 
 - Backup format version: `1`
-- Compatible database schema versions: backups with `databaseSchemaVersion` less than or equal to the app's current IndexedDB schema version `7` can be restored after validation.
+- Compatible database schema versions: backups with `databaseSchemaVersion` less than or equal to the app's current IndexedDB schema version `8` can be restored after validation.
 - API key integration settings are not exported in backups. Replacing local data
   from a backup clears the saved API key integration record.
 - Application restore support: application version `0.0.0` can restore backup format version `1`.
@@ -20,7 +20,14 @@ JSON is the authoritative full-fidelity backup format. A backup root contains:
 - `exportedAt`
 - `data`
 
-`data` contains arrays for settings, nutrition target history, foods, food logs, bodyweight entries, exercises, program templates, template workout days, template workout exercises, active program cycles, active-cycle workout days, active-cycle workout exercises, active workout records, workout exercises, workout sets, completed workout history, history exercises, history sets, detected workout changes, applied workout changes, runs, run samples, run pauses, run splits, and run classifications.
+`data` contains arrays for settings, nutrition target history, foods, food logs,
+remembered food-unit preferences, cached barcode product associations,
+bodyweight entries, exercises, program templates, template workout days,
+template workout exercises, active program cycles, active-cycle workout days,
+active-cycle workout exercises, active workout records, workout exercises,
+workout sets, completed workout history, history exercises, history sets,
+detected workout changes, applied workout changes, runs, run samples, run
+pauses, run splits, and run classifications.
 
 Stable IDs, parent IDs, ordering fields, local dates, timestamps, archived or hidden status, source IDs, built-in exercise metadata, custom exercise metadata, and snapshots are preserved.
 
@@ -59,6 +66,12 @@ Food-log nutrition history remains snapshot based. Restored historical food logs
 do not require a live provider call and are not recalculated from future
 provider data.
 
+Remembered food-unit preferences, cached barcode products, custom barcode
+associations, timer sound enabled/disabled state, selected timer sound, and
+active-program references are included in JSON backups because they are local
+user workflow state needed to restore the app faithfully. USDA API key
+integration settings remain excluded.
+
 ## Restore Behavior
 
 Restore validates the complete backup before modifying IndexedDB. Validation covers root metadata, supported backup format version, database schema compatibility, required fields, IDs, duplicate IDs, timestamps, local dates, numeric values, enum values, parent-child relationships, source references, and snapshot structure.
@@ -77,6 +90,8 @@ CSV export creates a local TAR archive containing one CSV file per exported tabl
 - `nutritionTargets.csv`
 - `foods.csv`
 - `foodLogEntries.csv`
+- `foodUnitPreferences.csv`
+- `barcodeProductCache.csv`
 - `bodyweightEntries.csv`
 - `exercises.csv`
 - `programTemplates.csv`

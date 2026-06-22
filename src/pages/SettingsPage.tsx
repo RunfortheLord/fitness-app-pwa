@@ -14,6 +14,11 @@ import {
   ValidationMessage,
 } from '@components/ui'
 import { BACKUP_SCHEMA_VERSION, DATABASE_SCHEMA_VERSION } from '@db/database'
+import {
+  DEFAULT_TIMER_SOUND_ID,
+  TIMER_SOUNDS,
+  playTimerSoundOnce,
+} from '@domain/timerSounds'
 import { useDashboardContext } from '@hooks/useDashboardContext'
 import { settingsRepository } from '@repositories/settingsRepository'
 import {
@@ -61,6 +66,13 @@ export function SettingsPage() {
     useState<IntegrationConnectionStatus>('not_configured')
   const [usdaMessage, setUsdaMessage] = useState<string | null>(null)
   const [usdaError, setUsdaError] = useState<string | null>(null)
+  const [timerSoundEnabled, setTimerSoundEnabled] = useState(true)
+  const [selectedTimerSoundId, setSelectedTimerSoundId] = useState(
+    DEFAULT_TIMER_SOUND_ID,
+  )
+  const [timerSoundMessage, setTimerSoundMessage] = useState<string | null>(
+    null,
+  )
   const { refreshDashboard } = useDashboardContext()
   const parsedTargets = parseTargetForm(targetForm)
 
@@ -78,6 +90,10 @@ export function SettingsPage() {
         carbohydrateGrams: String(settings.nutritionTargets.carbohydrateGrams),
         fatGrams: String(settings.nutritionTargets.fatGrams),
       })
+      setTimerSoundEnabled(settings.timerSoundEnabled ?? true)
+      setSelectedTimerSoundId(
+        settings.selectedTimerSoundId ?? DEFAULT_TIMER_SOUND_ID,
+      )
     })
 
     void settingsRepository.getUsdaApiKeySettings().then((settings) => {
@@ -188,6 +204,25 @@ export function SettingsPage() {
           caught instanceof Error ? caught.message : 'Targets could not save.',
         )
       })
+  }
+
+  function saveTimerSettings(next: {
+    timerSoundEnabled: boolean
+    selectedTimerSoundId: string
+  }) {
+    setTimerSoundEnabled(next.timerSoundEnabled)
+    setSelectedTimerSoundId(next.selectedTimerSoundId)
+    void settingsRepository.saveTimerSettings(next).then(() => {
+      setTimerSoundMessage('Timer sound settings saved.')
+    })
+  }
+
+  function previewTimerSound(soundId = selectedTimerSoundId) {
+    void playTimerSoundOnce(soundId).catch(() => {
+      setTimerSoundMessage(
+        'Audio preview was blocked by the browser. Try again after tapping the page.',
+      )
+    })
   }
 
   async function exportJsonBackup() {
@@ -301,6 +336,59 @@ export function SettingsPage() {
             <dd>Set manually below.</dd>
           </div>
         </dl>
+      </Card>
+
+      <SectionHeader title="Timer sound" />
+      <Card>
+        {timerSoundMessage ? (
+          <StatusMessage tone="success">{timerSoundMessage}</StatusMessage>
+        ) : null}
+        <label className="checkbox-row">
+          <input
+            checked={timerSoundEnabled}
+            onChange={(event) =>
+              saveTimerSettings({
+                timerSoundEnabled: event.currentTarget.checked,
+                selectedTimerSoundId,
+              })
+            }
+            type="checkbox"
+          />
+          Timer completion sound
+        </label>
+        <FormField id="timer-sound-select" label="Sound selection">
+          <select
+            id="timer-sound-select"
+            onChange={(event) =>
+              saveTimerSettings({
+                timerSoundEnabled,
+                selectedTimerSoundId: event.currentTarget.value,
+              })
+            }
+            value={selectedTimerSoundId}
+          >
+            {TIMER_SOUNDS.map((sound) => (
+              <option key={sound.id} value={sound.id}>
+                {sound.name}
+              </option>
+            ))}
+          </select>
+        </FormField>
+        <div className="button-row">
+          <SecondaryButton
+            type="button"
+            onClick={() => previewTimerSound(selectedTimerSoundId)}
+          >
+            Preview
+          </SecondaryButton>
+          <span className="muted">
+            Selected:{' '}
+            {
+              TIMER_SOUNDS.find((sound) => sound.id === selectedTimerSoundId)
+                ?.name
+            }
+          </span>
+        </div>
       </Card>
 
       <SectionHeader title="Integrations" />

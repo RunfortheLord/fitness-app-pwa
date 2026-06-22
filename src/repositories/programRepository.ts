@@ -831,8 +831,16 @@ export function createProgramRepository(
         'rw',
         database.activeProgramCycles,
         database.activeCycleWorkoutDays,
+        database.templateWorkoutDays,
         async () => {
           await database.activeCycleWorkoutDays.put(updated)
+          if (day.sourceTemplateDayId) {
+            await database.templateWorkoutDays.update(day.sourceTemplateDayId, {
+              name: updated.name,
+              notes: updated.notes,
+              updatedAt: now,
+            })
+          }
           await database.activeProgramCycles.update(day.activeCycleId, {
             updatedAt: now,
           })
@@ -1008,6 +1016,7 @@ export function createProgramRepository(
         'rw',
         database.activeProgramCycles,
         database.activeCycleWorkoutExercises,
+        database.templateWorkoutExercises,
         database.exercises,
         async () => {
           const prescribed =
@@ -1054,6 +1063,25 @@ export function createProgramRepository(
             updatedAt: now,
           }
           await database.activeCycleWorkoutExercises.put(updated)
+          if (prescribed.sourceTemplateExerciseId) {
+            await database.templateWorkoutExercises.update(
+              prescribed.sourceTemplateExerciseId,
+              {
+                exerciseId: updated.exerciseId,
+                exerciseSnapshot: updated.exerciseSnapshot,
+                targetSetCount: updated.targetSetCount,
+                targetWeight: updated.targetWeight ?? null,
+                targetDurationSeconds: updated.targetDurationSeconds ?? null,
+                targetDistance: updated.targetDistance ?? null,
+                targetRepsMin: updated.targetRepsMin,
+                targetRepsMax: updated.targetRepsMax,
+                targetRir: updated.targetRir,
+                restSecondsOverride: updated.restSecondsOverride,
+                notes: updated.notes,
+                updatedAt: now,
+              },
+            )
+          }
           await database.activeProgramCycles.update(prescribed.activeCycleId, {
             updatedAt: now,
           })
@@ -1075,10 +1103,16 @@ export function createProgramRepository(
         'rw',
         database.activeProgramCycles,
         database.activeCycleWorkoutExercises,
+        database.templateWorkoutExercises,
         async () => {
           await database.activeCycleWorkoutExercises.delete(
             prescribedExerciseId,
           )
+          if (prescribed.sourceTemplateExerciseId) {
+            await database.templateWorkoutExercises.delete(
+              prescribed.sourceTemplateExerciseId,
+            )
+          }
           await reindexActiveExercises(database, prescribed.dayId, now)
           await database.activeProgramCycles.update(prescribed.activeCycleId, {
             updatedAt: now,
