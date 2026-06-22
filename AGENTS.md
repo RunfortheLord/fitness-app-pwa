@@ -48,6 +48,7 @@
 - Test empty and populated database states, persistence after reload, error behavior, applicable migrations, and Chromium plus WebKit where practical.
 - Once scripts exist, run `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run test`, `npm run test:e2e`, and `npm run build` before declaring completion.
 - Do not declare success when a check was skipped. Explain any check that truly cannot run.
+- When the user asks for an app change or update intended for phone/PWA use, deploy the passing build to the stable Vercel production origin with `npm run deploy:stable` unless the user explicitly says not to deploy. Do not deploy if required checks fail.
 
 ## Code Quality and Git
 

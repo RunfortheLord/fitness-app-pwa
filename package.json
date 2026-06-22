@@ -17,7 +17,10 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test && npm run test:e2e && npm run build"
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test && npm run test:e2e && npm run build",
+    "deploy:preview": "npx --yes vercel deploy --target preview --yes",
+    "deploy:stable": "npx --yes vercel deploy --prod --yes",
+    "release:stable": "npm run check && npm run deploy:stable"
   },
   "dependencies": {
     "@zxing/browser": "^0.2.0",

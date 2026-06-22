@@ -50,6 +50,16 @@ also runs against production preview through `npm run test:e2e`.
 The initial static preview host is Vercel. Use `npx` for the deployment CLI;
 do not install it globally.
 
+For routine changes that should reach the iPhone Home Screen PWA on the stable
+installed origin, run:
+
+```powershell
+npm run release:stable
+```
+
+This runs the full local check suite and deploys the passing build to the Vercel
+production origin. Use preview deployments only for temporary review URLs.
+
 1. Run `npm run build` and verify the output is written to `dist/`.
 2. Check authentication with `npx --yes vercel whoami`.
 3. If authentication is required, run `npx --yes vercel login` and stop until
@@ -171,9 +181,14 @@ npm run test:coverage
 npm run test:e2e
 npm run test:e2e:ui
 npm run check
+npm run deploy:preview
+npm run deploy:stable
+npm run release:stable
 ```
 
 `npm run check` runs the noninteractive required checks in sequence: typecheck, lint, format check, unit/component tests, Playwright tests, and build.
+`npm run release:stable` runs that same check sequence and deploys the result
+to the stable Vercel production origin used by the installed PWA.
 
 ## Project Structure
 
