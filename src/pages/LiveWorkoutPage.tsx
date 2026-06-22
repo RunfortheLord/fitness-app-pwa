@@ -8,7 +8,6 @@ import {
   Plus,
   RefreshCcw,
   Square,
-  TimerOff,
   Trash2,
 } from 'lucide-react'
 import {
@@ -341,7 +340,6 @@ export function LiveWorkoutPage() {
         onResume={() =>
           run(workoutRepository.resumeRestTimer(state.workout.id))
         }
-        onSkip={() => run(workoutRepository.dismissRestTimer(state.workout.id))}
         remainingSeconds={restRemaining}
         timer={state.workout.activeRestTimer}
       />
@@ -375,19 +373,36 @@ export function LiveWorkoutPage() {
               set.restSecondsUsed ??
               activeExercise.exerciseSnapshot.defaultRestSeconds ??
               0
+            const hasMoreSetsInExercise = activeSets.some(
+              (candidate) => candidate.id !== set.id && !candidate.completed,
+            )
+            const nextIncompleteExercise = state.exercises.find(
+              (exercise) =>
+                exercise.id !== activeExercise.id &&
+                (state.setsByExercise[exercise.id] ?? []).some(
+                  (candidate) => !candidate.completed,
+                ),
+            )
             run(
               workoutRepository
                 .updateWorkoutSet(set.id, { completed })
-                .then(() =>
-                  !completed
-                    ? workoutRepository.dismissRestTimer(state.workout.id)
-                    : restSeconds > 0
-                      ? workoutRepository.setRestTimer(
-                          state.workout.id,
-                          restSeconds,
-                        )
-                      : undefined,
-                ),
+                .then(async () => {
+                  if (!completed) {
+                    await workoutRepository.dismissRestTimer(state.workout.id)
+                    return
+                  }
+                  if (hasMoreSetsInExercise && restSeconds > 0) {
+                    await workoutRepository.setRestTimer(
+                      state.workout.id,
+                      restSeconds,
+                    )
+                    return
+                  }
+                  await workoutRepository.dismissRestTimer(state.workout.id)
+                  if (nextIncompleteExercise) {
+                    setActiveExerciseId(nextIncompleteExercise.id)
+                  }
+                }),
             )
           }}
           onDeleteSet={(setId) => run(workoutRepository.deleteSet(setId))}
@@ -677,7 +692,8 @@ function SetRow({
                 ? (formatRepTargetPlaceholder(prescription) ?? undefined)
                 : undefined
             }
-            value={formatMetricInput(set.metricValues[metric.key])}
+            metricKey={metric.key}
+            value={formatMetricInput(set.metricValues[metric.key], metric.key)}
             valueType={metric.valueType}
           />
         </label>
@@ -730,6 +746,7 @@ function SetRow({
 function MetricNumericInput({
   disabled,
   invalid,
+  metricKey,
   onKeyDown,
   onValueChange,
   placeholder,
@@ -741,6 +758,7 @@ function MetricNumericInput({
   'aria-invalid' | 'onChange' | 'value'
 > & {
   invalid: boolean
+  metricKey: string
   onValueChange: (value: WorkoutSetMetricValue) => void
   value: string
   valueType: TrackingMetric['valueType']
@@ -776,12 +794,14 @@ function MetricNumericInput({
       }}
       onChange={(event) => {
         const next =
-          valueType === 'integer'
-            ? event.currentTarget.value.replace(/\D+/g, '')
-            : event.currentTarget.value
+          metricKey === 'durationSeconds'
+            ? event.currentTarget.value.replace(/[^\d:]/g, '')
+            : valueType === 'integer'
+              ? event.currentTarget.value.replace(/\D+/g, '')
+              : event.currentTarget.value
         isEditingRef.current = true
         setDraft(next)
-        onValueChange(parseMetricValue(next, valueType))
+        onValueChange(parseMetricValue(next, valueType, metricKey))
       }}
       onFocus={(event) => {
         isEditingRef.current = true
@@ -799,7 +819,6 @@ function RestTimerCard({
   onDismiss,
   onPause,
   onResume,
-  onSkip,
   onSubtractTime,
   remainingSeconds,
   timer,
@@ -808,7 +827,6 @@ function RestTimerCard({
   onDismiss: () => void
   onPause: () => void
   onResume: () => void
-  onSkip: () => void
   onSubtractTime: () => void
   remainingSeconds: number
   timer: Workout['activeRestTimer']
@@ -841,22 +859,16 @@ function RestTimerCard({
             Pause
           </SecondaryButton>
         )}
-        <SecondaryButton type="button" onClick={onAddTime}>
-          +30s
-        </SecondaryButton>
         <SecondaryButton
           disabled={remainingSeconds === 0}
           type="button"
           onClick={onSubtractTime}
         >
-          -30s
+          Decrease Time
         </SecondaryButton>
-        {timer.status === 'completed' ? null : (
-          <SecondaryButton type="button" onClick={onSkip}>
-            <TimerOff aria-hidden="true" size={18} />
-            Stop
-          </SecondaryButton>
-        )}
+        <SecondaryButton type="button" onClick={onAddTime}>
+          Increase Time
+        </SecondaryButton>
         <SecondaryButton type="button" onClick={onDismiss}>
           Clear
         </SecondaryButton>
@@ -1058,10 +1070,14 @@ function formatMetricLabel(metric: TrackingMetric, repsPerSide: boolean) {
 function parseMetricValue(
   value: string,
   valueType: TrackingMetric['valueType'] = 'number',
+  metricKey = '',
 ) {
   const trimmed = value.trim()
   if (!trimmed) {
     return null
+  }
+  if (metricKey === 'durationSeconds') {
+    return parseDurationInput(trimmed)
   }
   const parsed = Number(trimmed)
   if (!Number.isFinite(parsed) || parsed < 0) {
@@ -1073,13 +1089,43 @@ function parseMetricValue(
   return parsed
 }
 
+function parseDurationInput(value: string) {
+  const parts = value.split(':')
+  if (parts.length === 1) {
+    const parsed = Number(parts[0])
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+  }
+  if (parts.length !== 2) {
+    return null
+  }
+  const [minutesValue, secondsValue] = parts
+  const minutes = Number(minutesValue)
+  const seconds = Number(secondsValue)
+  if (
+    !Number.isInteger(minutes) ||
+    !Number.isInteger(seconds) ||
+    minutes < 0 ||
+    seconds < 0 ||
+    seconds > 59
+  ) {
+    return null
+  }
+  return minutes * 60 + seconds
+}
+
 function parseNullableNumber(value: string) {
   const parsed = parseMetricValue(value)
   return typeof parsed === 'number' ? parsed : null
 }
 
-function formatMetricInput(value: WorkoutSet['metricValues'][string]) {
-  return typeof value === 'number' ? String(value) : ''
+function formatMetricInput(
+  value: WorkoutSet['metricValues'][string],
+  metricKey = '',
+) {
+  if (typeof value !== 'number') {
+    return ''
+  }
+  return metricKey === 'durationSeconds' ? formatDuration(value) : String(value)
 }
 
 function supportsRir(metrics: TrackingMetric[]) {

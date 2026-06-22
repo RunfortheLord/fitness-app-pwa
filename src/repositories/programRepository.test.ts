@@ -295,6 +295,21 @@ describe('programRepository', () => {
     expect(library.map((template) => template.id)).toEqual([second.template.id])
   })
 
+  it('deactivates the current cycle and returns its template to the library', async () => {
+    const repository = createProgramRepository(database)
+    const program = await seedProgram(database)
+    const active = await repository.activateTemplate(program.template.id)
+
+    await repository.deactivateActiveCycle(active.cycle.id)
+
+    await expect(
+      repository.getCurrentActiveCycleStructure(),
+    ).resolves.toBeUndefined()
+    await expect(repository.listProgramTemplates()).resolves.toMatchObject([
+      { id: program.template.id, name: program.template.name },
+    ])
+  })
+
   it('permanently deletes inactive program definitions while preserving workout history', async () => {
     const repository = createProgramRepository(database)
     const program = await seedProgram(database)

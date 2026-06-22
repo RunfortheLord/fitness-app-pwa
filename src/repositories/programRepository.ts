@@ -241,6 +241,17 @@ export function createProgramRepository(
       )
     },
 
+    async deactivateActiveCycle(activeCycleId: string) {
+      const cycle = await database.activeProgramCycles.get(activeCycleId)
+      if (!cycle) {
+        throw new Error(`Active program cycle ${activeCycleId} was not found.`)
+      }
+      await database.activeProgramCycles.update(activeCycleId, {
+        status: 'inactive',
+        updatedAt: new Date().toISOString(),
+      })
+    },
+
     getTemplate(id: string) {
       return database.programTemplates.get(id)
     },

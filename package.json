@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && node scripts/assert-no-secret-leak.mjs",
+    "build": "node scripts/write-build-info.mjs && tsc -b && vite build && node scripts/assert-no-secret-leak.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "lint": "eslint .",

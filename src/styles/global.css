@@ -472,6 +472,51 @@ textarea:focus-visible {
   margin-top: var(--space-3);
 }
 
+.program-day-tabs {
+  display: flex;
+  gap: var(--space-2);
+  margin: var(--space-3) calc(var(--space-3) * -1) var(--space-2);
+  overflow-x: auto;
+  padding: 0 var(--space-3) var(--space-1);
+  scrollbar-width: none;
+}
+
+.program-day-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.program-day-tabs button {
+  display: grid;
+  min-width: 108px;
+  min-height: 54px;
+  flex: 0 0 auto;
+  justify-items: start;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-strong);
+  color: var(--color-text);
+  text-align: left;
+}
+
+.program-day-tabs button[aria-current='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-surface-raised);
+}
+
+.program-day-tabs span,
+.program-day-tabs small {
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.program-day-tabs small {
+  color: var(--color-muted);
+}
+
 .program-day-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
@@ -841,6 +886,18 @@ textarea:focus-visible {
   flex-wrap: wrap;
   gap: var(--space-1);
   min-width: 0;
+}
+
+.food-search-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.food-search-heading h2 {
+  margin: 0;
 }
 
 .nutrition-row {

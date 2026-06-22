@@ -13,7 +13,7 @@ import {
   Search,
   Trash2,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import {
@@ -83,6 +83,7 @@ type SheetState =
   | null
 type ProgramConfirmation =
   | { type: 'activate'; template: ProgramTemplate }
+  | { type: 'deactivate'; cycle: ActiveProgramCycle }
   | { type: 'delete-first'; template: ProgramTemplate }
   | { type: 'delete-final'; template: ProgramTemplate }
   | null
@@ -246,6 +247,9 @@ export function TrainingPage() {
         currentCycle={loadState.currentCycle}
         loadStatus={loadState.status}
         onCreateProgram={() => setSheet({ type: 'createProgram' })}
+        onDeactivate={(cycle) =>
+          setProgramConfirmation({ type: 'deactivate', cycle })
+        }
         onEditCycle={(cycleId) =>
           setSheet({ type: 'builder', target: { mode: 'cycle', cycleId } })
         }
@@ -424,7 +428,9 @@ export function TrainingPage() {
             ? 'Remove'
             : programConfirmation?.type === 'delete-final'
               ? 'Permanently Delete'
-              : 'Activate'
+              : programConfirmation?.type === 'deactivate'
+                ? 'Deactivate'
+                : 'Activate'
         }
         isOpen={programConfirmation !== null}
         onCancel={() => setProgramConfirmation(null)}
@@ -455,6 +461,21 @@ export function TrainingPage() {
             return
           }
 
+          if (programConfirmation.type === 'deactivate') {
+            const { id } = programConfirmation.cycle
+            setProgramConfirmation(null)
+            void programRepository.deactivateActiveCycle(id).then(() => {
+              setLoadState((current) => ({
+                ...current,
+                currentCycle: undefined,
+                status: 'ready',
+              }))
+              setMessage('Active program deactivated.')
+              reload()
+            })
+            return
+          }
+
           if (programConfirmation.type === 'delete-first') {
             setProgramConfirmation({
               type: 'delete-final',
@@ -477,7 +498,9 @@ export function TrainingPage() {
             ? 'Remove program?'
             : programConfirmation?.type === 'delete-final'
               ? 'Permanently delete program?'
-              : 'Activate program?'
+              : programConfirmation?.type === 'deactivate'
+                ? 'Deactivate active program?'
+                : 'Activate program?'
         }
       >
         <p>
@@ -485,7 +508,9 @@ export function TrainingPage() {
             ? `Remove ${programConfirmation.template.name} from the Program Library?`
             : programConfirmation?.type === 'delete-final'
               ? `${programConfirmation.template.name} will be permanently deleted. Completed workout history, historical program names, and historical day names are preserved.`
-              : `Activate ${programConfirmation?.template.name ?? 'this program'} as the active program. The current active program will become inactive and return to the Program Library.`}
+              : programConfirmation?.type === 'deactivate'
+                ? `${programConfirmation.cycle.name} will move back to the Program Library. Completed workout history is preserved.`
+                : `Activate ${programConfirmation?.template.name ?? 'this program'} as the active program. The current active program will become inactive and return to the Program Library.`}
         </p>
       </ModalConfirmationDialog>
     </PageContainer>
@@ -510,12 +535,14 @@ function ProgramOverview({
   currentCycle,
   loadStatus,
   onCreateProgram,
+  onDeactivate,
   onEditCycle,
   onSelectDay,
 }: {
   currentCycle: LoadState['currentCycle']
   loadStatus: LoadState['status']
   onCreateProgram: () => void
+  onDeactivate: (cycle: ActiveProgramCycle) => void
   onEditCycle: (cycleId: string) => void
   onSelectDay: (
     cycle: ActiveProgramCycle,
@@ -552,6 +579,13 @@ function ProgramOverview({
               onClick={() => onEditCycle(currentCycle.cycle.id)}
             >
               Edit active program
+            </SecondaryButton>
+            <SecondaryButton
+              className="button-danger"
+              type="button"
+              onClick={() => onDeactivate(currentCycle.cycle)}
+            >
+              Deactivate
             </SecondaryButton>
           </div>
           {currentCycle.days.length ? (
@@ -814,6 +848,8 @@ function ProgramBuilderSheet({
     sourceDayId: string
     destinationDayId: string
   } | null>(null)
+  const [selectedDayId, setSelectedDayId] = useState('')
+  const [draggedDayId, setDraggedDayId] = useState<string | null>(null)
 
   const mode: BuilderMode = target.mode
 
@@ -832,6 +868,7 @@ function ProgramBuilderSheet({
             days: loaded.days,
             exercisesByDay: loaded.exercisesByDay,
           })
+          setSelectedDayId((current) => current || loaded.days[0]?.id || '')
           setNameForm({
             name: loaded.template.name,
           })
@@ -855,6 +892,7 @@ function ProgramBuilderSheet({
             days: loaded.days,
             exercisesByDay: loaded.exercisesByDay,
           })
+          setSelectedDayId((current) => current || loaded.days[0]?.id || '')
           setNameForm({ name: loaded.cycle.name })
         })
         .catch((caught: unknown) => {
@@ -871,6 +909,19 @@ function ProgramBuilderSheet({
     }
   }, [target])
 
+  const selectedDay =
+    structure?.days.find((day) => day.id === selectedDayId) ??
+    structure?.days[0] ??
+    null
+  const selectedDayIndex =
+    structure && selectedDay
+      ? structure.days.findIndex((day) => day.id === selectedDay.id)
+      : -1
+  const daySwipe = useProgramDaySwipe({
+    onNext: () => switchDayByOffset(1),
+    onPrevious: () => switchDayByOffset(-1),
+  })
+
   function refresh() {
     if (target.mode === 'template') {
       void programRepository
@@ -882,6 +933,11 @@ function ProgramBuilderSheet({
             days: loaded.days,
             exercisesByDay: loaded.exercisesByDay,
           })
+          setSelectedDayId((current) =>
+            loaded.days.some((day) => day.id === current)
+              ? current
+              : loaded.days[0]?.id || '',
+          )
           setNameForm({ name: record.name })
           onChanged()
         })
@@ -895,6 +951,11 @@ function ProgramBuilderSheet({
             days: loaded.days,
             exercisesByDay: loaded.exercisesByDay,
           })
+          setSelectedDayId((current) =>
+            loaded.days.some((day) => day.id === current)
+              ? current
+              : loaded.days[0]?.id || '',
+          )
           setNameForm({ name: record.name })
           onChanged()
         })
@@ -985,6 +1046,22 @@ function ProgramBuilderSheet({
     setDayName('')
   }
 
+  function selectDay(dayId: string) {
+    saveName()
+    setSelectedDayId(dayId)
+  }
+
+  function switchDayByOffset(offset: -1 | 1) {
+    if (!structure || selectedDayIndex < 0) {
+      return
+    }
+    const nextIndex = selectedDayIndex + offset
+    if (nextIndex < 0 || nextIndex >= structure.days.length) {
+      return
+    }
+    selectDay(structure.days[nextIndex].id)
+  }
+
   function moveDay(dayId: string, direction: -1 | 1) {
     if (!structure) {
       return
@@ -1001,6 +1078,31 @@ function ProgramBuilderSheet({
     const ordered = structure.days.map((day) => day.id)
     const [id] = ordered.splice(currentIndex, 1)
     ordered.splice(nextIndex, 0, id)
+    run(
+      mode === 'template'
+        ? programRepository.reorderTemplateDays(structure.record.id, ordered)
+        : programRepository.reorderActiveCycleDays(
+            structure.record.id,
+            ordered,
+          ),
+    )
+  }
+
+  function reorderDayByDrag(destinationDayId: string) {
+    if (!structure || !draggedDayId || draggedDayId === destinationDayId) {
+      setDraggedDayId(null)
+      return
+    }
+    const ordered = structure.days.map((day) => day.id)
+    const fromIndex = ordered.indexOf(draggedDayId)
+    const toIndex = ordered.indexOf(destinationDayId)
+    if (fromIndex < 0 || toIndex < 0) {
+      setDraggedDayId(null)
+      return
+    }
+    const [id] = ordered.splice(fromIndex, 1)
+    ordered.splice(toIndex, 0, id)
+    setDraggedDayId(null)
     run(
       mode === 'template'
         ? programRepository.reorderTemplateDays(structure.record.id, ordered)
@@ -1166,27 +1268,64 @@ function ProgramBuilderSheet({
               </div>
             ) : null}
 
+            {structure.days.length ? (
+              <div className="program-day-tabs" aria-label="Program days">
+                {structure.days.map((day) => (
+                  <button
+                    aria-current={day.id === selectedDay?.id}
+                    draggable
+                    key={day.id}
+                    onClick={() => selectDay(day.id)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDragStart={() => setDraggedDayId(day.id)}
+                    onDrop={() => reorderDayByDrag(day.id)}
+                    type="button"
+                  >
+                    <span>{day.name}</span>
+                    <small>
+                      {(structure.exercisesByDay[day.id] ?? []).length}
+                    </small>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
             <div className="program-builder-days">
-              {structure.days.map((day, dayIndex) => (
-                <div className="program-builder-day" key={day.id}>
+              {selectedDay ? (
+                <div
+                  className="program-builder-day"
+                  key={selectedDay.id}
+                  {...daySwipe}
+                >
                   <div>
-                    <strong>{day.name}</strong>
-                    {day.notes ? <small>{day.notes}</small> : null}
+                    <strong>Selected day</strong>
+                    {selectedDay.notes ? (
+                      <small>{selectedDay.notes}</small>
+                    ) : null}
                   </div>
                   <div className="button-row">
                     <SecondaryButton
                       type="button"
                       onClick={() => {
-                        const name = window.prompt('Workout day name', day.name)
+                        const name = window.prompt(
+                          'Workout day name',
+                          selectedDay.name,
+                        )
                         if (name?.trim()) {
                           run(
                             mode === 'template'
-                              ? programRepository.updateTemplateDay(day.id, {
-                                  name: name.trim(),
-                                })
-                              : programRepository.updateActiveCycleDay(day.id, {
-                                  name: name.trim(),
-                                }),
+                              ? programRepository.updateTemplateDay(
+                                  selectedDay.id,
+                                  {
+                                    name: name.trim(),
+                                  },
+                                )
+                              : programRepository.updateActiveCycleDay(
+                                  selectedDay.id,
+                                  {
+                                    name: name.trim(),
+                                  },
+                                ),
                           )
                         }
                       }}
@@ -1194,16 +1333,16 @@ function ProgramBuilderSheet({
                       Rename
                     </SecondaryButton>
                     <SecondaryButton
-                      disabled={dayIndex === 0}
+                      disabled={selectedDayIndex === 0}
                       type="button"
-                      onClick={() => moveDay(day.id, -1)}
+                      onClick={() => moveDay(selectedDay.id, -1)}
                     >
                       Up
                     </SecondaryButton>
                     <SecondaryButton
-                      disabled={dayIndex === structure.days.length - 1}
+                      disabled={selectedDayIndex === structure.days.length - 1}
                       type="button"
-                      onClick={() => moveDay(day.id, 1)}
+                      onClick={() => moveDay(selectedDay.id, 1)}
                     >
                       Down
                     </SecondaryButton>
@@ -1212,8 +1351,12 @@ function ProgramBuilderSheet({
                       onClick={() =>
                         run(
                           mode === 'template'
-                            ? programRepository.duplicateTemplateDay(day.id)
-                            : programRepository.duplicateActiveCycleDay(day.id),
+                            ? programRepository.duplicateTemplateDay(
+                                selectedDay.id,
+                              )
+                            : programRepository.duplicateActiveCycleDay(
+                                selectedDay.id,
+                              ),
                         )
                       }
                     >
@@ -1225,8 +1368,8 @@ function ProgramBuilderSheet({
                       onClick={() =>
                         setRemoveConfirmation({
                           type: 'day',
-                          id: day.id,
-                          name: day.name,
+                          id: selectedDay.id,
+                          name: selectedDay.name,
                         })
                       }
                     >
@@ -1236,7 +1379,7 @@ function ProgramBuilderSheet({
                   </div>
 
                   <div className="program-prescription-list">
-                    {(structure.exercisesByDay[day.id] ?? []).map(
+                    {(structure.exercisesByDay[selectedDay.id] ?? []).map(
                       (prescribed) => (
                         <div
                           className="program-prescription-row"
@@ -1256,7 +1399,7 @@ function ProgramBuilderSheet({
                               aria-label={`Edit ${prescribed.exerciseSnapshot.exerciseName} prescription`}
                               onClick={() =>
                                 setEditingPrescription({
-                                  dayId: day.id,
+                                  dayId: selectedDay.id,
                                   exercise: prescribed,
                                 })
                               }
@@ -1266,7 +1409,7 @@ function ProgramBuilderSheet({
                             <IconButton
                               aria-label={`Move ${prescribed.exerciseSnapshot.exerciseName} up`}
                               onClick={() =>
-                                moveExercise(day.id, prescribed.id, -1)
+                                moveExercise(selectedDay.id, prescribed.id, -1)
                               }
                             >
                               <ArrowUp aria-hidden="true" size={18} />
@@ -1274,7 +1417,7 @@ function ProgramBuilderSheet({
                             <IconButton
                               aria-label={`Move ${prescribed.exerciseSnapshot.exerciseName} down`}
                               onClick={() =>
-                                moveExercise(day.id, prescribed.id, 1)
+                                moveExercise(selectedDay.id, prescribed.id, 1)
                               }
                             >
                               <ArrowDown aria-hidden="true" size={18} />
@@ -1296,20 +1439,29 @@ function ProgramBuilderSheet({
                         </div>
                       ),
                     )}
-                    {!(structure.exercisesByDay[day.id] ?? []).length ? (
+                    {!(structure.exercisesByDay[selectedDay.id] ?? [])
+                      .length ? (
                       <p className="muted">No prescribed exercises.</p>
                     ) : null}
                   </div>
                   <SecondaryButton
                     type="button"
                     onClick={() =>
-                      setEditingPrescription({ dayId: day.id, exercise: null })
+                      setEditingPrescription({
+                        dayId: selectedDay.id,
+                        exercise: null,
+                      })
                     }
                   >
                     Add exercise
                   </SecondaryButton>
                 </div>
-              ))}
+              ) : (
+                <EmptyState
+                  title="No workout days"
+                  message="Add a workout day to begin programming exercises."
+                />
+              )}
             </div>
           </>
         ) : null}
@@ -2642,6 +2794,53 @@ function formIsDirty(
     form.targetRepsMax !== (exercise.targetRepsMax?.toString() ?? '') ||
     form.targetRir !== (exercise.targetRir?.toString() ?? '') ||
     form.notes !== exercise.notes
+  )
+}
+
+function useProgramDaySwipe({
+  onNext,
+  onPrevious,
+}: {
+  onNext: () => void
+  onPrevious: () => void
+}) {
+  const pointerStart = useRef<{ x: number; y: number } | null>(null)
+
+  return {
+    onPointerDown(event: PointerEvent<HTMLElement>) {
+      if (isInteractiveElement(event.target)) {
+        return
+      }
+      pointerStart.current = { x: event.clientX, y: event.clientY }
+    },
+    onPointerUp(event: PointerEvent<HTMLElement>) {
+      if (!pointerStart.current) {
+        return
+      }
+      const deltaX = event.clientX - pointerStart.current.x
+      const deltaY = event.clientY - pointerStart.current.y
+      pointerStart.current = null
+      if (Math.abs(deltaX) < 55 || Math.abs(deltaY) > 45) {
+        return
+      }
+      if (deltaX < 0) {
+        onNext()
+      } else {
+        onPrevious()
+      }
+    },
+    onPointerCancel() {
+      pointerStart.current = null
+    },
+  }
+}
+
+function isInteractiveElement(target: EventTarget | null) {
+  return (
+    target instanceof HTMLElement &&
+    Boolean(
+      target.closest('button, input, select, textarea, a, [role="button"]'),
+    )
   )
 }
 

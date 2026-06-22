@@ -34,6 +34,12 @@ import {
 } from '@services/foodProviderClient'
 import type { IntegrationConnectionStatus } from '@shared-types/app'
 
+type BuildInfo = {
+  builtAt: string
+  environment: string
+  gitHash: string
+}
+
 const emptyTargets = {
   calories: '',
   proteinGrams: '',
@@ -73,6 +79,7 @@ export function SettingsPage() {
   const [timerSoundMessage, setTimerSoundMessage] = useState<string | null>(
     null,
   )
+  const [buildInfo, setBuildInfo] = useState<BuildInfo | null>(null)
   const { refreshDashboard } = useDashboardContext()
   const parsedTargets = parseTargetForm(targetForm)
 
@@ -103,6 +110,32 @@ export function SettingsPage() {
       setUsdaConfigured(Boolean(settings?.apiKey))
       setUsdaStatus(settings?.status ?? 'not_configured')
     })
+
+    return () => {
+      isCurrent = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof fetch !== 'function') {
+      return
+    }
+
+    let isCurrent = true
+    void fetch(`/build-info.json?cacheBust=${Date.now()}`, {
+      cache: 'no-store',
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((info: BuildInfo | null) => {
+        if (isCurrent && info?.gitHash) {
+          setBuildInfo(info)
+        }
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setBuildInfo(null)
+        }
+      })
 
     return () => {
       isCurrent = false
@@ -578,6 +611,14 @@ export function SettingsPage() {
             <dd>{APPLICATION_VERSION}</dd>
           </div>
           <div>
+            <dt>Build</dt>
+            <dd>
+              {buildInfo
+                ? `${buildInfo.gitHash} · ${buildInfo.environment} · ${formatBuildTimestamp(buildInfo.builtAt)}`
+                : 'Development'}
+            </dd>
+          </div>
+          <div>
             <dt>Database schema version</dt>
             <dd>{DATABASE_SCHEMA_VERSION}</dd>
           </div>
@@ -653,6 +694,11 @@ export function SettingsPage() {
       </ModalConfirmationDialog>
     </PageContainer>
   )
+}
+
+function formatBuildTimestamp(timestamp: string) {
+  const parsed = new Date(timestamp)
+  return Number.isNaN(parsed.getTime()) ? timestamp : parsed.toISOString()
 }
 
 function ImportPreview({ preview }: { preview: BackupPreview }) {

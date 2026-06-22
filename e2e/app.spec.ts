@@ -451,7 +451,7 @@ test('settings exposes local data controls and validates malformed restore files
 test('completes the release workflow through backup restore', async ({
   page,
 }, testInfo) => {
-  testInfo.setTimeout(90_000)
+  testInfo.setTimeout(180_000)
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/nutrition')
 
@@ -536,10 +536,14 @@ test('completes the release workflow through backup restore', async ({
   await page.getByRole('textbox', { name: 'Set 3 Weight' }).fill('195')
   await page.getByRole('textbox', { name: 'Set 3 Reps' }).fill('6')
   await page.getByRole('button', { name: 'Complete set 3' }).click()
+  await page.getByRole('heading', { name: /Audit squat|Audit curl/ }).waitFor()
+  await page.getByRole('button', { name: /1 Audit squat/ }).click()
   await page.getByRole('button', { name: 'Add Set' }).first().click()
   await page.getByRole('textbox', { name: 'Set 4 Weight' }).fill('200')
   await page.getByRole('textbox', { name: 'Set 4 Reps' }).fill('5')
   await page.getByRole('button', { name: 'Complete set 4' }).click()
+  await page.getByRole('heading', { name: /Audit squat|Audit curl/ }).waitFor()
+  await page.getByRole('button', { name: /1 Audit squat/ }).click()
   await page.getByRole('button', { name: 'Replace Exercise' }).first().click()
   await page
     .getByRole('dialog', { name: 'Replace Exercise' })
@@ -563,7 +567,32 @@ test('completes the release workflow through backup restore', async ({
   )
   await page.getByRole('textbox', { name: 'Set 1 Weight' }).fill('145')
   await page.getByRole('textbox', { name: 'Set 1 Reps' }).fill('10')
+  await page.getByRole('textbox', { name: 'Set 1 Reps' }).press('Enter')
+  await expect(
+    page.getByRole('textbox', { name: 'Set 1 Reps' }),
+  ).not.toHaveAttribute('aria-invalid', 'true')
   await page.getByRole('button', { name: 'Complete set 1' }).click()
+  await page.getByRole('textbox', { name: 'Set 2 Weight' }).fill('150')
+  await page.getByRole('textbox', { name: 'Set 2 Reps' }).fill('9')
+  await page.getByRole('textbox', { name: 'Set 2 Reps' }).press('Enter')
+  await expect(
+    page.getByRole('textbox', { name: 'Set 2 Reps' }),
+  ).not.toHaveAttribute('aria-invalid', 'true')
+  await page.getByRole('button', { name: 'Complete set 2' }).click()
+  await page.getByRole('textbox', { name: 'Set 3 Weight' }).fill('155')
+  await page.getByRole('textbox', { name: 'Set 3 Reps' }).fill('8')
+  await page.getByRole('textbox', { name: 'Set 3 Reps' }).press('Enter')
+  await expect(
+    page.getByRole('textbox', { name: 'Set 3 Reps' }),
+  ).not.toHaveAttribute('aria-invalid', 'true')
+  await page.getByRole('button', { name: 'Complete set 3' }).click()
+  await page.getByRole('textbox', { name: 'Set 4 Weight' }).fill('160')
+  await page.getByRole('textbox', { name: 'Set 4 Reps' }).fill('7')
+  await page.getByRole('textbox', { name: 'Set 4 Reps' }).press('Enter')
+  await expect(
+    page.getByRole('textbox', { name: 'Set 4 Reps' }),
+  ).not.toHaveAttribute('aria-invalid', 'true')
+  await page.getByRole('button', { name: 'Complete set 4' }).click()
 
   await page.getByRole('button', { name: 'Finish Workout' }).click()
   await expect(page).toHaveURL(/\/history\?workout=/)
@@ -596,10 +625,9 @@ test('completes the release workflow through backup restore', async ({
   await page.getByRole('button', { name: 'Clear all data' }).click()
   const clearDialog = page.getByRole('dialog', { name: 'Clear all data?' })
   await clearDialog.getByLabel('Confirmation').fill('DELETE')
-  await Promise.all([
-    page.waitForEvent('framenavigated'),
-    clearDialog.getByRole('button', { name: 'Delete local data' }).click(),
-  ])
+  await clearDialog.getByRole('button', { name: 'Delete local data' }).click()
+  await expect(clearDialog).not.toBeVisible({ timeout: 15_000 })
+  await page.waitForLoadState('load').catch(() => undefined)
   await page.goto('/nutrition')
   await expect(page.getByText('No recent foods')).toBeVisible()
 
@@ -610,10 +638,9 @@ test('completes the release workflow through backup restore', async ({
     name: 'Replace local data?',
   })
   await restoreDialog.getByLabel('Confirmation').fill('REPLACE')
-  await Promise.all([
-    page.waitForEvent('framenavigated'),
-    restoreDialog.getByRole('button', { name: 'Replace data' }).click(),
-  ])
+  await restoreDialog.getByRole('button', { name: 'Replace data' }).click()
+  await expect(restoreDialog).not.toBeVisible({ timeout: 15_000 })
+  await page.waitForLoadState('load').catch(() => undefined)
   await page.goto('/history')
   await expect(page.getByRole('button', { name: /Audit A/ })).toBeVisible()
   await page.getByRole('button', { name: /Audit A/ }).click()

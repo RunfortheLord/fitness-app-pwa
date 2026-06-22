@@ -129,6 +129,25 @@ describe('foodRepository', () => {
     ])
   })
 
+  it('matches local foods when query words are out of order', async () => {
+    const repository = createFoodRepository(database)
+    await repository.createFood({
+      name: 'Greek Yogurt Bowl',
+      servingQuantity: 1,
+      servingUnit: 'bowl',
+      servingDescription: '',
+      caloriesPerServing: 220,
+      proteinGramsPerServing: 24,
+      carbohydrateGramsPerServing: 32,
+      fatGramsPerServing: 2,
+      notes: '',
+    })
+
+    await expect(repository.searchFoods('bowl greek')).resolves.toMatchObject([
+      { name: 'Greek Yogurt Bowl' },
+    ])
+  })
+
   it('lists recent active foods once after use', async () => {
     const repository = createFoodRepository(database)
     const rice = await seedFood(database)

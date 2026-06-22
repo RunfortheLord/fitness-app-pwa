@@ -371,6 +371,7 @@ export function createFoodRepository(
 
     async searchFoods(query: string, limit = 25) {
       const normalizedQuery = query.trim().toLocaleLowerCase()
+      const queryWords = normalizedQuery.split(/\s+/).filter(Boolean)
       const foods = await database.foods
         .where('status')
         .equals('active')
@@ -394,6 +395,11 @@ export function createFoodRepository(
             const index = normalizedName.indexOf(normalizedQuery)
             if (index >= 0) {
               rank = 2 + index / 100
+            } else if (
+              queryWords.length > 1 &&
+              queryWords.every((word) => normalizedName.includes(word))
+            ) {
+              rank = 3
             }
           }
 

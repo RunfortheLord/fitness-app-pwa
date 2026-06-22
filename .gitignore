@@ -1,6 +1,7 @@
 node_modules/
 dist/
 coverage/
+public/build-info.json
 playwright-report/
 test-results/
 .vercel/

@@ -10,7 +10,6 @@ import {
 } from 'lucide-react'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 
 import {
   Card,
@@ -146,7 +145,6 @@ export function NutritionPage() {
   const { refreshDashboard, selectedDate, setSelectedDate } =
     useDashboardContext()
   const today = formatLocalDate(new Date())
-  const navigate = useNavigate()
   const [mode, setMode] = useState<NutritionMode>('day')
   const [query, setQuery] = useState('')
   const [sheet, setSheet] = useState<SheetState>(null)
@@ -349,13 +347,11 @@ export function NutritionPage() {
         </StatusMessage>
       ) : null}
       {message ? <StatusMessage tone="success">{message}</StatusMessage> : null}
-
-      <BarcodeEntryCard
-        configured={usdaKey.configured}
-        status={usdaKey.status}
-        onManageKey={() => void navigate('/settings?section=usda')}
-        onOpenScanner={() => setSheet({ type: 'scanner' })}
-      />
+      {usdaKey.configured ? (
+        <span className="visually-hidden">
+          {usdaStatusLabel(usdaKey.status)}
+        </span>
+      ) : null}
 
       {mode === 'day' ? (
         <>
@@ -365,6 +361,7 @@ export function NutritionPage() {
             results={displayedResults}
             onCreateFood={() => setSheet({ type: 'food', food: null })}
             onEditFood={(food) => setSheet({ type: 'food', food })}
+            onOpenScanner={() => setSheet({ type: 'scanner' })}
             onSelectResult={(result) => setSheet({ type: 'select', result })}
             onSearch={() => setProviderSearchNonce((current) => current + 1)}
             query={query}
@@ -396,6 +393,7 @@ export function NutritionPage() {
             results={displayedResults}
             onCreateFood={() => setSheet({ type: 'food', food: null })}
             onEditFood={(food) => setSheet({ type: 'food', food })}
+            onOpenScanner={() => setSheet({ type: 'scanner' })}
             onSelectResult={(result) => setSheet({ type: 'select', result })}
             onSearch={() => setProviderSearchNonce((current) => current + 1)}
             query={query}
@@ -546,6 +544,7 @@ function FoodSearchCard({
   results,
   onCreateFood,
   onEditFood,
+  onOpenScanner,
   onSelectResult,
   onSearch,
   query,
@@ -555,6 +554,7 @@ function FoodSearchCard({
   results: Array<{ title: string; items: FoodSearchResult[] }>
   onCreateFood: () => void
   onEditFood: (food: Food) => void
+  onOpenScanner: () => void
   onSelectResult: (result: FoodSearchResult) => void
   onSearch: () => void
   query: string
@@ -564,7 +564,13 @@ function FoodSearchCard({
   const normalizedQuery = normalizeProviderQuery(query)
 
   return (
-    <Card title={normalizedQuery ? 'Food search' : 'Recent foods'}>
+    <Card>
+      <div className="food-search-heading">
+        <h2>{normalizedQuery ? 'Food search' : 'Recent foods'}</h2>
+        <IconButton aria-label="Scan barcode" onClick={onOpenScanner}>
+          <Camera aria-hidden="true" size={20} />
+        </IconButton>
+      </div>
       <FormField id="food-search" label="Search foods">
         <div className="input-icon-row">
           <Search aria-hidden="true" size={18} />
@@ -643,45 +649,6 @@ function FoodSearchCard({
           }
         />
       )}
-    </Card>
-  )
-}
-
-function BarcodeEntryCard({
-  configured,
-  onManageKey,
-  onOpenScanner,
-  status,
-}: {
-  configured: boolean
-  onManageKey: () => void
-  onOpenScanner: () => void
-  status: IntegrationConnectionStatus
-}) {
-  return (
-    <Card>
-      <div className="settings-access-row">
-        <div>
-          <strong>Scan barcode</strong>
-          <p className="muted">
-            {configured
-              ? `USDA ${usdaStatusLabel(status)}. Cached scans work offline.`
-              : 'Add a USDA key for best barcode matches. Open Food Facts fallback is also checked.'}
-          </p>
-          {configured ? (
-            <span className="visually-hidden">{usdaStatusLabel(status)}</span>
-          ) : null}
-        </div>
-        <div className="button-row">
-          <PrimaryButton type="button" onClick={onOpenScanner}>
-            <Camera aria-hidden="true" size={18} />
-            Scan
-          </PrimaryButton>
-          <SecondaryButton type="button" onClick={onManageKey}>
-            USDA Key
-          </SecondaryButton>
-        </div>
-      </div>
     </Card>
   )
 }
@@ -1487,8 +1454,10 @@ function SelectedFoodSheet({
         <br />
         <span className="muted">{display.serving} source serving</span>
       </p>
+      <p className="metric-value metric-value-small">
+        {formatCalories(base?.calories)} kcal
+      </p>
       <div className="macro-row nutrition-row">
-        <span>Calories {formatCalories(base?.calories)} kcal</span>
         <span>Protein {formatMacroGram(base?.protein)} g</span>
         <span>Carbs {formatMacroGram(base?.carbs)} g</span>
         <span>Fat {formatMacroGram(base?.fat)} g</span>
