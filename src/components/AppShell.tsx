@@ -68,14 +68,6 @@ function AppShellContent({ children }: AppShellProps) {
       setUpdateInstruction(null)
     })
 
-    function checkForUpdateWhenVisible() {
-      if (document.visibilityState === 'visible' && navigator.onLine) {
-        void update?.checkForUpdate()
-      }
-    }
-
-    document.addEventListener('visibilitychange', checkForUpdateWhenVisible)
-
     function handlePwaTestUpdate(event: Event) {
       if (!window.location.search.includes('pwaTest=1')) {
         return
@@ -99,10 +91,7 @@ function AppShellContent({ children }: AppShellProps) {
     window.addEventListener('fitness-log:pwa-update-ready', handlePwaTestUpdate)
 
     return () => {
-      document.removeEventListener(
-        'visibilitychange',
-        checkForUpdateWhenVisible,
-      )
+      update?.cleanup()
       window.removeEventListener(
         'fitness-log:pwa-update-ready',
         handlePwaTestUpdate,
