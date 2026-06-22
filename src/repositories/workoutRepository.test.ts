@@ -925,7 +925,7 @@ describe('workoutRepository', () => {
     ])
   })
 
-  it('keeps workout and history source labels after source records are renamed or archived', async () => {
+  it('keeps workout and history source labels after source records are renamed or deleted', async () => {
     const programRepository = createProgramRepository(database)
     const program = await seedProgram(database)
     const active = await programRepository.activateTemplate(program.template.id)
@@ -942,11 +942,11 @@ describe('workoutRepository', () => {
     await programRepository.updateProgramTemplate(program.template.id, {
       name: 'Renamed template',
     })
-    await programRepository.archiveProgramTemplate(program.template.id)
     await database.activeProgramCycles.update(active.cycle.id, {
       name: 'Renamed cycle',
-      status: 'archived',
+      status: 'inactive',
     })
+    await programRepository.deleteProgramTemplate(program.template.id)
 
     const completed = await workoutRepository.completeWorkout({
       workoutId: started.workout.id,

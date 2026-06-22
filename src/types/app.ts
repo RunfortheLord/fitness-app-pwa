@@ -334,6 +334,7 @@ export type ProgramTemplate = {
   name: string
   notes: string
   status: EntityStatus
+  lastActiveAt?: IsoTimestamp | null
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }

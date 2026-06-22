@@ -203,7 +203,7 @@ describe('TrainingPage', () => {
     await seedExercise(db)
     renderTraining()
 
-    await screen.findByText('No program templates')
+    await screen.findByText('No inactive programs')
     await user.click(
       screen.getAllByRole('button', { name: 'Create program' })[0],
     )
@@ -223,8 +223,18 @@ describe('TrainingPage', () => {
       'Pull',
     )
     await user.click(screen.getByRole('button', { name: 'Add day' }))
-    expect(await screen.findByText('Push')).toBeInTheDocument()
-    expect(await screen.findByText('Pull')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(
+        within(
+          screen.getByRole('dialog', { name: 'Edit template' }),
+        ).getAllByText('Push').length,
+      ).toBeGreaterThan(0)
+      expect(
+        within(
+          screen.getByRole('dialog', { name: 'Edit template' }),
+        ).getAllByText('Pull').length,
+      ).toBeGreaterThan(0)
+    })
 
     await user.click(screen.getAllByRole('button', { name: 'Down' })[0])
     const builder = screen.getByRole('dialog', { name: 'Edit template' })
@@ -461,7 +471,7 @@ describe('TrainingPage', () => {
     expect(screen.getByDisplayValue('12')).toBeInTheDocument()
   })
 
-  it('hides archived templates from the library', async () => {
+  it('permanently deletes inactive templates from the library after two confirmations', async () => {
     const user = userEvent.setup()
     await seedProgram(db)
     renderTraining()
@@ -469,19 +479,23 @@ describe('TrainingPage', () => {
     await waitFor(() =>
       expect(screen.getAllByText('Upper Lower').length).toBeGreaterThan(0),
     )
+    await user.click(screen.getByRole('button', { name: 'Delete Upper Lower' }))
     await user.click(
-      screen.getByRole('button', { name: 'Archive Upper Lower' }),
+      within(screen.getByRole('dialog', { name: 'Remove program?' })).getByRole(
+        'button',
+        { name: 'Remove' },
+      ),
     )
     await user.click(
       within(
-        screen.getByRole('dialog', { name: 'Archive program?' }),
-      ).getByRole('button', { name: 'Archive' }),
+        screen.getByRole('dialog', { name: 'Permanently delete program?' }),
+      ).getByRole('button', { name: 'Permanently Delete' }),
     )
 
     await waitFor(() =>
       expect(screen.queryByText('Upper Lower')).not.toBeInTheDocument(),
     )
-    expect(screen.getByText('No program templates')).toBeInTheDocument()
+    expect(screen.getByText('No inactive programs')).toBeInTheDocument()
   })
 
   it('persists the active cycle after remount', async () => {
@@ -512,29 +526,20 @@ describe('TrainingPage', () => {
     const cycleNameInput = await within(cycleEditor).findByRole('textbox', {
       name: 'Name',
     })
+    await waitFor(() => expect(cycleNameInput).toHaveValue('Upper Lower'))
     await user.clear(cycleNameInput)
-    await user.click(
-      within(cycleEditor).getByRole('button', { name: 'Save cycle' }),
-    )
+    await user.tab()
     expect(screen.getByText('Program name is required.')).toBeInTheDocument()
     expect(cycleEditor).toBeInTheDocument()
     await user.type(
       within(cycleEditor).getByRole('textbox', { name: 'Name' }),
       'Upper Lower',
     )
-    await user.type(
-      within(cycleEditor).getByRole('textbox', { name: 'Notes' }),
-      'Block A',
-    )
-    await user.click(
-      within(cycleEditor).getByRole('button', { name: 'Save cycle' }),
-    )
-    await waitFor(() =>
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
-    )
+    await user.tab()
 
     const activeCycle = await db.activeProgramCycles.toCollection().first()
-    expect(activeCycle?.notes).toBe('Block A')
+    expect(activeCycle?.name).toBe('Upper Lower')
+    expect(activeCycle?.notes).toBe('')
   })
 })
 

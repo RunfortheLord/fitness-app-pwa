@@ -354,6 +354,7 @@ const programTemplateSchema = z.object({
   name: z.string().min(1),
   notes: z.string(),
   status: entityStatusSchema,
+  lastActiveAt: z.union([isoTimestampSchema, z.null()]).optional(),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })
@@ -935,6 +936,7 @@ async function sortedTable<T extends { id: string }>(table: {
 }
 
 async function putBackupData(database: TrainingLogDatabase, data: BackupData) {
+  const sanitizedData = sanitizeProgramBackupData(data)
   await database.userSettings.bulkPut(data.userSettings)
   await database.nutritionTargets.bulkPut(data.nutritionTargets)
   await database.foods.bulkPut(data.foods)
@@ -943,13 +945,17 @@ async function putBackupData(database: TrainingLogDatabase, data: BackupData) {
   await database.barcodeProductCache.bulkPut(data.barcodeProductCache)
   await database.bodyweightEntries.bulkPut(data.bodyweightEntries)
   await database.exercises.bulkPut(data.exercises)
-  await database.programTemplates.bulkPut(data.programTemplates)
-  await database.templateWorkoutDays.bulkPut(data.templateWorkoutDays)
-  await database.templateWorkoutExercises.bulkPut(data.templateWorkoutExercises)
-  await database.activeProgramCycles.bulkPut(data.activeProgramCycles)
-  await database.activeCycleWorkoutDays.bulkPut(data.activeCycleWorkoutDays)
+  await database.programTemplates.bulkPut(sanitizedData.programTemplates)
+  await database.templateWorkoutDays.bulkPut(sanitizedData.templateWorkoutDays)
+  await database.templateWorkoutExercises.bulkPut(
+    sanitizedData.templateWorkoutExercises,
+  )
+  await database.activeProgramCycles.bulkPut(sanitizedData.activeProgramCycles)
+  await database.activeCycleWorkoutDays.bulkPut(
+    sanitizedData.activeCycleWorkoutDays,
+  )
   await database.activeCycleWorkoutExercises.bulkPut(
-    data.activeCycleWorkoutExercises,
+    sanitizedData.activeCycleWorkoutExercises,
   )
   await database.workouts.bulkPut(data.workouts)
   await database.workoutExercises.bulkPut(data.workoutExercises)
@@ -964,6 +970,56 @@ async function putBackupData(database: TrainingLogDatabase, data: BackupData) {
   await database.runPauses.bulkPut(data.runPauses)
   await database.runSplits.bulkPut(data.runSplits)
   await database.runClassifications.bulkPut(data.runClassifications)
+}
+
+function sanitizeProgramBackupData(data: BackupData): BackupData {
+  const activeCycles = data.activeProgramCycles.map((cycle) => ({
+    ...cycle,
+    notes: '',
+    status: cycle.status === 'archived' ? 'inactive' : cycle.status,
+  }))
+  const lastActiveByTemplate = new Map<string, string>()
+  for (const cycle of activeCycles) {
+    if (!cycle.sourceTemplateId) {
+      continue
+    }
+    const existing = lastActiveByTemplate.get(cycle.sourceTemplateId)
+    if (!existing || cycle.activatedAt > existing) {
+      lastActiveByTemplate.set(cycle.sourceTemplateId, cycle.activatedAt)
+    }
+  }
+
+  return {
+    ...data,
+    programTemplates: data.programTemplates.map((template) => ({
+      ...template,
+      notes: '',
+      status: 'active',
+      lastActiveAt:
+        template.lastActiveAt ?? lastActiveByTemplate.get(template.id) ?? null,
+    })),
+    templateWorkoutDays: data.templateWorkoutDays.map((day) => ({
+      ...day,
+      notes: '',
+    })),
+    templateWorkoutExercises: data.templateWorkoutExercises.map((exercise) => ({
+      ...exercise,
+      targetDurationSeconds: null,
+      notes: '',
+    })),
+    activeProgramCycles: activeCycles,
+    activeCycleWorkoutDays: data.activeCycleWorkoutDays.map((day) => ({
+      ...day,
+      notes: '',
+    })),
+    activeCycleWorkoutExercises: data.activeCycleWorkoutExercises.map(
+      (exercise) => ({
+        ...exercise,
+        targetDurationSeconds: null,
+        notes: '',
+      }),
+    ),
+  }
 }
 
 function writableTables(database: TrainingLogDatabase) {

@@ -66,8 +66,9 @@ export function createProgramRepository(
       const template: ProgramTemplate = {
         id: createId(),
         name: input.name,
-        notes: input.notes ?? '',
+        notes: '',
         status: 'active',
+        lastActiveAt: null,
         createdAt: now,
         updatedAt: now,
       }
@@ -120,8 +121,7 @@ export function createProgramRepository(
                 orderIndex: exerciseIndex,
                 targetSetCount: exerciseInput.targetSetCount,
                 targetWeight: exerciseInput.targetWeight ?? null,
-                targetDurationSeconds:
-                  exerciseInput.targetDurationSeconds ?? null,
+                targetDurationSeconds: null,
                 targetDistance: exerciseInput.targetDistance ?? null,
                 targetRepsMin: exerciseInput.targetRepsMin ?? null,
                 targetRepsMax: exerciseInput.targetRepsMax ?? null,
@@ -158,10 +158,6 @@ export function createProgramRepository(
           if (!template) {
             throw new Error(`Program template ${templateId} was not found.`)
           }
-          if (template.status === 'archived') {
-            throw new Error('Archived program templates cannot be activated.')
-          }
-
           const currentCycles = await database.activeProgramCycles
             .where({ status: 'active' })
             .toArray()
@@ -178,13 +174,17 @@ export function createProgramRepository(
             id: createId(),
             sourceTemplateId: template.id,
             name: template.name,
-            notes: template.notes,
+            notes: '',
             status: 'active',
             activatedAt: now,
             createdAt: now,
             updatedAt: now,
           }
           await database.activeProgramCycles.add(cycle)
+          await database.programTemplates.update(template.id, {
+            lastActiveAt: now,
+            updatedAt: now,
+          })
           await testHooks.afterActiveCycleAdded?.()
 
           const sourceDays = await database.templateWorkoutDays
@@ -199,7 +199,7 @@ export function createProgramRepository(
               activeCycleId: cycle.id,
               sourceTemplateDayId: sourceDay.id,
               name: sourceDay.name,
-              notes: sourceDay.notes,
+              notes: '',
               orderIndex: sourceDay.orderIndex,
               createdAt: now,
               updatedAt: now,
@@ -221,14 +221,13 @@ export function createProgramRepository(
                 orderIndex: sourceExercise.orderIndex,
                 targetSetCount: sourceExercise.targetSetCount,
                 targetWeight: sourceExercise.targetWeight ?? null,
-                targetDurationSeconds:
-                  sourceExercise.targetDurationSeconds ?? null,
+                targetDurationSeconds: null,
                 targetDistance: sourceExercise.targetDistance ?? null,
                 targetRepsMin: sourceExercise.targetRepsMin,
                 targetRepsMax: sourceExercise.targetRepsMax,
                 targetRir: sourceExercise.targetRir,
                 restSecondsOverride: sourceExercise.restSecondsOverride,
-                notes: sourceExercise.notes,
+                notes: '',
                 createdAt: now,
                 updatedAt: now,
               }
@@ -246,21 +245,21 @@ export function createProgramRepository(
       return database.programTemplates.get(id)
     },
 
-    async listProgramTemplates(options: { includeArchived?: boolean } = {}) {
-      const templates = options.includeArchived
-        ? await database.programTemplates.toArray()
-        : await database.programTemplates.where({ status: 'active' }).toArray()
+    async listProgramTemplates() {
+      const [templates, activeCycle] = await Promise.all([
+        database.programTemplates.toArray(),
+        database.activeProgramCycles.where({ status: 'active' }).last(),
+      ])
+      const activeTemplateId = activeCycle?.sourceTemplateId ?? null
 
-      return templates.sort((first, second) =>
-        first.updatedAt === second.updatedAt
-          ? first.name.localeCompare(second.name)
-          : second.updatedAt.localeCompare(first.updatedAt),
-      )
+      return templates
+        .filter((template) => template.id !== activeTemplateId)
+        .sort(compareProgramLibraryRecords)
     },
 
     async updateProgramTemplate(
       id: string,
-      input: Partial<Pick<ProgramTemplate, 'name' | 'notes'>>,
+      input: Partial<Pick<ProgramTemplate, 'name'>>,
     ) {
       const template = await database.programTemplates.get(id)
       if (!template) {
@@ -270,38 +269,78 @@ export function createProgramRepository(
       const updated: ProgramTemplate = {
         ...template,
         ...input,
+        notes: '',
         updatedAt: new Date().toISOString(),
       }
       await database.programTemplates.put(updated)
       return updated
     },
 
-    archiveProgramTemplate(id: string) {
-      return database.programTemplates.update(id, {
-        status: 'archived',
-        updatedAt: new Date().toISOString(),
-      })
+    async deleteProgramTemplate(id: string) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        database.programTemplates,
+        database.templateWorkoutDays,
+        database.templateWorkoutExercises,
+        database.activeProgramCycles,
+        async () => {
+          const template = await database.programTemplates.get(id)
+          if (!template) {
+            throw new Error(`Program template ${id} was not found.`)
+          }
+          const activeCycle = await database.activeProgramCycles
+            .where({ status: 'active' })
+            .last()
+          if (activeCycle?.sourceTemplateId === id) {
+            throw new Error(
+              'The active program cannot be deleted. Activate another program first.',
+            )
+          }
+          const activeCopies = await database.activeProgramCycles
+            .where({ sourceTemplateId: id })
+            .toArray()
+          if (activeCopies.some((cycle) => cycle.status === 'active')) {
+            throw new Error(
+              'The active program cannot be deleted. Activate another program first.',
+            )
+          }
+          await Promise.all(
+            activeCopies.map((cycle) =>
+              database.activeProgramCycles.update(cycle.id, {
+                sourceTemplateId: null,
+                updatedAt: now,
+              }),
+            ),
+          )
+          await database.templateWorkoutExercises
+            .where({ templateId: id })
+            .delete()
+          await database.templateWorkoutDays.where({ templateId: id }).delete()
+          await database.programTemplates.delete(id)
+        },
+      )
     },
 
     async cloneProgramTemplate(id: string) {
       const source = await this.getTemplateStructure(id)
       return this.createProgramTemplate({
         name: `${source.template.name} copy`,
-        notes: source.template.notes,
+        notes: '',
         days: source.days.map((day) => ({
           name: day.name,
-          notes: day.notes,
+          notes: '',
           exercises: source.exercisesByDay[day.id].map((exercise) => ({
             exerciseId: exercise.exerciseId,
             targetSetCount: exercise.targetSetCount,
             targetWeight: exercise.targetWeight ?? null,
-            targetDurationSeconds: exercise.targetDurationSeconds ?? null,
+            targetDurationSeconds: null,
             targetDistance: exercise.targetDistance ?? null,
             targetRepsMin: exercise.targetRepsMin,
             targetRepsMax: exercise.targetRepsMax,
             targetRir: exercise.targetRir,
             restSecondsOverride: exercise.restSecondsOverride,
-            notes: exercise.notes,
+            notes: '',
           })),
         })),
       })
@@ -328,7 +367,7 @@ export function createProgramRepository(
             id: createId(),
             templateId,
             name: input.name,
-            notes: input.notes ?? '',
+            notes: '',
             orderIndex: existingDays.length,
             createdAt: now,
             updatedAt: now,
@@ -342,14 +381,14 @@ export function createProgramRepository(
 
     async updateTemplateDay(
       dayId: string,
-      input: Partial<Pick<ProgramTemplateDay, 'name' | 'notes'>>,
+      input: Partial<Pick<ProgramTemplateDay, 'name'>>,
     ) {
       const day = await database.templateWorkoutDays.get(dayId)
       if (!day) {
         throw new Error(`Program template day ${dayId} was not found.`)
       }
       const now = new Date().toISOString()
-      const updated = { ...day, ...input, updatedAt: now }
+      const updated = { ...day, ...input, notes: '', updatedAt: now }
       await database.transaction(
         'rw',
         database.programTemplates,
@@ -495,13 +534,13 @@ export function createProgramRepository(
             orderIndex: existing.length,
             targetSetCount: input.targetSetCount,
             targetWeight: input.targetWeight ?? null,
-            targetDurationSeconds: input.targetDurationSeconds ?? null,
+            targetDurationSeconds: null,
             targetDistance: input.targetDistance ?? null,
             targetRepsMin: input.targetRepsMin ?? null,
             targetRepsMax: input.targetRepsMax ?? null,
             targetRir: input.targetRir ?? null,
             restSecondsOverride: input.restSecondsOverride ?? null,
-            notes: input.notes ?? '',
+            notes: '',
             createdAt: now,
             updatedAt: now,
           }
@@ -554,9 +593,7 @@ export function createProgramRepository(
             targetWeight: hasField(input, 'targetWeight')
               ? (input.targetWeight ?? null)
               : (prescribed.targetWeight ?? null),
-            targetDurationSeconds: hasField(input, 'targetDurationSeconds')
-              ? (input.targetDurationSeconds ?? null)
-              : (prescribed.targetDurationSeconds ?? null),
+            targetDurationSeconds: null,
             targetDistance: hasField(input, 'targetDistance')
               ? (input.targetDistance ?? null)
               : (prescribed.targetDistance ?? null),
@@ -566,6 +603,7 @@ export function createProgramRepository(
             restSecondsOverride: hasField(input, 'restSecondsOverride')
               ? (input.restSecondsOverride ?? null)
               : prescribed.restSecondsOverride,
+            notes: '',
             updatedAt: now,
           }
           await database.templateWorkoutExercises.put(updated)
@@ -764,7 +802,7 @@ export function createProgramRepository(
 
     async updateActiveCycle(
       id: string,
-      input: Partial<Pick<ActiveProgramCycle, 'name' | 'notes'>>,
+      input: Partial<Pick<ActiveProgramCycle, 'name'>>,
     ) {
       const cycle = await database.activeProgramCycles.get(id)
       if (!cycle) {
@@ -773,6 +811,7 @@ export function createProgramRepository(
       const updated = {
         ...cycle,
         ...input,
+        notes: '',
         updatedAt: new Date().toISOString(),
       }
       await database.activeProgramCycles.put(updated)
@@ -803,7 +842,7 @@ export function createProgramRepository(
             activeCycleId,
             sourceTemplateDayId: null,
             name: input.name,
-            notes: input.notes ?? '',
+            notes: '',
             orderIndex: days.length,
             createdAt: now,
             updatedAt: now,
@@ -819,28 +858,20 @@ export function createProgramRepository(
 
     async updateActiveCycleDay(
       dayId: string,
-      input: Partial<Pick<ActiveCycleWorkoutDay, 'name' | 'notes'>>,
+      input: Partial<Pick<ActiveCycleWorkoutDay, 'name'>>,
     ) {
       const day = await database.activeCycleWorkoutDays.get(dayId)
       if (!day) {
         throw new Error(`Active cycle day ${dayId} was not found.`)
       }
       const now = new Date().toISOString()
-      const updated = { ...day, ...input, updatedAt: now }
+      const updated = { ...day, ...input, notes: '', updatedAt: now }
       await database.transaction(
         'rw',
         database.activeProgramCycles,
         database.activeCycleWorkoutDays,
-        database.templateWorkoutDays,
         async () => {
           await database.activeCycleWorkoutDays.put(updated)
-          if (day.sourceTemplateDayId) {
-            await database.templateWorkoutDays.update(day.sourceTemplateDayId, {
-              name: updated.name,
-              notes: updated.notes,
-              updatedAt: now,
-            })
-          }
           await database.activeProgramCycles.update(day.activeCycleId, {
             updatedAt: now,
           })
@@ -988,13 +1019,13 @@ export function createProgramRepository(
             orderIndex: existing.length,
             targetSetCount: input.targetSetCount,
             targetWeight: input.targetWeight ?? null,
-            targetDurationSeconds: input.targetDurationSeconds ?? null,
+            targetDurationSeconds: null,
             targetDistance: input.targetDistance ?? null,
             targetRepsMin: input.targetRepsMin ?? null,
             targetRepsMax: input.targetRepsMax ?? null,
             targetRir: input.targetRir ?? null,
             restSecondsOverride: input.restSecondsOverride ?? null,
-            notes: input.notes ?? '',
+            notes: '',
             createdAt: now,
             updatedAt: now,
           }
@@ -1016,7 +1047,6 @@ export function createProgramRepository(
         'rw',
         database.activeProgramCycles,
         database.activeCycleWorkoutExercises,
-        database.templateWorkoutExercises,
         database.exercises,
         async () => {
           const prescribed =
@@ -1048,9 +1078,7 @@ export function createProgramRepository(
             targetWeight: hasField(input, 'targetWeight')
               ? (input.targetWeight ?? null)
               : (prescribed.targetWeight ?? null),
-            targetDurationSeconds: hasField(input, 'targetDurationSeconds')
-              ? (input.targetDurationSeconds ?? null)
-              : (prescribed.targetDurationSeconds ?? null),
+            targetDurationSeconds: null,
             targetDistance: hasField(input, 'targetDistance')
               ? (input.targetDistance ?? null)
               : (prescribed.targetDistance ?? null),
@@ -1060,28 +1088,10 @@ export function createProgramRepository(
             restSecondsOverride: hasField(input, 'restSecondsOverride')
               ? (input.restSecondsOverride ?? null)
               : prescribed.restSecondsOverride,
+            notes: '',
             updatedAt: now,
           }
           await database.activeCycleWorkoutExercises.put(updated)
-          if (prescribed.sourceTemplateExerciseId) {
-            await database.templateWorkoutExercises.update(
-              prescribed.sourceTemplateExerciseId,
-              {
-                exerciseId: updated.exerciseId,
-                exerciseSnapshot: updated.exerciseSnapshot,
-                targetSetCount: updated.targetSetCount,
-                targetWeight: updated.targetWeight ?? null,
-                targetDurationSeconds: updated.targetDurationSeconds ?? null,
-                targetDistance: updated.targetDistance ?? null,
-                targetRepsMin: updated.targetRepsMin,
-                targetRepsMax: updated.targetRepsMax,
-                targetRir: updated.targetRir,
-                restSecondsOverride: updated.restSecondsOverride,
-                notes: updated.notes,
-                updatedAt: now,
-              },
-            )
-          }
           await database.activeProgramCycles.update(prescribed.activeCycleId, {
             updatedAt: now,
           })
@@ -1103,16 +1113,10 @@ export function createProgramRepository(
         'rw',
         database.activeProgramCycles,
         database.activeCycleWorkoutExercises,
-        database.templateWorkoutExercises,
         async () => {
           await database.activeCycleWorkoutExercises.delete(
             prescribedExerciseId,
           )
-          if (prescribed.sourceTemplateExerciseId) {
-            await database.templateWorkoutExercises.delete(
-              prescribed.sourceTemplateExerciseId,
-            )
-          }
           await reindexActiveExercises(database, prescribed.dayId, now)
           await database.activeProgramCycles.update(prescribed.activeCycleId, {
             updatedAt: now,
@@ -1158,7 +1162,36 @@ export function createProgramRepository(
         },
       )
     },
+
+    async mergeTemplateDays(sourceDayId: string, destinationDayId: string) {
+      return mergeProgramDays({
+        database,
+        sourceDayId,
+        destinationDayId,
+        mode: 'template',
+      })
+    },
+
+    async mergeActiveCycleDays(sourceDayId: string, destinationDayId: string) {
+      return mergeProgramDays({
+        database,
+        sourceDayId,
+        destinationDayId,
+        mode: 'cycle',
+      })
+    },
   }
+}
+
+function compareProgramLibraryRecords(
+  first: ProgramTemplate,
+  second: ProgramTemplate,
+) {
+  const firstRecency = first.lastActiveAt ?? first.createdAt
+  const secondRecency = second.lastActiveAt ?? second.createdAt
+  return firstRecency === secondRecency
+    ? first.name.localeCompare(second.name)
+    : secondRecency.localeCompare(firstRecency)
 }
 
 function assertSameIds(
@@ -1286,6 +1319,103 @@ async function reindexActiveExercises(
         updatedAt,
       }),
     ),
+  )
+}
+
+async function mergeProgramDays({
+  database,
+  destinationDayId,
+  mode,
+  sourceDayId,
+}: {
+  database: TrainingLogDatabase
+  destinationDayId: string
+  mode: 'template' | 'cycle'
+  sourceDayId: string
+}) {
+  if (sourceDayId === destinationDayId) {
+    throw new Error('Source and destination days must be different.')
+  }
+
+  const now = new Date().toISOString()
+  if (mode === 'template') {
+    return database.transaction(
+      'rw',
+      database.programTemplates,
+      database.templateWorkoutDays,
+      database.templateWorkoutExercises,
+      async () => {
+        const [sourceDay, destinationDay] = await Promise.all([
+          database.templateWorkoutDays.get(sourceDayId),
+          database.templateWorkoutDays.get(destinationDayId),
+        ])
+        if (!sourceDay || !destinationDay) {
+          throw new Error('Merge days were not found.')
+        }
+        if (sourceDay.templateId !== destinationDay.templateId) {
+          throw new Error('Days must belong to the same program.')
+        }
+        const destinationExercises = await database.templateWorkoutExercises
+          .where({ dayId: destinationDayId })
+          .sortBy('orderIndex')
+        const sourceExercises = await database.templateWorkoutExercises
+          .where({ dayId: sourceDayId })
+          .sortBy('orderIndex')
+        await Promise.all(
+          sourceExercises.map((exercise, index) =>
+            database.templateWorkoutExercises.update(exercise.id, {
+              dayId: destinationDayId,
+              orderIndex: destinationExercises.length + index,
+              updatedAt: now,
+            }),
+          ),
+        )
+        await database.templateWorkoutDays.delete(sourceDayId)
+        await reindexTemplateDays(database, sourceDay.templateId, now)
+        await database.programTemplates.update(sourceDay.templateId, {
+          updatedAt: now,
+        })
+      },
+    )
+  }
+
+  return database.transaction(
+    'rw',
+    database.activeProgramCycles,
+    database.activeCycleWorkoutDays,
+    database.activeCycleWorkoutExercises,
+    async () => {
+      const [sourceDay, destinationDay] = await Promise.all([
+        database.activeCycleWorkoutDays.get(sourceDayId),
+        database.activeCycleWorkoutDays.get(destinationDayId),
+      ])
+      if (!sourceDay || !destinationDay) {
+        throw new Error('Merge days were not found.')
+      }
+      if (sourceDay.activeCycleId !== destinationDay.activeCycleId) {
+        throw new Error('Days must belong to the same program.')
+      }
+      const destinationExercises = await database.activeCycleWorkoutExercises
+        .where({ dayId: destinationDayId })
+        .sortBy('orderIndex')
+      const sourceExercises = await database.activeCycleWorkoutExercises
+        .where({ dayId: sourceDayId })
+        .sortBy('orderIndex')
+      await Promise.all(
+        sourceExercises.map((exercise, index) =>
+          database.activeCycleWorkoutExercises.update(exercise.id, {
+            dayId: destinationDayId,
+            orderIndex: destinationExercises.length + index,
+            updatedAt: now,
+          }),
+        ),
+      )
+      await database.activeCycleWorkoutDays.delete(sourceDayId)
+      await reindexActiveDays(database, sourceDay.activeCycleId, now)
+      await database.activeProgramCycles.update(sourceDay.activeCycleId, {
+        updatedAt: now,
+      })
+    },
   )
 }
 

@@ -425,6 +425,125 @@ describe('database', () => {
 
     await destroyTestDatabase(migratedDatabase)
   })
+
+  it('migrates legacy program archive, notes, and duration targets into the library model', async () => {
+    const name = `training-log-v9-program-migration-${crypto.randomUUID()}`
+    const oldDatabase = new Dexie(name)
+    oldDatabase.version(6).stores(v6Stores)
+    await oldDatabase.table('appMetadata').put({
+      id: 'app',
+      databaseSchemaVersion: 6,
+      backupSchemaVersion: 1,
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('programTemplates').put({
+      id: 'template-1',
+      name: 'Archived Program',
+      notes: 'legacy note',
+      status: 'archived',
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('templateWorkoutDays').put({
+      id: 'day-1',
+      templateId: 'template-1',
+      name: 'Day',
+      notes: 'legacy day note',
+      orderIndex: 0,
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('templateWorkoutExercises').put({
+      id: 'exercise-1',
+      templateId: 'template-1',
+      dayId: 'day-1',
+      exerciseId: 'custom-exercise',
+      exerciseSnapshot: {
+        exerciseName: 'Timed Plank',
+        notes: '',
+        defaultRestSeconds: 60,
+        trackingMethodId: 'duration',
+        trackingMetrics: [],
+      },
+      orderIndex: 0,
+      targetSetCount: 1,
+      targetDurationSeconds: 60,
+      targetRepsMin: null,
+      targetRepsMax: null,
+      targetRir: null,
+      restSecondsOverride: null,
+      notes: 'legacy prescription note',
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('activeProgramCycles').put({
+      id: 'cycle-1',
+      sourceTemplateId: 'template-1',
+      name: 'Archived Program',
+      notes: 'legacy cycle note',
+      status: 'archived',
+      activatedAt: '2026-06-19T12:00:00.000Z',
+      createdAt: '2026-06-19T12:00:00.000Z',
+      updatedAt: '2026-06-19T12:00:00.000Z',
+    })
+    await oldDatabase.table('workoutHistoryEntries').put({
+      id: 'history-1',
+      sourceActiveCycleId: 'cycle-1',
+      sourceTemplateId: 'template-1',
+      sourceDayId: 'day-1',
+      localDate: '2026-06-19',
+      name: 'Day',
+      workoutSnapshot: {
+        activeCycleName: 'Archived Program',
+        templateName: 'Archived Program',
+        dayName: 'Day',
+        dayNotes: 'legacy day note',
+      },
+      notes: '',
+      startedAt: '2026-06-19T12:00:00.000Z',
+      completedAt: '2026-06-19T12:30:00.000Z',
+      durationSeconds: 1800,
+      elapsedPausedSeconds: 0,
+      activeRestTimer: null,
+      status: 'completed',
+      createdAt: '2026-06-19T12:30:00.000Z',
+      updatedAt: '2026-06-19T12:30:00.000Z',
+    })
+    oldDatabase.close()
+
+    const migratedDatabase = new TrainingLogDatabase(name)
+
+    await expect(
+      migratedDatabase.programTemplates.get('template-1'),
+    ).resolves.toMatchObject({
+      notes: '',
+      status: 'active',
+      lastActiveAt: '2026-06-19T12:00:00.000Z',
+    })
+    await expect(
+      migratedDatabase.templateWorkoutDays.get('day-1'),
+    ).resolves.toMatchObject({ notes: '' })
+    await expect(
+      migratedDatabase.templateWorkoutExercises.get('exercise-1'),
+    ).resolves.toMatchObject({
+      targetDurationSeconds: null,
+      notes: '',
+    })
+    await expect(
+      migratedDatabase.activeProgramCycles.get('cycle-1'),
+    ).resolves.toMatchObject({ notes: '', status: 'inactive' })
+    await expect(
+      migratedDatabase.workoutHistoryEntries.get('history-1'),
+    ).resolves.toMatchObject({
+      workoutSnapshot: {
+        templateName: 'Archived Program',
+        dayName: 'Day',
+      },
+    })
+
+    await destroyTestDatabase(migratedDatabase)
+  })
 })
 
 const v2Stores = {

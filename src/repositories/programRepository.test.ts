@@ -55,6 +55,12 @@ describe('programRepository', () => {
       database.activeProgramCycles.get(secondActive.cycle.id),
     ).resolves.toMatchObject({ status: 'active' })
     await expect(
+      database.programTemplates.get(first.template.id),
+    ).resolves.toMatchObject({ lastActiveAt: firstActive.cycle.activatedAt })
+    await expect(
+      database.programTemplates.get(second.template.id),
+    ).resolves.toMatchObject({ lastActiveAt: secondActive.cycle.activatedAt })
+    await expect(
       repository.getCurrentActiveCycleStructure(),
     ).resolves.toMatchObject({
       cycle: { id: secondActive.cycle.id },
@@ -275,17 +281,101 @@ describe('programRepository', () => {
     ])
   })
 
-  it('archives program templates instead of deleting them', async () => {
-    const program = await seedProgram(database)
+  it('lists inactive programs by effective recency and excludes the active template', async () => {
     const repository = createProgramRepository(database)
+    const program = await seedProgram(database)
+    const second = await repository.createProgramTemplate({
+      name: 'Never active',
+      days: [],
+    })
+    await repository.activateTemplate(program.template.id)
 
-    await repository.archiveProgramTemplate(program.template.id)
+    const library = await repository.listProgramTemplates()
+
+    expect(library.map((template) => template.id)).toEqual([second.template.id])
+  })
+
+  it('permanently deletes inactive program definitions while preserving workout history', async () => {
+    const repository = createProgramRepository(database)
+    const program = await seedProgram(database)
+    await database.workoutHistoryEntries.add({
+      id: 'history-1',
+      sourceActiveCycleId: null,
+      sourceTemplateId: program.template.id,
+      sourceDayId: program.days[0].id,
+      localDate: '2026-06-18',
+      name: 'Upper',
+      workoutSnapshot: {
+        activeCycleName: null,
+        templateName: 'Upper Lower',
+        dayName: 'Upper',
+        dayNotes: '',
+      },
+      notes: '',
+      startedAt: '2026-06-18T12:00:00.000Z',
+      completedAt: '2026-06-18T12:30:00.000Z',
+      durationSeconds: 1800,
+      elapsedPausedSeconds: 0,
+      activeRestTimer: null,
+      status: 'completed',
+      createdAt: '2026-06-18T12:30:00.000Z',
+      updatedAt: '2026-06-18T12:30:00.000Z',
+    })
+
+    await repository.deleteProgramTemplate(program.template.id)
 
     await expect(
       repository.getTemplate(program.template.id),
+    ).resolves.toBeUndefined()
+    await expect(database.templateWorkoutDays.toArray()).resolves.toEqual([])
+    await expect(database.templateWorkoutExercises.toArray()).resolves.toEqual(
+      [],
+    )
+    await expect(
+      database.workoutHistoryEntries.get('history-1'),
     ).resolves.toMatchObject({
-      id: program.template.id,
-      status: 'archived',
+      workoutSnapshot: { templateName: 'Upper Lower', dayName: 'Upper' },
     })
+  })
+
+  it('blocks deleting the currently active program template', async () => {
+    const repository = createProgramRepository(database)
+    const program = await seedProgram(database)
+    await repository.activateTemplate(program.template.id)
+
+    await expect(
+      repository.deleteProgramTemplate(program.template.id),
+    ).rejects.toThrow('The active program cannot be deleted')
+  })
+
+  it('merges template days by appending source exercises and deleting the source day', async () => {
+    const repository = createProgramRepository(database)
+    const program = await seedProgram(database)
+    const lower = await repository.addTemplateDay(program.template.id, {
+      name: 'Lower',
+    })
+    const exerciseRepository = createExerciseRepository(database)
+    const squat = await exerciseRepository.createExercise({
+      name: 'Squat',
+      defaultRestSeconds: 120,
+      trackingMethodId: 'weight_reps',
+      notes: '',
+    })
+    const added = await repository.addTemplateExercise(lower.id, {
+      exerciseId: squat.id,
+      targetSetCount: 2,
+      targetRepsMin: 5,
+      targetRepsMax: 5,
+    })
+
+    await repository.mergeTemplateDays(lower.id, program.days[0].id)
+
+    const structure = await repository.getTemplateStructure(program.template.id)
+    expect(structure.days.map((day) => day.name)).toEqual(['Upper'])
+    expect(
+      structure.exercisesByDay[program.days[0].id].map(
+        (exercise) => exercise.id,
+      ),
+    ).toEqual([program.exercises[0].id, added.id])
   })
 })

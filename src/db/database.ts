@@ -35,7 +35,7 @@ import type {
   WorkoutSet,
 } from '@shared-types/app'
 
-export const DATABASE_SCHEMA_VERSION = 8
+export const DATABASE_SCHEMA_VERSION = 9
 export const BACKUP_SCHEMA_VERSION = 1
 export const DATABASE_NAME = 'training-log'
 
@@ -349,7 +349,7 @@ export class TrainingLogDatabase extends Dexie {
         }
       })
 
-    this.version(DATABASE_SCHEMA_VERSION)
+    this.version(8)
       .stores({
         appMetadata: '&id',
         userSettings: '&id',
@@ -440,6 +440,149 @@ export class TrainingLogDatabase extends Dexie {
         ) {
           throw new Error('Workout set ownership migration count mismatch.')
         }
+
+        const metadata = await tx.table<AppMetadata>('appMetadata').get('app')
+        if (metadata) {
+          await tx.table<AppMetadata>('appMetadata').put({
+            ...metadata,
+            databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+            backupSchemaVersion: BACKUP_SCHEMA_VERSION,
+            updatedAt: now,
+          })
+        }
+      })
+
+    this.version(DATABASE_SCHEMA_VERSION)
+      .stores({
+        appMetadata: '&id',
+        userSettings: '&id',
+        nutritionTargets: '&id, updatedAt',
+        foods: '&id, status, name, updatedAt',
+        foodLogEntries: '&id, localDate, foodId, createdAt',
+        foodUnitPreferences: '&id, foodId, updatedAt',
+        barcodeProductCache: '&id, &barcode, foodId, updatedAt',
+        bodyweightEntries: '&id, localDate, createdAt, updatedAt',
+        exercises:
+          '&id, status, origin, seedDataVersion, name, trackingMethodId, updatedAt',
+        programTemplates: '&id, status, name, lastActiveAt, updatedAt',
+        templateWorkoutDays: '&id, templateId, [templateId+orderIndex]',
+        templateWorkoutExercises:
+          '&id, templateId, dayId, exerciseId, [dayId+orderIndex]',
+        activeProgramCycles:
+          '&id, sourceTemplateId, status, activatedAt, updatedAt',
+        activeCycleWorkoutDays:
+          '&id, activeCycleId, sourceTemplateDayId, [activeCycleId+orderIndex]',
+        activeCycleWorkoutExercises:
+          '&id, activeCycleId, dayId, exerciseId, sourceTemplateExerciseId, [dayId+orderIndex]',
+        workouts: '&id, status, localDate, sourceActiveCycleId, startedAt',
+        workoutExercises: '&id, workoutId, exerciseId, [workoutId+orderIndex]',
+        workoutSets:
+          '&id, workoutId, workoutExerciseId, [workoutExerciseId+setNumber]',
+        workoutHistoryEntries:
+          '&id, localDate, sourceActiveCycleId, sourceTemplateId, completedAt',
+        workoutHistoryExercises:
+          '&id, workoutId, exerciseId, [workoutId+orderIndex]',
+        workoutHistorySets:
+          '&id, workoutId, workoutExerciseId, [workoutExerciseId+setNumber]',
+        detectedWorkoutChanges: '&id, workoutId, status, type, createdAt',
+        appliedWorkoutChanges: '&id, detectedChangeId, workoutId, appliedAt',
+        runs: '&id, status, localDate, startedAt, completedAt',
+        runSamples:
+          '&id, runId, timestamp, decision, rejectionReason, [runId+timestamp]',
+        runPauses: '&id, runId, startedAt, endedAt',
+        runSplits: '&id, runId, mileNumber, completedAt',
+        runClassifications: '&id, runId, type, startedAt',
+        apiKeyIntegrationSettings: '&id, status, updatedAt',
+        backupMetadata: '&id, createdAt',
+      })
+      .upgrade(async (tx) => {
+        const now = new Date().toISOString()
+        const activeCycles = await tx
+          .table<ActiveProgramCycle>('activeProgramCycles')
+          .toArray()
+        const lastActiveByTemplate = new Map<string, string>()
+
+        await tx.table<ActiveProgramCycle>('activeProgramCycles').bulkPut(
+          activeCycles.map((cycle) => {
+            if (cycle.sourceTemplateId) {
+              const existing = lastActiveByTemplate.get(cycle.sourceTemplateId)
+              if (!existing || cycle.activatedAt > existing) {
+                lastActiveByTemplate.set(
+                  cycle.sourceTemplateId,
+                  cycle.activatedAt,
+                )
+              }
+            }
+            return {
+              ...cycle,
+              notes: '',
+              status: cycle.status === 'archived' ? 'inactive' : cycle.status,
+              updatedAt: now,
+            }
+          }),
+        )
+
+        const templates = await tx
+          .table<ProgramTemplate>('programTemplates')
+          .toArray()
+        await tx.table<ProgramTemplate>('programTemplates').bulkPut(
+          templates.map((template) => ({
+            ...template,
+            notes: '',
+            status: 'active',
+            lastActiveAt:
+              template.lastActiveAt ??
+              lastActiveByTemplate.get(template.id) ??
+              null,
+            updatedAt: now,
+          })),
+        )
+
+        const templateDays = await tx
+          .table<ProgramTemplateDay>('templateWorkoutDays')
+          .toArray()
+        await tx
+          .table<ProgramTemplateDay>('templateWorkoutDays')
+          .bulkPut(
+            templateDays.map((day) => ({ ...day, notes: '', updatedAt: now })),
+          )
+
+        const templateExercises = await tx
+          .table<TemplateWorkoutExercise>('templateWorkoutExercises')
+          .toArray()
+        await tx
+          .table<TemplateWorkoutExercise>('templateWorkoutExercises')
+          .bulkPut(
+            templateExercises.map((exercise) => ({
+              ...exercise,
+              targetDurationSeconds: null,
+              notes: '',
+              updatedAt: now,
+            })),
+          )
+
+        const activeDays = await tx
+          .table<ActiveCycleWorkoutDay>('activeCycleWorkoutDays')
+          .toArray()
+        await tx
+          .table<ActiveCycleWorkoutDay>('activeCycleWorkoutDays')
+          .bulkPut(
+            activeDays.map((day) => ({ ...day, notes: '', updatedAt: now })),
+          )
+
+        const activeExercises = await tx
+          .table<ActiveCycleWorkoutExercise>('activeCycleWorkoutExercises')
+          .toArray()
+        await tx
+          .table<ActiveCycleWorkoutExercise>('activeCycleWorkoutExercises')
+          .bulkPut(
+            activeExercises.map((exercise) => ({
+              ...exercise,
+              targetDurationSeconds: null,
+              notes: '',
+              updatedAt: now,
+            })),
+          )
 
         const metadata = await tx.table<AppMetadata>('appMetadata').get('app')
         if (metadata) {

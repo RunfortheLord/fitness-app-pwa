@@ -322,7 +322,7 @@ async function addPrescription(
 }
 
 async function closeBuilder(builder: Locator) {
-  await builder.getByRole('button', { name: /Save (template|cycle)/ }).click()
+  await builder.getByRole('button', { name: /^Close edit/ }).click()
   await expect(builder).not.toBeVisible()
 }
 

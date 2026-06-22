@@ -542,6 +542,13 @@ not add distance or moving time.
   cache, optional food barcode source metadata, and timer sound preferences.
   The migration is additive and initializes missing timer settings without
   changing existing foods, logs, programs, active workouts, or history.
+- Schema version 9 adds `lastActiveAt` to program templates, removes archived
+  program-template workflow state by returning archived templates to the
+  inactive Program Library, clears legacy program/day/prescription note fields,
+  and clears programmed duration targets. It preserves completed workout
+  history, historical program/day snapshots, nutrition logs, bodyweight data,
+  custom foods, custom exercises, settings, API-key settings, barcode settings,
+  and existing database/storage identifiers.
 
 ## Transaction Boundaries
 
@@ -573,7 +580,7 @@ not add distance or moving time.
 - JSON backup is authoritative and full fidelity.
 - CSV export is derived from stores for readability and does not need to support restore.
 - Import preview summarizes counts, schema versions, conflicts, and whether merge or replace is selected.
-- Current backup format version is `1`, separate from IndexedDB schema version `8`.
+- Current backup format version is `1`, separate from IndexedDB schema version `9`.
 - Backup root fields are `backupFormatVersion`, `databaseSchemaVersion`,
   `applicationVersion`, `exportedAt`, and `data`.
 - Restore supports backup format version `1` when the backup database schema

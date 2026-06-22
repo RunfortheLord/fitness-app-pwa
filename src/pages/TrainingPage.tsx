@@ -1,6 +1,7 @@
 import {
-  Archive,
   ArrowLeft,
+  ArrowDown,
+  ArrowUp,
   ChevronDown,
   Copy,
   Dumbbell,
@@ -82,7 +83,8 @@ type SheetState =
   | null
 type ProgramConfirmation =
   | { type: 'activate'; template: ProgramTemplate }
-  | { type: 'archive'; template: ProgramTemplate }
+  | { type: 'delete-first'; template: ProgramTemplate }
+  | { type: 'delete-final'; template: ProgramTemplate }
   | null
 
 type ExerciseFormState = {
@@ -109,7 +111,6 @@ type LoadState = {
 
 type ProgramFormState = {
   name: string
-  notes: string
 }
 
 type PrescriptionFormState = {
@@ -134,7 +135,6 @@ const emptyExerciseForm: ExerciseFormState = {
 
 const emptyProgramForm: ProgramFormState = {
   name: '',
-  notes: '',
 }
 
 const emptyPrescriptionForm: PrescriptionFormState = {
@@ -156,6 +156,9 @@ export function TrainingPage() {
   const [view, setView] = useState<ExerciseView>('active')
   const [isLibraryExpanded, setIsLibraryExpanded] = useState(false)
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false)
+  const [isProgramLibraryExpanded, setIsProgramLibraryExpanded] =
+    useState(false)
+  const [programSearchQuery, setProgramSearchQuery] = useState('')
   const [trackingCategory, setTrackingCategory] =
     useState<ExerciseTrackingCategory>('all')
   const [primaryMuscle, setPrimaryMuscle] = useState<MuscleGroup | 'all'>('all')
@@ -259,9 +262,6 @@ export function TrainingPage() {
         onActivate={(template) =>
           setProgramConfirmation({ type: 'activate', template })
         }
-        onArchive={(template) =>
-          setProgramConfirmation({ type: 'archive', template })
-        }
         onClone={(templateId) => {
           void programRepository.cloneProgramTemplate(templateId).then(() => {
             setMessage('Program cloned.')
@@ -269,12 +269,21 @@ export function TrainingPage() {
           })
         }}
         onCreateProgram={() => setSheet({ type: 'createProgram' })}
+        onDelete={(template) =>
+          setProgramConfirmation({ type: 'delete-first', template })
+        }
         onEdit={(templateId) =>
           setSheet({
             type: 'builder',
             target: { mode: 'template', templateId },
           })
         }
+        isExpanded={isProgramLibraryExpanded}
+        onToggleExpanded={() =>
+          setIsProgramLibraryExpanded((current) => !current)
+        }
+        query={programSearchQuery}
+        setQuery={setProgramSearchQuery}
         templates={loadState.templates.filter(
           (template) =>
             template.id !== loadState.currentCycle?.cycle.sourceTemplateId,
@@ -411,7 +420,11 @@ export function TrainingPage() {
       ) : null}
       <ModalConfirmationDialog
         confirmLabel={
-          programConfirmation?.type === 'archive' ? 'Archive' : 'Activate'
+          programConfirmation?.type === 'delete-first'
+            ? 'Remove'
+            : programConfirmation?.type === 'delete-final'
+              ? 'Permanently Delete'
+              : 'Activate'
         }
         isOpen={programConfirmation !== null}
         onCancel={() => setProgramConfirmation(null)}
@@ -442,23 +455,37 @@ export function TrainingPage() {
             return
           }
 
-          const { id } = programConfirmation.template
-          setProgramConfirmation(null)
-          void programRepository.archiveProgramTemplate(id).then(() => {
-            setMessage('Program archived.')
-            reload()
-          })
+          if (programConfirmation.type === 'delete-first') {
+            setProgramConfirmation({
+              type: 'delete-final',
+              template: programConfirmation.template,
+            })
+            return
+          }
+
+          if (programConfirmation.type === 'delete-final') {
+            const { id } = programConfirmation.template
+            setProgramConfirmation(null)
+            void programRepository.deleteProgramTemplate(id).then(() => {
+              setMessage('Program permanently deleted.')
+              reload()
+            })
+          }
         }}
         title={
-          programConfirmation?.type === 'archive'
-            ? 'Archive program?'
-            : 'Activate program?'
+          programConfirmation?.type === 'delete-first'
+            ? 'Remove program?'
+            : programConfirmation?.type === 'delete-final'
+              ? 'Permanently delete program?'
+              : 'Activate program?'
         }
       >
         <p>
-          {programConfirmation?.type === 'archive'
-            ? `Archive ${programConfirmation.template.name}. Completed workout history is preserved.`
-            : `Activate ${programConfirmation?.template.name ?? 'this program'} as an independent current cycle.`}
+          {programConfirmation?.type === 'delete-first'
+            ? `Remove ${programConfirmation.template.name} from the Program Library?`
+            : programConfirmation?.type === 'delete-final'
+              ? `${programConfirmation.template.name} will be permanently deleted. Completed workout history, historical program names, and historical day names are preserved.`
+              : `Activate ${programConfirmation?.template.name ?? 'this program'} as the active program. The current active program will become inactive and return to the Program Library.`}
         </p>
       </ModalConfirmationDialog>
     </PageContainer>
@@ -563,26 +590,44 @@ function ProgramOverview({
 }
 
 function ProgramLibrary({
+  isExpanded,
   loadStatus,
   onActivate,
-  onArchive,
   onClone,
   onCreateProgram,
+  onDelete,
   onEdit,
+  onToggleExpanded,
+  query,
+  setQuery,
   templates,
 }: {
+  isExpanded: boolean
   loadStatus: LoadState['status']
   onActivate: (template: ProgramTemplate) => void
-  onArchive: (template: ProgramTemplate) => void
   onClone: (templateId: string) => void
   onCreateProgram: () => void
+  onDelete: (template: ProgramTemplate) => void
   onEdit: (templateId: string) => void
+  onToggleExpanded: () => void
+  query: string
+  setQuery: (query: string) => void
   templates: ProgramTemplate[]
 }) {
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const filteredTemplates = normalizedQuery
+    ? templates.filter((template) =>
+        template.name.toLocaleLowerCase().includes(normalizedQuery),
+      )
+    : templates
+  const visibleTemplates = isExpanded
+    ? filteredTemplates
+    : filteredTemplates.slice(0, 3)
+
   return (
     <>
       <SectionHeader
-        title="Program library"
+        title={isExpanded ? 'Full Program Library' : 'Program library'}
         action={
           <IconButton aria-label="Create program" onClick={onCreateProgram}>
             <Plus aria-hidden="true" size={20} />
@@ -590,13 +635,27 @@ function ProgramLibrary({
         }
       />
       <Card>
+        {isExpanded ? (
+          <FormField id="program-library-search" label="Search programs">
+            <div className="input-icon-row">
+              <Search aria-hidden="true" size={18} />
+              <input
+                id="program-library-search"
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search programs"
+                type="search"
+                value={query}
+              />
+            </div>
+          </FormField>
+        ) : null}
         {loadStatus === 'loading' ? (
           <LoadingState label="Loading programs" />
         ) : null}
-        {loadStatus === 'ready' && !templates.length ? (
+        {loadStatus === 'ready' && !filteredTemplates.length ? (
           <EmptyState
-            title="No program templates"
-            message="Reusable templates stay separate from active cycles and workout history."
+            title={query.trim() ? 'No programs found' : 'No inactive programs'}
+            message="Inactive programs appear here. The active program stays in the Active Program area."
             action={
               <SecondaryButton type="button" onClick={onCreateProgram}>
                 Create program
@@ -604,13 +663,17 @@ function ProgramLibrary({
             }
           />
         ) : null}
-        {loadStatus === 'ready' && templates.length ? (
+        {loadStatus === 'ready' && filteredTemplates.length ? (
           <div className="program-library-list">
-            {templates.map((template) => (
+            {visibleTemplates.map((template) => (
               <div className="program-template-row" key={template.id}>
                 <div>
                   <strong>{template.name}</strong>
-                  {template.notes ? <small>{template.notes}</small> : null}
+                  <small>
+                    {template.lastActiveAt
+                      ? `Last active ${formatTimestamp(template.lastActiveAt)}`
+                      : `Created ${formatTimestamp(template.createdAt)}`}
+                  </small>
                 </div>
                 <div className="row-actions">
                   <IconButton
@@ -632,14 +695,24 @@ function ProgramLibrary({
                     <Copy aria-hidden="true" size={18} />
                   </IconButton>
                   <IconButton
-                    aria-label={`Archive ${template.name}`}
-                    onClick={() => onArchive(template)}
+                    aria-label={`Delete ${template.name}`}
+                    onClick={() => onDelete(template)}
                   >
-                    <Archive aria-hidden="true" size={18} />
+                    <Trash2 aria-hidden="true" size={18} />
                   </IconButton>
                 </div>
               </div>
             ))}
+            {!isExpanded && templates.length > 3 ? (
+              <SecondaryButton type="button" onClick={onToggleExpanded}>
+                Show More
+              </SecondaryButton>
+            ) : null}
+            {isExpanded ? (
+              <SecondaryButton type="button" onClick={onToggleExpanded}>
+                Show Less
+              </SecondaryButton>
+            ) : null}
           </div>
         ) : null}
       </Card>
@@ -669,7 +742,6 @@ function ProgramCreateSheet({
     void programRepository
       .createProgramTemplate({
         name,
-        notes: form.notes.trim(),
         days: [],
       })
       .then((created) => onCreated(created.template.id))
@@ -689,15 +761,6 @@ function ProgramCreateSheet({
             setForm((current) => ({ ...current, name: event.target.value }))
           }
           value={form.name}
-        />
-      </FormField>
-      <FormField id="program-notes" label="Notes">
-        <textarea
-          id="program-notes"
-          onChange={(event) =>
-            setForm((current) => ({ ...current, notes: event.target.value }))
-          }
-          value={form.notes}
         />
       </FormField>
       {error ? <ValidationMessage message={error} /> : null}
@@ -743,6 +806,14 @@ function ProgramBuilderSheet({
     | { type: 'exercise'; id: string; name: string }
     | null
   >(null)
+  const [mergeSelection, setMergeSelection] = useState({
+    sourceDayId: '',
+    destinationDayId: '',
+  })
+  const [mergeConfirmation, setMergeConfirmation] = useState<{
+    sourceDayId: string
+    destinationDayId: string
+  } | null>(null)
 
   const mode: BuilderMode = target.mode
 
@@ -763,7 +834,6 @@ function ProgramBuilderSheet({
           })
           setNameForm({
             name: loaded.template.name,
-            notes: loaded.template.notes,
           })
         })
         .catch((caught: unknown) => {
@@ -785,7 +855,7 @@ function ProgramBuilderSheet({
             days: loaded.days,
             exercisesByDay: loaded.exercisesByDay,
           })
-          setNameForm({ name: loaded.cycle.name, notes: loaded.cycle.notes })
+          setNameForm({ name: loaded.cycle.name })
         })
         .catch((caught: unknown) => {
           setError(
@@ -812,7 +882,7 @@ function ProgramBuilderSheet({
             days: loaded.days,
             exercisesByDay: loaded.exercisesByDay,
           })
-          setNameForm({ name: record.name, notes: record.notes })
+          setNameForm({ name: record.name })
           onChanged()
         })
     } else {
@@ -825,7 +895,7 @@ function ProgramBuilderSheet({
             days: loaded.days,
             exercisesByDay: loaded.exercisesByDay,
           })
-          setNameForm({ name: record.name, notes: record.notes })
+          setNameForm({ name: record.name })
           onChanged()
         })
     }
@@ -844,12 +914,15 @@ function ProgramBuilderSheet({
       })
   }
 
-  function saveName() {
+  function saveName({ closeAfterSave = false } = {}) {
     if (!structure || !nameForm.name.trim()) {
       setError('Program name is required.')
       return
     }
-    const input = { name: nameForm.name.trim(), notes: nameForm.notes.trim() }
+    if (nameForm.name.trim() === structure.record.name) {
+      return
+    }
+    const input = { name: nameForm.name.trim() }
     const action =
       mode === 'template'
         ? programRepository.updateProgramTemplate(structure.record.id, input)
@@ -859,7 +932,11 @@ function ProgramBuilderSheet({
       .then(() => {
         setError(null)
         onChanged()
-        onClose()
+        if (closeAfterSave) {
+          onClose()
+        } else {
+          refresh()
+        }
       })
       .catch((caught: unknown) => {
         setError(
@@ -939,10 +1016,11 @@ function ProgramBuilderSheet({
     const currentIndex = dayExercises.findIndex(
       (exercise) => exercise.id === exerciseId,
     )
-    const nextIndex = currentIndex + direction
-    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= dayExercises.length) {
+    if (currentIndex < 0 || dayExercises.length < 2) {
       return
     }
+    const nextIndex =
+      (currentIndex + direction + dayExercises.length) % dayExercises.length
     const ordered = dayExercises.map((exercise) => exercise.id)
     const [id] = ordered.splice(currentIndex, 1)
     ordered.splice(nextIndex, 0, id)
@@ -951,6 +1029,38 @@ function ProgramBuilderSheet({
         ? programRepository.reorderTemplateExercises(dayId, ordered)
         : programRepository.reorderActiveCycleExercises(dayId, ordered),
     )
+  }
+
+  function confirmMergeDays() {
+    if (!mergeSelection.sourceDayId || !mergeSelection.destinationDayId) {
+      setError('Choose source and destination days to merge.')
+      return
+    }
+    if (mergeSelection.sourceDayId === mergeSelection.destinationDayId) {
+      setError('Source and destination days must be different.')
+      return
+    }
+    setMergeConfirmation(mergeSelection)
+  }
+
+  function mergeDaysConfirmed() {
+    if (!mergeConfirmation) {
+      return
+    }
+    const target = mergeConfirmation
+    setMergeConfirmation(null)
+    run(
+      mode === 'template'
+        ? programRepository.mergeTemplateDays(
+            target.sourceDayId,
+            target.destinationDayId,
+          )
+        : programRepository.mergeActiveCycleDays(
+            target.sourceDayId,
+            target.destinationDayId,
+          ),
+    )
+    setMergeSelection({ sourceDayId: '', destinationDayId: '' })
   }
 
   return (
@@ -985,6 +1095,7 @@ function ProgramBuilderSheet({
             <FormField id="builder-program-name" label="Name">
               <input
                 id="builder-program-name"
+                onBlur={() => saveName()}
                 onChange={(event) =>
                   setNameForm((current) => ({
                     ...current,
@@ -994,21 +1105,6 @@ function ProgramBuilderSheet({
                 value={nameForm.name}
               />
             </FormField>
-            <FormField id="builder-program-notes" label="Notes">
-              <textarea
-                id="builder-program-notes"
-                onChange={(event) =>
-                  setNameForm((current) => ({
-                    ...current,
-                    notes: event.target.value,
-                  }))
-                }
-                value={nameForm.notes}
-              />
-            </FormField>
-            <PrimaryButton type="button" onClick={saveName}>
-              Save {mode === 'template' ? 'template' : 'cycle'}
-            </PrimaryButton>
 
             <div className="program-builder-add">
               <FormField id="new-day-name" label="Add workout day">
@@ -1023,6 +1119,52 @@ function ProgramBuilderSheet({
                 Add day
               </SecondaryButton>
             </div>
+
+            {structure.days.length > 1 ? (
+              <div className="program-builder-merge">
+                <FormField id="merge-source-day" label="Source day">
+                  <select
+                    id="merge-source-day"
+                    onChange={(event) =>
+                      setMergeSelection((current) => ({
+                        ...current,
+                        sourceDayId: event.target.value,
+                      }))
+                    }
+                    value={mergeSelection.sourceDayId}
+                  >
+                    <option value="">Choose source</option>
+                    {structure.days.map((day) => (
+                      <option key={day.id} value={day.id}>
+                        {day.name}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField id="merge-destination-day" label="Destination day">
+                  <select
+                    id="merge-destination-day"
+                    onChange={(event) =>
+                      setMergeSelection((current) => ({
+                        ...current,
+                        destinationDayId: event.target.value,
+                      }))
+                    }
+                    value={mergeSelection.destinationDayId}
+                  >
+                    <option value="">Choose destination</option>
+                    {structure.days.map((day) => (
+                      <option key={day.id} value={day.id}>
+                        {day.name}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+                <SecondaryButton type="button" onClick={confirmMergeDays}>
+                  Merge Days
+                </SecondaryButton>
+              </div>
+            ) : null}
 
             <div className="program-builder-days">
               {structure.days.map((day, dayIndex) => (
@@ -1095,7 +1237,7 @@ function ProgramBuilderSheet({
 
                   <div className="program-prescription-list">
                     {(structure.exercisesByDay[day.id] ?? []).map(
-                      (prescribed, exerciseIndex, dayExercises) => (
+                      (prescribed) => (
                         <div
                           className="program-prescription-row"
                           key={prescribed.id}
@@ -1123,23 +1265,19 @@ function ProgramBuilderSheet({
                             </IconButton>
                             <IconButton
                               aria-label={`Move ${prescribed.exerciseSnapshot.exerciseName} up`}
-                              disabled={exerciseIndex === 0}
                               onClick={() =>
                                 moveExercise(day.id, prescribed.id, -1)
                               }
                             >
-                              <RotateCcw aria-hidden="true" size={18} />
+                              <ArrowUp aria-hidden="true" size={18} />
                             </IconButton>
                             <IconButton
                               aria-label={`Move ${prescribed.exerciseSnapshot.exerciseName} down`}
-                              disabled={
-                                exerciseIndex === dayExercises.length - 1
-                              }
                               onClick={() =>
                                 moveExercise(day.id, prescribed.id, 1)
                               }
                             >
-                              <RotateCcw aria-hidden="true" size={18} />
+                              <ArrowDown aria-hidden="true" size={18} />
                             </IconButton>
                             <IconButton
                               aria-label={`Remove ${prescribed.exerciseSnapshot.exerciseName} prescription`}
@@ -1178,7 +1316,9 @@ function ProgramBuilderSheet({
         {error ? <ValidationMessage message={error} /> : null}
       </BottomSheet>
       <ModalConfirmationDialog
-        confirmLabel="Remove"
+        confirmLabel={
+          removeConfirmation?.type === 'day' ? 'Delete Day' : 'Remove'
+        }
         isOpen={removeConfirmation !== null}
         onCancel={() => setRemoveConfirmation(null)}
         onConfirm={removeConfirmed}
@@ -1190,8 +1330,21 @@ function ProgramBuilderSheet({
       >
         <p>
           {removeConfirmation?.type === 'day'
-            ? `Remove ${removeConfirmation.name} from this ${mode}.`
+            ? `${removeConfirmation.name} and its programmed exercises will be permanently deleted. Completed workout history is preserved.`
             : `Remove ${removeConfirmation?.name ?? 'this exercise'} from this workout day.`}
+        </p>
+      </ModalConfirmationDialog>
+      <ModalConfirmationDialog
+        confirmLabel="Merge Days"
+        isOpen={mergeConfirmation !== null}
+        onCancel={() => setMergeConfirmation(null)}
+        onConfirm={mergeDaysConfirmed}
+        title="Merge workout days?"
+      >
+        <p>
+          Source-day exercises will be appended to the destination day, then the
+          source day will be permanently deleted. Completed workout history is
+          preserved.
         </p>
       </ModalConfirmationDialog>
     </>
@@ -1517,20 +1670,6 @@ function PrescriptionEditor({
                       update('targetWeight', event.target.value)
                     }
                     value={form.targetWeight}
-                  />
-                </FormField>
-              ) : null}
-              {selectedExercise.trackingMethodId === 'duration' ? (
-                <FormField
-                  id="target-duration"
-                  label="Duration target (seconds)"
-                >
-                  <NumericInput
-                    id="target-duration"
-                    onChange={(event) =>
-                      update('targetDurationSeconds', event.target.value)
-                    }
-                    value={form.targetDurationSeconds}
                   />
                 </FormField>
               ) : null}
@@ -2277,7 +2416,7 @@ function parsePrescriptionForm(
   | { ok: false; error: string } {
   const targetSetCount = Number(form.targetSetCount)
   const targetWeight = parseOptionalNumber(form.targetWeight)
-  const targetDurationSeconds = parseOptionalNumber(form.targetDurationSeconds)
+  const targetDurationSeconds = { ok: true, value: null } as const
   const targetDistance = parseOptionalNumber(form.targetDistance)
   const targetRepsMin = parseOptionalInteger(form.targetRepsMin)
   const targetRepsMax = parseOptionalInteger(form.targetRepsMax)
@@ -2321,13 +2460,6 @@ function parsePrescriptionForm(
     targetWeightValue < 0
   ) {
     return { ok: false, error: 'Weight target cannot be negative.' }
-  }
-
-  if (
-    exercise.trackingMethodId === 'duration' &&
-    (targetDurationSecondsValue === null || targetDurationSecondsValue <= 0)
-  ) {
-    return { ok: false, error: 'Duration target must be positive.' }
   }
 
   if (
