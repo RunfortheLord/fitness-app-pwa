@@ -94,7 +94,13 @@ export function formatFoodServingLabel(food: FoodServingSource) {
   const parts = servingParts(food)
   const primary = choosePrimaryServing(parts)
   if (primary.key === 'serving' && parts.gramsPerServing) {
-    return `${primary.label} (${round(parts.gramsPerServing)} g)`
+    const gramsText = `${round(parts.gramsPerServing)} g`
+    // Avoid redundant labels like "36 g (36 g)" when the serving label already
+    // expresses the same gram weight.
+    if (primary.label.includes(gramsText)) {
+      return primary.label
+    }
+    return `${primary.label} (${gramsText})`
   }
   return primary.label
 }
@@ -220,7 +226,15 @@ function sourceHouseholdPortion(parts: ServingParts): FoodServingOption | null {
 }
 
 function servingDescription(parts: ServingParts) {
-  const base = `${round(parts.quantity)} ${parts.unit || parts.description || 'serving'}`
+  const unitText = (parts.unit || parts.description || 'serving').trim()
+  // Some providers (e.g. Open Food Facts) store the serving size as a full
+  // string such as "36 g" that already includes the amount. Prefixing the
+  // quantity then produced confusing labels like "1 36 g", so when the unit
+  // already begins with a number for a single serving, show it as-is.
+  const base =
+    parts.quantity === 1 && /^\d/.test(unitText)
+      ? unitText
+      : `${round(parts.quantity)} ${unitText}`
   if (parts.description && parts.description !== parts.unit) {
     return parts.description.includes(base)
       ? parts.description

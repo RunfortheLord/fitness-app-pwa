@@ -113,6 +113,40 @@ describe('food serving helpers', () => {
     expect(formatFoodServingLabel(food)).toBe('2 cookies (30 g)')
   })
 
+  it('does not double the amount when the serving unit already includes it', () => {
+    const food: Food = {
+      ...baseFood,
+      id: 'protein-bar',
+      name: 'Protein bar',
+      servingQuantity: 1,
+      servingUnit: '36 g',
+      servingDescription: '36 g',
+      gramsPerServing: 36,
+      ouncesPerServing: 1.27,
+      providerDataType: 'Branded',
+    }
+
+    expect(servingOptionsForFood(food)[0].label).toBe('36 g')
+    // Avoids both "1 36 g" and the redundant "36 g (36 g)".
+    expect(formatFoodServingLabel(food)).toBe('36 g')
+  })
+
+  it('still shows the household amount for branded foods without a numeric unit', () => {
+    const food: Food = {
+      ...baseFood,
+      id: 'crackers',
+      name: 'Crackers',
+      servingQuantity: 5,
+      servingUnit: 'crackers',
+      servingDescription: '5 crackers',
+      gramsPerServing: 30,
+      ouncesPerServing: 1.058,
+      providerDataType: 'Branded',
+    }
+
+    expect(formatFoodServingLabel(food)).toBe('5 crackers (30 g)')
+  })
+
   it('formats calories and macros for display', () => {
     expect(formatCalories(123.6)).toBe('124')
     expect(formatMacroGram(3)).toBe('3.0')
