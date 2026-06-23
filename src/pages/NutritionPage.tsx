@@ -1385,13 +1385,6 @@ function FoodFormSheet({
       onClose={onClose}
       title={food ? 'Edit food' : 'Create food'}
     >
-      <FoodFormFields form={form} update={update} />
-      {error ? <ValidationMessage message={error} /> : null}
-      {Object.keys(fieldErrors).length ? (
-        <StatusMessage tone="warning">
-          Fix the highlighted food fields and save again.
-        </StatusMessage>
-      ) : null}
       <div className="button-row">
         <PrimaryButton type="button" onClick={saveFood}>
           Save food
@@ -1407,6 +1400,13 @@ function FoodFormSheet({
           </SecondaryButton>
         ) : null}
       </div>
+      {error ? <ValidationMessage message={error} /> : null}
+      {Object.keys(fieldErrors).length ? (
+        <StatusMessage tone="warning">
+          Fix the highlighted food fields and save again.
+        </StatusMessage>
+      ) : null}
+      <FoodFormFields form={form} update={update} />
     </Sheet>
   )
 }
@@ -1467,6 +1467,7 @@ function FoodFormFields({
         />
       </FormField>
       <MacroInputs form={form} update={update} />
+      <FoodCalorieEquation form={form} />
       <FormField id="food-notes" label="Notes">
         <textarea
           id="food-notes"
@@ -1548,6 +1549,24 @@ function MacroInputs({
         />
       </FormField>
     </>
+  )
+}
+
+function FoodCalorieEquation({ form }: { form: typeof emptyFoodForm }) {
+  const proteinGrams = parseNonNegativeNumber(form.proteinGramsPerServing) ?? 0
+  const carbohydrateGrams =
+    parseNonNegativeNumber(form.carbohydrateGramsPerServing) ?? 0
+  const fatGrams = parseNonNegativeNumber(form.fatGramsPerServing) ?? 0
+  const calories = macroCaloriesFromGrams({
+    proteinGrams,
+    carbohydrateGrams,
+    fatGrams,
+  })
+  return (
+    <p className="macro-calorie-equation">
+      P {proteinGrams}g x 4 + C {carbohydrateGrams}g x 4 + F {fatGrams}g x 9 ={' '}
+      {calories} kcal
+    </p>
   )
 }
 
@@ -2136,13 +2155,25 @@ function calculateMacroCalories(form: typeof emptyTargets) {
   const carbohydrateGrams = parseNonNegativeNumber(form.carbohydrateGrams) ?? 0
   const fatGrams = parseNonNegativeNumber(form.fatGrams) ?? 0
   return {
-    calories: Math.round(
-      proteinGrams * 4 + carbohydrateGrams * 4 + fatGrams * 9,
-    ),
+    calories: macroCaloriesFromGrams({
+      proteinGrams,
+      carbohydrateGrams,
+      fatGrams,
+    }),
     carbohydrateGrams,
     fatGrams,
     proteinGrams,
   }
+}
+
+function macroCaloriesFromGrams(input: {
+  proteinGrams: number
+  carbohydrateGrams: number
+  fatGrams: number
+}) {
+  return Math.round(
+    input.proteinGrams * 4 + input.carbohydrateGrams * 4 + input.fatGrams * 9,
+  )
 }
 
 function parsePositiveNumber(value: string) {

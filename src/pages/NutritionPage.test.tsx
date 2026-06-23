@@ -175,6 +175,36 @@ describe('NutritionPage', () => {
     expect(await screen.findByText('0 g / 160 g')).toBeInTheDocument()
   })
 
+  it('shows the calorie equation and keeps Save food at the top of the form', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await user.click(screen.getByRole('button', { name: /Create custom food/ }))
+    await expectSaveFoodAvailable()
+
+    const dialog = screen.getByRole('dialog', { name: 'Create food' })
+    // Save food is rendered before the Name field in the DOM (i.e. at the top).
+    const saveButton = within(dialog).getByRole('button', { name: 'Save food' })
+    const nameField = within(dialog).getByRole('textbox', { name: 'Name' })
+    expect(
+      saveButton.compareDocumentPosition(nameField) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+
+    await fillFoodForm(user, {
+      name: 'Oats',
+      calories: '200',
+      protein: '5',
+      carbs: '40',
+      fat: '3',
+    })
+
+    // 5*4 + 40*4 + 3*9 = 207
+    expect(
+      screen.getByText('P 5g x 4 + C 40g x 4 + F 3g x 9 = 207 kcal'),
+    ).toBeInTheDocument()
+  })
+
   it('searches with the server key when no user key is configured and surfaces a server missing-key response', async () => {
     const user = userEvent.setup()
     mockSearchProviderFoods.mockRejectedValue(
