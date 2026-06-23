@@ -64,7 +64,7 @@ describe('NutritionPage', () => {
     await screen.findByText('Connected')
 
     await screen.findByText('No recent foods')
-    await user.click(screen.getByRole('button', { name: 'Create food' }))
+    await user.click(screen.getByRole('button', { name: /Create custom food/ }))
     await expectSaveFoodAvailable()
     await fillFoodForm(user, {
       name: 'Rice',
@@ -74,6 +74,11 @@ describe('NutritionPage', () => {
       fat: '1',
     })
     await user.click(screen.getByRole('button', { name: 'Save food' }))
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: 'Create food' }),
+      ).not.toBeInTheDocument(),
+    )
 
     await user.type(
       screen.getByRole('searchbox', { name: 'Search foods' }),
@@ -339,7 +344,7 @@ describe('NutritionPage', () => {
     renderNutrition()
 
     await screen.findByText('No recent foods')
-    await user.click(screen.getByRole('button', { name: 'Create food' }))
+    await user.click(screen.getByRole('button', { name: /Create custom food/ }))
     await fillFoodForm(user, {
       name: 'Zero tea',
       calories: '0',
@@ -357,6 +362,67 @@ describe('NutritionPage', () => {
       carbohydrateGramsPerServing: 0,
       fatGramsPerServing: 0,
     })
+  })
+
+  it('quick adds calories with optional macros and shows only three recent foods', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Quick add nutrition' }),
+    )
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Snack')
+    await user.type(screen.getByRole('textbox', { name: 'Calories' }), '250')
+    await user.type(screen.getByRole('textbox', { name: 'Protein' }), '20')
+    await user.click(screen.getByRole('button', { name: 'Log quick add' }))
+
+    expect(await screen.findByText('Quick add logged.')).toBeInTheDocument()
+    await expect(
+      screen.findByText(/1x 1 entry - 250 kcal - P 20 C 0 F 0/),
+    ).resolves.toBeInTheDocument()
+
+    for (const name of [
+      'Recent one',
+      'Recent two',
+      'Recent three',
+      'Recent four',
+    ]) {
+      await user.click(
+        screen.getByRole('button', { name: /Create custom food/ }),
+      )
+      await fillFoodForm(user, {
+        name,
+        calories: '100',
+        protein: '1',
+        carbs: '2',
+        fat: '3',
+      })
+      await user.click(screen.getByRole('button', { name: 'Save food' }))
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('dialog', { name: 'Create food' }),
+        ).not.toBeInTheDocument(),
+      )
+      await user.type(
+        screen.getByRole('searchbox', { name: 'Search foods' }),
+        name,
+      )
+      await user.click(
+        await screen.findByRole('button', { name: `Select ${name}` }),
+      )
+      await user.click(screen.getByRole('button', { name: 'Log food' }))
+      await user.clear(screen.getByRole('searchbox', { name: 'Search foods' }))
+      await new Promise((resolve) => setTimeout(resolve, 2))
+    }
+
+    const recentCard = await screen.findByRole('region', {
+      name: 'Recent foods',
+    })
+    expect(within(recentCard).getByText('Recent four')).toBeInTheDocument()
+    expect(within(recentCard).getByText('Recent three')).toBeInTheDocument()
+    expect(within(recentCard).getByText('Recent two')).toBeInTheDocument()
+    expect(within(recentCard).queryByText('Recent one')).not.toBeInTheDocument()
+    expect(within(recentCard).queryByText('Snack')).not.toBeInTheDocument()
   })
 })
 

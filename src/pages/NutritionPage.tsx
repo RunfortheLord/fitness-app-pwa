@@ -3,7 +3,9 @@ import {
   Camera,
   CopyPlus,
   Edit2,
+  Flame,
   Plus,
+  ReceiptText,
   Search,
   Trash2,
   Utensils,
@@ -75,6 +77,7 @@ type SheetState =
   | { type: 'food'; food: Food | null; initialForm?: FoodFormState }
   | { type: 'select'; result: FoodSearchResult }
   | { type: 'entry'; entry: FoodLogEntry }
+  | { type: 'quickAdd' }
   | { type: 'scanner' }
   | null
 
@@ -141,6 +144,14 @@ const emptyTargets = {
   fatGrams: '',
 }
 
+const emptyQuickAddForm = {
+  name: '',
+  calories: '',
+  proteinGrams: '',
+  carbohydrateGrams: '',
+  fatGrams: '',
+}
+
 export function NutritionPage() {
   const { refreshDashboard, selectedDate, setSelectedDate } =
     useDashboardContext()
@@ -176,7 +187,7 @@ export function NutritionPage() {
     void Promise.all([
       foodRepository.searchFoods(query),
       foodRepository.listFoodLogsByDate(selectedDate),
-      foodRepository.listRecentFoods(5),
+      foodRepository.listRecentFoods(3),
       nutritionSummaryService.getDailySummary(selectedDate),
     ])
       .then(([foods, logs, recentFoods, summary]) => {
@@ -359,18 +370,30 @@ export function NutritionPage() {
           <FoodSearchCard
             providerSearch={providerSearch}
             results={displayedResults}
-            onCreateFood={() => setSheet({ type: 'food', food: null })}
             onEditFood={(food) => setSheet({ type: 'food', food })}
+            onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
             onOpenScanner={() => setSheet({ type: 'scanner' })}
             onSelectResult={(result) => setSheet({ type: 'select', result })}
             onSearch={() => setProviderSearchNonce((current) => current + 1)}
             query={query}
             setQuery={setQuery}
           />
+          <NutritionActionCard
+            onCreateFood={() => setSheet({ type: 'food', food: null })}
+          />
           <LoggedFoodsCard
             entries={loadState.logs}
             onDelete={setDeleteEntry}
             onEdit={(entry) => setSheet({ type: 'entry', entry })}
+          />
+          <RecentFoodsCard
+            foods={loadState.recentFoods}
+            onSelect={(food) =>
+              setSheet({
+                type: 'select',
+                result: { type: 'local', food, section: 'recent' },
+              })
+            }
           />
         </>
       ) : null}
@@ -391,8 +414,8 @@ export function NutritionPage() {
           <FoodSearchCard
             providerSearch={providerSearch}
             results={displayedResults}
-            onCreateFood={() => setSheet({ type: 'food', food: null })}
             onEditFood={(food) => setSheet({ type: 'food', food })}
+            onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
             onOpenScanner={() => setSheet({ type: 'scanner' })}
             onSelectResult={(result) => setSheet({ type: 'select', result })}
             onSearch={() => setProviderSearchNonce((current) => current + 1)}
@@ -460,6 +483,19 @@ export function NutritionPage() {
           onClose={() => setSheet(null)}
           onSaved={() => {
             setMessage('Food log updated.')
+            setSheet(null)
+            reload()
+          }}
+        />
+      ) : null}
+
+      {sheet?.type === 'quickAdd' ? (
+        <QuickAddSheet
+          isOpen
+          localDate={selectedDate}
+          onClose={() => setSheet(null)}
+          onSaved={() => {
+            setMessage('Quick add logged.')
             setSheet(null)
             reload()
           }}
@@ -542,8 +578,8 @@ function DailyTotalsCard({
 function FoodSearchCard({
   providerSearch,
   results,
-  onCreateFood,
   onEditFood,
+  onOpenQuickAdd,
   onOpenScanner,
   onSelectResult,
   onSearch,
@@ -552,8 +588,8 @@ function FoodSearchCard({
 }: {
   providerSearch: ProviderSearchState
   results: Array<{ title: string; items: FoodSearchResult[] }>
-  onCreateFood: () => void
   onEditFood: (food: Food) => void
+  onOpenQuickAdd: () => void
   onOpenScanner: () => void
   onSelectResult: (result: FoodSearchResult) => void
   onSearch: () => void
@@ -566,10 +602,15 @@ function FoodSearchCard({
   return (
     <Card>
       <div className="food-search-heading">
-        <h2>{normalizedQuery ? 'Food search' : 'Recent foods'}</h2>
-        <IconButton aria-label="Scan barcode" onClick={onOpenScanner}>
-          <Camera aria-hidden="true" size={20} />
-        </IconButton>
+        <h2>Food search</h2>
+        <div className="row-actions">
+          <IconButton aria-label="Quick add nutrition" onClick={onOpenQuickAdd}>
+            <Flame aria-hidden="true" size={20} />
+          </IconButton>
+          <IconButton aria-label="Scan barcode" onClick={onOpenScanner}>
+            <Camera aria-hidden="true" size={20} />
+          </IconButton>
+        </div>
       </div>
       <FormField id="food-search" label="Search foods">
         <div className="input-icon-row">
@@ -630,25 +671,34 @@ function FoodSearchCard({
         </div>
       ) : (
         <EmptyState
-          title={normalizedQuery ? 'No acceptable results' : 'No recent foods'}
+          title={normalizedQuery ? 'No acceptable results' : 'Search foods'}
           message={
             normalizedQuery
               ? 'No local or provider foods with calories, protein, total carbohydrates, and fat matched.'
-              : 'Logged foods appear here for faster repeat entries.'
-          }
-          action={
-            normalizedQuery ? (
-              <SecondaryButton type="button" onClick={onCreateFood}>
-                Create custom food
-              </SecondaryButton>
-            ) : (
-              <SecondaryButton type="button" onClick={onCreateFood}>
-                Create food
-              </SecondaryButton>
-            )
+              : 'Search local foods and USDA provider foods by name, brand, or restaurant.'
           }
         />
       )}
+    </Card>
+  )
+}
+
+function NutritionActionCard({ onCreateFood }: { onCreateFood: () => void }) {
+  return (
+    <Card>
+      <button
+        className="nutrition-action-row"
+        type="button"
+        onClick={onCreateFood}
+      >
+        <span className="quick-action-icon">
+          <ReceiptText aria-hidden="true" size={18} />
+        </span>
+        <span>
+          <strong>Create custom food</strong>
+          <small>Save a reusable food with calories and macros.</small>
+        </span>
+      </button>
     </Card>
   )
 }
@@ -861,6 +911,117 @@ function BarcodeScannerSheet({
   )
 }
 
+function QuickAddSheet({
+  isOpen,
+  localDate,
+  onClose,
+  onSaved,
+}: {
+  isOpen: boolean
+  localDate: LocalDateString
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [form, setForm] = useState(emptyQuickAddForm)
+  const [error, setError] = useState<string | null>(null)
+  const parsed = parseQuickAddForm(form)
+
+  function update(field: keyof typeof emptyQuickAddForm, value: string) {
+    setForm((current) => ({ ...current, [field]: value }))
+  }
+
+  function saveQuickAdd() {
+    if (!parsed.ok) {
+      setError(parsed.error)
+      return
+    }
+    const foodName =
+      parsed.value.name ||
+      `Quick add ${Math.round(parsed.value.calories)} kcal ${crypto.randomUUID().slice(0, 8)}`
+
+    void foodRepository
+      .createFood({
+        name: foodName,
+        brandName: null,
+        servingQuantity: 1,
+        servingUnit: 'entry',
+        servingDescription: '',
+        caloriesPerServing: parsed.value.calories,
+        proteinGramsPerServing: parsed.value.proteinGrams,
+        carbohydrateGramsPerServing: parsed.value.carbohydrateGrams,
+        fatGramsPerServing: parsed.value.fatGrams,
+        notes: 'Quick add',
+        barcode: null,
+        barcodeSource: null,
+      })
+      .then((food) =>
+        foodRepository.logFood({
+          foodId: food.id,
+          localDate,
+          servingMultiplier: 1,
+        }),
+      )
+      .then(onSaved)
+      .catch((caught: unknown) => {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : 'Quick add could not save.',
+        )
+      })
+  }
+
+  return (
+    <Sheet isOpen={isOpen} onClose={onClose} title="Quick add nutrition">
+      <FormField id="quick-add-name" label="Name">
+        <input
+          id="quick-add-name"
+          onChange={(event) => update('name', event.target.value)}
+          placeholder="Quick add"
+          value={form.name}
+        />
+      </FormField>
+      <FormField id="quick-add-calories" label="Calories">
+        <NumericInput
+          id="quick-add-calories"
+          onChange={(event) => update('calories', event.target.value)}
+          value={form.calories}
+        />
+      </FormField>
+      <div className="macro-row">
+        <FormField id="quick-add-protein" label="Protein">
+          <NumericInput
+            id="quick-add-protein"
+            onChange={(event) => update('proteinGrams', event.target.value)}
+            value={form.proteinGrams}
+          />
+        </FormField>
+        <FormField id="quick-add-carbs" label="Carbs">
+          <NumericInput
+            id="quick-add-carbs"
+            onChange={(event) =>
+              update('carbohydrateGrams', event.target.value)
+            }
+            value={form.carbohydrateGrams}
+          />
+        </FormField>
+        <FormField id="quick-add-fat" label="Fat">
+          <NumericInput
+            id="quick-add-fat"
+            onChange={(event) => update('fatGrams', event.target.value)}
+            value={form.fatGrams}
+          />
+        </FormField>
+      </div>
+      <p className="muted">Macros are optional. Blank macros log as 0 g.</p>
+      {error ? <ValidationMessage message={error} /> : null}
+      <PrimaryButton disabled={!parsed.ok} type="button" onClick={saveQuickAdd}>
+        Log quick add
+      </PrimaryButton>
+    </Sheet>
+  )
+}
+
 function permissionMessage(error: Error) {
   if (error.name === 'NotAllowedError') {
     return 'Camera permission was denied. Allow camera access in browser settings and retry.'
@@ -978,16 +1139,7 @@ function createSearchSections({
 }): Array<{ title: string; items: FoodSearchResult[] }> {
   const normalizedQuery = normalizeProviderQuery(query)
   if (!normalizedQuery) {
-    return [
-      {
-        title: 'Recent and previously used',
-        items: recentFoods.map((food) => ({
-          type: 'local',
-          food,
-          section: food.sourceType === 'provider' ? 'used' : 'recent',
-        })),
-      },
-    ]
+    return []
   }
 
   const recentIds = new Set(recentFoods.map((food) => food.id))
@@ -1039,6 +1191,40 @@ function createSearchSections({
         .map((food) => ({ type: 'external', food })),
     },
   ]
+}
+
+function RecentFoodsCard({
+  foods,
+  onSelect,
+}: {
+  foods: Food[]
+  onSelect: (food: Food) => void
+}) {
+  return (
+    <Card title="Recent foods">
+      {foods.length ? (
+        <div className="nutrition-list">
+          {foods.map((food) => (
+            <FoodLibraryRow
+              key={food.id}
+              result={{
+                type: 'local',
+                food,
+                section: food.sourceType === 'provider' ? 'used' : 'recent',
+              }}
+              onEdit={null}
+              onSelect={() => onSelect(food)}
+            />
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          title="No recent foods"
+          message="The last three logged foods appear here for repeat entries."
+        />
+      )}
+    </Card>
+  )
 }
 
 function resultKey(result: FoodSearchResult) {
@@ -1831,6 +2017,52 @@ function parseFoodForm(
       notes: form.notes.trim(),
       barcode: form.barcode.trim() || null,
       barcodeSource: form.barcode.trim() ? 'custom' : null,
+    },
+  }
+}
+
+function parseQuickAddForm(form: typeof emptyQuickAddForm):
+  | {
+      ok: true
+      value: {
+        calories: number
+        carbohydrateGrams: number
+        fatGrams: number
+        name: string
+        proteinGrams: number
+      }
+    }
+  | { ok: false; error: string } {
+  const calories = parseNonNegativeNumber(form.calories)
+  const proteinGrams = parseOptionalMacro(form.proteinGrams)
+  const carbohydrateGrams = parseOptionalMacro(form.carbohydrateGrams)
+  const fatGrams = parseOptionalMacro(form.fatGrams)
+
+  if (calories === null) {
+    return {
+      ok: false,
+      error: 'Calories are required and must be zero or greater.',
+    }
+  }
+  if (
+    proteinGrams === null ||
+    carbohydrateGrams === null ||
+    fatGrams === null
+  ) {
+    return {
+      ok: false,
+      error: 'Macros must be blank or zero or greater.',
+    }
+  }
+
+  return {
+    ok: true,
+    value: {
+      name: form.name.trim(),
+      calories,
+      proteinGrams,
+      carbohydrateGrams,
+      fatGrams,
     },
   }
 }

@@ -444,6 +444,34 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
+.nutrition-action-row {
+  display: grid;
+  width: 100%;
+  min-height: 64px;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-strong);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.nutrition-action-row strong,
+.nutrition-action-row small {
+  display: block;
+}
+
+.nutrition-action-row small {
+  margin-top: 2px;
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 .alternate-result-row {
   min-height: 44px;
   padding: var(--space-2);

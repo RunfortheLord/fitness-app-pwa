@@ -259,7 +259,7 @@ test('creates, logs, edits, deletes, and persists nutrition entries', async ({
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/nutrition')
 
-  await page.getByRole('button', { name: 'Create food' }).click()
+  await page.getByRole('button', { name: /Create custom food/ }).click()
   await expect(page.getByRole('button', { name: 'Save food' })).toBeEnabled()
   await page.getByRole('textbox', { name: 'Name' }).fill('E2E Rice')
   await page.getByRole('textbox', { name: 'Serving amount' }).fill('1')
@@ -455,7 +455,7 @@ test('completes the release workflow through backup restore', async ({
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/nutrition')
 
-  await page.getByRole('button', { name: 'Create food' }).click()
+  await page.getByRole('button', { name: /Create custom food/ }).click()
   await page.getByRole('textbox', { name: 'Name' }).fill('Audit oats')
   await page.getByRole('textbox', { name: 'Serving amount' }).fill('1')
   await page.getByRole('textbox', { name: 'Serving unit' }).fill('cup')

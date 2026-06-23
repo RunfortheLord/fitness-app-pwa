@@ -483,20 +483,23 @@ function completeRestaurantItemBonus(
   food: NormalizedFoodResult,
   query: string,
 ) {
-  if (!query || food.source.providerDataType !== 'Branded') {
+  if (!query || !isBrandedProviderType(food.source.providerDataType)) {
     return 0
   }
   const categoryText = normalizeFoodText(food.foodCategory ?? '')
   const brand = food.normalizedBrand ?? ''
+  const queryTokens = query.split(' ').filter(Boolean)
+  const hasBrandToken = queryTokens.some((token) => brand.includes(token))
   const restaurantLike =
     brand.includes(query) ||
+    hasBrandToken ||
     categoryText.includes('restaurant') ||
     categoryText.includes('fast food')
   if (!restaurantLike) {
     return 0
   }
   const completeItems =
-    /\b(bowl|burrito|taco|tacos|salad|sandwich|wrap|meal|plate|entree|burger|pizza|combo)\b/u
+    /\b(bake|bakes|bowl|burrito|taco|tacos|salad|sandwich|wrap|meal|plate|entree|burger|pizza|combo)\b/u
   const isolatedIngredients =
     /\b(chicken|beef|pork|rice|beans|cheese|salsa|lettuce|tortilla|sauce|dressing)\b/u
   if (completeItems.test(food.normalizedSearchName)) {
@@ -506,7 +509,7 @@ function completeRestaurantItemBonus(
 }
 
 function brandedCategoryBonus(food: NormalizedFoodResult, query: string) {
-  if (!query || food.source.providerDataType !== 'Branded') {
+  if (!query || !isBrandedProviderType(food.source.providerDataType)) {
     return 0
   }
   const brand = food.normalizedBrand ?? ''
@@ -516,6 +519,10 @@ function brandedCategoryBonus(food: NormalizedFoodResult, query: string) {
   const categoryWords =
     /\b(bar|bars|granola|cereal|protein|snack|cracker|cookie|yogurt|drink|shake|chips)\b/u
   return categoryWords.test(food.normalizedSearchName) ? 0.35 : 0
+}
+
+function isBrandedProviderType(providerDataType: string) {
+  return normalizeFoodText(providerDataType) === 'branded'
 }
 
 function diversifyTopFoodResults<T extends NormalizedFoodResult>(foods: T[]) {

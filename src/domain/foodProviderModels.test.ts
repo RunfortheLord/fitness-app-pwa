@@ -186,6 +186,21 @@ describe('food provider model utilities', () => {
 
     expect(ranked.map((food) => food.name)).toContain('Chicken feet, cooked')
   })
+
+  it('ranks branded complete items for brand plus item queries', () => {
+    const ranked = rankFoods(
+      [
+        makeFood('usda:ingredient', 'Chicken breast', 'cooked', 100),
+        makeFood('usda:bake', 'Chicken Bake', 'unknown', 100, 'Costco'),
+      ],
+      'Costco chicken bake',
+    )
+
+    expect(ranked[0]).toMatchObject({
+      name: 'Chicken Bake',
+      brandName: 'Costco',
+    })
+  })
 })
 
 function makeFood(
