@@ -74,6 +74,29 @@ describe('food serving helpers', () => {
     expect(options[0]).toMatchObject({ key: 'cup', amount: 1, label: '1 cup' })
   })
 
+  it('defaults common foods to household units while keeping grams available', () => {
+    const cases = [
+      ['Egg, whole, cooked', 'egg', '1 egg'],
+      ['Banana, raw', 'medium-banana', '1 medium banana'],
+      ['Waffles, plain', 'waffle', '1 waffle'],
+      ['Bread, whole wheat', 'slice', '1 slice'],
+      ['Tortilla, flour', 'tortilla', '1 tortilla'],
+    ] as const
+
+    for (const [name, key, label] of cases) {
+      const options = servingOptionsForFood({
+        ...baseFood,
+        id: key,
+        name,
+        rawCookedStatus: 'unknown',
+      })
+
+      expect(options[0]).toMatchObject({ key, amount: 1, label })
+      expect(options.find((option) => option.key === 'g')).toBeDefined()
+      expect(options[0].toServingMultiplier(2)).toBeGreaterThan(0)
+    }
+  })
+
   it('uses branded label servings and displays two-cookie serving weights', () => {
     const food: Food = {
       ...baseFood,

@@ -327,6 +327,16 @@ const exerciseSnapshotSchema = z.object({
   defaultRestSeconds: nonNegativeInteger,
   trackingMethodId: trackingMethodIdSchema,
   trackingMetrics: z.array(trackingMetricSchema),
+  bodyweightLoadMode: z
+    .enum([
+      'external_weight_only',
+      'bodyweight_plus_external',
+      'bodyweight_percentage_plus_external',
+    ])
+    .default('external_weight_only'),
+  bodyweightPercentage: z
+    .union([z.number().finite().min(0).max(100), z.null()])
+    .default(null),
   recordsRepsPerSide: z.boolean().default(false),
 })
 const exerciseSchema = z.object({
@@ -339,6 +349,16 @@ const exerciseSchema = z.object({
     .default(null),
   trackingMethodId: trackingMethodIdSchema,
   trackingMetrics: z.array(trackingMetricSchema),
+  bodyweightLoadMode: z
+    .enum([
+      'external_weight_only',
+      'bodyweight_plus_external',
+      'bodyweight_percentage_plus_external',
+    ])
+    .default('external_weight_only'),
+  bodyweightPercentage: z
+    .union([z.number().finite().min(0).max(100), z.null()])
+    .default(null),
   primaryMuscleGroups: z.array(muscleGroupSchema).default([]),
   secondaryMuscleGroups: z.array(muscleGroupSchema).default([]),
   equipmentType: exerciseEquipmentTypeSchema.default('barbell'),

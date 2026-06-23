@@ -17,7 +17,7 @@ import { BACKUP_SCHEMA_VERSION, DATABASE_SCHEMA_VERSION } from '@db/database'
 import {
   DEFAULT_TIMER_SOUND_ID,
   TIMER_SOUNDS,
-  playTimerSoundOnce,
+  previewTimerSoundOnce,
 } from '@domain/timerSounds'
 import { useDashboardContext } from '@hooks/useDashboardContext'
 import { settingsRepository } from '@repositories/settingsRepository'
@@ -82,6 +82,11 @@ export function SettingsPage() {
   const [buildInfo, setBuildInfo] = useState<BuildInfo | null>(null)
   const { refreshDashboard } = useDashboardContext()
   const parsedTargets = parseTargetForm(targetForm)
+
+  useEffect(() => {
+    document.documentElement.scrollTop = 0
+    document.body.scrollTop = 0
+  }, [])
 
   useEffect(() => {
     let isCurrent = true
@@ -251,7 +256,7 @@ export function SettingsPage() {
   }
 
   function previewTimerSound(soundId = selectedTimerSoundId) {
-    void playTimerSoundOnce(soundId).catch(() => {
+    void previewTimerSoundOnce(soundId).catch(() => {
       setTimerSoundMessage(
         'Audio preview was blocked by the browser. Try again after tapping the page.',
       )

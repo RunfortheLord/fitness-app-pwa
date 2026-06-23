@@ -616,6 +616,8 @@ function normalizeExerciseRecord(
     defaultWeightIncrement: exercise.defaultWeightIncrement ?? 5,
     trackingMethodId,
     trackingMetrics: exercise.trackingMetrics ?? trackingMethod?.metrics ?? [],
+    bodyweightLoadMode: exercise.bodyweightLoadMode ?? 'external_weight_only',
+    bodyweightPercentage: exercise.bodyweightPercentage ?? null,
     primaryMuscleGroups: exercise.primaryMuscleGroups ?? [],
     secondaryMuscleGroups: exercise.secondaryMuscleGroups ?? [],
     equipmentType:

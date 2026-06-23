@@ -980,6 +980,68 @@ export function createWorkoutRepository(
       )
     },
 
+    async resumeCompletedWorkout(workoutId: string) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        [
+          database.workouts,
+          database.workoutExercises,
+          database.workoutSets,
+          database.workoutHistoryEntries,
+          database.workoutHistoryExercises,
+          database.workoutHistorySets,
+          database.detectedWorkoutChanges,
+          database.appliedWorkoutChanges,
+        ],
+        async () => {
+          const existingActive = await database.workouts
+            .where({ status: 'active' })
+            .first()
+          if (existingActive) {
+            throw new Error('Discard or finish the active workout first.')
+          }
+          const history = await database.workoutHistoryEntries.get(workoutId)
+          if (!history) {
+            throw new Error(`Workout history ${workoutId} was not found.`)
+          }
+          const exercises = await database.workoutHistoryExercises
+            .where({ workoutId })
+            .toArray()
+          const sets = await database.workoutHistorySets
+            .where({ workoutId })
+            .toArray()
+          const workout: Workout = {
+            ...history,
+            status: 'active',
+            completedAt: null,
+            updatedAt: now,
+          }
+          await database.workouts.put(workout)
+          await database.workoutExercises.bulkPut(exercises)
+          await database.workoutSets.bulkPut(
+            sets.map((set) => ({
+              ...set,
+              createdAt: now,
+              updatedAt: now,
+            })),
+          )
+          const changes = await database.detectedWorkoutChanges
+            .where({ workoutId })
+            .toArray()
+          await database.appliedWorkoutChanges
+            .where('detectedChangeId')
+            .anyOf(changes.map((change) => change.id))
+            .delete()
+          await database.detectedWorkoutChanges.where({ workoutId }).delete()
+          await database.workoutHistorySets.where({ workoutId }).delete()
+          await database.workoutHistoryExercises.where({ workoutId }).delete()
+          await database.workoutHistoryEntries.delete(workoutId)
+          return workout
+        },
+      )
+    },
+
     async applyDetectedChanges(
       selections: Array<{
         changeId: string

@@ -57,6 +57,7 @@ import type {
   ActiveCycleWorkoutDay,
   ActiveCycleWorkoutExercise,
   ActiveProgramCycle,
+  BodyweightLoadMode,
   Exercise,
   ProgramTemplate,
   ProgramTemplateDay,
@@ -89,6 +90,8 @@ type ProgramConfirmation =
   | null
 
 type ExerciseFormState = {
+  bodyweightLoadMode: BodyweightLoadMode
+  bodyweightPercentage: string
   name: string
   notes: string
   restMinutes: string
@@ -127,6 +130,8 @@ type PrescriptionFormState = {
 }
 
 const emptyExerciseForm: ExerciseFormState = {
+  bodyweightLoadMode: 'external_weight_only',
+  bodyweightPercentage: '',
   name: '',
   notes: '',
   restMinutes: '2',
@@ -1378,6 +1383,17 @@ function ProgramBuilderSheet({
                     </SecondaryButton>
                   </div>
 
+                  <SecondaryButton
+                    type="button"
+                    onClick={() =>
+                      setEditingPrescription({
+                        dayId: selectedDay.id,
+                        exercise: null,
+                      })
+                    }
+                  >
+                    Add exercise
+                  </SecondaryButton>
                   <div className="program-prescription-list">
                     {(structure.exercisesByDay[selectedDay.id] ?? []).map(
                       (prescribed) => (
@@ -1444,17 +1460,6 @@ function ProgramBuilderSheet({
                       <p className="muted">No prescribed exercises.</p>
                     ) : null}
                   </div>
-                  <SecondaryButton
-                    type="button"
-                    onClick={() =>
-                      setEditingPrescription({
-                        dayId: selectedDay.id,
-                        exercise: null,
-                      })
-                    }
-                  >
-                    Add exercise
-                  </SecondaryButton>
                 </div>
               ) : (
                 <EmptyState
@@ -1777,6 +1782,11 @@ function PrescriptionEditor({
 
         {step === 'edit' && selectedExercise ? (
           <div className="compact-prescription-form">
+            <div className="sheet-top-actions">
+              <PrimaryButton disabled={!parsed.ok} type="button" onClick={save}>
+                Save prescription
+              </PrimaryButton>
+            </div>
             {!target.exercise ? (
               <SecondaryButton type="button" onClick={() => setStep('search')}>
                 <ArrowLeft aria-hidden="true" size={18} />
@@ -1875,9 +1885,6 @@ function PrescriptionEditor({
             </FormField>
             {error ? <ValidationMessage message={error} /> : null}
             <div className="button-row">
-              <PrimaryButton disabled={!parsed.ok} type="button" onClick={save}>
-                Save prescription
-              </PrimaryButton>
               <SecondaryButton type="button" onClick={requestClose}>
                 Cancel
               </SecondaryButton>
@@ -2352,6 +2359,13 @@ function ExerciseFormSheet({
       ? {
           name: exercise.name,
           notes: exercise.notes,
+          bodyweightLoadMode:
+            exercise.bodyweightLoadMode ?? 'external_weight_only',
+          bodyweightPercentage:
+            exercise.bodyweightPercentage === null ||
+            exercise.bodyweightPercentage === undefined
+              ? ''
+              : String(exercise.bodyweightPercentage),
           restMinutes: String(Math.floor(exercise.defaultRestSeconds / 60)),
           restSeconds: String(exercise.defaultRestSeconds % 60),
           trackingMethodId: exercise.trackingMethodId,
@@ -2426,6 +2440,15 @@ function ExerciseFormSheet({
       onClose={onClose}
       title={exercise ? 'Edit exercise' : 'Create exercise'}
     >
+      <div className="sheet-top-actions">
+        <PrimaryButton
+          disabled={!parsed.ok}
+          type="button"
+          onClick={saveExercise}
+        >
+          Save exercise
+        </PrimaryButton>
+      </div>
       <FormField id="exercise-name" label="Name">
         <input
           id="exercise-name"
@@ -2477,6 +2500,37 @@ function ExerciseFormSheet({
           ))}
         </select>
       </FormField>
+      <FormField id="bodyweight-load-mode" label="Effective load">
+        <select
+          id="bodyweight-load-mode"
+          onChange={(event) =>
+            update(
+              'bodyweightLoadMode',
+              event.target.value as BodyweightLoadMode,
+            )
+          }
+          value={form.bodyweightLoadMode}
+        >
+          <option value="external_weight_only">External weight only</option>
+          <option value="bodyweight_plus_external">
+            Bodyweight + external weight
+          </option>
+          <option value="bodyweight_percentage_plus_external">
+            Bodyweight percentage + external weight
+          </option>
+        </select>
+      </FormField>
+      {form.bodyweightLoadMode === 'bodyweight_percentage_plus_external' ? (
+        <FormField id="bodyweight-percentage" label="Bodyweight percentage">
+          <NumericInput
+            id="bodyweight-percentage"
+            onChange={(event) =>
+              update('bodyweightPercentage', event.target.value)
+            }
+            value={form.bodyweightPercentage}
+          />
+        </FormField>
+      ) : null}
       {selectedTrackingMethod ? (
         <div className="tracking-method-panel">
           <p>{selectedTrackingMethod.explanation}</p>
@@ -2506,15 +2560,6 @@ function ExerciseFormSheet({
         </p>
       ) : null}
       {error ? <ValidationMessage message={error} /> : null}
-      <div className="button-row">
-        <PrimaryButton
-          disabled={!parsed.ok}
-          type="button"
-          onClick={saveExercise}
-        >
-          Save exercise
-        </PrimaryButton>
-      </div>
     </BottomSheet>
   )
 }
@@ -2526,6 +2571,10 @@ function parseExerciseForm(
   const restMinutes = Number(form.restMinutes)
   const restSeconds = Number(form.restSeconds)
   const trackingMethod = getTrackingMethod(form.trackingMethodId)
+  const bodyweightPercentage =
+    form.bodyweightLoadMode === 'bodyweight_percentage_plus_external'
+      ? parseOptionalNumber(form.bodyweightPercentage)
+      : { ok: true, value: null as number | null }
 
   if (!name) {
     return { ok: false, error: 'Exercise name is required.' }
@@ -2548,6 +2597,15 @@ function parseExerciseForm(
   if (!trackingMethod) {
     return { ok: false, error: 'Tracking preset is required.' }
   }
+  if (
+    !bodyweightPercentage.ok ||
+    (form.bodyweightLoadMode === 'bodyweight_percentage_plus_external' &&
+      (bodyweightPercentage.value === null ||
+        bodyweightPercentage.value < 0 ||
+        bodyweightPercentage.value > 100))
+  ) {
+    return { ok: false, error: 'Bodyweight percentage must be 0 through 100.' }
+  }
 
   return {
     ok: true,
@@ -2556,6 +2614,8 @@ function parseExerciseForm(
       notes: form.notes.trim(),
       defaultRestSeconds: restMinutes * 60 + restSeconds,
       trackingMethodId: trackingMethod.id,
+      bodyweightLoadMode: form.bodyweightLoadMode,
+      bodyweightPercentage: bodyweightPercentage.value,
     },
   }
 }

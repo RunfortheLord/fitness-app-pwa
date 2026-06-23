@@ -49,6 +49,37 @@ describe('nutritionSummaryService', () => {
     })
   })
 
+  it('uses scaled logged food totals for calories remaining', async () => {
+    const foodRepository = createFoodRepository(database)
+    const settingsRepository = createSettingsRepository(database)
+    const summaryService = createNutritionSummaryService(database)
+    const food = await seedFood(database)
+
+    await settingsRepository.saveNutritionTargets({
+      calories: 500,
+      proteinGrams: 20,
+      carbohydrateGrams: 90,
+      fatGrams: 10,
+    })
+    await foodRepository.logFood({
+      foodId: food.id,
+      localDate: '2026-06-18',
+      servingMultiplier: 2,
+    })
+
+    await expect(
+      summaryService.getDailySummary('2026-06-18'),
+    ).resolves.toMatchObject({
+      totals: {
+        calories: 400,
+        proteinGrams: 8,
+        carbohydrateGrams: 90,
+        fatGrams: 2,
+      },
+      remainingCalories: 100,
+    })
+  })
+
   it('uses target history for historical dates', async () => {
     const settingsRepository = createSettingsRepository(database)
     const summaryService = createNutritionSummaryService(database)

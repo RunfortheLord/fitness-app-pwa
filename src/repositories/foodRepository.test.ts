@@ -86,6 +86,34 @@ describe('foodRepository', () => {
     )
   })
 
+  it('multiplies calories and macros for quantity two custom foods', async () => {
+    const repository = createFoodRepository(database)
+    const food = await repository.createFood({
+      name: 'Banana',
+      servingQuantity: 1,
+      servingUnit: 'medium banana',
+      servingDescription: '',
+      caloriesPerServing: 85,
+      proteinGramsPerServing: 1,
+      carbohydrateGramsPerServing: 22,
+      fatGramsPerServing: 0.3,
+      notes: '',
+    })
+
+    const log = await repository.logFood({
+      foodId: food.id,
+      localDate: testLocalDate,
+      servingMultiplier: 2,
+    })
+
+    expect(log).toMatchObject({
+      computedCalories: 170,
+      computedProteinGrams: 2,
+      computedCarbohydrateGrams: 44,
+      computedFatGrams: 0.6,
+    })
+  })
+
   it('searches foods case-insensitively with exact and prefix matches first', async () => {
     const repository = createFoodRepository(database)
     await repository.createFood({

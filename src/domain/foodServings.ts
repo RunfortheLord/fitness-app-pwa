@@ -150,6 +150,21 @@ function choosePrimaryServing(parts: ServingParts): FoodServingOption {
   ) {
     return withGrams(1, 'cup', '1 cup', parts.gramsPerServing ?? 158)
   }
+  if (parts.reliable && /\beggs?\b/u.test(text)) {
+    return withGrams(1, 'egg', '1 egg', parts.gramsPerServing ?? 50)
+  }
+  if (parts.reliable && /\bbanana\b/u.test(text)) {
+    return withGrams(1, 'medium-banana', '1 medium banana', 118)
+  }
+  if (parts.reliable && /\bwaffles?\b/u.test(text)) {
+    return withGrams(1, 'waffle', '1 waffle', parts.gramsPerServing ?? 40)
+  }
+  if (parts.reliable && /\bbread\b/u.test(text)) {
+    return withGrams(1, 'slice', '1 slice', parts.gramsPerServing ?? 28)
+  }
+  if (parts.reliable && /\btortillas?\b/u.test(text)) {
+    return withGrams(1, 'tortilla', '1 tortilla', parts.gramsPerServing ?? 45)
+  }
   if (
     parts.reliable &&
     /\b(beef|pork|fish|salmon|tuna|turkey|meat|steak)\b/u.test(text)

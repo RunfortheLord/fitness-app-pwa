@@ -693,11 +693,16 @@ textarea:focus-visible {
 
 .exercise-tab-list {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--space-2);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
 }
 
 .exercise-tab-list button {
+  flex: 0 0 min(68vw, 220px);
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
   align-items: center;
@@ -710,6 +715,7 @@ textarea:focus-visible {
   background: var(--color-surface-strong);
   color: var(--color-text);
   text-align: left;
+  scroll-snap-align: start;
 }
 
 .exercise-tab-list button[aria-current='true'] {
@@ -847,6 +853,12 @@ textarea:focus-visible {
   border-color: rgb(143 124 255 / 50%);
 }
 
+.timer-adjust-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(64px, 1fr));
+  gap: var(--space-2);
+}
+
 .live-workout-finish {
   position: sticky;
   bottom: calc(env(safe-area-inset-bottom) + var(--bottom-nav-height));
@@ -907,6 +919,16 @@ textarea:focus-visible {
   color: var(--color-muted);
   font-size: 14px;
   line-height: 1.45;
+}
+
+.sheet-top-actions {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  justify-content: flex-end;
+  padding-bottom: var(--space-3);
+  background: var(--color-surface);
 }
 
 .row-actions {
@@ -1711,6 +1733,27 @@ input::placeholder {
   background-size:
     100% 25%,
     25% 100%;
+}
+
+.chart-axis-label {
+  position: absolute;
+  z-index: 2;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.chart-axis-label-x {
+  right: var(--space-3);
+  bottom: var(--space-1);
+}
+
+.chart-axis-label-y {
+  top: var(--space-3);
+  left: var(--space-1);
+  transform: rotate(-90deg) translateX(-100%);
+  transform-origin: left top;
 }
 
 .bodyweight-chart svg {

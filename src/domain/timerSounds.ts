@@ -35,10 +35,32 @@ export function getTimerSound(id: string | null | undefined) {
   )
 }
 
+let activePreviewAudio: HTMLAudioElement | null = null
+
 export async function playTimerSoundOnce(id: string | null | undefined) {
   const sound = getTimerSound(id)
   const audio = new Audio(sound.src)
   audio.preload = 'auto'
   audio.currentTime = 0
+  await audio.play()
+}
+
+export async function previewTimerSoundOnce(id: string | null | undefined) {
+  activePreviewAudio?.pause()
+  activePreviewAudio = null
+  const sound = getTimerSound(id)
+  const audio = new Audio(sound.src)
+  activePreviewAudio = audio
+  audio.preload = 'auto'
+  audio.currentTime = 0
+  audio.addEventListener(
+    'ended',
+    () => {
+      if (activePreviewAudio === audio) {
+        activePreviewAudio = null
+      }
+    },
+    { once: true },
+  )
   await audio.play()
 }

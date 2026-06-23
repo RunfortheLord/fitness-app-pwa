@@ -859,16 +859,23 @@ function RestTimerCard({
             Pause
           </SecondaryButton>
         )}
-        <SecondaryButton
-          disabled={remainingSeconds === 0}
-          type="button"
-          onClick={onSubtractTime}
-        >
-          Decrease Time
-        </SecondaryButton>
-        <SecondaryButton type="button" onClick={onAddTime}>
-          Increase Time
-        </SecondaryButton>
+        <div className="timer-adjust-row" aria-label="Timer adjustment">
+          <SecondaryButton
+            aria-label="Subtract 30 seconds"
+            disabled={remainingSeconds === 0}
+            type="button"
+            onClick={onSubtractTime}
+          >
+            -30
+          </SecondaryButton>
+          <SecondaryButton
+            aria-label="Add 30 seconds"
+            type="button"
+            onClick={onAddTime}
+          >
+            +30
+          </SecondaryButton>
+        </div>
         <SecondaryButton type="button" onClick={onDismiss}>
           Clear
         </SecondaryButton>

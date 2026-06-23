@@ -41,6 +41,8 @@ export function snapshotExercise(exercise: Exercise): ExerciseSnapshot {
     defaultRestSeconds: exercise.defaultRestSeconds,
     trackingMethodId: exercise.trackingMethodId,
     trackingMetrics: exercise.trackingMetrics,
+    bodyweightLoadMode: exercise.bodyweightLoadMode ?? 'external_weight_only',
+    bodyweightPercentage: exercise.bodyweightPercentage ?? null,
     recordsRepsPerSide: exercise.recordsRepsPerSide,
   }
 }

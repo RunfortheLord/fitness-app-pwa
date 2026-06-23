@@ -12,6 +12,10 @@
 - Timer completion audio is best effort and plays once after timer completion
   when browser autoplay policy allows it. iOS PWA locked-screen audio is not
   guaranteed.
+- Rest timers remain timestamp based so elapsed time stays accurate after the
+  app is backgrounded, suspended, or reopened. True iOS Live Activities and
+  lock-screen countdown surfaces are not exposed to installed web PWAs, so this
+  app cannot show a native lock-screen timer without a native iOS wrapper.
 
 ## 2026-06-19 Food Provider Sources
 

@@ -97,6 +97,21 @@ describe('workoutRepository', () => {
         selectedDestination: 'neither',
       },
     ])
+
+    const resumed = await repository.resumeCompletedWorkout(
+      completed.history.id,
+    )
+
+    expect(resumed).toMatchObject({
+      id: started.workout.id,
+      status: 'active',
+      completedAt: null,
+    })
+    await expect(database.workouts.toArray()).resolves.toHaveLength(1)
+    await expect(database.workoutExercises.toArray()).resolves.toHaveLength(1)
+    await expect(database.workoutSets.toArray()).resolves.toHaveLength(2)
+    await expect(database.workoutHistoryEntries.toArray()).resolves.toEqual([])
+    await expect(database.detectedWorkoutChanges.toArray()).resolves.toEqual([])
   })
 
   it('rejects invalid active-cycle and workout-day relationships', async () => {

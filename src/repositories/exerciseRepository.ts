@@ -7,13 +7,19 @@ import {
 } from '@domain/exerciseLibrary'
 import { createId } from '@domain/ids'
 import { getTrackingMethod } from '@domain/trackingMethods'
-import type { Exercise, TrackingMethodId } from '@shared-types/app'
+import type {
+  BodyweightLoadMode,
+  Exercise,
+  TrackingMethodId,
+} from '@shared-types/app'
 
 export type CreateExerciseInput = {
   name: string
   notes?: string
   defaultRestSeconds: number
   trackingMethodId: TrackingMethodId
+  bodyweightLoadMode?: BodyweightLoadMode
+  bodyweightPercentage?: number | null
 }
 
 export type UpdateExerciseInput = Partial<CreateExerciseInput>
@@ -48,6 +54,22 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
     return trackingMethod
   }
 
+  function validateBodyweightLoad(input: {
+    bodyweightLoadMode?: BodyweightLoadMode
+    bodyweightPercentage?: number | null
+  }) {
+    if (
+      input.bodyweightLoadMode === 'bodyweight_percentage_plus_external' &&
+      (input.bodyweightPercentage === null ||
+        input.bodyweightPercentage === undefined ||
+        !Number.isFinite(input.bodyweightPercentage) ||
+        input.bodyweightPercentage < 0 ||
+        input.bodyweightPercentage > 100)
+    ) {
+      throw new Error('Bodyweight percentage must be 0 through 100.')
+    }
+  }
+
   async function hasExerciseReferences(id: string) {
     const [
       templateReference,
@@ -76,6 +98,7 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
 
     async createExercise(input: CreateExerciseInput) {
       const trackingMethod = validateExerciseInput(input)
+      validateBodyweightLoad(input)
 
       const now = new Date().toISOString()
       const exercise: Exercise = {
@@ -91,6 +114,8 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
             : null,
         trackingMethodId: input.trackingMethodId,
         trackingMetrics: trackingMethod.metrics,
+        bodyweightLoadMode: input.bodyweightLoadMode ?? 'external_weight_only',
+        bodyweightPercentage: input.bodyweightPercentage ?? null,
         primaryMuscleGroups: [],
         secondaryMuscleGroups: [],
         equipmentType: defaultEquipmentForTracking(input.trackingMethodId),
@@ -130,9 +155,16 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
         name: input.name?.trim() ?? exercise.name,
         notes: input.notes?.trim() ?? exercise.notes,
         trackingMetrics: trackingMethod?.metrics ?? exercise.trackingMetrics,
+        bodyweightLoadMode:
+          input.bodyweightLoadMode ??
+          exercise.bodyweightLoadMode ??
+          'external_weight_only',
+        bodyweightPercentage:
+          input.bodyweightPercentage ?? exercise.bodyweightPercentage ?? null,
         updatedAt: new Date().toISOString(),
       }
       validateExerciseInput(updated)
+      validateBodyweightLoad(updated)
       await database.exercises.put(updated)
       return updated
     },

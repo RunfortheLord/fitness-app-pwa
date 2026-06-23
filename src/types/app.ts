@@ -24,6 +24,10 @@ export type FoodConversionSource =
   | 'per_100g'
   | 'none'
 export type ExerciseOrigin = 'built_in' | 'custom'
+export type BodyweightLoadMode =
+  | 'external_weight_only'
+  | 'bodyweight_plus_external'
+  | 'bodyweight_percentage_plus_external'
 export type ExerciseEquipmentType =
   | 'barbell'
   | 'dumbbell'
@@ -309,6 +313,8 @@ export type Exercise = {
   defaultWeightIncrement: number | null
   trackingMethodId: TrackingMethodId
   trackingMetrics: TrackingMetric[]
+  bodyweightLoadMode?: BodyweightLoadMode
+  bodyweightPercentage?: number | null
   primaryMuscleGroups: MuscleGroup[]
   secondaryMuscleGroups: MuscleGroup[]
   equipmentType: ExerciseEquipmentType
@@ -326,6 +332,8 @@ export type ExerciseSnapshot = {
   defaultRestSeconds: number
   trackingMethodId: TrackingMethodId
   trackingMetrics: TrackingMetric[]
+  bodyweightLoadMode?: BodyweightLoadMode
+  bodyweightPercentage?: number | null
   recordsRepsPerSide?: boolean
 }
 

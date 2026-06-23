@@ -1,6 +1,6 @@
 import { ChevronDown, Trash2 } from 'lucide-react'
 import { useContext, useEffect, useMemo, useState } from 'react'
-import { useLocation, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 
 import {
   Card,
@@ -121,6 +121,7 @@ const strengthRangeOptions: Array<{
 export function HistoryPage() {
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const [state, setState] = useState<HistoryState>({ status: 'loading' })
   const [revision, setRevision] = useState(0)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -304,6 +305,24 @@ export function HistoryPage() {
           caught instanceof Error
             ? caught.message
             : 'Workout history could not be deleted.',
+        )
+      })
+  }
+
+  function resumeSelectedWorkout() {
+    if (state.status !== 'ready' || !state.selected) {
+      return
+    }
+    void workoutRepository
+      .resumeCompletedWorkout(state.selected.id)
+      .then(() => {
+        void navigate('/workout')
+      })
+      .catch((caught: unknown) => {
+        setEditError(
+          caught instanceof Error
+            ? caught.message
+            : 'Workout could not be resumed.',
         )
       })
   }
@@ -524,6 +543,9 @@ export function HistoryPage() {
             ) : null}
 
             <div className="button-row">
+              <PrimaryButton type="button" onClick={resumeSelectedWorkout}>
+                Resume Workout
+              </PrimaryButton>
               <SecondaryButton
                 className="button-danger"
                 onClick={() => setDeleteRequested(true)}
@@ -1124,6 +1146,10 @@ function StrengthChart({
         </span>
       </div>
       <div className="bodyweight-chart" aria-label="Estimated 1RM graph">
+        <span className="chart-axis-label chart-axis-label-x">Date</span>
+        <span className="chart-axis-label chart-axis-label-y">
+          Estimated 1RM (lb)
+        </span>
         <svg
           aria-hidden="true"
           focusable="false"
@@ -1310,6 +1336,10 @@ function BodyweightChart({
         </span>
       </div>
       <div className="bodyweight-chart" aria-label="Bodyweight graph">
+        <span className="chart-axis-label chart-axis-label-x">Date</span>
+        <span className="chart-axis-label chart-axis-label-y">
+          Bodyweight ({latest.unit})
+        </span>
         <svg
           aria-hidden="true"
           focusable="false"
