@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { handleFoodSearch } from '../../src/server/foodProviderApi.js'
 
 type VercelRequest = {

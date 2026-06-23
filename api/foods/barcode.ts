@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { handleFoodBarcodeLookup } from '../../src/server/foodProviderApi.js'
 
 type VercelRequest = {
