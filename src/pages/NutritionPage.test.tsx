@@ -12,6 +12,7 @@ import {
   type NormalizedFoodResult,
 } from '@domain/foodProviderModels'
 import { HomePage } from '@pages/HomePage'
+import { createSearchSections } from '@domain/foodSearchSections'
 import { NutritionPage } from '@pages/NutritionPage'
 import { settingsRepository } from '@repositories/settingsRepository'
 import { initializeAppData } from '@services/appInitializationService'
@@ -500,6 +501,53 @@ function renderNutrition() {
 
   render(<RouterProvider router={router} />)
 }
+
+describe('createSearchSections', () => {
+  function generic(id: string, name: string): GroupedFoodResult {
+    return {
+      ...providerFood(id, name, 'cooked', 100, 10, 5, 2),
+      alternates: [],
+    }
+  }
+  function branded(id: string, name: string): GroupedFoodResult {
+    const base = providerFood(id, name, 'cooked', 100, 10, 5, 2)
+    return {
+      ...base,
+      alternates: [],
+      source: { ...base.source, providerDataType: 'Branded' },
+    }
+  }
+
+  it('caps the long generic section and lists recent results first', () => {
+    const providerResults: GroupedFoodResult[] = [
+      ...Array.from({ length: 12 }, (_, index) =>
+        generic(`usda:${index}`, `Chicken item ${index}`),
+      ),
+      branded('off:1', 'Branded chicken'),
+    ]
+
+    const sections = createSearchSections({
+      includeRecentFoods: true,
+      localFoods: [],
+      providerResults,
+      query: 'chicken',
+      recentFoods: [],
+    })
+
+    expect(sections[0].title).toBe('Recent and previously used')
+    const common = sections.find((section) => section.title === 'Common')
+    const brandedSection = sections.find(
+      (section) => section.title === 'Branded',
+    )
+    // 12 generic results are capped to the 8 most relevant, in rank order.
+    expect(common?.items).toHaveLength(8)
+    expect(common?.items[0]).toMatchObject({
+      type: 'external',
+      food: { id: 'usda:0' },
+    })
+    expect(brandedSection?.items).toHaveLength(1)
+  })
+})
 
 function providerChicken(): GroupedFoodResult {
   const alternate = {

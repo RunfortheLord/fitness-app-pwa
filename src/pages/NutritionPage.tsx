@@ -50,6 +50,10 @@ import {
   type GroupedFoodResult,
   type NormalizedFoodResult,
 } from '@domain/foodProviderModels'
+import {
+  createSearchSections,
+  type FoodSearchResult,
+} from '@domain/foodSearchSections'
 import { useDashboardContext } from '@hooks/useDashboardContext'
 import {
   foodRepository,
@@ -94,10 +98,6 @@ type FoodFormState = {
   notes: string
   barcode: string
 }
-
-type FoodSearchResult =
-  | { type: 'local'; food: Food; section: 'recent' | 'custom' | 'used' }
-  | { type: 'external'; food: GroupedFoodResult }
 
 type ProviderSearchState = {
   status:
@@ -1126,82 +1126,6 @@ function resultDisplay(result: FoodSearchResult) {
     serving: formatFoodServingLabel(result.food),
     calories: macros?.calories ?? 0,
   }
-}
-
-function createSearchSections({
-  includeRecentFoods,
-  localFoods,
-  providerResults,
-  query,
-  recentFoods,
-}: {
-  includeRecentFoods: boolean
-  localFoods: Food[]
-  providerResults: GroupedFoodResult[]
-  query: string
-  recentFoods: Food[]
-}): Array<{ title: string; items: FoodSearchResult[] }> {
-  const normalizedQuery = normalizeProviderQuery(query)
-  if (!normalizedQuery) {
-    return []
-  }
-
-  const recentIds = new Set(recentFoods.map((food) => food.id))
-  const matchingRecent = recentFoods.filter((food) =>
-    food.name.toLocaleLowerCase().includes(normalizedQuery.toLocaleLowerCase()),
-  )
-  const customFoods = localFoods.filter(
-    (food) => food.sourceType !== 'provider' && !recentIds.has(food.id),
-  )
-  const usedProviderFoods = localFoods.filter(
-    (food) => food.sourceType === 'provider' && !recentIds.has(food.id),
-  )
-
-  return [
-    ...(includeRecentFoods
-      ? [
-          {
-            title: 'Recent and previously used',
-            items: matchingRecent.map((food) => ({
-              type: 'local' as const,
-              food,
-              section:
-                food.sourceType === 'provider'
-                  ? ('used' as const)
-                  : ('recent' as const),
-            })),
-          },
-        ]
-      : []),
-    {
-      title: 'Custom foods',
-      items: customFoods.map((food) => ({
-        type: 'local',
-        food,
-        section: 'custom',
-      })),
-    },
-    {
-      title: 'Previously used provider foods',
-      items: usedProviderFoods.map((food) => ({
-        type: 'local',
-        food,
-        section: 'used',
-      })),
-    },
-    {
-      title: 'Common',
-      items: providerResults
-        .filter((food) => food.source.providerDataType !== 'Branded')
-        .map((food) => ({ type: 'external', food })),
-    },
-    {
-      title: 'Branded',
-      items: providerResults
-        .filter((food) => food.source.providerDataType === 'Branded')
-        .map((food) => ({ type: 'external', food })),
-    },
-  ]
 }
 
 function RecentFoodsCard({
