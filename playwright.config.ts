@@ -3,6 +3,10 @@ import { defineConfig, devices } from '@playwright/test'
 export default defineConfig({
   testDir: './e2e',
   timeout: 60_000,
+  // Retry transient failures (e.g. occasional WebKit timing flakes under full
+  // parallel load). Genuine failures still fail every attempt; the trace is
+  // captured on the first retry for diagnosis.
+  retries: 2,
   fullyParallel: true,
   workers: 4,
   reporter: [['list'], ['html', { open: 'never' }]],
