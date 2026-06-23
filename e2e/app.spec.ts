@@ -603,24 +603,8 @@ test('completes the release workflow through backup restore', async ({
 
   await page.getByRole('button', { name: 'Finish Workout' }).click()
   await expect(page).toHaveURL(/\/history\?workout=/)
-  await expect(
-    page.getByText('Replaced Audit squat with Audit row'),
-  ).toBeVisible()
-  await expect(page.getByText('Skipped Audit curl')).toBeVisible()
-  await page
-    .locator('.change-review-item', {
-      hasText: 'Replaced Audit squat with Audit row',
-    })
-    .locator('input[type="checkbox"]')
-    .check()
-  await page
-    .locator('.change-review-item', {
-      hasText: 'Replaced Audit squat with Audit row',
-    })
-    .getByLabel('Destination')
-    .selectOption('template_only')
-  await page.getByRole('button', { name: 'Apply selected' }).click()
-  await expect(page.getByText('Reviewed')).toBeVisible()
+  await expect(page.getByText('Skipped: Audit curl')).toBeVisible()
+  await expect(page.getByText('Review')).toHaveCount(0)
 
   await page.goto('/settings')
   const downloadPromise = page.waitForEvent('download')

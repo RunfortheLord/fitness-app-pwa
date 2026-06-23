@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -256,26 +256,34 @@ describe('HistoryPage', () => {
 
     renderHistory(`/history?workout=${completed.history.id}`)
 
-    expect(await screen.findByText('Local date')).toBeInTheDocument()
-    expect(screen.getAllByText(testLocalDate)[0]).toBeInTheDocument()
-    expect(screen.getByText('Program snapshot')).toBeInTheDocument()
-    expect(screen.getByText('Upper Lower')).toBeInTheDocument()
-    expect(screen.getByText('Workout-day snapshot')).toBeInTheDocument()
+    expect(await screen.findByText('Date completed')).toBeInTheDocument()
+    expect(screen.getByText('June 18th, 2026')).toBeInTheDocument()
+    expect(screen.queryByText('Started')).not.toBeInTheDocument()
+    expect(screen.queryByText('Completed')).not.toBeInTheDocument()
+    expect(screen.queryByText('Program snapshot')).not.toBeInTheDocument()
+    expect(screen.queryByText('Upper Lower')).not.toBeInTheDocument()
+    expect(screen.queryByText('Workout-day snapshot')).not.toBeInTheDocument()
     expect(screen.getAllByText('Upper').length).toBeGreaterThan(0)
-    expect(screen.getByLabelText('Workout notes')).toHaveValue('steady session')
+    expect(screen.queryByLabelText('Workout notes')).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /Bench press/ }))
     expect(screen.getByLabelText('Exercise notes')).toHaveValue('pause reps')
     expect(screen.getByText('Skipped: Bench press')).toBeInTheDocument()
     expect(screen.getByLabelText('Set 1 Weight')).toHaveValue('185')
     expect(screen.getByLabelText('Set 1 Reps')).toHaveValue('8')
     expect(screen.getByLabelText('Set 1 RIR')).toHaveValue('2')
-    expect(screen.getByText('Skipped Bench press')).toBeInTheDocument()
-    expect(screen.getByText('Selected')).toBeInTheDocument()
-    expect(screen.getByText('Result')).toBeInTheDocument()
-    expect(screen.getByText('Applied')).toBeInTheDocument()
+    expect(screen.queryByText('Skipped Bench press')).not.toBeInTheDocument()
+    expect(screen.queryByText('Selected')).not.toBeInTheDocument()
+    expect(screen.queryByText('Result')).not.toBeInTheDocument()
+    expect(screen.queryByText('Applied')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /Resume Workout/ }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /Delete workout/ }),
+    ).not.toBeInTheDocument()
   })
 
-  it('edits workout notes, exercise notes, and recorded set values without changing reusable records', async () => {
+  it('edits exercise notes and recorded set values without changing reusable records', async () => {
     const user = userEvent.setup()
     const food = await createFoodRepository(db).createFood({
       name: 'Reusable rice',
@@ -302,10 +310,7 @@ describe('HistoryPage', () => {
 
     renderHistory(`/history?workout=${completed.history.id}`)
 
-    await user.clear(await screen.findByLabelText('Workout notes'))
-    await user.type(screen.getByLabelText('Workout notes'), 'history note')
-    await user.tab()
-    await user.click(screen.getByRole('button', { name: /Bench press/ }))
+    await user.click(await screen.findByRole('button', { name: /Bench press/ }))
     await user.clear(screen.getByLabelText('Exercise notes'))
     await user.type(screen.getByLabelText('Exercise notes'), 'history exercise')
     await user.tab()
@@ -320,7 +325,6 @@ describe('HistoryPage', () => {
       const history = await repository.getWorkoutHistoryStructure(
         completed.history.id,
       )
-      expect(history.workout.notes).toBe('history note')
       expect(history.exercises[0].notes).toBe('history exercise')
       expect(history.setsByExercise[history.exercises[0].id][0]).toMatchObject({
         metricValues: { weight: 155, reps: 7 },
@@ -338,8 +342,7 @@ describe('HistoryPage', () => {
     })
   })
 
-  it('deletes a historical workout only after confirmation', async () => {
-    const user = userEvent.setup()
+  it('does not expose destructive completed workout actions in detail', async () => {
     const repository = createWorkoutRepository(db)
     const program = await seedProgram(db)
     const active = await createProgramRepository(db).activateTemplate(
@@ -353,27 +356,13 @@ describe('HistoryPage', () => {
 
     renderHistory(`/history?workout=${completed.history.id}`)
 
-    await user.click(
-      await screen.findByRole('button', { name: /Delete workout/ }),
-    )
-    await user.click(
-      within(
-        screen.getByRole('dialog', { name: 'Delete workout history?' }),
-      ).getByRole('button', { name: 'Cancel' }),
-    )
-    await expect(db.workoutHistoryEntries.toArray()).resolves.toHaveLength(1)
-
-    await user.click(screen.getByRole('button', { name: /Delete workout/ }))
-    await user.click(
-      within(
-        screen.getByRole('dialog', { name: 'Delete workout history?' }),
-      ).getByRole('button', { name: 'Delete' }),
-    )
-
-    await waitFor(async () => {
-      await expect(db.workoutHistoryEntries.toArray()).resolves.toEqual([])
-    })
-    expect(await screen.findByText('No workout history')).toBeInTheDocument()
+    expect(await screen.findByText('Date completed')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /Delete workout/ }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /Resume Workout/ }),
+    ).not.toBeInTheDocument()
   })
 
   it('displays mixed tracking methods with duration and distance metrics after reload', async () => {
@@ -431,8 +420,7 @@ describe('HistoryPage', () => {
     expect(screen.getByLabelText('Set 1 Distance')).toHaveValue('0.25')
   })
 
-  it('reviews detected changes without applying any destination', async () => {
-    const user = userEvent.setup()
+  it('keeps detected change review out of completed workout detail', async () => {
     const program = await seedProgram(db)
     const active = await createProgramRepository(db).activateTemplate(
       program.template.id,
@@ -451,20 +439,17 @@ describe('HistoryPage', () => {
 
     renderHistory(`/history?workout=${completed.history.id}`)
 
+    expect(await screen.findByText('Date completed')).toBeInTheDocument()
     expect(
-      await screen.findByText('Added 3rd Bench press set'),
-    ).toBeInTheDocument()
-    expect(screen.getByText('Pending')).toBeInTheDocument()
-
-    await user.click(
-      screen.getByRole('button', { name: 'Save without applying' }),
-    )
-
-    await waitFor(async () => {
-      await expect(
-        db.detectedWorkoutChanges.get(completed.detectedChanges[0].id),
-      ).resolves.toMatchObject({ status: 'rejected' })
-    })
+      screen.queryByText('Added 3rd Bench press set'),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText('Pending')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Save without applying' }),
+    ).not.toBeInTheDocument()
+    await expect(
+      db.detectedWorkoutChanges.get(completed.detectedChanges[0].id),
+    ).resolves.toMatchObject({ status: 'pending' })
     await expect(
       db.activeCycleWorkoutExercises.get(active.exercises[0].id),
     ).resolves.toMatchObject({ targetSetCount: 2 })

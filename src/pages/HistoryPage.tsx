@@ -1,16 +1,14 @@
-import { ChevronDown, Trash2 } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { useContext, useEffect, useMemo, useState } from 'react'
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 
 import {
   Card,
   EmptyState,
   FormField,
   LoadingState,
-  ModalConfirmationDialog,
   NumericInput,
   PageContainer,
-  PrimaryButton,
   SegmentedControl,
   SecondaryButton,
   SectionHeader,
@@ -49,9 +47,7 @@ import { runRepository, type RunStructure } from '@repositories/runRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
 import type {
   BodyweightEntry,
-  DetectedWorkoutChange,
   Run,
-  StructuralChangeDestination,
   TrackingMetric,
   WorkoutHistoryEntry,
   WorkoutHistoryExercise,
@@ -73,18 +69,8 @@ type HistoryState =
       selectedRun: RunStructure | null
       exercises: WorkoutHistoryExercise[]
       setsByExercise: Record<string, WorkoutHistorySet[]>
-      changes: DetectedWorkoutChange[]
     }
   | { status: 'error'; message: string }
-
-const destinations: Array<{
-  label: string
-  value: StructuralChangeDestination
-}> = [
-  { label: 'Active Cycle Only', value: 'cycle_only' },
-  { label: 'Template Only', value: 'template_only' },
-  { label: 'Both', value: 'both' },
-]
 
 const bodyweightRangeOptions: Array<{
   label: string
@@ -110,16 +96,9 @@ const strengthRangeOptions: Array<{
 export function HistoryPage() {
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
-  const navigate = useNavigate()
   const [state, setState] = useState<HistoryState>({ status: 'loading' })
   const [revision, setRevision] = useState(0)
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [selectedDestinations, setSelectedDestinations] = useState<
-    Record<string, StructuralChangeDestination>
-  >({})
-  const [reviewError, setReviewError] = useState<string | null>(null)
   const [editError, setEditError] = useState<string | null>(null)
-  const [deleteRequested, setDeleteRequested] = useState(false)
 
   useEffect(() => {
     if (
@@ -157,12 +136,6 @@ export function HistoryPage() {
           requested && !selectedRun
             ? await workoutRepository.getWorkoutHistoryStructure(requested.id)
             : null
-        const changes = selectedStructure
-          ? await workoutRepository.listDetectedChanges(
-              selectedStructure.workout.id,
-            )
-          : []
-
         if (!isCurrent) {
           return
         }
@@ -174,26 +147,7 @@ export function HistoryPage() {
           selectedRun,
           exercises: selectedStructure?.exercises ?? [],
           setsByExercise: selectedStructure?.setsByExercise ?? {},
-          changes,
         })
-        setSelectedIds(
-          new Set(
-            changes
-              .filter((change) => ['applied', 'failed'].includes(change.status))
-              .map((change) => change.id),
-          ),
-        )
-        setSelectedDestinations(
-          Object.fromEntries(
-            changes.map((change) => [
-              change.id,
-              change.selectedDestination === 'neither' &&
-              change.status === 'pending'
-                ? 'cycle_only'
-                : change.selectedDestination,
-            ]),
-          ),
-        )
       })
       .catch((caught: unknown) => {
         if (!isCurrent) {
@@ -225,7 +179,6 @@ export function HistoryPage() {
       ).length,
       setsCompleted: sets.filter((set) => set.completed).length,
       skipped,
-      reviewStatus: formatReviewStatus(state.changes),
     }
   }, [state])
 
@@ -242,53 +195,6 @@ export function HistoryPage() {
       .catch((caught: unknown) => {
         setEditError(
           caught instanceof Error ? caught.message : 'History edit failed.',
-        )
-      })
-  }
-
-  function deleteSelectedWorkout() {
-    if (state.status !== 'ready') {
-      return
-    }
-    if (!state.selected) {
-      return
-    }
-    const deletedId = state.selected.id
-    void workoutRepository
-      .deleteWorkoutHistory(deletedId)
-      .then(() => {
-        setDeleteRequested(false)
-        setEditError(null)
-        const nextWorkout = state.workouts.find(
-          (workout) => workout.id !== deletedId,
-        )
-        setSearchParams(nextWorkout ? { workout: nextWorkout.id } : {})
-        reload()
-      })
-      .catch((caught: unknown) => {
-        setDeleteRequested(false)
-        setEditError(
-          caught instanceof Error
-            ? caught.message
-            : 'Workout history could not be deleted.',
-        )
-      })
-  }
-
-  function resumeSelectedWorkout() {
-    if (state.status !== 'ready' || !state.selected) {
-      return
-    }
-    void workoutRepository
-      .resumeCompletedWorkout(state.selected.id)
-      .then(() => {
-        void navigate('/workout')
-      })
-      .catch((caught: unknown) => {
-        setEditError(
-          caught instanceof Error
-            ? caught.message
-            : 'Workout could not be resumed.',
         )
       })
   }
@@ -424,8 +330,10 @@ export function HistoryPage() {
             {summary ? (
               <div className="summary-grid">
                 <span>
-                  <strong>{selectedWorkout.localDate}</strong>
-                  <small>Local date</small>
+                  <strong>
+                    {formatHistoryDetailDate(selectedWorkout.localDate)}
+                  </strong>
+                  <small>Date completed</small>
                 </span>
                 <span>
                   <strong>
@@ -441,56 +349,8 @@ export function HistoryPage() {
                   <strong>{summary.setsCompleted}</strong>
                   <small>Completed sets</small>
                 </span>
-                <span>
-                  <strong>{summary.reviewStatus}</strong>
-                  <small>Review</small>
-                </span>
               </div>
             ) : null}
-
-            <dl className="history-detail-list">
-              <div>
-                <dt>Started</dt>
-                <dd>{formatTimestamp(selectedWorkout.startedAt)}</dd>
-              </div>
-              <div>
-                <dt>Completed</dt>
-                <dd>{formatTimestamp(selectedWorkout.completedAt)}</dd>
-              </div>
-              <div>
-                <dt>Program snapshot</dt>
-                <dd>
-                  {selectedWorkout.workoutSnapshot.templateName ??
-                    selectedWorkout.workoutSnapshot.activeCycleName ??
-                    'No program source'}
-                </dd>
-              </div>
-              <div>
-                <dt>Workout-day snapshot</dt>
-                <dd>
-                  {selectedWorkout.workoutSnapshot.dayName}
-                  {selectedWorkout.workoutSnapshot.dayNotes
-                    ? ` - ${selectedWorkout.workoutSnapshot.dayNotes}`
-                    : ''}
-                </dd>
-              </div>
-            </dl>
-
-            <FormField id={`${selectedWorkout.id}-notes`} label="Workout notes">
-              <textarea
-                defaultValue={selectedWorkout.notes}
-                id={`${selectedWorkout.id}-notes`}
-                onBlur={(event) =>
-                  runEdit(
-                    workoutRepository.updateWorkoutHistoryNotes(
-                      selectedWorkout.id,
-                      event.currentTarget.value,
-                    ),
-                  )
-                }
-                placeholder="Session notes"
-              />
-            </FormField>
 
             {summary?.skipped.length ? (
               <p className="muted">
@@ -500,20 +360,6 @@ export function HistoryPage() {
                   .join(', ')}
               </p>
             ) : null}
-
-            <div className="button-row">
-              <PrimaryButton type="button" onClick={resumeSelectedWorkout}>
-                Resume Workout
-              </PrimaryButton>
-              <SecondaryButton
-                className="button-danger"
-                onClick={() => setDeleteRequested(true)}
-                type="button"
-              >
-                <Trash2 aria-hidden="true" size={18} />
-                Delete workout
-              </SecondaryButton>
-            </div>
 
             <div className="history-exercise-accordion-list">
               {state.exercises.map((exercise) => (
@@ -539,70 +385,7 @@ export function HistoryPage() {
             </div>
           </Card>
         ) : null}
-
-        {selectedWorkout ? (
-          <ChangeReview
-            changes={state.changes}
-            error={reviewError}
-            hasTemplate={Boolean(selectedWorkout.sourceTemplateId)}
-            onDestinationChange={(changeId, destination) =>
-              setSelectedDestinations((current) => ({
-                ...current,
-                [changeId]: destination,
-              }))
-            }
-            onSave={(applySelected) => {
-              const selections = state.changes.map((change) => ({
-                changeId: change.id,
-                destination:
-                  applySelected && selectedIds.has(change.id)
-                    ? (selectedDestinations[change.id] ?? 'cycle_only')
-                    : ('neither' as const),
-              }))
-              void workoutRepository
-                .applyDetectedChanges(selections)
-                .then(() => {
-                  setReviewError(null)
-                  reload()
-                })
-                .catch((caught: unknown) => {
-                  setReviewError(
-                    caught instanceof Error
-                      ? caught.message
-                      : 'Change review could not be saved.',
-                  )
-                  reload()
-                })
-            }}
-            onToggle={(changeId) => {
-              setSelectedIds((current) => {
-                const next = new Set(current)
-                if (next.has(changeId)) {
-                  next.delete(changeId)
-                } else {
-                  next.add(changeId)
-                }
-                return next
-              })
-            }}
-            selectedDestinations={selectedDestinations}
-            selectedIds={selectedIds}
-          />
-        ) : null}
       </div>
-
-      <ModalConfirmationDialog
-        confirmLabel="Delete"
-        isOpen={deleteRequested && state.selected !== null}
-        onCancel={() => setDeleteRequested(false)}
-        onConfirm={deleteSelectedWorkout}
-        title="Delete workout history?"
-      >
-        <p>
-          Delete {state.selected?.name} from {state.selected?.localDate}. This
-          removes only this historical workout snapshot and cannot be undone.
-        </p>
-      </ModalConfirmationDialog>
     </PageContainer>
   )
 }
@@ -1323,145 +1106,6 @@ function HistorySetRow({
   )
 }
 
-function ChangeReview({
-  changes,
-  error,
-  hasTemplate,
-  onDestinationChange,
-  onSave,
-  onToggle,
-  selectedDestinations,
-  selectedIds,
-}: {
-  changes: DetectedWorkoutChange[]
-  error: string | null
-  hasTemplate: boolean
-  onDestinationChange: (
-    changeId: string,
-    destination: StructuralChangeDestination,
-  ) => void
-  onSave: (applySelected: boolean) => void
-  onToggle: (changeId: string) => void
-  selectedDestinations: Record<string, StructuralChangeDestination>
-  selectedIds: Set<string>
-}) {
-  if (!changes.length) {
-    return (
-      <Card title="Changes detected">
-        <StatusMessage tone="success">
-          No program changes detected
-        </StatusMessage>
-      </Card>
-    )
-  }
-
-  const reviewLocked = changes.every((change) => change.status !== 'pending')
-
-  return (
-    <Card title="Changes detected">
-      <div className="change-review-list">
-        {changes.map((change) => {
-          const selected = selectedIds.has(change.id)
-          const destination = selectedDestinations[change.id] ?? 'cycle_only'
-          const templateDestination =
-            destination === 'template_only' || destination === 'both'
-          return (
-            <div className="change-review-item" key={change.id}>
-              <label className="checkbox-row">
-                <input
-                  checked={selected}
-                  disabled={change.status !== 'pending'}
-                  onChange={() => onToggle(change.id)}
-                  type="checkbox"
-                />
-                <span>{change.description}</span>
-              </label>
-              <dl className="history-detail-list">
-                {change.recommendationReason ? (
-                  <div>
-                    <dt>Reason</dt>
-                    <dd>{change.recommendationReason}</dd>
-                  </div>
-                ) : null}
-                <div>
-                  <dt>Selected</dt>
-                  <dd>{formatChangeDestination(change.selectedDestination)}</dd>
-                </div>
-                <div>
-                  <dt>Result</dt>
-                  <dd>{change.status}</dd>
-                </div>
-                <div>
-                  <dt>Applied</dt>
-                  <dd>
-                    {change.appliedDestination
-                      ? formatChangeDestination(change.appliedDestination)
-                      : 'Not applied'}
-                  </dd>
-                </div>
-              </dl>
-              {selected ? (
-                <FormField
-                  helpText={
-                    !hasTemplate && templateDestination
-                      ? 'This workout has no reusable template source.'
-                      : undefined
-                  }
-                  id={`${change.id}-destination`}
-                  label="Destination"
-                >
-                  <select
-                    disabled={change.status !== 'pending'}
-                    id={`${change.id}-destination`}
-                    onChange={(event) =>
-                      onDestinationChange(
-                        change.id,
-                        event.target.value as StructuralChangeDestination,
-                      )
-                    }
-                    value={destination}
-                  >
-                    {destinations.map((option) => (
-                      <option
-                        disabled={
-                          !hasTemplate &&
-                          (option.value === 'template_only' ||
-                            option.value === 'both')
-                        }
-                        key={option.value}
-                        value={option.value}
-                      >
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </FormField>
-              ) : null}
-              {change.recommendationSummary ? (
-                <small className="muted">{change.recommendationSummary}</small>
-              ) : null}
-              {change.failureReason ? (
-                <small className="muted">{change.failureReason}</small>
-              ) : null}
-            </div>
-          )
-        })}
-      </div>
-      {error ? <ValidationMessage message={error} /> : null}
-      {!reviewLocked ? (
-        <div className="button-row">
-          <SecondaryButton type="button" onClick={() => onSave(false)}>
-            Save without applying
-          </SecondaryButton>
-          <PrimaryButton type="button" onClick={() => onSave(true)}>
-            Apply selected
-          </PrimaryButton>
-        </div>
-      ) : null}
-    </Card>
-  )
-}
-
 function listHistoryItems(workouts: WorkoutHistoryEntry[], runs: Run[]) {
   return [
     ...workouts.map((workout) => ({
@@ -1479,24 +1123,36 @@ function listHistoryItems(workouts: WorkoutHistoryEntry[], runs: Run[]) {
   ].sort((left, right) => right.completedAt.localeCompare(left.completedAt))
 }
 
-function formatChangeDestination(destination: StructuralChangeDestination) {
-  if (destination === 'cycle_only') {
-    return 'Active Cycle Only'
-  }
-  if (destination === 'template_only') {
-    return 'Template Only'
-  }
-  if (destination === 'both') {
-    return 'Both'
-  }
-  return 'Not applied'
-}
-
 function formatTimestamp(timestamp: string) {
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(timestamp))
+}
+
+function formatHistoryDetailDate(localDate: string) {
+  const [year, month, day] = localDate.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  const monthName = new Intl.DateTimeFormat(undefined, {
+    month: 'long',
+  }).format(date)
+  return `${monthName} ${day}${ordinalSuffix(day)}, ${year}`
+}
+
+function ordinalSuffix(day: number) {
+  if (day >= 11 && day <= 13) {
+    return 'th'
+  }
+  switch (day % 10) {
+    case 1:
+      return 'st'
+    case 2:
+      return 'nd'
+    case 3:
+      return 'rd'
+    default:
+      return 'th'
+  }
 }
 
 function formatDuration(totalSeconds: number) {
@@ -1527,17 +1183,4 @@ function usesRir(metrics: TrackingMetric[]) {
   return metrics.some((metric) =>
     ['weight', 'reps', 'assistedWeight'].includes(metric.key),
   )
-}
-
-function formatReviewStatus(changes: DetectedWorkoutChange[]) {
-  if (!changes.length) {
-    return 'None'
-  }
-  if (changes.some((change) => change.status === 'failed')) {
-    return 'Failed'
-  }
-  if (changes.some((change) => change.status === 'pending')) {
-    return 'Pending'
-  }
-  return 'Reviewed'
 }

@@ -11,7 +11,6 @@ import {
   PageContainer,
   PrimaryButton,
   SecondaryButton,
-  SectionHeader,
   StatusMessage,
 } from '@components/ui'
 import {
@@ -124,10 +123,9 @@ export function HomePage() {
         </StatusMessage>
       ) : null}
 
-      <SectionHeader
-        title="Dashboard"
-        action={
-          <div className="button-row dashboard-shortcuts">
+      <section className="home-action-grid" aria-label="Home shortcuts">
+        <Card className="home-action-card">
+          <div className="dashboard-shortcuts">
             <SecondaryButton
               type="button"
               onClick={() => void navigate('/history')}
@@ -149,8 +147,30 @@ export function HomePage() {
               Bodyweight
             </SecondaryButton>
           </div>
-        }
-      />
+        </Card>
+
+        <Card
+          className="home-action-card"
+          title={dashboard?.activeProgram?.cycle.name ?? 'No active program'}
+        >
+          <div className="dashboard-shortcuts">
+            <PrimaryButton
+              type="button"
+              disabled={!dashboard?.activeProgram?.days.length}
+              onClick={() => void navigate('/training')}
+            >
+              Start workout
+            </PrimaryButton>
+            {dashboard?.activeProgram?.days.length ? (
+              <SecondaryButton type="button">
+                {dashboard.activeProgram.days[0]?.name}
+              </SecondaryButton>
+            ) : (
+              <SecondaryButton type="button">Create program</SecondaryButton>
+            )}
+          </div>
+        </Card>
+      </section>
 
       <section className="metric-grid" aria-label="Daily summary">
         <MetricCard
@@ -279,45 +299,6 @@ export function HomePage() {
           </div>
         </Card>
       ) : null}
-
-      <Card title="Current program">
-        {dashboard?.activeProgram ? (
-          <>
-            <p className="metric-value metric-value-small">
-              {dashboard.activeProgram.cycle.name}
-            </p>
-            <p className="muted">
-              {dashboard.activeProgram.days.length} workout days,{' '}
-              {dashboard.activeProgram.exerciseCount} exercises
-            </p>
-          </>
-        ) : (
-          <EmptyState
-            title="No active program"
-            message="Create and activate a program before starting program-based workouts."
-            action={
-              <SecondaryButton type="button">Create program</SecondaryButton>
-            }
-          />
-        )}
-      </Card>
-
-      <Card title="Start workout">
-        <div className="button-row">
-          <PrimaryButton
-            type="button"
-            disabled={!dashboard?.activeProgram?.days.length}
-            onClick={() => void navigate('/training')}
-          >
-            Start workout
-          </PrimaryButton>
-          {dashboard?.activeProgram?.days.length ? (
-            <SecondaryButton type="button">
-              {dashboard.activeProgram.days[0]?.name}
-            </SecondaryButton>
-          ) : null}
-        </div>
-      </Card>
 
       {dashboard?.metadata ? (
         <div className="visually-hidden">

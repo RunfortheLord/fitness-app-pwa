@@ -1899,6 +1899,7 @@ function TargetsCard({
   )
   const [error, setError] = useState<string | null>(null)
   const parsed = parseTargetForm(form)
+  const macroCalories = calculateMacroCalories(form)
 
   function update(field: keyof typeof emptyTargets, value: string) {
     setForm((current) => ({ ...current, [field]: value }))
@@ -1950,9 +1951,10 @@ function TargetsCard({
           value={form.fatGrams}
         />
       </FormField>
-      <p className="muted">
-        Each save creates target history so older dates can keep the target that
-        was current for that date.
+      <p className="macro-calorie-equation">
+        P {macroCalories.proteinGrams}g x 4 + C{' '}
+        {macroCalories.carbohydrateGrams}g x 4 + F {macroCalories.fatGrams}g x 9
+        = {macroCalories.calories} kcal
       </p>
       {error ? <ValidationMessage message={error} /> : null}
       <PrimaryButton disabled={!parsed.ok} type="button" onClick={saveTargets}>
@@ -2132,6 +2134,20 @@ function parseTargetForm(
   return {
     ok: true,
     value: { calories, proteinGrams, carbohydrateGrams, fatGrams },
+  }
+}
+
+function calculateMacroCalories(form: typeof emptyTargets) {
+  const proteinGrams = parseNonNegativeNumber(form.proteinGrams) ?? 0
+  const carbohydrateGrams = parseNonNegativeNumber(form.carbohydrateGrams) ?? 0
+  const fatGrams = parseNonNegativeNumber(form.fatGrams) ?? 0
+  return {
+    calories: Math.round(
+      proteinGrams * 4 + carbohydrateGrams * 4 + fatGrams * 9,
+    ),
+    carbohydrateGrams,
+    fatGrams,
+    proteinGrams,
   }
 }
 

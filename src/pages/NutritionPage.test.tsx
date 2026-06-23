@@ -158,6 +158,12 @@ describe('NutritionPage', () => {
     )
     await user.clear(screen.getByRole('textbox', { name: 'Fat target' }))
     await user.type(screen.getByRole('textbox', { name: 'Fat target' }), '60')
+    expect(
+      screen.getByText('P 160g x 4 + C 180g x 4 + F 60g x 9 = 1900 kcal'),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(/Each save creates target history/),
+    ).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Save targets' }))
 
     expect(

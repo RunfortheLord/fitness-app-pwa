@@ -189,6 +189,38 @@ textarea:focus-visible {
   padding: var(--space-3);
 }
 
+.home-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.home-action-card {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  min-height: 134px;
+}
+
+.home-action-card h2 {
+  overflow: hidden;
+  margin-bottom: var(--space-2);
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-shortcuts {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.dashboard-shortcuts .button {
+  justify-content: center;
+  min-width: 0;
+  width: 100%;
+}
+
 .metric-label {
   margin: 0 0 var(--space-2);
   color: var(--color-muted);
@@ -216,6 +248,20 @@ textarea:focus-visible {
   color: var(--color-muted);
   font-size: 14px;
   line-height: 1.45;
+}
+
+.macro-calorie-equation {
+  margin: var(--space-2) 0 0;
+  overflow-x: auto;
+  color: var(--color-muted);
+  font-size: 0.86rem;
+  line-height: 1.4;
+  scrollbar-width: none;
+  white-space: nowrap;
+}
+
+.macro-calorie-equation::-webkit-scrollbar {
+  display: none;
 }
 
 .section-header {

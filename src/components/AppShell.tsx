@@ -155,7 +155,6 @@ function AppShellContent({ children }: AppShellProps) {
   return (
     <div className="app-shell">
       <AppHeader
-        eyebrow="Local-first fitness"
         title={routeTitle}
         action={
           <Link className="icon-link" aria-label="Settings" to="/settings">

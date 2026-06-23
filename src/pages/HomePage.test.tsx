@@ -52,6 +52,9 @@ describe('HomePage', () => {
     expect(screen.getByText('No entry')).toBeInTheDocument()
     expect(screen.getByText('No active program')).toBeInTheDocument()
     expect(
+      screen.queryByRole('heading', { name: 'Dashboard' }),
+    ).not.toBeInTheDocument()
+    expect(
       screen.getByRole('button', { name: 'View all history' }),
     ).toBeInTheDocument()
     expect(screen.queryByText('Workout history')).not.toBeInTheDocument()
@@ -69,6 +72,25 @@ describe('HomePage', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('No entry')).toBeInTheDocument()
     expect(screen.getByText('No active program')).toBeInTheDocument()
+  })
+
+  it('shows active program name with start workout in the top home card', async () => {
+    const program = await seedProgram(db)
+    await createProgramRepository(db).activateTemplate(program.template.id)
+
+    renderHome()
+    await waitForDashboardReady()
+
+    expect(
+      screen.getByRole('heading', { name: program.template.name }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Current program' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Start workout' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Upper' })).toBeInTheDocument()
   })
 
   it('creates, edits, and deletes bodyweight through the dashboard sheet', async () => {
