@@ -600,17 +600,28 @@ textarea:focus-visible {
 
 .program-day-card {
   display: grid;
-  min-height: 74px;
-  justify-items: start;
-  gap: var(--space-1);
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
   padding: var(--space-3);
   border: 1px solid var(--color-border-soft);
   border-radius: var(--radius-sm);
   background: var(--color-surface-strong);
+}
+
+.program-day-open {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-1);
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
   text-align: left;
 }
 
-.program-day-card small {
+.program-day-card small,
+.program-day-open small {
   color: var(--color-muted);
 }
 

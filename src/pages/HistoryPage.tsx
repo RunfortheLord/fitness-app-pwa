@@ -1,6 +1,6 @@
 import { ChevronDown } from 'lucide-react'
 import { useContext, useEffect, useMemo, useState } from 'react'
-import { useLocation, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 
 import {
   Card,
@@ -95,6 +95,7 @@ const strengthRangeOptions: Array<{
 
 export function HistoryPage() {
   const location = useLocation()
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [state, setState] = useState<HistoryState>({ status: 'loading' })
   const [revision, setRevision] = useState(0)
@@ -255,47 +256,59 @@ export function HistoryPage() {
   }
 
   const selectedWorkout = state.selected
+  const isHomeHistory = searchParams.get('source') === 'home'
+  const setHistoryParams = (params: Record<string, string>) => {
+    setSearchParams(isHomeHistory ? { ...params, source: 'home' } : params)
+  }
 
   return (
     <PageContainer>
-      <SectionHeader
-        title="History"
-        action={
-          <div className="button-row">
-            {selectedWorkout || state.selectedRun ? (
+      {isHomeHistory ? (
+        <div className="button-row">
+          <SecondaryButton type="button" onClick={() => void navigate('/')}>
+            Back
+          </SecondaryButton>
+        </div>
+      ) : (
+        <SectionHeader
+          title="History"
+          action={
+            <div className="button-row">
+              {selectedWorkout || state.selectedRun ? (
+                <SecondaryButton
+                  type="button"
+                  onClick={() => setSearchParams({})}
+                >
+                  All history
+                </SecondaryButton>
+              ) : null}
               <SecondaryButton
                 type="button"
-                onClick={() => setSearchParams({})}
+                onClick={() => setSearchParams({ view: 'graphs' })}
               >
-                All history
+                Graphs
               </SecondaryButton>
-            ) : null}
-            <SecondaryButton
-              type="button"
-              onClick={() => setSearchParams({ view: 'graphs' })}
-            >
-              Graphs
-            </SecondaryButton>
-            <SecondaryButton
-              type="button"
-              onClick={() => setSearchParams({ view: 'bodyweight' })}
-            >
-              Bodyweight
-            </SecondaryButton>
-          </div>
-        }
-      />
+              <SecondaryButton
+                type="button"
+                onClick={() => setSearchParams({ view: 'bodyweight' })}
+              >
+                Bodyweight
+              </SecondaryButton>
+            </div>
+          }
+        />
+      )}
       {editError ? <ValidationMessage message={editError} /> : null}
       <div className="history-layout">
         {!selectedWorkout && !state.selectedRun ? (
-          <Card title="History">
+          <Card title={isHomeHistory ? undefined : 'History'}>
             <div className="history-list">
               {listHistoryItems(state.workouts, state.runs).map((item) =>
                 item.type === 'run' ? (
                   <button
                     aria-label={`${formatHistoryDate(item.run.localDate)} Run`}
                     key={item.run.id}
-                    onClick={() => setSearchParams({ run: item.run.id })}
+                    onClick={() => setHistoryParams({ run: item.run.id })}
                     type="button"
                   >
                     <strong>{formatHistoryDate(item.run.localDate)}</strong>
@@ -308,7 +321,7 @@ export function HistoryPage() {
                     )} ${item.workout.name}`}
                     key={item.workout.id}
                     onClick={() =>
-                      setSearchParams({ workout: item.workout.id })
+                      setHistoryParams({ workout: item.workout.id })
                     }
                     type="button"
                   >

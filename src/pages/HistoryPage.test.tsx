@@ -174,6 +174,31 @@ describe('HistoryPage', () => {
     expect(screen.queryByText('Local date')).not.toBeInTheDocument()
   })
 
+  it('shows a titleless home history list with a back button', async () => {
+    const repository = createWorkoutRepository(db)
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    await completeSeedWorkout(repository, active.cycle.id, active.days[0].id)
+
+    renderHistory('/history?source=home')
+
+    expect(
+      await screen.findByRole('button', { name: /Upper/ }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Graphs' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Bodyweight' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'History' }),
+    ).not.toBeInTheDocument()
+  })
+
   it('shows completed runs with dedicated run detail', async () => {
     const repository = createRunRepository(db)
     const run = await repository.startRun(new Date('2026-06-19T12:00:00.000Z'))

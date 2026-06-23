@@ -128,7 +128,7 @@ export function HomePage() {
           <div className="dashboard-shortcuts">
             <SecondaryButton
               type="button"
-              onClick={() => void navigate('/history')}
+              onClick={() => void navigate('/history?source=home')}
             >
               View all history
             </SecondaryButton>

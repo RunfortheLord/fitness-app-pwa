@@ -246,6 +246,26 @@ export function TrainingPage() {
     setRevision((current) => current + 1)
   }
 
+  function startWorkoutDay(
+    cycle: ActiveProgramCycle,
+    day: ActiveCycleWorkoutDay,
+  ) {
+    void workoutRepository
+      .startWorkout({
+        activeCycleId: cycle.id,
+        dayId: day.id,
+        localDate: formatLocalDate(new Date()),
+      })
+      .then(() => {
+        void navigate('/workout')
+      })
+      .catch((caught: unknown) => {
+        setMessage(
+          caught instanceof Error ? caught.message : 'Workout could not start.',
+        )
+      })
+  }
+
   return (
     <PageContainer>
       <ProgramOverview
@@ -264,6 +284,7 @@ export function TrainingPage() {
             selectedDay: { cycle, day, exercises },
           })
         }
+        onStartDay={startWorkoutDay}
       />
 
       <ProgramLibrary
@@ -543,6 +564,7 @@ function ProgramOverview({
   onDeactivate,
   onEditCycle,
   onSelectDay,
+  onStartDay,
 }: {
   currentCycle: LoadState['currentCycle']
   loadStatus: LoadState['status']
@@ -554,6 +576,7 @@ function ProgramOverview({
     day: ActiveCycleWorkoutDay,
     exercises: ActiveCycleWorkoutExercise[],
   ) => void
+  onStartDay: (cycle: ActiveProgramCycle, day: ActiveCycleWorkoutDay) => void
 }) {
   return (
     <Card title="Current active cycle">
@@ -596,24 +619,34 @@ function ProgramOverview({
           {currentCycle.days.length ? (
             <div className="program-day-grid" aria-label="Workout days">
               {currentCycle.days.map((day) => (
-                <button
-                  className="program-day-card"
-                  key={day.id}
-                  type="button"
-                  onClick={() =>
-                    onSelectDay(
-                      currentCycle.cycle,
-                      day,
-                      currentCycle.exercisesByDay[day.id] ?? [],
-                    )
-                  }
-                >
-                  <strong>{day.name}</strong>
-                  <small>
-                    {(currentCycle.exercisesByDay[day.id] ?? []).length}{' '}
-                    exercises
-                  </small>
-                </button>
+                <div className="program-day-card" key={day.id}>
+                  <button
+                    className="program-day-open"
+                    type="button"
+                    onClick={() =>
+                      onSelectDay(
+                        currentCycle.cycle,
+                        day,
+                        currentCycle.exercisesByDay[day.id] ?? [],
+                      )
+                    }
+                  >
+                    <strong>{day.name}</strong>
+                    <small>
+                      {(currentCycle.exercisesByDay[day.id] ?? []).length}{' '}
+                      exercises
+                    </small>
+                  </button>
+                  <SecondaryButton
+                    disabled={
+                      !(currentCycle.exercisesByDay[day.id] ?? []).length
+                    }
+                    type="button"
+                    onClick={() => onStartDay(currentCycle.cycle, day)}
+                  >
+                    Start Workout
+                  </SecondaryButton>
+                </div>
               ))}
             </div>
           ) : (
@@ -2006,6 +2039,15 @@ function WorkoutDayDetailSheet({
         {selectedDay.day.notes ? (
           <p className="muted">{selectedDay.day.notes}</p>
         ) : null}
+        {!existingWorkoutId && !existingRunId ? (
+          <PrimaryButton
+            disabled={!selectedDay.exercises.length}
+            type="button"
+            onClick={startWorkout}
+          >
+            Start Workout
+          </PrimaryButton>
+        ) : null}
         {selectedDay.exercises.length ? (
           <div className="program-prescription-list">
             {selectedDay.exercises.map((exercise) => (
@@ -2056,15 +2098,7 @@ function WorkoutDayDetailSheet({
               Discard Active Run
             </SecondaryButton>
           </div>
-        ) : (
-          <PrimaryButton
-            disabled={!selectedDay.exercises.length}
-            type="button"
-            onClick={startWorkout}
-          >
-            Start Workout
-          </PrimaryButton>
-        )}
+        ) : null}
       </BottomSheet>
       <ModalConfirmationDialog
         confirmLabel="Discard Existing Workout and Start New Workout"

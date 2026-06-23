@@ -353,7 +353,12 @@ describe('TrainingPage', () => {
         name: /Upper/,
       }),
     )
-    await user.click(screen.getByRole('button', { name: 'Start Workout' }))
+    await user.click(
+      within(await screen.findByRole('dialog', { name: 'Upper' })).getByRole(
+        'button',
+        { name: 'Start Workout' },
+      ),
+    )
 
     expect(
       await screen.findByText('Live workout', undefined, { timeout: 5_000 }),
@@ -377,6 +382,37 @@ describe('TrainingPage', () => {
       expect(screen.getAllByDisplayValue('185').length).toBeGreaterThan(0),
     )
     expect(screen.getAllByDisplayValue('8').length).toBeGreaterThan(0)
+  })
+
+  it('shows start workout controls beside active cycle days and at the top of day detail', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    await createProgramRepository(db).activateTemplate(program.template.id)
+    renderTraining()
+
+    const workoutDays = await screen.findByLabelText('Workout days')
+    const upperDay = within(workoutDays)
+      .getByText('Upper')
+      .closest('.program-day-card')
+    expect(upperDay).toBeTruthy()
+    expect(
+      within(upperDay as HTMLElement).getByRole('button', {
+        name: 'Start Workout',
+      }),
+    ).toBeInTheDocument()
+
+    await user.click(
+      within(upperDay as HTMLElement).getByRole('button', { name: /Upper/ }),
+    )
+    const dialog = await screen.findByRole('dialog', { name: 'Upper' })
+    const startButton = within(dialog).getByRole('button', {
+      name: 'Start Workout',
+    })
+    const firstExercise = within(dialog).getByText('Bench press')
+    expect(
+      startButton.compareDocumentPosition(firstExercise) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
   })
 
   it('shows one live exercise workspace and keeps the active exercise stable after edits, swipes, and reload', async () => {
