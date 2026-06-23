@@ -45,6 +45,7 @@ import {
   type FoodServingOption,
 } from '@domain/foodServings'
 import {
+  formatFoodDisplayName,
   normalizeProviderQuery,
   type GroupedFoodResult,
   type NormalizedFoodResult,
@@ -1111,7 +1112,7 @@ function FoodLibraryRow({
 function resultDisplay(result: FoodSearchResult) {
   if (result.type === 'local') {
     return {
-      name: result.food.name,
+      name: formatFoodDisplayName(result.food.name, result.food.brandName),
       brand: result.food.brandName ?? null,
       serving: formatFoodServingLabel(result.food),
       calories: result.food.caloriesPerServing,
@@ -1120,7 +1121,7 @@ function resultDisplay(result: FoodSearchResult) {
 
   const macros = result.food.macrosPerServing ?? result.food.macrosPer100Grams
   return {
-    name: result.food.name,
+    name: formatFoodDisplayName(result.food.name, result.food.brandName),
     brand: result.food.brandName,
     serving: formatFoodServingLabel(result.food),
     calories: macros?.calories ?? 0,

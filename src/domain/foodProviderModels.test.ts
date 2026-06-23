@@ -4,6 +4,7 @@ import {
   createServing,
   derivePer100GramMacros,
   derivePerServingMacros,
+  formatFoodDisplayName,
   gramsToOunces,
   groupDuplicateFoods,
   normalizeFoodText,
@@ -13,6 +14,29 @@ import {
   validateRequiredMacros,
   type NormalizedFoodResult,
 } from './foodProviderModels'
+
+describe('formatFoodDisplayName', () => {
+  it('strips a redundant leading brand from the name', () => {
+    expect(
+      formatFoodDisplayName('QUEST, Protein Bar, Chocolate', 'Quest'),
+    ).toBe('Protein Bar, Chocolate')
+    expect(
+      formatFoodDisplayName('KIND Nuts & Spices Dark Chocolate', 'KIND'),
+    ).toBe('Nuts & Spices Dark Chocolate')
+  })
+
+  it('leaves the name unchanged when the brand is not a leading prefix', () => {
+    expect(formatFoodDisplayName('Protein Bar', 'Quest')).toBe('Protein Bar')
+    expect(formatFoodDisplayName('Greek yogurt, Chobani', 'Chobani')).toBe(
+      'Greek yogurt, Chobani',
+    )
+  })
+
+  it('keeps the original name when there is no brand or stripping empties it', () => {
+    expect(formatFoodDisplayName('Chicken breast', null)).toBe('Chicken breast')
+    expect(formatFoodDisplayName('Quest', 'Quest')).toBe('Quest')
+  })
+})
 
 describe('food provider model utilities', () => {
   it('distinguishes missing, invalid, zero, and positive required macros', () => {

@@ -100,6 +100,41 @@ export function normalizeProviderQuery(query: string) {
   return query.trim().replace(/\s+/g, ' ')
 }
 
+/**
+ * Produces a readable food name for display. Branded provider records often
+ * repeat the brand inside the name (e.g. "QUEST, Protein Bar, Chocolate" with
+ * brand "Quest"), which is hard to read when the brand is also shown
+ * separately. When the name clearly leads with the brand, that prefix is
+ * removed. The transformation is conservative: it only strips an exact leading
+ * brand match and never returns an empty string.
+ */
+export function formatFoodDisplayName(
+  name: string,
+  brandName?: string | null,
+): string {
+  const displayName = name.trim()
+  if (!brandName) {
+    return displayName
+  }
+  const normalizedBrand = normalizeFoodText(brandName)
+  const normalizedName = normalizeFoodText(displayName)
+  if (
+    !normalizedBrand ||
+    (normalizedName !== normalizedBrand &&
+      !normalizedName.startsWith(`${normalizedBrand} `))
+  ) {
+    return displayName
+  }
+  const brandPattern = normalizedBrand
+    .split(' ')
+    .map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('[^A-Za-z0-9]+')
+  const stripped = displayName
+    .replace(new RegExp(`^[^A-Za-z0-9]*${brandPattern}[^A-Za-z0-9]*`, 'iu'), '')
+    .trim()
+  return stripped.length > 0 ? stripped : displayName
+}
+
 export function validateRequiredMacros(input: {
   calories: unknown
   protein: unknown
