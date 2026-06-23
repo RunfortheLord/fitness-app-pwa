@@ -251,16 +251,6 @@ export function NutritionPage() {
       }, 0)
       return () => window.clearTimeout(timeoutId)
     }
-    if (!usdaKey.configured || !usdaKey.apiKey) {
-      const timeoutId = window.setTimeout(() => {
-        setProviderSearch({
-          status: 'missing_api_key',
-          results: [],
-          query: normalizedQuery,
-        })
-      }, 0)
-      return () => window.clearTimeout(timeoutId)
-    }
     if (!navigator.onLine) {
       const timeoutId = window.setTimeout(() => {
         setProviderSearch({
@@ -272,7 +262,10 @@ export function NutritionPage() {
       return () => window.clearTimeout(timeoutId)
     }
 
-    const apiKey = usdaKey.apiKey
+    // A user-entered key is optional: when absent we send an empty key and let
+    // the server fall back to its configured USDA key. If neither exists, the
+    // server returns missing_api_key and the existing error UX is shown.
+    const apiKey = usdaKey.apiKey ?? ''
     const controller = new AbortController()
     const timeoutId = window.setTimeout(() => {
       setProviderSearch((current) => ({

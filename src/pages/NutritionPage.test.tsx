@@ -175,8 +175,11 @@ describe('NutritionPage', () => {
     expect(await screen.findByText('0 g / 160 g')).toBeInTheDocument()
   })
 
-  it('keeps remote USDA search disabled without a configured key', async () => {
+  it('searches with the server key when no user key is configured and surfaces a server missing-key response', async () => {
     const user = userEvent.setup()
+    mockSearchProviderFoods.mockRejectedValue(
+      new FoodProviderClientError('missing_api_key', 'API key missing.'),
+    )
     renderNutrition()
 
     await user.type(
@@ -184,8 +187,16 @@ describe('NutritionPage', () => {
       'rice',
     )
 
+    // Without a stored user key the client still attempts the search so the
+    // server-configured USDA key can be used. Only a server missing_api_key
+    // response surfaces the "API key missing" message.
+    await waitFor(() =>
+      expect(mockSearchProviderFoods).toHaveBeenCalledTimes(1),
+    )
+    expect(mockSearchProviderFoods).toHaveBeenCalledWith(
+      expect.objectContaining({ query: 'rice', apiKey: '', provider: 'usda' }),
+    )
     expect(await screen.findByText(/API key missing/)).toBeInTheDocument()
-    expect(mockSearchProviderFoods).not.toHaveBeenCalled()
   })
 
   it('debounces provider search after the three-character threshold', async () => {

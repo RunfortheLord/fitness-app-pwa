@@ -43,7 +43,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 function readApiKey(req: VercelRequest) {
   const value = req.headers?.['x-usda-fdc-api-key']
-  return Array.isArray(value) ? value[0] : value
+  const headerKey = Array.isArray(value) ? value[0] : value
+  // Prefer a user-supplied key; otherwise fall back to the server-configured
+  // USDA key so users do not have to enter their own. The server env var is
+  // never bundled into the client output.
+  return headerKey && headerKey.trim()
+    ? headerKey
+    : process.env.USDA_FDC_API_KEY
 }
 
 function statusForError(code: string) {
