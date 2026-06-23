@@ -1,5 +1,18 @@
 # Decisions
 
+## 2026-06-23: Food Category Icons Instead Of Provider Or Bundled Images
+
+- Food search results and food lists show a representative category icon on the
+  left (keyword based, e.g. chicken to a drumstick icon), rendered with the
+  existing icon set.
+- We did not surface provider product photos: USDA FoodData Central supplies no
+  food images and the Open Food Facts integration deliberately ignores images
+  (see 2026-06-19 entry), so reintroducing them was out of scope.
+- We did not bundle a large library of per-food artwork. Shipping hundreds of
+  images would bloat the offline PWA and raise sourcing and licensing concerns,
+  while category icons stay small, offline, and license-clean.
+- Foods that do not match a known category fall back to a generic utensils icon.
+
 ## 2026-06-21: Barcode Cache, Serving Preferences, And Timer Sounds
 
 - Remembered food units, cached barcode products, custom barcode associations,

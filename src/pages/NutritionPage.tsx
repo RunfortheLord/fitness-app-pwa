@@ -31,6 +31,7 @@ import {
   StatusMessage,
   ValidationMessage,
 } from '@components/ui'
+import { FoodIcon } from '@components/FoodIcon'
 import {
   addLocalDays,
   formatLocalDate,
@@ -1072,11 +1073,13 @@ function FoodLibraryRow({
   onSelect: () => void
 }) {
   const display = resultDisplay(result)
+  const iconCategory =
+    result.type === 'external' ? result.food.foodCategory : null
 
   return (
     <div className="nutrition-item">
       <span className="quick-action-icon">
-        <Utensils aria-hidden="true" size={18} />
+        <FoodIcon name={result.food.name} category={iconCategory} size={18} />
       </span>
       <button
         aria-label={`Select ${display.name}`}
