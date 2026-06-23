@@ -51,7 +51,11 @@ describe('HomePage', () => {
     expect(screen.getByText('Calories remaining')).toBeInTheDocument()
     expect(screen.getByText('No entry')).toBeInTheDocument()
     expect(screen.getByText('No active program')).toBeInTheDocument()
-    expect(screen.getByText('No completed workouts')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'View all history' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Workout history')).not.toBeInTheDocument()
+    expect(screen.queryByText('Recent activity')).not.toBeInTheDocument()
   })
 
   it('waits for initial dashboard initialization before stable empty-state assertions', async () => {
@@ -210,7 +214,7 @@ describe('HomePage', () => {
     expect(await screen.findAllByText('188 lb')).not.toHaveLength(0)
   })
 
-  it('shows compact recent workout history from completed history', async () => {
+  it('keeps completed workout history off the home dashboard', async () => {
     const program = await seedProgram(db)
     const active = await createProgramRepository(db).activateTemplate(
       program.template.id,
@@ -235,14 +239,11 @@ describe('HomePage', () => {
     renderHome()
     await waitForDashboardReady()
 
-    const workoutRow = screen
-      .getAllByRole('button', { name: /Upper/ })
-      .find((button) =>
-        button.getAttribute('aria-controls')?.startsWith('home-history-'),
-      )
-    expect(workoutRow).toBeTruthy()
-    expect(workoutRow).toHaveTextContent('Upper')
-    expect(workoutRow).toHaveTextContent('1 exercises')
+    expect(screen.queryByText('Workout history')).not.toBeInTheDocument()
+    expect(screen.queryByText('Recent activity')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'View all history' }),
+    ).toBeInTheDocument()
   })
 })
 

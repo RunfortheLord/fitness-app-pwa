@@ -187,7 +187,7 @@ export function NutritionPage() {
     void Promise.all([
       foodRepository.searchFoods(query),
       foodRepository.listFoodLogsByDate(selectedDate),
-      foodRepository.listRecentFoods(3),
+      foodRepository.listRecentFoods(50),
       nutritionSummaryService.getDailySummary(selectedDate),
     ])
       .then(([foods, logs, recentFoods, summary]) => {
@@ -386,15 +386,6 @@ export function NutritionPage() {
             onDelete={setDeleteEntry}
             onEdit={(entry) => setSheet({ type: 'entry', entry })}
           />
-          <RecentFoodsCard
-            foods={loadState.recentFoods}
-            onSelect={(food) =>
-              setSheet({
-                type: 'select',
-                result: { type: 'local', food, section: 'recent' },
-              })
-            }
-          />
         </>
       ) : null}
 
@@ -421,6 +412,15 @@ export function NutritionPage() {
             onSearch={() => setProviderSearchNonce((current) => current + 1)}
             query={query}
             setQuery={setQuery}
+          />
+          <RecentFoodsCard
+            foods={loadState.recentFoods}
+            onSelect={(food) =>
+              setSheet({
+                type: 'select',
+                result: { type: 'local', food, section: 'recent' },
+              })
+            }
           />
         </>
       ) : null}
@@ -1220,7 +1220,7 @@ function RecentFoodsCard({
       ) : (
         <EmptyState
           title="No recent foods"
-          message="The last three logged foods appear here for repeat entries."
+          message="Logged reusable foods appear here for repeat entries."
         />
       )}
     </Card>

@@ -171,6 +171,7 @@ describe('HistoryPage', () => {
     const items = await screen.findAllByRole('button', { name: /Upper/ })
     expect(items[0]).toHaveTextContent('Jun 19, 2026')
     expect(items[1]).toHaveTextContent('Jun 17, 2026')
+    expect(screen.queryByText('Local date')).not.toBeInTheDocument()
   })
 
   it('shows completed runs with dedicated run detail', async () => {
@@ -262,6 +263,7 @@ describe('HistoryPage', () => {
     expect(screen.getByText('Workout-day snapshot')).toBeInTheDocument()
     expect(screen.getAllByText('Upper').length).toBeGreaterThan(0)
     expect(screen.getByLabelText('Workout notes')).toHaveValue('steady session')
+    await userEvent.click(screen.getByRole('button', { name: /Bench press/ }))
     expect(screen.getByLabelText('Exercise notes')).toHaveValue('pause reps')
     expect(screen.getByText('Skipped: Bench press')).toBeInTheDocument()
     expect(screen.getByLabelText('Set 1 Weight')).toHaveValue('185')
@@ -303,6 +305,7 @@ describe('HistoryPage', () => {
     await user.clear(await screen.findByLabelText('Workout notes'))
     await user.type(screen.getByLabelText('Workout notes'), 'history note')
     await user.tab()
+    await user.click(screen.getByRole('button', { name: /Bench press/ }))
     await user.clear(screen.getByLabelText('Exercise notes'))
     await user.type(screen.getByLabelText('Exercise notes'), 'history exercise')
     await user.tab()
@@ -422,6 +425,8 @@ describe('HistoryPage', () => {
 
     expect((await screen.findAllByText('Plank')).length).toBeGreaterThan(0)
     expect(screen.getAllByText('Carry').length).toBeGreaterThan(0)
+    await userEvent.click(screen.getByRole('button', { name: /Plank/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Carry/ }))
     expect(screen.getAllByLabelText('Set 1 Duration')[0]).toHaveValue('45')
     expect(screen.getByLabelText('Set 1 Distance')).toHaveValue('0.25')
   })

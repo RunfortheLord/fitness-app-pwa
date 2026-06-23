@@ -63,8 +63,8 @@
 5. App validates a positive realistic numeric value.
 6. User saves.
 7. App creates a new timestamped bodyweight entry for that local date.
-8. Home immediately refreshes current bodyweight, selected-date status, recent
-   activity, and the compact trend summary.
+8. Home immediately refreshes current bodyweight, selected-date status, and the
+   compact trend summary.
 9. If the user needs to correct the selected date's latest entry, the user
    chooses Edit Latest, changes the value, and saves. The app updates that
    selected record instead of rewriting other same-day records.
@@ -189,8 +189,9 @@
 ## Viewing Workout History
 
 1. User opens History.
-2. App lists completed workouts and completed runs by local date.
-3. User opens a workout.
+2. App lists completed workouts and completed runs as one compact row per
+   history item.
+3. User opens a workout row.
 4. App shows source program/day when applicable, start time, completion time, duration, exercise details, performed sets, skipped exercises, and change review outcomes.
 5. User may edit recorded performance values.
 6. Edits do not change the source program template.

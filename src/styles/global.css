@@ -1503,7 +1503,9 @@ input::placeholder {
 
 .history-list button {
   display: grid;
-  gap: 2px;
+  grid-template-columns: minmax(116px, auto) minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: center;
   min-height: 52px;
   padding: var(--space-3);
   border: 1px solid var(--color-border-soft);
@@ -1511,6 +1513,13 @@ input::placeholder {
   background: var(--color-surface);
   color: var(--color-text);
   text-align: left;
+}
+
+.history-list button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .history-date-group {
@@ -1959,15 +1968,6 @@ input::placeholder {
   .app-shell {
     padding-right: var(--space-6);
     padding-left: var(--space-6);
-  }
-
-  .history-layout {
-    grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
-    align-items: start;
-  }
-
-  .history-layout > :nth-child(n + 3) {
-    grid-column: 1 / -1;
   }
 }
 

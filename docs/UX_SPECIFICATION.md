@@ -60,11 +60,11 @@
   - selected workout-day entry point
   - start workout action
   - resume workout action when an active workout exists
-- Recent workout card:
-  - most recent completed workout
-  - date, duration, and concise exercise/set summary
-- Recent activity card:
-  - compact timeline of food logs, bodyweight entries, and completed workouts.
+- Compact header actions:
+  - View all history
+  - Graphs
+  - Bodyweight progress
+- Home does not show workout history or recent activity as dashboard cards.
 
 ### Empty States
 
@@ -91,7 +91,7 @@
 - Provider loading, offline, timeout, unavailable, rate-limit, server
   configuration, and unexpected-error states are distinct from no acceptable
   results.
-- Recent foods list when no search is active.
+- Recent foods list in the Foods tab when no search is active.
 - Logged foods grouped for the selected date.
 - Create Food action reachable from header, empty state, and Add sheet.
 
@@ -271,7 +271,8 @@
 
 ## History Screen
 
-- Date-sorted list of completed workouts and completed runs.
+- Default view is a date-sorted dense list of completed workouts and completed runs, with one compact row per history item and no expanded detail content.
+- Selecting a workout or run row opens that item's detail view.
 - Search/filter can be deferred unless needed for usability.
 - Workout detail shows local date, source program/day, start and completion times, duration, exercises, sets, skipped exercises, and change review results.
 - Run detail shows local date, distance, elapsed time, moving time, average

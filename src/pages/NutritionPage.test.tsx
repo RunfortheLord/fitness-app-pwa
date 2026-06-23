@@ -63,7 +63,6 @@ describe('NutritionPage', () => {
     renderNutrition()
     await screen.findByText('Connected')
 
-    await screen.findByText('No recent foods')
     await user.click(screen.getByRole('button', { name: /Create custom food/ }))
     await expectSaveFoodAvailable()
     await fillFoodForm(user, {
@@ -187,7 +186,6 @@ describe('NutritionPage', () => {
     renderNutrition()
     await screen.findByText('Connected')
 
-    await screen.findByText('No recent foods')
     await user.type(
       screen.getByRole('searchbox', { name: 'Search foods' }),
       'r',
@@ -343,7 +341,6 @@ describe('NutritionPage', () => {
     const user = userEvent.setup()
     renderNutrition()
 
-    await screen.findByText('No recent foods')
     await user.click(screen.getByRole('button', { name: /Create custom food/ }))
     await fillFoodForm(user, {
       name: 'Zero tea',
@@ -364,7 +361,7 @@ describe('NutritionPage', () => {
     })
   })
 
-  it('quick adds calories with optional macros and shows only three recent foods', async () => {
+  it('quick adds calories with optional macros and shows all recent foods in the Foods tab', async () => {
     const user = userEvent.setup()
     renderNutrition()
 
@@ -415,14 +412,16 @@ describe('NutritionPage', () => {
       await new Promise((resolve) => setTimeout(resolve, 2))
     }
 
+    await user.click(screen.getByRole('button', { name: 'Foods' }))
+
     const recentCard = await screen.findByRole('region', {
       name: 'Recent foods',
     })
     expect(within(recentCard).getByText('Recent four')).toBeInTheDocument()
     expect(within(recentCard).getByText('Recent three')).toBeInTheDocument()
     expect(within(recentCard).getByText('Recent two')).toBeInTheDocument()
-    expect(within(recentCard).queryByText('Recent one')).not.toBeInTheDocument()
-    expect(within(recentCard).queryByText('Snack')).not.toBeInTheDocument()
+    expect(within(recentCard).getByText('Recent one')).toBeInTheDocument()
+    expect(within(recentCard).getByText('Snack')).toBeInTheDocument()
   })
 })
 

@@ -636,6 +636,7 @@ test('completes the release workflow through backup restore', async ({
   await expect(clearDialog).not.toBeVisible({ timeout: 15_000 })
   await page.waitForLoadState('load').catch(() => undefined)
   await page.goto('/nutrition')
+  await page.getByRole('button', { name: 'Foods' }).click()
   await expect(page.getByText('No recent foods')).toBeVisible()
 
   await page.goto('/settings')
@@ -651,7 +652,9 @@ test('completes the release workflow through backup restore', async ({
   await page.goto('/history')
   await expect(page.getByRole('button', { name: /Audit A/ })).toBeVisible()
   await page.getByRole('button', { name: /Audit A/ }).click()
-  await expect(page.getByRole('heading', { name: 'Audit row' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Audit A' })).toBeVisible()
+  await page.getByRole('button', { name: /Audit row/ }).click()
+  await expect(page.getByLabel('Exercise notes')).toBeVisible()
   await page.goto('/nutrition')
   await expect(page.getByText(/1.25x 1 cup .* 250 kcal/)).toBeVisible()
 })

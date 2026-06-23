@@ -61,7 +61,8 @@
 - Home must include quick bodyweight entry, the latest current bodyweight,
   selected-date bodyweight status, and a compact bodyweight trend summary when
   enough data exists.
-- Home must show current active program, start workout action, resume workout action when applicable, most recent completed workout, and compact recent activity.
+- Home must show current active program, start workout action, and resume workout action when applicable.
+- Home must provide compact access to full history, graphs, and bodyweight progress without showing workout history or recent activity as dashboard cards.
 - Home must not show weekly adherence percentages, adherence graphs, estimated one-repetition maximum graphs, or a large bodyweight graph.
 
 ### Nutrition
@@ -196,7 +197,8 @@
 
 ### History
 
-- Workout history must include local workout date, workout name, program and day source when applicable, start time, completion time, duration, exercises, performed sets, weight, reps, RIR, completion status, notes, skipped exercises, and applied or rejected structural changes.
+- Workout history must open first as a dense date-sorted list of completed workouts and runs, with one compact row per history item.
+- Selecting a workout history row must open a detail view that includes local workout date, workout name, program and day source when applicable, start time, completion time, duration, exercises, performed sets, weight, reps, RIR, completion status, notes, skipped exercises, and applied or rejected structural changes.
 - Completed run history must include a dedicated run detail view with distance,
   elapsed time, moving time, average moving pace, mile splits, walking/rest
   classifications, and GPS-gap indication.
