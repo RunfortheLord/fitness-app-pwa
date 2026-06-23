@@ -317,8 +317,16 @@ export function NutritionPage() {
     }
   }, [providerSearchNonce, query, usdaKey])
 
-  const displayedResults = createSearchSections({
+  const daySearchResults = createSearchSections({
     localFoods: loadState.foods,
+    includeRecentFoods: false,
+    providerResults: providerSearch.results,
+    query,
+    recentFoods: loadState.recentFoods,
+  })
+  const foodSearchResults = createSearchSections({
+    localFoods: loadState.foods,
+    includeRecentFoods: true,
     providerResults: providerSearch.results,
     query,
     recentFoods: loadState.recentFoods,
@@ -369,7 +377,7 @@ export function NutritionPage() {
           <DailyTotalsCard summary={summary} />
           <FoodSearchCard
             providerSearch={providerSearch}
-            results={displayedResults}
+            results={daySearchResults}
             onEditFood={(food) => setSheet({ type: 'food', food })}
             onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
             onOpenScanner={() => setSheet({ type: 'scanner' })}
@@ -404,7 +412,7 @@ export function NutritionPage() {
           />
           <FoodSearchCard
             providerSearch={providerSearch}
-            results={displayedResults}
+            results={foodSearchResults}
             onEditFood={(food) => setSheet({ type: 'food', food })}
             onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
             onOpenScanner={() => setSheet({ type: 'scanner' })}
@@ -1127,11 +1135,13 @@ function resultDisplay(result: FoodSearchResult) {
 }
 
 function createSearchSections({
+  includeRecentFoods,
   localFoods,
   providerResults,
   query,
   recentFoods,
 }: {
+  includeRecentFoods: boolean
   localFoods: Food[]
   providerResults: GroupedFoodResult[]
   query: string
@@ -1154,14 +1164,21 @@ function createSearchSections({
   )
 
   return [
-    {
-      title: 'Recent and previously used',
-      items: matchingRecent.map((food) => ({
-        type: 'local',
-        food,
-        section: food.sourceType === 'provider' ? 'used' : 'recent',
-      })),
-    },
+    ...(includeRecentFoods
+      ? [
+          {
+            title: 'Recent and previously used',
+            items: matchingRecent.map((food) => ({
+              type: 'local' as const,
+              food,
+              section:
+                food.sourceType === 'provider'
+                  ? ('used' as const)
+                  : ('recent' as const),
+            })),
+          },
+        ]
+      : []),
     {
       title: 'Custom foods',
       items: customFoods.map((food) => ({

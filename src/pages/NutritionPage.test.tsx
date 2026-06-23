@@ -95,6 +95,7 @@ describe('NutritionPage', () => {
     expect(await screen.findByText('300 kcal')).toBeInTheDocument()
     await expect(screen.findByText(/1.5x 1 cup/)).resolves.toBeInTheDocument()
 
+    await user.click(screen.getByRole('button', { name: 'Foods' }))
     await user.click(screen.getByRole('button', { name: 'Edit Rice' }))
     await user.clear(
       screen.getByRole('textbox', { name: 'Calories per serving' }),
@@ -111,6 +112,7 @@ describe('NutritionPage', () => {
       foodSnapshot: { caloriesPerServing: 200, foodName: 'Rice' },
     })
 
+    await user.click(screen.getByRole('button', { name: 'Day' }))
     await user.click(screen.getByRole('button', { name: 'Edit Rice log' }))
     const servingMultiplier = await screen.findByRole('textbox', {
       name: 'Serving multiplier',
@@ -412,6 +414,15 @@ describe('NutritionPage', () => {
       await new Promise((resolve) => setTimeout(resolve, 2))
     }
 
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search foods' }),
+      'Recent four',
+    )
+    expect(await screen.findByText('No acceptable results')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Select Recent four' }),
+    ).not.toBeInTheDocument()
+    await user.clear(screen.getByRole('searchbox', { name: 'Search foods' }))
     await user.click(screen.getByRole('button', { name: 'Foods' }))
 
     const recentCard = await screen.findByRole('region', {
