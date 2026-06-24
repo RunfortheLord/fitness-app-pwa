@@ -30,8 +30,10 @@ import {
   SecondaryButton,
   SectionHeader,
   StatusMessage,
+  Toast,
   ValidationMessage,
 } from '@components/ui'
+import { useSubpageBackGesture } from '@hooks/useSubpageBackGesture'
 import { TRACKING_METHODS, getTrackingMethod } from '@domain/trackingMethods'
 import { formatLocalDate } from '@domain/dates'
 import {
@@ -290,21 +292,25 @@ export function TrainingPage() {
   const onDeleteProgram = (template: ProgramTemplate) =>
     setProgramConfirmation({ type: 'delete-first', template })
   const onCreateProgram = () => setSheet({ type: 'createProgram' })
-  const cloneProgram = (templateId: string, label: string) => {
-    void programRepository.cloneProgramTemplate(templateId).then(() => {
+  const cloneProgram = (templateId: string, label: string) =>
+    programRepository.cloneProgramTemplate(templateId).then(() => {
       setMessage(label)
       reload()
     })
-  }
   const leaveProgramSubpage = () => {
     setProgramView('main')
     setProgramSearchQuery('')
     setPreviewTemplate(null)
   }
 
+  useSubpageBackGesture(programView !== 'main', leaveProgramSubpage)
+  useSubpageBackGesture(previewTemplate !== null, () =>
+    setPreviewTemplate(null),
+  )
+
   return (
     <PageContainer>
-      {message ? <StatusMessage tone="success">{message}</StatusMessage> : null}
+      <Toast message={message} onDismiss={() => setMessage(null)} />
 
       {programView === 'library' ? (
         <FullProgramLibraryPage
@@ -1151,7 +1157,7 @@ function ProgramCreateSheet({
       return
     }
 
-    void programRepository
+    return programRepository
       .createProgramTemplate({
         name,
         days: [],

@@ -2,10 +2,11 @@ import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
   HTMLAttributes,
+  MouseEvent,
   RefObject,
   ReactNode,
 } from 'react'
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { ArrowLeft, Check, ChevronLeft, ChevronRight, X } from 'lucide-react'
 
 type AppHeaderProps = {
@@ -292,13 +293,62 @@ export function DateSelector({
   )
 }
 
+type AsyncButtonProps = Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  'onClick'
+> & {
+  onClick?: (event: MouseEvent<HTMLButtonElement>) => void | Promise<unknown>
+}
+
+/**
+ * Disables the button while an async `onClick` is in flight so a double-tap
+ * cannot submit twice. Synchronous handlers are unaffected.
+ */
+function useAsyncClick(onClick: AsyncButtonProps['onClick']): {
+  pending: boolean
+  handleClick?: (event: MouseEvent<HTMLButtonElement>) => void
+} {
+  const [pending, setPending] = useState(false)
+  const pendingRef = useRef(false)
+
+  if (!onClick) {
+    return { pending: false }
+  }
+
+  return {
+    pending,
+    handleClick: (event) => {
+      if (pendingRef.current) {
+        return
+      }
+      const result = onClick(event)
+      if (
+        result &&
+        typeof (result as PromiseLike<unknown>).then === 'function'
+      ) {
+        pendingRef.current = true
+        setPending(true)
+        void Promise.resolve(result).finally(() => {
+          pendingRef.current = false
+          setPending(false)
+        })
+      }
+    },
+  }
+}
+
 export function PrimaryButton({
   className = '',
+  disabled,
+  onClick,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement>) {
+}: AsyncButtonProps) {
+  const { pending, handleClick } = useAsyncClick(onClick)
   return (
     <button
       className={`button button-primary ${className}`.trim()}
+      disabled={disabled || pending}
+      onClick={handleClick}
       {...props}
     />
   )
@@ -306,11 +356,16 @@ export function PrimaryButton({
 
 export function SecondaryButton({
   className = '',
+  disabled,
+  onClick,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement>) {
+}: AsyncButtonProps) {
+  const { pending, handleClick } = useAsyncClick(onClick)
   return (
     <button
       className={`button button-secondary ${className}`.trim()}
+      disabled={disabled || pending}
+      onClick={handleClick}
       {...props}
     />
   )
@@ -435,6 +490,53 @@ export function StatusMessage({
     <aside className={`status-message status-message-${tone}`} role="status">
       {children}
     </aside>
+  )
+}
+
+/**
+ * A transient confirmation that announces itself politely and auto-dismisses,
+ * so success messages do not pile up or shift page layout.
+ */
+export function Toast({
+  message,
+  onDismiss,
+  tone = 'success',
+  durationMs = 3500,
+}: {
+  message: string | null
+  onDismiss: () => void
+  tone?: 'neutral' | 'success' | 'warning'
+  durationMs?: number
+}) {
+  const onDismissRef = useRef(onDismiss)
+  useEffect(() => {
+    onDismissRef.current = onDismiss
+  }, [onDismiss])
+
+  useEffect(() => {
+    if (!message) {
+      return
+    }
+    const timeoutId = window.setTimeout(
+      () => onDismissRef.current(),
+      durationMs,
+    )
+    return () => window.clearTimeout(timeoutId)
+  }, [message, durationMs])
+
+  if (!message) {
+    return null
+  }
+
+  return (
+    <div className="toast-region" aria-live="polite">
+      <div className={`toast toast-${tone}`} role="status">
+        <span>{message}</span>
+        <IconButton aria-label="Dismiss notification" onClick={onDismiss}>
+          <X aria-hidden="true" size={16} />
+        </IconButton>
+      </div>
+    </div>
   )
 }
 

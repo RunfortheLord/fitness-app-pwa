@@ -236,6 +236,23 @@ describe('NutritionPage', () => {
     expect(after?.nutritionTargets.calories).toBe(2313)
   })
 
+  it('closes the Set Goal sub-page with the Escape key', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await user.click(screen.getByRole('button', { name: 'Targets' }))
+    await user.click(screen.getByRole('button', { name: 'Set Goal' }))
+    expect(
+      screen.getByRole('button', { name: 'Calculate Macros' }),
+    ).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+
+    expect(
+      await screen.findByRole('button', { name: 'Save targets' }),
+    ).toBeInTheDocument()
+  })
+
   it('shows the calorie equation and keeps Save food at the top of the form', async () => {
     const user = userEvent.setup()
     renderNutrition()

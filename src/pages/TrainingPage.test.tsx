@@ -602,6 +602,23 @@ describe('TrainingPage', () => {
     ).toBeInTheDocument()
   })
 
+  it('closes the Browse sub-page with the Escape key', async () => {
+    const user = userEvent.setup()
+    renderTraining()
+
+    await screen.findByText('No saved programs')
+    await user.click(screen.getByRole('button', { name: 'Browse programs' }))
+    expect(
+      await screen.findByText('Beginner Full Body A/B'),
+    ).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+
+    expect(
+      await screen.findByRole('button', { name: 'Browse programs' }),
+    ).toBeInTheDocument()
+  })
+
   it('opens the full program library sub-page from Show More', async () => {
     const user = userEvent.setup()
     await seedProgram(db)

@@ -31,8 +31,10 @@ import {
   SectionHeader,
   SegmentedControl,
   StatusMessage,
+  Toast,
   ValidationMessage,
 } from '@components/ui'
+import { useSubpageBackGesture } from '@hooks/useSubpageBackGesture'
 import { FoodIcon } from '@components/FoodIcon'
 import {
   addLocalDays,
@@ -206,6 +208,8 @@ export function NutritionPage() {
     goal: NutritionGoal | null
     entries: BodyweightEntry[]
   }>({ goal: null, entries: [] })
+
+  useSubpageBackGesture(targetsView === 'setGoal', () => setTargetsView('main'))
 
   useEffect(() => {
     let isCurrent = true
@@ -405,7 +409,7 @@ export function NutritionPage() {
           Nutrition data could not load.
         </StatusMessage>
       ) : null}
-      {message ? <StatusMessage tone="success">{message}</StatusMessage> : null}
+      <Toast message={message} onDismiss={() => setMessage(null)} />
       {usdaKey.configured ? (
         <span className="visually-hidden">
           {usdaStatusLabel(usdaKey.status)}
@@ -1021,7 +1025,7 @@ function QuickAddSheet({
       return
     }
 
-    void foodRepository
+    return foodRepository
       .logQuickAddEntry({
         localDate,
         name: parsed.value.name || undefined,
@@ -1351,7 +1355,7 @@ function FoodFormSheet({
       ? foodRepository.updateFood(food.id, parsed.value)
       : foodRepository.createFood(parsed.value)
 
-    void action
+    return action
       .then(async (savedFood) => {
         if (parsed.value.barcode) {
           await foodRepository.cacheBarcodeProduct({
@@ -1644,7 +1648,7 @@ function SelectedFoodSheet({
             servingMultiplier,
           })
 
-    void action
+    return action
       .then(async (entry) => {
         await foodRepository.rememberFoodUnit({
           foodId: entry.foodId ?? foodId,
@@ -1853,7 +1857,7 @@ function EditFoodLogSheet({
       return
     }
 
-    void foodRepository
+    return foodRepository
       .updateFoodLogEntry(entry.id, { servingMultiplier: parsedMultiplier })
       .then(onSaved)
       .catch((caught: unknown) => {
@@ -1977,7 +1981,7 @@ function SetGoalSubpage({
       lastCalorieUpdate: null,
     }
 
-    void (async () => {
+    return (async () => {
       try {
         await settingsRepository.saveNutritionTargets(plan.targets)
         await settingsRepository.saveNutritionGoal(goal)
@@ -2216,7 +2220,7 @@ function TargetsCard({
       return
     }
 
-    void settingsRepository
+    return settingsRepository
       .saveNutritionTargets(parsed.value)
       .then(onSaved)
       .catch((caught: unknown) => {
