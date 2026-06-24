@@ -176,6 +176,66 @@ describe('NutritionPage', () => {
     expect(await screen.findByText('0 g / 160 g')).toBeInTheDocument()
   })
 
+  it('calculates a custom goal, returns to Targets, and offers manual updates', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await user.click(screen.getByRole('button', { name: 'Targets' }))
+
+    // Open the Set Goal subpage and confirm the back arrow escapes it.
+    await user.click(screen.getByRole('button', { name: 'Set Goal' }))
+    expect(
+      screen.getByRole('button', { name: 'Calculate Macros' }),
+    ).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Back to targets' }))
+    expect(
+      screen.getByRole('button', { name: 'Save targets' }),
+    ).toBeInTheDocument()
+
+    // Fill the seven inputs and calculate.
+    await user.click(screen.getByRole('button', { name: 'Set Goal' }))
+    await user.type(screen.getByLabelText('Current body weight (lb)'), '180')
+    await user.type(screen.getByLabelText('Height (feet)'), '5')
+    await user.type(screen.getByLabelText('Height (inches)'), '10')
+    await user.selectOptions(
+      screen.getByLabelText('Activity level'),
+      'moderately_active',
+    )
+    await user.type(screen.getByLabelText('Goal weight (lb)'), '170')
+    await user.type(screen.getByLabelText('Age'), '30')
+    await user.selectOptions(screen.getByLabelText('Sex'), 'male')
+    await user.click(screen.getByRole('button', { name: 'Calculate Macros' }))
+
+    expect(
+      await screen.findByText('Macros calculated and targets saved.'),
+    ).toBeInTheDocument()
+    // Back on the Targets page with a goal-progress card (loads async).
+    expect(await screen.findByText(/Estimated finish:/)).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: 'Update Calories' }),
+    ).toBeInTheDocument()
+
+    const settings = await db.userSettings.get('settings')
+    expect(settings?.nutritionGoal).toMatchObject({
+      direction: 'cut',
+      goalWeightLb: 170,
+      calculationWeightLb: 180,
+      formulaVersion: 1,
+    })
+    expect(settings?.nutritionTargets.calories).toBe(2313)
+
+    // With no body-weight history a manual update reports insufficient data and
+    // does not change calories.
+    await user.click(screen.getByRole('button', { name: 'Update Calories' }))
+    expect(
+      await screen.findByText(
+        'More body-weight data is needed before calories can be updated.',
+      ),
+    ).toBeInTheDocument()
+    const after = await db.userSettings.get('settings')
+    expect(after?.nutritionTargets.calories).toBe(2313)
+  })
+
   it('shows the calorie equation and keeps Save food at the top of the form', async () => {
     const user = userEvent.setup()
     renderNutrition()
@@ -427,6 +487,10 @@ describe('NutritionPage', () => {
     await expect(
       screen.findByText(/1x 1 entry - 250 kcal - P 20 C 0 F 0/),
     ).resolves.toBeInTheDocument()
+    // Quick Add must not pollute the reusable food library/search.
+    await expect(db.foods.count()).resolves.toBe(0)
+    const [quickAddLog] = await db.foodLogEntries.toArray()
+    expect(quickAddLog.foodId).toBeNull()
 
     for (const name of [
       'Recent one',
@@ -480,7 +544,8 @@ describe('NutritionPage', () => {
     expect(within(recentCard).getByText('Recent three')).toBeInTheDocument()
     expect(within(recentCard).getByText('Recent two')).toBeInTheDocument()
     expect(within(recentCard).getByText('Recent one')).toBeInTheDocument()
-    expect(within(recentCard).getByText('Snack')).toBeInTheDocument()
+    // Quick Add entries log to the day only; they are not reusable recent foods.
+    expect(within(recentCard).queryByText('Snack')).not.toBeInTheDocument()
   })
 })
 
@@ -539,8 +604,9 @@ describe('createSearchSections', () => {
     const brandedSection = sections.find(
       (section) => section.title === 'Branded',
     )
-    // 12 generic results are capped to the 8 most relevant, in rank order.
-    expect(common?.items).toHaveLength(8)
+    // 12 generic results are capped to the 5 most relevant, in rank order, to
+    // keep the Common grouping concise.
+    expect(common?.items).toHaveLength(5)
     expect(common?.items[0]).toMatchObject({
       type: 'external',
       food: { id: 'usda:0' },

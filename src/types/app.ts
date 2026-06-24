@@ -73,6 +73,7 @@ export type UserSettings = {
   weightUnit: WeightUnit
   energyUnit: EnergyUnit
   nutritionTargets: NutritionTargetValues
+  nutritionGoal?: NutritionGoal | null
   timerSoundEnabled?: boolean
   selectedTimerSoundId?: string
   createdAt: IsoTimestamp
@@ -93,6 +94,53 @@ export type NutritionTargetValues = {
   proteinGrams: number
   carbohydrateGrams: number
   fatGrams: number
+}
+
+export type GoalSex = 'male' | 'female'
+
+export type GoalActivityLevel =
+  | 'sedentary'
+  | 'lightly_active'
+  | 'moderately_active'
+  | 'heavily_active'
+
+export type GoalDirection = 'cut' | 'bulk' | 'maintain'
+
+export type GoalCalorieUpdate = {
+  appliedAt: IsoTimestamp
+  deltaKcal: number
+  trendWeightLb: number
+  observedWeeklyChangeLb: number
+  /**
+   * Signature of the trend data that produced this update. Used to avoid
+   * applying the same adjustment twice from unchanged trend data.
+   */
+  signature: string
+}
+
+/**
+ * A custom nutrition goal derived from the Set Goal inputs. Stored additively
+ * on {@link UserSettings} so users without a goal are unaffected. The fields
+ * are sufficient to reproduce and update the plan deterministically.
+ */
+export type NutritionGoal = {
+  goalWeightLb: number
+  /** Bodyweight the plan was calculated from (trend weight or a manual value). */
+  calculationWeightLb: number
+  heightInches: number
+  ageYears: number
+  sex: GoalSex
+  activityLevel: GoalActivityLevel
+  direction: GoalDirection
+  /** Intended weekly bodyweight change in pounds (negative for a cut). */
+  weeklyRateLb: number
+  maintenanceCalories: number
+  targets: NutritionTargetValues
+  estimatedFinishDate: LocalDateString | null
+  formulaVersion: number
+  lastCalorieUpdate?: GoalCalorieUpdate | null
+  createdAt: IsoTimestamp
+  updatedAt: IsoTimestamp
 }
 
 export type Food = {
@@ -343,6 +391,14 @@ export type ProgramTemplate = {
   notes: string
   status: EntityStatus
   lastActiveAt?: IsoTimestamp | null
+  /** True for the immutable seeded built-in program library entries. */
+  isBuiltIn?: boolean
+  /** Training level shown for built-in programs (e.g. "Beginner"). */
+  level?: string | null
+  /** Goal/category shown for built-in programs. */
+  goal?: string | null
+  /** Seed version of a built-in template, for idempotent re-seeding. */
+  builtInSeedVersion?: number | null
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }

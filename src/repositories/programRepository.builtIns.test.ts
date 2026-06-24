@@ -1,0 +1,120 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+
+import type { TrainingLogDatabase } from '@db/database'
+import { BUILT_IN_PROGRAMS } from '@domain/programLibrarySeed'
+import { createExerciseRepository } from '@repositories/exerciseRepository'
+import {
+  builtInProgramTemplateId,
+  createProgramRepository,
+} from '@repositories/programRepository'
+import { createTestDatabase, destroyTestDatabase } from '@test/database'
+
+let database: TrainingLogDatabase
+
+beforeEach(async () => {
+  database = createTestDatabase()
+  await createExerciseRepository(database).seedBuiltInExercises()
+})
+
+afterEach(async () => {
+  await destroyTestDatabase(database)
+})
+
+describe('seedBuiltInPrograms', () => {
+  it('seeds all 28 immutable built-in templates with days and exercises', async () => {
+    const repository = createProgramRepository(database)
+    await repository.seedBuiltInPrograms()
+
+    const templates = await database.programTemplates.toArray()
+    const builtIns = templates.filter((t) => t.isBuiltIn)
+    expect(builtIns).toHaveLength(28)
+
+    const ids = builtIns.map((t) => t.id)
+    expect(new Set(ids).size).toBe(28)
+
+    // Every prescription references a real, seeded exercise.
+    const prescriptions = await database.templateWorkoutExercises.toArray()
+    for (const prescription of prescriptions) {
+      const exercise = await database.exercises.get(prescription.exerciseId)
+      expect(exercise).toBeDefined()
+    }
+
+    // Spot-check the first program's structure.
+    const firstId = builtInProgramTemplateId(BUILT_IN_PROGRAMS[0].slug)
+    const structure = await repository.getTemplateStructure(firstId)
+    expect(structure.days).toHaveLength(BUILT_IN_PROGRAMS[0].days.length)
+  })
+
+  it('is idempotent across repeated seeding', async () => {
+    const repository = createProgramRepository(database)
+    await repository.seedBuiltInPrograms()
+    const firstDays = await database.templateWorkoutDays.count()
+    const firstExercises = await database.templateWorkoutExercises.count()
+
+    await repository.seedBuiltInPrograms()
+    await repository.seedBuiltInPrograms()
+
+    expect(await database.programTemplates.count()).toBe(28)
+    expect(await database.templateWorkoutDays.count()).toBe(firstDays)
+    expect(await database.templateWorkoutExercises.count()).toBe(firstExercises)
+  })
+
+  it('refuses to mutate a built-in template', async () => {
+    const repository = createProgramRepository(database)
+    await repository.seedBuiltInPrograms()
+    const templateId = builtInProgramTemplateId(BUILT_IN_PROGRAMS[0].slug)
+    const structure = await repository.getTemplateStructure(templateId)
+
+    await expect(
+      repository.updateProgramTemplate(templateId, { name: 'Hacked' }),
+    ).rejects.toThrow(/read-only/i)
+    await expect(repository.deleteProgramTemplate(templateId)).rejects.toThrow(
+      /cannot be deleted/i,
+    )
+    await expect(
+      repository.addTemplateDay(templateId, { name: 'Extra day' }),
+    ).rejects.toThrow(/read-only/i)
+    await expect(
+      repository.removeTemplateExercise(
+        structure.exercisesByDay[structure.days[0].id][0].id,
+      ),
+    ).rejects.toThrow(/read-only/i)
+
+    // Nothing changed.
+    const after = await repository.getTemplateStructure(templateId)
+    expect(after.template.name).toBe(structure.template.name)
+    expect(after.days).toHaveLength(structure.days.length)
+  })
+
+  it('clones a built-in into an independent editable user copy', async () => {
+    const repository = createProgramRepository(database)
+    await repository.seedBuiltInPrograms()
+    const templateId = builtInProgramTemplateId(BUILT_IN_PROGRAMS[0].slug)
+
+    const copy = await repository.cloneProgramTemplate(templateId)
+    expect(copy.template.isBuiltIn).toBeFalsy()
+    expect(copy.template.id).not.toBe(templateId)
+
+    // Editing the copy is allowed and does not touch the built-in source.
+    await repository.updateProgramTemplate(copy.template.id, {
+      name: 'My custom plan',
+    })
+    const source = await database.programTemplates.get(templateId)
+    expect(source?.name).toBe(BUILT_IN_PROGRAMS[0].name)
+    expect(copy.days[0].id).not.toBe(`${templateId}::d0`)
+  })
+
+  it('activates a built-in as an isolated snapshot without mutating it', async () => {
+    const repository = createProgramRepository(database)
+    await repository.seedBuiltInPrograms()
+    const templateId = builtInProgramTemplateId(BUILT_IN_PROGRAMS[0].slug)
+
+    const active = await repository.activateTemplate(templateId)
+    expect(active.cycle.sourceTemplateId).toBe(templateId)
+    expect(active.days[0].id).not.toBe(`${templateId}::d0`)
+
+    const source = await repository.getTemplateStructure(templateId)
+    expect(source.template.isBuiltIn).toBe(true)
+    expect(source.days).toHaveLength(BUILT_IN_PROGRAMS[0].days.length)
+  })
+})

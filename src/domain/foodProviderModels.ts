@@ -100,39 +100,119 @@ export function normalizeProviderQuery(query: string) {
   return query.trim().replace(/\s+/g, ' ')
 }
 
+// Corporate suffixes dropped when matching a brand against the start of a name,
+// so "Quest Nutrition, Inc." still matches a name beginning "QUEST NUTRITION,".
+const COMPANY_SUFFIX_TOKENS = new Set([
+  'inc',
+  'llc',
+  'co',
+  'corp',
+  'corporation',
+  'company',
+  'ltd',
+  'gmbh',
+  'sa',
+  'plc',
+])
+
 /**
- * Produces a readable food name for display. Branded provider records often
- * repeat the brand inside the name (e.g. "QUEST, Protein Bar, Chocolate" with
- * brand "Quest"), which is hard to read when the brand is also shown
- * separately. When the name clearly leads with the brand, that prefix is
- * removed. The transformation is conservative: it only strips an exact leading
- * brand match and never returns an empty string.
+ * Splits a readable food name from its brand/restaurant for display.
+ *
+ * - When a brand field is present and the name leads with it (e.g.
+ *   "QUEST, Protein Bar" with brand "Quest"), the brand prefix is removed from
+ *   the name. Matching tolerates trailing corporate suffixes ("Inc.", "LLC").
+ * - When there is no brand field but the food is a restaurant/fast-food item
+ *   formatted "RESTAURANT, item" (e.g. "CHICK-FIL-A, chicken sandwich"), the
+ *   leading segment is treated as the brand so it no longer clutters the name.
+ *
+ * The transformation never returns an empty name.
  */
+export function splitBrandFromName(
+  name: string,
+  brandName?: string | null,
+  foodCategory?: string | null,
+): { name: string; brand: string | null } {
+  const displayName = name.trim()
+  const explicitBrand = brandName && brandName.trim() ? brandName.trim() : null
+
+  if (explicitBrand) {
+    const stripped = stripLeadingBrand(displayName, explicitBrand)
+    return { name: stripped ?? displayName, brand: explicitBrand }
+  }
+
+  const restaurant = extractRestaurantBrand(displayName, foodCategory)
+  if (restaurant) {
+    return restaurant
+  }
+
+  return { name: displayName, brand: null }
+}
+
+/** Convenience wrapper that returns only the cleaned display name. */
 export function formatFoodDisplayName(
   name: string,
   brandName?: string | null,
 ): string {
-  const displayName = name.trim()
-  if (!brandName) {
-    return displayName
-  }
-  const normalizedBrand = normalizeFoodText(brandName)
+  return splitBrandFromName(name, brandName).name
+}
+
+function stripLeadingBrand(displayName: string, brand: string): string | null {
   const normalizedName = normalizeFoodText(displayName)
-  if (
-    !normalizedBrand ||
-    (normalizedName !== normalizedBrand &&
-      !normalizedName.startsWith(`${normalizedBrand} `))
-  ) {
-    return displayName
+  for (const candidate of brandPrefixCandidates(brand)) {
+    if (
+      normalizedName === candidate ||
+      normalizedName.startsWith(`${candidate} `)
+    ) {
+      const pattern = candidate
+        .split(' ')
+        .map(escapeRegExp)
+        .join('[^A-Za-z0-9]+')
+      const stripped = displayName
+        .replace(new RegExp(`^[^A-Za-z0-9]*${pattern}[^A-Za-z0-9]*`, 'iu'), '')
+        .trim()
+      if (stripped.length > 0) {
+        return stripped
+      }
+    }
   }
-  const brandPattern = normalizedBrand
+  return null
+}
+
+function brandPrefixCandidates(brand: string): string[] {
+  const normalizedBrand = normalizeFoodText(brand)
+  if (!normalizedBrand) {
+    return []
+  }
+  const core = normalizedBrand
     .split(' ')
-    .map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-    .join('[^A-Za-z0-9]+')
-  const stripped = displayName
-    .replace(new RegExp(`^[^A-Za-z0-9]*${brandPattern}[^A-Za-z0-9]*`, 'iu'), '')
-    .trim()
-  return stripped.length > 0 ? stripped : displayName
+    .filter((token) => !COMPANY_SUFFIX_TOKENS.has(token))
+    .join(' ')
+  return [...new Set([normalizedBrand, core].filter(Boolean))].sort(
+    (left, right) => right.length - left.length,
+  )
+}
+
+function extractRestaurantBrand(
+  displayName: string,
+  foodCategory?: string | null,
+): { name: string; brand: string } | null {
+  if (!/fast food|restaurant/iu.test(foodCategory ?? '')) {
+    return null
+  }
+  const match = displayName.match(/^(.+?),\s+(.+)$/u)
+  if (!match) {
+    return null
+  }
+  const lead = match[1].trim()
+  const rest = match[2].trim()
+  if (!lead || !rest) {
+    return null
+  }
+  return { name: rest, brand: lead }
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 export function validateRequiredMacros(input: {

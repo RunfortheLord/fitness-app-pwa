@@ -1,5 +1,9 @@
 import { db, type TrainingLogDatabase } from '@db/database'
 import { createId } from '@domain/ids'
+import {
+  BUILT_IN_PROGRAMS,
+  BUILT_IN_PROGRAM_SEED_VERSION,
+} from '@domain/programLibrarySeed'
 import { snapshotExercise } from '@domain/snapshots'
 import type { ExerciseUsageSummary } from '@domain/exerciseSearch'
 import type {
@@ -56,11 +60,145 @@ export type ProgramRepositoryTestHooks = {
   afterActiveCycleAdded?: () => void | Promise<void>
 }
 
+// Fixed timestamp so re-seeding a built-in program is deterministic.
+const BUILT_IN_PROGRAM_CREATED_AT = '2026-06-19T00:00:00.000Z'
+
+export function builtInProgramTemplateId(slug: string) {
+  return `builtin-program:${slug}`
+}
+
 export function createProgramRepository(
   database: TrainingLogDatabase = db,
   testHooks: ProgramRepositoryTestHooks = {},
 ) {
+  async function assertTemplateEditable(templateId: string) {
+    const template = await database.programTemplates.get(templateId)
+    if (template?.isBuiltIn) {
+      throw new Error(
+        'Built-in programs are read-only. Duplicate the program to make changes.',
+      )
+    }
+  }
+
   return {
+    /**
+     * Idempotently seeds the built-in program library. Built-in templates use
+     * stable IDs and a seed version, so re-running never duplicates them and
+     * never touches user-owned templates, active cycles, or workout history.
+     */
+    async seedBuiltInPrograms() {
+      await database.transaction(
+        'rw',
+        database.programTemplates,
+        database.templateWorkoutDays,
+        database.templateWorkoutExercises,
+        database.exercises,
+        async () => {
+          // Load the exercise library once instead of per-prescription so seeding
+          // stays fast (hundreds of prescriptions reference it).
+          const exerciseById = new Map(
+            (await database.exercises.toArray()).map((exercise) => [
+              exercise.id,
+              exercise,
+            ]),
+          )
+
+          const existingTemplates = new Map(
+            (await database.programTemplates.toArray()).map((template) => [
+              template.id,
+              template,
+            ]),
+          )
+
+          const templatesToSeed: ProgramTemplate[] = []
+          const daysToSeed: ProgramTemplateDay[] = []
+          const exercisesToSeed: TemplateWorkoutExercise[] = []
+
+          for (const program of BUILT_IN_PROGRAMS) {
+            const templateId = builtInProgramTemplateId(program.slug)
+            const existing = existingTemplates.get(templateId)
+            if (
+              existing &&
+              (existing.builtInSeedVersion ?? 0) >=
+                BUILT_IN_PROGRAM_SEED_VERSION
+            ) {
+              continue
+            }
+
+            // Replace an existing built-in's own source definition; on a fresh
+            // database there is nothing to delete, so skip the extra queries.
+            if (existing) {
+              await database.templateWorkoutExercises
+                .where({ templateId })
+                .delete()
+              await database.templateWorkoutDays.where({ templateId }).delete()
+            }
+
+            templatesToSeed.push({
+              id: templateId,
+              name: program.name,
+              notes: '',
+              status: 'active',
+              lastActiveAt: existing?.lastActiveAt ?? null,
+              isBuiltIn: true,
+              level: program.level,
+              goal: program.goal,
+              builtInSeedVersion: BUILT_IN_PROGRAM_SEED_VERSION,
+              createdAt: existing?.createdAt ?? BUILT_IN_PROGRAM_CREATED_AT,
+              updatedAt: BUILT_IN_PROGRAM_CREATED_AT,
+            })
+
+            for (const [dayIndex, day] of program.days.entries()) {
+              const dayId = `${templateId}::d${dayIndex}`
+              daysToSeed.push({
+                id: dayId,
+                templateId,
+                name: day.name,
+                notes: '',
+                orderIndex: dayIndex,
+                createdAt: BUILT_IN_PROGRAM_CREATED_AT,
+                updatedAt: BUILT_IN_PROGRAM_CREATED_AT,
+              })
+
+              for (const [exIndex, ex] of day.exercises.entries()) {
+                const exercise = exerciseById.get(ex.exerciseId)
+                if (!exercise) {
+                  throw new Error(
+                    `Built-in program exercise ${ex.exerciseId} was not found in the exercise library.`,
+                  )
+                }
+                exercisesToSeed.push({
+                  id: `${dayId}::e${exIndex}`,
+                  templateId,
+                  dayId,
+                  exerciseId: exercise.id,
+                  exerciseSnapshot: snapshotExercise(exercise),
+                  orderIndex: exIndex,
+                  targetSetCount: ex.targetSetCount,
+                  targetWeight: null,
+                  targetDurationSeconds: null,
+                  targetDistance: null,
+                  targetRepsMin: ex.targetRepsMin,
+                  targetRepsMax: ex.targetRepsMax,
+                  targetRir: ex.targetRir,
+                  restSecondsOverride: null,
+                  notes: '',
+                  createdAt: BUILT_IN_PROGRAM_CREATED_AT,
+                  updatedAt: BUILT_IN_PROGRAM_CREATED_AT,
+                })
+              }
+            }
+          }
+
+          if (templatesToSeed.length) {
+            await database.programTemplates.bulkPut(templatesToSeed)
+            await database.templateWorkoutDays.bulkPut(daysToSeed)
+            await database.templateWorkoutExercises.bulkPut(exercisesToSeed)
+          }
+        },
+      )
+    },
+
     async createProgramTemplate(input: CreateProgramTemplateInput) {
       const now = new Date().toISOString()
       const template: ProgramTemplate = {
@@ -276,6 +414,11 @@ export function createProgramRepository(
       if (!template) {
         throw new Error(`Program template ${id} was not found.`)
       }
+      if (template.isBuiltIn) {
+        throw new Error(
+          'Built-in programs are read-only. Duplicate the program to make changes.',
+        )
+      }
 
       const updated: ProgramTemplate = {
         ...template,
@@ -299,6 +442,11 @@ export function createProgramRepository(
           const template = await database.programTemplates.get(id)
           if (!template) {
             throw new Error(`Program template ${id} was not found.`)
+          }
+          if (template.isBuiltIn) {
+            throw new Error(
+              'Built-in programs cannot be deleted. Duplicate the program to customize it.',
+            )
           }
           const activeCycle = await database.activeProgramCycles
             .where({ status: 'active' })
@@ -371,6 +519,11 @@ export function createProgramRepository(
           if (!template) {
             throw new Error(`Program template ${templateId} was not found.`)
           }
+          if (template.isBuiltIn) {
+            throw new Error(
+              'Built-in programs are read-only. Duplicate the program to make changes.',
+            )
+          }
           const existingDays = await database.templateWorkoutDays
             .where({ templateId })
             .toArray()
@@ -419,6 +572,7 @@ export function createProgramRepository(
       if (!day) {
         throw new Error(`Program template day ${dayId} was not found.`)
       }
+      await assertTemplateEditable(day.templateId)
       const now = new Date().toISOString()
       await database.transaction(
         'rw',
@@ -529,6 +683,7 @@ export function createProgramRepository(
           if (!day) {
             throw new Error(`Program template day ${dayId} was not found.`)
           }
+          await assertTemplateEditable(day.templateId)
           const exercise = await database.exercises.get(input.exerciseId)
           if (!exercise) {
             throw new Error(`Exercise ${input.exerciseId} was not found.`)
@@ -582,6 +737,7 @@ export function createProgramRepository(
               `Template exercise ${prescribedExerciseId} was not found.`,
             )
           }
+          await assertTemplateEditable(prescribed.templateId)
           const replacement = input.exerciseId
             ? await database.exercises.get(input.exerciseId)
             : undefined
@@ -634,6 +790,7 @@ export function createProgramRepository(
           `Template exercise ${prescribedExerciseId} was not found.`,
         )
       }
+      await assertTemplateEditable(prescribed.templateId)
       const now = new Date().toISOString()
       await database.transaction(
         'rw',

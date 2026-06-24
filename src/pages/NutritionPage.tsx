@@ -1,5 +1,6 @@
 import {
   Archive,
+  ArrowLeft,
   Camera,
   CopyPlus,
   Edit2,
@@ -11,6 +12,7 @@ import {
   Utensils,
 } from 'lucide-react'
 import { BrowserMultiFormatReader } from '@zxing/browser'
+import { format } from 'date-fns'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
@@ -38,6 +40,17 @@ import {
   formatSelectedDateLabel,
   type LocalDateString,
 } from '@domain/dates'
+import { latestBodyweight } from '@domain/bodyweightProgress'
+import { currentTrendWeight } from '@domain/bodyweightTrend'
+import {
+  GOAL_FORMULA_VERSION,
+  computeGoalPlan,
+  estimateGoalDate,
+  type GoalActivityLevel,
+  type GoalPlanInput,
+  type GoalSex,
+} from '@domain/goalMacros'
+import { evaluateCalorieUpdate } from '@domain/calorieAdjustment'
 import {
   formatCalories,
   formatFoodServingLabel,
@@ -46,8 +59,8 @@ import {
   type FoodServingOption,
 } from '@domain/foodServings'
 import {
-  formatFoodDisplayName,
   normalizeProviderQuery,
+  splitBrandFromName,
   type GroupedFoodResult,
   type NormalizedFoodResult,
 } from '@domain/foodProviderModels'
@@ -60,7 +73,11 @@ import {
   foodRepository,
   type CreateFoodInput,
 } from '@repositories/foodRepository'
-import { settingsRepository } from '@repositories/settingsRepository'
+import { bodyweightRepository } from '@repositories/bodyweightRepository'
+import {
+  settingsRepository,
+  type NutritionGoalInput,
+} from '@repositories/settingsRepository'
 import {
   FoodProviderClientError,
   lookupBarcodeProduct,
@@ -72,9 +89,11 @@ import {
   type DailyNutritionSummary,
 } from '@services/nutritionSummaryService'
 import type {
+  BodyweightEntry,
   Food,
   FoodLogEntry,
   IntegrationConnectionStatus,
+  NutritionGoal,
   NutritionTargetValues,
 } from '@shared-types/app'
 
@@ -182,6 +201,11 @@ export function NutritionPage() {
   })
   const [revision, setRevision] = useState(0)
   const [message, setMessage] = useState<string | null>(null)
+  const [targetsView, setTargetsView] = useState<'main' | 'setGoal'>('main')
+  const [goalData, setGoalData] = useState<{
+    goal: NutritionGoal | null
+    entries: BodyweightEntry[]
+  }>({ goal: null, entries: [] })
 
   useEffect(() => {
     let isCurrent = true
@@ -230,6 +254,27 @@ export function NutritionPage() {
         status: settings?.status ?? 'not_configured',
       })
     })
+    return () => {
+      isCurrent = false
+    }
+  }, [revision])
+
+  useEffect(() => {
+    let isCurrent = true
+    void Promise.all([
+      settingsRepository.getNutritionGoal(),
+      bodyweightRepository.listBodyweightEntries(),
+    ])
+      .then(([goal, entries]) => {
+        if (!isCurrent) {
+          return
+        }
+        setGoalData({ goal, entries })
+      })
+      .catch(() => {
+        // Goal/bodyweight data is non-critical; ignore load failures (e.g. the
+        // database closing during teardown) and keep the page usable.
+      })
     return () => {
       isCurrent = false
     }
@@ -429,14 +474,51 @@ export function NutritionPage() {
       ) : null}
 
       {mode === 'targets' ? (
-        <TargetsCard
-          key={targetKey(summary?.targets ?? null)}
-          currentTargets={summary?.targets ?? null}
-          onSaved={() => {
-            setMessage('Nutrition targets saved.')
-            reload()
-          }}
-        />
+        targetsView === 'setGoal' ? (
+          <SetGoalSubpage
+            entries={goalData.entries}
+            existingGoal={goalData.goal}
+            onBack={() => setTargetsView('main')}
+            onCalculated={() => {
+              setMessage('Macros calculated and targets saved.')
+              setTargetsView('main')
+              reload()
+            }}
+          />
+        ) : (
+          <>
+            <TargetsCard
+              key={targetKey(summary?.targets ?? null)}
+              currentTargets={summary?.targets ?? null}
+              onSaved={() => {
+                setMessage('Nutrition targets saved.')
+                reload()
+              }}
+            />
+            {goalData.goal ? (
+              <GoalProgressCard
+                entries={goalData.entries}
+                goal={goalData.goal}
+                onUpdated={(label) => {
+                  setMessage(label)
+                  reload()
+                }}
+              />
+            ) : null}
+            <Card title="Custom goal">
+              <p className="muted">
+                Build calorie and macro targets from your bodyweight, height,
+                activity, and goal weight.
+              </p>
+              <PrimaryButton
+                type="button"
+                onClick={() => setTargetsView('setGoal')}
+              >
+                Set Goal
+              </PrimaryButton>
+            </Card>
+          </>
+        )
       ) : null}
 
       {sheet?.type === 'food' ? (
@@ -938,32 +1020,16 @@ function QuickAddSheet({
       setError(parsed.error)
       return
     }
-    const foodName =
-      parsed.value.name ||
-      `Quick add ${Math.round(parsed.value.calories)} kcal ${crypto.randomUUID().slice(0, 8)}`
 
     void foodRepository
-      .createFood({
-        name: foodName,
-        brandName: null,
-        servingQuantity: 1,
-        servingUnit: 'entry',
-        servingDescription: '',
-        caloriesPerServing: parsed.value.calories,
-        proteinGramsPerServing: parsed.value.proteinGrams,
-        carbohydrateGramsPerServing: parsed.value.carbohydrateGrams,
-        fatGramsPerServing: parsed.value.fatGrams,
-        notes: 'Quick add',
-        barcode: null,
-        barcodeSource: null,
+      .logQuickAddEntry({
+        localDate,
+        name: parsed.value.name || undefined,
+        calories: parsed.value.calories,
+        proteinGrams: parsed.value.proteinGrams,
+        carbohydrateGrams: parsed.value.carbohydrateGrams,
+        fatGrams: parsed.value.fatGrams,
       })
-      .then((food) =>
-        foodRepository.logFood({
-          foodId: food.id,
-          localDate,
-          servingMultiplier: 1,
-        }),
-      )
       .then(onSaved)
       .catch((caught: unknown) => {
         setError(
@@ -1114,18 +1180,24 @@ function FoodLibraryRow({
 
 function resultDisplay(result: FoodSearchResult) {
   if (result.type === 'local') {
+    const split = splitBrandFromName(result.food.name, result.food.brandName)
     return {
-      name: formatFoodDisplayName(result.food.name, result.food.brandName),
-      brand: result.food.brandName ?? null,
+      name: split.name,
+      brand: split.brand,
       serving: formatFoodServingLabel(result.food),
       calories: result.food.caloriesPerServing,
     }
   }
 
   const macros = result.food.macrosPerServing ?? result.food.macrosPer100Grams
+  const split = splitBrandFromName(
+    result.food.name,
+    result.food.brandName,
+    result.food.foodCategory,
+  )
   return {
-    name: formatFoodDisplayName(result.food.name, result.food.brandName),
-    brand: result.food.brandName,
+    name: split.name,
+    brand: split.brand,
     serving: formatFoodServingLabel(result.food),
     calories: macros?.calories ?? 0,
   }
@@ -1820,6 +1892,299 @@ function EditFoodLogSheet({
   )
 }
 
+const ACTIVITY_OPTIONS: { value: GoalActivityLevel; label: string }[] = [
+  { value: 'sedentary', label: 'Sedentary' },
+  { value: 'lightly_active', label: 'Lightly active' },
+  { value: 'moderately_active', label: 'Moderately active' },
+  { value: 'heavily_active', label: 'Heavily active' },
+]
+
+type GoalFormState = {
+  bodyweight: string
+  heightFeet: string
+  heightInches: string
+  activityLevel: GoalActivityLevel
+  goalWeight: string
+  age: string
+  sex: GoalSex
+}
+
+function SetGoalSubpage({
+  entries,
+  existingGoal,
+  onBack,
+  onCalculated,
+}: {
+  entries: BodyweightEntry[]
+  existingGoal: NutritionGoal | null
+  onBack: () => void
+  onCalculated: () => void
+}) {
+  const [form, setForm] = useState<GoalFormState>(() => {
+    const prefillWeight = goalCurrentWeight(entries)
+    return {
+      bodyweight: existingGoal
+        ? String(existingGoal.calculationWeightLb)
+        : prefillWeight !== null
+          ? String(prefillWeight)
+          : '',
+      heightFeet: existingGoal
+        ? String(Math.floor(existingGoal.heightInches / 12))
+        : '',
+      heightInches: existingGoal ? String(existingGoal.heightInches % 12) : '',
+      activityLevel: existingGoal?.activityLevel ?? 'moderately_active',
+      goalWeight: existingGoal ? String(existingGoal.goalWeightLb) : '',
+      age: existingGoal ? String(existingGoal.ageYears) : '',
+      sex: existingGoal?.sex ?? 'male',
+    }
+  })
+  const [error, setError] = useState<string | null>(null)
+  const parsed = parseGoalForm(form)
+
+  function update<Field extends keyof GoalFormState>(
+    field: Field,
+    value: GoalFormState[Field],
+  ) {
+    setForm((current) => ({ ...current, [field]: value }))
+  }
+
+  function calculate() {
+    if (!parsed.ok) {
+      setError(parsed.error)
+      return
+    }
+    const input = parsed.value
+    const plan = computeGoalPlan(input)
+    const finish = estimateGoalDate({
+      currentWeightLb: input.bodyweightLb,
+      goalWeightLb: input.goalWeightLb,
+      weeklyRateLb: plan.weeklyRateLb,
+      from: new Date(),
+    })
+    const goal: NutritionGoalInput = {
+      goalWeightLb: input.goalWeightLb,
+      calculationWeightLb: input.bodyweightLb,
+      heightInches: input.heightFeet * 12 + input.heightInches,
+      ageYears: input.ageYears,
+      sex: input.sex,
+      activityLevel: input.activityLevel,
+      direction: plan.direction,
+      weeklyRateLb: plan.weeklyRateLb,
+      maintenanceCalories: plan.maintenanceCalories,
+      targets: plan.targets,
+      estimatedFinishDate: finish ? formatLocalDate(finish) : null,
+      formulaVersion: GOAL_FORMULA_VERSION,
+      lastCalorieUpdate: null,
+    }
+
+    void (async () => {
+      try {
+        await settingsRepository.saveNutritionTargets(plan.targets)
+        await settingsRepository.saveNutritionGoal(goal)
+        onCalculated()
+      } catch (caught) {
+        setError(
+          caught instanceof Error ? caught.message : 'Goal could not be saved.',
+        )
+      }
+    })()
+  }
+
+  return (
+    <Card>
+      <div className="set-goal-header">
+        <IconButton aria-label="Back to targets" onClick={onBack}>
+          <ArrowLeft aria-hidden="true" size={20} />
+        </IconButton>
+        <h2 className="set-goal-title">Set goal</h2>
+      </div>
+      <PrimaryButton disabled={!parsed.ok} type="button" onClick={calculate}>
+        Calculate Macros
+      </PrimaryButton>
+      {error ? <ValidationMessage message={error} /> : null}
+      <FormField id="goal-bodyweight" label="Current body weight (lb)">
+        <NumericInput
+          id="goal-bodyweight"
+          onChange={(event) => update('bodyweight', event.target.value)}
+          value={form.bodyweight}
+        />
+      </FormField>
+      <FormField id="goal-height-feet" label="Height (feet)">
+        <NumericInput
+          id="goal-height-feet"
+          onChange={(event) => update('heightFeet', event.target.value)}
+          value={form.heightFeet}
+        />
+      </FormField>
+      <FormField id="goal-height-inches" label="Height (inches)">
+        <NumericInput
+          id="goal-height-inches"
+          onChange={(event) => update('heightInches', event.target.value)}
+          value={form.heightInches}
+        />
+      </FormField>
+      <FormField id="goal-activity" label="Activity level">
+        <select
+          className="select-input"
+          id="goal-activity"
+          onChange={(event) =>
+            update('activityLevel', event.target.value as GoalActivityLevel)
+          }
+          value={form.activityLevel}
+        >
+          {ACTIVITY_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </FormField>
+      <FormField id="goal-target-weight" label="Goal weight (lb)">
+        <NumericInput
+          id="goal-target-weight"
+          onChange={(event) => update('goalWeight', event.target.value)}
+          value={form.goalWeight}
+        />
+      </FormField>
+      <FormField id="goal-age" label="Age">
+        <NumericInput
+          id="goal-age"
+          onChange={(event) => update('age', event.target.value)}
+          value={form.age}
+        />
+      </FormField>
+      <FormField id="goal-sex" label="Sex">
+        <select
+          className="select-input"
+          id="goal-sex"
+          onChange={(event) => update('sex', event.target.value as GoalSex)}
+          value={form.sex}
+        >
+          <option value="male">Male</option>
+          <option value="female">Female</option>
+        </select>
+      </FormField>
+    </Card>
+  )
+}
+
+function GoalProgressCard({
+  entries,
+  goal,
+  onUpdated,
+}: {
+  entries: BodyweightEntry[]
+  goal: NutritionGoal
+  onUpdated: (label: string) => void
+}) {
+  const [error, setError] = useState<string | null>(null)
+  const [updating, setUpdating] = useState(false)
+  const currentWeight = goalCurrentWeight(entries) ?? goal.calculationWeightLb
+  const finish = estimateGoalDate({
+    currentWeightLb: currentWeight,
+    goalWeightLb: goal.goalWeightLb,
+    weeklyRateLb: goal.weeklyRateLb,
+    from: new Date(),
+  })
+  const reached = Math.abs(currentWeight - goal.goalWeightLb) < 0.5
+  const finishLabel = reached
+    ? "You've reached your goal weight."
+    : finish
+      ? `Estimated finish: ${format(finish, 'MMM d, yyyy')}`
+      : 'Add more weigh-ins to estimate a finish date.'
+
+  function updateCalories() {
+    setUpdating(true)
+    setError(null)
+    const today = formatLocalDate(new Date())
+    const evaluation = evaluateCalorieUpdate({ goal, entries, asOf: today })
+    const refreshedFinish = (trendWeightLb: number) =>
+      estimateGoalDate({
+        currentWeightLb: trendWeightLb,
+        goalWeightLb: goal.goalWeightLb,
+        weeklyRateLb: goal.weeklyRateLb,
+        from: new Date(),
+      })
+
+    void (async () => {
+      try {
+        if (evaluation.status === 'insufficient_data') {
+          onUpdated(
+            'More body-weight data is needed before calories can be updated.',
+          )
+          return
+        }
+        if (evaluation.status === 'already_applied') {
+          onUpdated('Calories are already up to date for the latest trend.')
+          return
+        }
+
+        const finishDate = refreshedFinish(evaluation.trendWeightLb)
+        const estimatedFinishDate = finishDate
+          ? formatLocalDate(finishDate)
+          : null
+
+        if (evaluation.status === 'no_change') {
+          await settingsRepository.saveNutritionGoal({
+            ...goal,
+            estimatedFinishDate,
+            lastCalorieUpdate: {
+              appliedAt: new Date().toISOString(),
+              deltaKcal: 0,
+              trendWeightLb: evaluation.trendWeightLb,
+              observedWeeklyChangeLb: evaluation.observedWeeklyChangeLb,
+              signature: evaluation.signature,
+            },
+          })
+          onUpdated('No calorie change recommended.')
+          return
+        }
+
+        await settingsRepository.saveNutritionTargets(evaluation.newTargets)
+        await settingsRepository.saveNutritionGoal({
+          ...goal,
+          targets: evaluation.newTargets,
+          estimatedFinishDate,
+          lastCalorieUpdate: {
+            appliedAt: new Date().toISOString(),
+            deltaKcal: evaluation.deltaKcal,
+            trendWeightLb: evaluation.trendWeightLb,
+            observedWeeklyChangeLb: evaluation.observedWeeklyChangeLb,
+            signature: evaluation.signature,
+          },
+        })
+        onUpdated(
+          evaluation.deltaKcal > 0
+            ? `Calories increased by ${evaluation.deltaKcal}.`
+            : `Calories decreased by ${Math.abs(evaluation.deltaKcal)}.`,
+        )
+      } catch (caught) {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : 'Calories could not update.',
+        )
+      } finally {
+        setUpdating(false)
+      }
+    })()
+  }
+
+  return (
+    <Card title="Goal progress">
+      <p className="goal-finish-date">{finishLabel}</p>
+      {error ? <ValidationMessage message={error} /> : null}
+      <SecondaryButton
+        disabled={updating}
+        type="button"
+        onClick={updateCalories}
+      >
+        Update Calories
+      </SecondaryButton>
+    </Card>
+  )
+}
+
 function TargetsCard({
   currentTargets,
   onSaved,
@@ -2074,6 +2439,58 @@ function parseTargetForm(
   return {
     ok: true,
     value: { calories, proteinGrams, carbohydrateGrams, fatGrams },
+  }
+}
+
+function goalCurrentWeight(entries: BodyweightEntry[]): number | null {
+  const trend = currentTrendWeight(entries)
+  if (trend !== null) {
+    return trend
+  }
+  const latest = latestBodyweight(entries)
+  return latest ? latest.weight : null
+}
+
+function parseGoalForm(
+  form: GoalFormState,
+): { ok: true; value: GoalPlanInput } | { ok: false; error: string } {
+  const bodyweightLb = parsePositiveNumber(form.bodyweight)
+  const heightFeet = parseNonNegativeNumber(form.heightFeet)
+  const heightInches = parseNonNegativeNumber(form.heightInches)
+  const goalWeightLb = parsePositiveNumber(form.goalWeight)
+  const ageYears = parsePositiveNumber(form.age)
+
+  if (bodyweightLb === null || bodyweightLb > 1500) {
+    return { ok: false, error: 'Enter a realistic current body weight.' }
+  }
+  if (heightFeet === null || heightInches === null) {
+    return { ok: false, error: 'Enter your height in feet and inches.' }
+  }
+  if (heightInches >= 12) {
+    return { ok: false, error: 'Height inches must be between 0 and 11.' }
+  }
+  const totalInches = heightFeet * 12 + heightInches
+  if (totalInches <= 0 || totalInches > 96) {
+    return { ok: false, error: 'Enter a realistic height.' }
+  }
+  if (ageYears === null || ageYears < 13 || ageYears > 120) {
+    return { ok: false, error: 'Enter an age between 13 and 120.' }
+  }
+  if (goalWeightLb === null || goalWeightLb > 1500) {
+    return { ok: false, error: 'Enter a realistic goal weight.' }
+  }
+
+  return {
+    ok: true,
+    value: {
+      sex: form.sex,
+      bodyweightLb,
+      heightFeet,
+      heightInches,
+      ageYears,
+      activityLevel: form.activityLevel,
+      goalWeightLb,
+    },
   }
 }
 

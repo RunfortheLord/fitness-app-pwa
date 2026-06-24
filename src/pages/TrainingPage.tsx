@@ -162,8 +162,9 @@ export function TrainingPage() {
   const [view, setView] = useState<ExerciseView>('active')
   const [isLibraryExpanded, setIsLibraryExpanded] = useState(false)
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false)
-  const [isProgramLibraryExpanded, setIsProgramLibraryExpanded] =
-    useState(false)
+  const [programView, setProgramView] = useState<'main' | 'library' | 'browse'>(
+    'main',
+  )
   const [programSearchQuery, setProgramSearchQuery] = useState('')
   const [trackingCategory, setTrackingCategory] =
     useState<ExerciseTrackingCategory>('all')
@@ -190,11 +191,17 @@ export function TrainingPage() {
   useEffect(() => {
     let isCurrent = true
 
-    void exerciseRepository.seedBuiltInExercises().finally(() => {
-      if (isCurrent) {
-        reload()
-      }
-    })
+    // Seed the exercise library, then the built-in program library (which
+    // references it). Seeding lazily here keeps the larger program write off the
+    // app's initial load path.
+    void exerciseRepository
+      .seedBuiltInExercises()
+      .then(() => programRepository.seedBuiltInPrograms())
+      .finally(() => {
+        if (isCurrent) {
+          reload()
+        }
+      })
 
     return () => {
       isCurrent = false
@@ -266,120 +273,160 @@ export function TrainingPage() {
       })
   }
 
+  const activeSourceId = loadState.currentCycle?.cycle.sourceTemplateId
+  const userTemplates = loadState.templates.filter(
+    (template) => !template.isBuiltIn && template.id !== activeSourceId,
+  )
+  const builtInTemplates = loadState.templates.filter(
+    (template) => template.isBuiltIn,
+  )
+
+  const onActivateProgram = (template: ProgramTemplate) =>
+    setProgramConfirmation({ type: 'activate', template })
+  const onEditProgram = (templateId: string) =>
+    setSheet({ type: 'builder', target: { mode: 'template', templateId } })
+  const onDeleteProgram = (template: ProgramTemplate) =>
+    setProgramConfirmation({ type: 'delete-first', template })
+  const onCreateProgram = () => setSheet({ type: 'createProgram' })
+  const cloneProgram = (templateId: string, label: string) => {
+    void programRepository.cloneProgramTemplate(templateId).then(() => {
+      setMessage(label)
+      reload()
+    })
+  }
+  const leaveProgramSubpage = () => {
+    setProgramView('main')
+    setProgramSearchQuery('')
+  }
+
   return (
     <PageContainer>
-      <ProgramOverview
-        currentCycle={loadState.currentCycle}
-        loadStatus={loadState.status}
-        onCreateProgram={() => setSheet({ type: 'createProgram' })}
-        onDeactivate={(cycle) =>
-          setProgramConfirmation({ type: 'deactivate', cycle })
-        }
-        onEditCycle={(cycleId) =>
-          setSheet({ type: 'builder', target: { mode: 'cycle', cycleId } })
-        }
-        onSelectDay={(cycle, day, exercises) =>
-          setSheet({
-            type: 'selectedDay',
-            selectedDay: { cycle, day, exercises },
-          })
-        }
-        onStartDay={startWorkoutDay}
-      />
-
-      <ProgramLibrary
-        loadStatus={loadState.status}
-        onActivate={(template) =>
-          setProgramConfirmation({ type: 'activate', template })
-        }
-        onClone={(templateId) => {
-          void programRepository.cloneProgramTemplate(templateId).then(() => {
-            setMessage('Program cloned.')
-            reload()
-          })
-        }}
-        onCreateProgram={() => setSheet({ type: 'createProgram' })}
-        onDelete={(template) =>
-          setProgramConfirmation({ type: 'delete-first', template })
-        }
-        onEdit={(templateId) =>
-          setSheet({
-            type: 'builder',
-            target: { mode: 'template', templateId },
-          })
-        }
-        isExpanded={isProgramLibraryExpanded}
-        onToggleExpanded={() =>
-          setIsProgramLibraryExpanded((current) => !current)
-        }
-        query={programSearchQuery}
-        setQuery={setProgramSearchQuery}
-        templates={loadState.templates.filter(
-          (template) =>
-            template.id !== loadState.currentCycle?.cycle.sourceTemplateId,
-        )}
-      />
-
-      <SectionHeader
-        title="Exercise library"
-        action={
-          <IconButton
-            aria-label="Create exercise"
-            onClick={() => setSheet({ type: 'exercise', exercise: null })}
-          >
-            <Plus aria-hidden="true" size={20} />
-          </IconButton>
-        }
-      />
-
       {message ? <StatusMessage tone="success">{message}</StatusMessage> : null}
 
-      <ExerciseLibraryCard
-        exercises={loadState.exercises}
-        isExpanded={isLibraryExpanded}
-        isFilterPanelOpen={isFilterPanelOpen}
-        loadStatus={loadState.status}
-        onCreateExercise={() => setSheet({ type: 'exercise', exercise: null })}
-        onEditExercise={(exercise) => setSheet({ type: 'exercise', exercise })}
-        onHideExercise={(exercise) => {
-          void exerciseRepository.hideExercise(exercise.id).then(() => {
-            setMessage('Exercise hidden.')
-            reload()
-          })
-        }}
-        onRestoreExercise={(exercise) => {
-          void exerciseRepository.restoreExercise(exercise.id).then(() => {
-            setMessage('Exercise restored.')
-            reload()
-          })
-        }}
-        onToggleExpanded={() => {
-          setIsLibraryExpanded((current) => {
-            const next = !current
-            if (!next) {
-              setQuery('')
-              setTrackingCategory('all')
-              setPrimaryMuscle('all')
-              setIsFilterPanelOpen(false)
-            }
-            return next
-          })
-        }}
-        primaryMuscle={primaryMuscle}
-        query={query}
-        setFilterPanelOpen={setIsFilterPanelOpen}
-        setPrimaryMuscle={setPrimaryMuscle}
-        setQuery={setQuery}
-        setTrackingCategory={(value) => {
-          setTrackingCategory(value)
-          if (value !== 'strength') {
-            setPrimaryMuscle('all')
+      {programView === 'library' ? (
+        <FullProgramLibraryPage
+          loadStatus={loadState.status}
+          onActivate={onActivateProgram}
+          onBack={leaveProgramSubpage}
+          onClone={(templateId) => cloneProgram(templateId, 'Program cloned.')}
+          onCreateProgram={onCreateProgram}
+          onDelete={onDeleteProgram}
+          onEdit={onEditProgram}
+          query={programSearchQuery}
+          setQuery={setProgramSearchQuery}
+          templates={userTemplates}
+        />
+      ) : programView === 'browse' ? (
+        <BrowseProgramsPage
+          loadStatus={loadState.status}
+          onActivate={onActivateProgram}
+          onAdd={(templateId) =>
+            cloneProgram(templateId, 'Program added to your library.')
           }
-        }}
-        setView={setView}
-        trackingCategory={trackingCategory}
-        view={view}
-      />
+          onBack={leaveProgramSubpage}
+          query={programSearchQuery}
+          setQuery={setProgramSearchQuery}
+          templates={builtInTemplates}
+        />
+      ) : (
+        <>
+          <ProgramOverview
+            currentCycle={loadState.currentCycle}
+            loadStatus={loadState.status}
+            onCreateProgram={onCreateProgram}
+            onDeactivate={(cycle) =>
+              setProgramConfirmation({ type: 'deactivate', cycle })
+            }
+            onEditCycle={(cycleId) =>
+              setSheet({ type: 'builder', target: { mode: 'cycle', cycleId } })
+            }
+            onSelectDay={(cycle, day, exercises) =>
+              setSheet({
+                type: 'selectedDay',
+                selectedDay: { cycle, day, exercises },
+              })
+            }
+            onStartDay={startWorkoutDay}
+          />
+
+          <ProgramLibrary
+            loadStatus={loadState.status}
+            onActivate={onActivateProgram}
+            onBrowse={() => setProgramView('browse')}
+            onClone={(templateId) =>
+              cloneProgram(templateId, 'Program cloned.')
+            }
+            onCreateProgram={onCreateProgram}
+            onDelete={onDeleteProgram}
+            onEdit={onEditProgram}
+            onShowMore={() => setProgramView('library')}
+            templates={userTemplates}
+          />
+
+          <SectionHeader
+            title="Exercise library"
+            action={
+              <IconButton
+                aria-label="Create exercise"
+                onClick={() => setSheet({ type: 'exercise', exercise: null })}
+              >
+                <Plus aria-hidden="true" size={20} />
+              </IconButton>
+            }
+          />
+
+          <ExerciseLibraryCard
+            exercises={loadState.exercises}
+            isExpanded={isLibraryExpanded}
+            isFilterPanelOpen={isFilterPanelOpen}
+            loadStatus={loadState.status}
+            onCreateExercise={() =>
+              setSheet({ type: 'exercise', exercise: null })
+            }
+            onEditExercise={(exercise) =>
+              setSheet({ type: 'exercise', exercise })
+            }
+            onHideExercise={(exercise) => {
+              void exerciseRepository.hideExercise(exercise.id).then(() => {
+                setMessage('Exercise hidden.')
+                reload()
+              })
+            }}
+            onRestoreExercise={(exercise) => {
+              void exerciseRepository.restoreExercise(exercise.id).then(() => {
+                setMessage('Exercise restored.')
+                reload()
+              })
+            }}
+            onToggleExpanded={() => {
+              setIsLibraryExpanded((current) => {
+                const next = !current
+                if (!next) {
+                  setQuery('')
+                  setTrackingCategory('all')
+                  setPrimaryMuscle('all')
+                  setIsFilterPanelOpen(false)
+                }
+                return next
+              })
+            }}
+            primaryMuscle={primaryMuscle}
+            query={query}
+            setFilterPanelOpen={setIsFilterPanelOpen}
+            setPrimaryMuscle={setPrimaryMuscle}
+            setQuery={setQuery}
+            setTrackingCategory={(value) => {
+              setTrackingCategory(value)
+              if (value !== 'strength') {
+                setPrimaryMuscle('all')
+              }
+            }}
+            setView={setView}
+            trackingCategory={trackingCategory}
+            view={view}
+          />
+        </>
+      )}
 
       {activeSheet?.type === 'exercise' ? (
         <ExerciseFormSheet
@@ -661,27 +708,153 @@ function ProgramOverview({
   )
 }
 
+function ProgramTemplateRow({
+  template,
+  onActivate,
+  onClone,
+  onDelete,
+  onEdit,
+}: {
+  template: ProgramTemplate
+  onActivate: (template: ProgramTemplate) => void
+  onClone: (templateId: string) => void
+  onDelete: (template: ProgramTemplate) => void
+  onEdit: (templateId: string) => void
+}) {
+  return (
+    <div className="program-template-row">
+      <div>
+        <strong>{template.name}</strong>
+        <small>
+          {template.lastActiveAt
+            ? `Last active ${formatTimestamp(template.lastActiveAt)}`
+            : `Created ${formatTimestamp(template.createdAt)}`}
+        </small>
+      </div>
+      <div className="row-actions">
+        <IconButton
+          aria-label={`Edit ${template.name}`}
+          onClick={() => onEdit(template.id)}
+        >
+          <Edit2 aria-hidden="true" size={18} />
+        </IconButton>
+        <IconButton
+          aria-label={`Activate ${template.name}`}
+          onClick={() => onActivate(template)}
+        >
+          <Dumbbell aria-hidden="true" size={18} />
+        </IconButton>
+        <IconButton
+          aria-label={`Clone ${template.name}`}
+          onClick={() => onClone(template.id)}
+        >
+          <Copy aria-hidden="true" size={18} />
+        </IconButton>
+        <IconButton
+          aria-label={`Delete ${template.name}`}
+          onClick={() => onDelete(template)}
+        >
+          <Trash2 aria-hidden="true" size={18} />
+        </IconButton>
+      </div>
+    </div>
+  )
+}
+
 function ProgramLibrary({
-  isExpanded,
   loadStatus,
   onActivate,
+  onBrowse,
   onClone,
   onCreateProgram,
   onDelete,
   onEdit,
-  onToggleExpanded,
-  query,
-  setQuery,
+  onShowMore,
   templates,
 }: {
-  isExpanded: boolean
   loadStatus: LoadState['status']
   onActivate: (template: ProgramTemplate) => void
+  onBrowse: () => void
   onClone: (templateId: string) => void
   onCreateProgram: () => void
   onDelete: (template: ProgramTemplate) => void
   onEdit: (templateId: string) => void
-  onToggleExpanded: () => void
+  onShowMore: () => void
+  templates: ProgramTemplate[]
+}) {
+  const visibleTemplates = templates.slice(0, 3)
+
+  return (
+    <>
+      <SectionHeader
+        title="Program library"
+        action={
+          <IconButton aria-label="Create program" onClick={onCreateProgram}>
+            <Plus aria-hidden="true" size={20} />
+          </IconButton>
+        }
+      />
+      <Card>
+        {loadStatus === 'loading' ? (
+          <LoadingState label="Loading programs" />
+        ) : null}
+        {loadStatus === 'ready' && !templates.length ? (
+          <EmptyState
+            title="No saved programs"
+            message="Create your own program or add one from Browse programs."
+            action={
+              <SecondaryButton type="button" onClick={onCreateProgram}>
+                Create program
+              </SecondaryButton>
+            }
+          />
+        ) : null}
+        {loadStatus === 'ready' && templates.length ? (
+          <div className="program-library-list">
+            {visibleTemplates.map((template) => (
+              <ProgramTemplateRow
+                key={template.id}
+                onActivate={onActivate}
+                onClone={onClone}
+                onDelete={onDelete}
+                onEdit={onEdit}
+                template={template}
+              />
+            ))}
+            {templates.length > 3 ? (
+              <SecondaryButton type="button" onClick={onShowMore}>
+                Show More
+              </SecondaryButton>
+            ) : null}
+          </div>
+        ) : null}
+        <SecondaryButton type="button" onClick={onBrowse}>
+          Browse programs
+        </SecondaryButton>
+      </Card>
+    </>
+  )
+}
+
+function FullProgramLibraryPage({
+  loadStatus,
+  onActivate,
+  onBack,
+  onClone,
+  onCreateProgram,
+  onDelete,
+  onEdit,
+  query,
+  setQuery,
+  templates,
+}: {
+  loadStatus: LoadState['status']
+  onActivate: (template: ProgramTemplate) => void
+  onBack: () => void
+  onClone: (templateId: string) => void
+  onCreateProgram: () => void
+  onDelete: (template: ProgramTemplate) => void
+  onEdit: (templateId: string) => void
   query: string
   setQuery: (query: string) => void
   templates: ProgramTemplate[]
@@ -692,103 +865,146 @@ function ProgramLibrary({
         template.name.toLocaleLowerCase().includes(normalizedQuery),
       )
     : templates
-  const visibleTemplates = isExpanded
-    ? filteredTemplates
-    : filteredTemplates.slice(0, 3)
 
   return (
-    <>
-      <SectionHeader
-        title={isExpanded ? 'Full Program Library' : 'Program library'}
-        action={
-          <IconButton aria-label="Create program" onClick={onCreateProgram}>
-            <Plus aria-hidden="true" size={20} />
-          </IconButton>
-        }
-      />
-      <Card>
-        {isExpanded ? (
-          <FormField id="program-library-search" label="Search programs">
-            <div className="input-icon-row">
-              <Search aria-hidden="true" size={18} />
-              <input
-                id="program-library-search"
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search programs"
-                type="search"
-                value={query}
-              />
-            </div>
-          </FormField>
-        ) : null}
-        {loadStatus === 'loading' ? (
-          <LoadingState label="Loading programs" />
-        ) : null}
-        {loadStatus === 'ready' && !filteredTemplates.length ? (
-          <EmptyState
-            title={query.trim() ? 'No programs found' : 'No inactive programs'}
-            message="Inactive programs appear here. The active program stays in the Active Program area."
-            action={
-              <SecondaryButton type="button" onClick={onCreateProgram}>
-                Create program
-              </SecondaryButton>
-            }
+    <Card>
+      <div className="set-goal-header">
+        <IconButton aria-label="Back to training" onClick={onBack}>
+          <ArrowLeft aria-hidden="true" size={20} />
+        </IconButton>
+        <h2 className="set-goal-title">Program library</h2>
+        <IconButton aria-label="Create program" onClick={onCreateProgram}>
+          <Plus aria-hidden="true" size={20} />
+        </IconButton>
+      </div>
+      <FormField id="program-library-search" label="Search programs">
+        <div className="input-icon-row">
+          <Search aria-hidden="true" size={18} />
+          <input
+            id="program-library-search"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search programs"
+            type="search"
+            value={query}
           />
-        ) : null}
-        {loadStatus === 'ready' && filteredTemplates.length ? (
-          <div className="program-library-list">
-            {visibleTemplates.map((template) => (
-              <div className="program-template-row" key={template.id}>
-                <div>
-                  <strong>{template.name}</strong>
-                  <small>
-                    {template.lastActiveAt
-                      ? `Last active ${formatTimestamp(template.lastActiveAt)}`
-                      : `Created ${formatTimestamp(template.createdAt)}`}
-                  </small>
-                </div>
-                <div className="row-actions">
-                  <IconButton
-                    aria-label={`Edit ${template.name}`}
-                    onClick={() => onEdit(template.id)}
-                  >
-                    <Edit2 aria-hidden="true" size={18} />
-                  </IconButton>
-                  <IconButton
-                    aria-label={`Activate ${template.name}`}
-                    onClick={() => onActivate(template)}
-                  >
-                    <Dumbbell aria-hidden="true" size={18} />
-                  </IconButton>
-                  <IconButton
-                    aria-label={`Clone ${template.name}`}
-                    onClick={() => onClone(template.id)}
-                  >
-                    <Copy aria-hidden="true" size={18} />
-                  </IconButton>
-                  <IconButton
-                    aria-label={`Delete ${template.name}`}
-                    onClick={() => onDelete(template)}
-                  >
-                    <Trash2 aria-hidden="true" size={18} />
-                  </IconButton>
-                </div>
+        </div>
+      </FormField>
+      {loadStatus === 'loading' ? (
+        <LoadingState label="Loading programs" />
+      ) : null}
+      {loadStatus === 'ready' && !filteredTemplates.length ? (
+        <EmptyState
+          title={query.trim() ? 'No programs found' : 'No saved programs'}
+          message="Create your own program or add one from Browse programs."
+          action={
+            <SecondaryButton type="button" onClick={onCreateProgram}>
+              Create program
+            </SecondaryButton>
+          }
+        />
+      ) : null}
+      {loadStatus === 'ready' && filteredTemplates.length ? (
+        <div className="program-library-list">
+          {filteredTemplates.map((template) => (
+            <ProgramTemplateRow
+              key={template.id}
+              onActivate={onActivate}
+              onClone={onClone}
+              onDelete={onDelete}
+              onEdit={onEdit}
+              template={template}
+            />
+          ))}
+        </div>
+      ) : null}
+    </Card>
+  )
+}
+
+function BrowseProgramsPage({
+  loadStatus,
+  onActivate,
+  onAdd,
+  onBack,
+  query,
+  setQuery,
+  templates,
+}: {
+  loadStatus: LoadState['status']
+  onActivate: (template: ProgramTemplate) => void
+  onAdd: (templateId: string) => void
+  onBack: () => void
+  query: string
+  setQuery: (query: string) => void
+  templates: ProgramTemplate[]
+}) {
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const filteredTemplates = normalizedQuery
+    ? templates.filter((template) =>
+        template.name.toLocaleLowerCase().includes(normalizedQuery),
+      )
+    : templates
+
+  return (
+    <Card>
+      <div className="set-goal-header">
+        <IconButton aria-label="Back to training" onClick={onBack}>
+          <ArrowLeft aria-hidden="true" size={20} />
+        </IconButton>
+        <h2 className="set-goal-title">Browse programs</h2>
+      </div>
+      <p className="muted">
+        Add a built-in program to your library to activate or customize it. The
+        built-in stays unchanged.
+      </p>
+      <FormField id="browse-programs-search" label="Search programs">
+        <div className="input-icon-row">
+          <Search aria-hidden="true" size={18} />
+          <input
+            id="browse-programs-search"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search programs"
+            type="search"
+            value={query}
+          />
+        </div>
+      </FormField>
+      {loadStatus === 'loading' ? (
+        <LoadingState label="Loading programs" />
+      ) : null}
+      {loadStatus === 'ready' && !filteredTemplates.length ? (
+        <EmptyState title="No programs found" message="Try another search." />
+      ) : null}
+      {loadStatus === 'ready' && filteredTemplates.length ? (
+        <div className="program-library-list">
+          {filteredTemplates.map((template) => (
+            <div className="program-template-row" key={template.id}>
+              <div>
+                <strong>{template.name}</strong>
+                <small>
+                  {[template.level, template.goal].filter(Boolean).join(' · ')}
+                </small>
               </div>
-            ))}
-            {!isExpanded && templates.length > 3 ? (
-              <SecondaryButton type="button" onClick={onToggleExpanded}>
-                Show More
-              </SecondaryButton>
-            ) : null}
-            {isExpanded ? (
-              <SecondaryButton type="button" onClick={onToggleExpanded}>
-                Show Less
-              </SecondaryButton>
-            ) : null}
-          </div>
-        ) : null}
-      </Card>
-    </>
+              <div className="row-actions">
+                <IconButton
+                  aria-label={`Activate ${template.name}`}
+                  onClick={() => onActivate(template)}
+                >
+                  <Dumbbell aria-hidden="true" size={18} />
+                </IconButton>
+                <SecondaryButton
+                  aria-label={`Add ${template.name} to library`}
+                  type="button"
+                  onClick={() => onAdd(template.id)}
+                >
+                  Add to library
+                </SecondaryButton>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </Card>
   )
 }
 

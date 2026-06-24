@@ -36,6 +36,16 @@ export type UpdateFoodLogInput = {
   notes?: string
 }
 
+export type LogQuickAddInput = {
+  localDate: LocalDateString
+  name?: string
+  calories: number
+  proteinGrams: number
+  carbohydrateGrams: number
+  fatGrams: number
+  notes?: string
+}
+
 export type RememberFoodUnitInput = {
   foodId: string
   unitKey: string
@@ -337,6 +347,52 @@ export function createFoodRepository(
           return entry
         },
       )
+    },
+
+    async logQuickAddEntry(input: LogQuickAddInput) {
+      for (const [label, value] of [
+        ['Calories', input.calories],
+        ['Protein', input.proteinGrams],
+        ['Carbohydrates', input.carbohydrateGrams],
+        ['Fat', input.fatGrams],
+      ] as const) {
+        if (value < 0 || !Number.isFinite(value)) {
+          throw new Error(`${label} must be zero or greater.`)
+        }
+      }
+
+      const now = createMonotonicTimestamp()
+      const trimmedName = input.name?.trim()
+      // Quick Add logs straight to the day with no reusable Food record, so it
+      // never pollutes the food library or search results (foodId stays null).
+      const foodSnapshot: FoodLogEntry['foodSnapshot'] = {
+        foodName: trimmedName || `Quick add ${Math.round(input.calories)} kcal`,
+        servingQuantity: 1,
+        servingUnit: 'entry',
+        servingDescription: '',
+        caloriesPerServing: input.calories,
+        proteinGramsPerServing: input.proteinGrams,
+        carbohydrateGramsPerServing: input.carbohydrateGrams,
+        fatGramsPerServing: input.fatGrams,
+        notes: 'Quick add',
+      }
+      const entry: FoodLogEntry = {
+        id: createId(),
+        localDate: input.localDate,
+        foodId: null,
+        foodSnapshot,
+        servingMultiplier: 1,
+        ...computeLogTotals(foodSnapshot, 1),
+        notes: input.notes ?? '',
+        createdAt: now,
+        updatedAt: now,
+      }
+
+      return database.transaction('rw', database.foodLogEntries, async () => {
+        await database.foodLogEntries.add(entry)
+        await testHooks.afterFoodLogAdded?.()
+        return entry
+      })
     },
 
     async updateFoodLogEntry(id: string, input: UpdateFoodLogInput) {

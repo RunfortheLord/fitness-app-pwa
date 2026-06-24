@@ -6,7 +6,7 @@ import type {
   TrackingMethodId,
 } from '@shared-types/app'
 
-export const BUILT_IN_EXERCISE_SEED_VERSION = 4
+export const BUILT_IN_EXERCISE_SEED_VERSION = 5
 export const BUILT_IN_EXERCISE_CREATED_AT = '2026-06-19T00:00:00.000Z'
 
 export type BuiltInExerciseSeed = Pick<
@@ -2049,6 +2049,74 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
       tracking: 'reps_only',
     },
   ),
+  // Added for the built-in program library (seed version 5).
+  exercise(
+    'barbell-back-squat',
+    'Barbell Back Squat',
+    'barbell',
+    ['quadriceps'],
+    {
+      rest: largeCompound,
+      secondary: ['glutes', 'hamstrings', 'core'],
+    },
+  ),
+  exercise(
+    'paused-barbell-back-squat',
+    'Paused Barbell Back Squat',
+    'barbell',
+    ['quadriceps'],
+    {
+      rest: largeCompound,
+      secondary: ['glutes', 'hamstrings', 'core'],
+    },
+  ),
+  exercise(
+    'paused-barbell-bench-press',
+    'Paused Barbell Bench Press',
+    'barbell',
+    ['chest'],
+    {
+      rest: largeCompound,
+      secondary: ['triceps', 'shoulders'],
+    },
+  ),
+  exercise(
+    'low-incline-barbell-bench-press',
+    'Low-Incline Barbell Bench Press',
+    'barbell',
+    ['chest'],
+    {
+      rest: largeCompound,
+      secondary: ['shoulders', 'triceps'],
+    },
+  ),
+  exercise(
+    'low-incline-dumbbell-bench-press',
+    'Low-Incline Dumbbell Bench Press',
+    'dumbbell',
+    ['chest'],
+    {
+      rest: moderateCompound,
+      secondary: ['shoulders', 'triceps'],
+    },
+  ),
+  exercise('roman-chair-sit-up', 'Roman Chair Sit-Up', 'bodyweight', ['core'], {
+    rest: isolation,
+  }),
+  exercise(
+    'wide-grip-lat-pulldown',
+    'Wide-Grip Lat Pulldown',
+    'machine',
+    ['back'],
+    {
+      rest: moderateCompound,
+      secondary: ['biceps'],
+    },
+  ),
+  exercise('cable-y-raise', 'Cable Y-Raise', 'cable', ['shoulders'], {
+    rest: isolation,
+    secondary: ['traps'],
+  }),
 ]
 
 export function validateBuiltInExercises(

@@ -205,11 +205,43 @@ const nutritionTargetValuesSchema = z.object({
   carbohydrateGrams: nonNegativeNumber,
   fatGrams: nonNegativeNumber,
 })
+const nutritionGoalSchema = z.object({
+  goalWeightLb: z.number().finite(),
+  calculationWeightLb: z.number().finite(),
+  heightInches: z.number().finite(),
+  ageYears: z.number().finite(),
+  sex: z.enum(['male', 'female']),
+  activityLevel: z.enum([
+    'sedentary',
+    'lightly_active',
+    'moderately_active',
+    'heavily_active',
+  ]),
+  direction: z.enum(['cut', 'bulk', 'maintain']),
+  weeklyRateLb: z.number().finite(),
+  maintenanceCalories: nonNegativeNumber,
+  targets: nutritionTargetValuesSchema,
+  estimatedFinishDate: localDateSchema.nullable(),
+  formulaVersion: z.number().int(),
+  lastCalorieUpdate: z
+    .object({
+      appliedAt: isoTimestampSchema,
+      deltaKcal: z.number().finite(),
+      trendWeightLb: z.number().finite(),
+      observedWeeklyChangeLb: z.number().finite(),
+      signature: z.string(),
+    })
+    .nullable()
+    .optional(),
+  createdAt: isoTimestampSchema,
+  updatedAt: isoTimestampSchema,
+})
 const userSettingsSchema = z.object({
   id: z.literal('settings'),
   weightUnit: weightUnitSchema,
   energyUnit: energyUnitSchema,
   nutritionTargets: nutritionTargetValuesSchema,
+  nutritionGoal: nutritionGoalSchema.nullable().optional(),
   timerSoundEnabled: z.boolean().optional().default(true),
   selectedTimerSoundId: z.string().optional().default('rest-complete-chime'),
   createdAt: isoTimestampSchema,
@@ -375,6 +407,10 @@ const programTemplateSchema = z.object({
   notes: z.string(),
   status: entityStatusSchema,
   lastActiveAt: z.union([isoTimestampSchema, z.null()]).optional(),
+  isBuiltIn: z.boolean().optional(),
+  level: z.union([z.string(), z.null()]).optional(),
+  goal: z.union([z.string(), z.null()]).optional(),
+  builtInSeedVersion: z.union([z.number(), z.null()]).optional(),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })

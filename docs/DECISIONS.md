@@ -1,5 +1,50 @@
 # Decisions
 
+## 2026-06-23: Custom Nutrition Goal Workflow
+
+- The Set Goal subpage collects current bodyweight, height (feet + inches),
+  activity level, goal weight, age, and sex. Maintenance calories use the
+  Mifflin–St Jeor BMR times an activity multiplier; the goal direction is derived
+  from goal weight minus current weight.
+- Weekly rate is 0.5% of bodyweight per week for a cut and 0.25% for a bulk,
+  converted to a daily calorie delta at 3500 kcal per pound. Protein is 0.7 g per
+  pound of calculation weight, fat is ~25% of goal calories (protected so carbs
+  never go negative), and carbs take the reconciled remainder. A
+  `GOAL_FORMULA_VERSION` is stored with the goal for reproducibility.
+- Calorie targets never adjust automatically. A manual Update Calories action runs
+  a bounded trend-weight adjustment (regression over up to 14 days, ≥3 points
+  spanning ≥7 days, rounded to 25 kcal, capped at ±200 kcal, 50 kcal deadband)
+  and is idempotent via a trend-data signature.
+- The goal is stored additively on `userSettings.nutritionGoal` (no schema
+  version bump) and included in backups; users without a goal are unaffected.
+
+## 2026-06-23: 28 Built-In Program Library
+
+- The 28 seed programs were transcribed directly from the supplied source-of-truth
+  document into `programLibrarySeed.ts`. Day names keep their wording; em/en
+  dashes in day titles are normalized to hyphens (cosmetic only).
+- Final-set RIR is a single integer in the data model. Where the source lists a
+  range (e.g. "1–2 RIR"), the lower bound is stored; where no per-exercise RIR is
+  given, the global default lower bound of 1 is used.
+- Rest follows each exercise's existing default rest (compound vs isolation),
+  i.e. `restSecondsOverride` is null; no second timing model was introduced.
+- Programs 20 and 21 omit an explicit Goal line in the source (they list
+  exercises-per-workout instead), so their goal text was set to match the
+  frequency theme of the rest of the full-body series.
+- Exercise names map to existing canonical library entries where one exists;
+  8 genuinely-absent exercises were added (barbell back squat, paused barbell
+  squat/bench, low-incline barbell/dumbbell bench, roman chair sit-up, wide-grip
+  lat pulldown, cable Y-raise) at exercise seed version 5. Distinct squat, press,
+  pulldown, and ab variants were preserved, not collapsed.
+- Built-in templates use stable IDs (`builtin-program:<slug>`) and a seed version
+  for idempotent re-seeding; they are read-only (edits/deletes throw — the user
+  duplicates to customize), and activation snapshots into an active cycle so the
+  source stays immutable.
+- In the Training UI the main Program library card lists only user-owned programs
+  (capped, with Show More opening a full-library sub-page). Built-ins live behind
+  a separate Browse programs sub-page where "Add to library" clones one into the
+  user's editable library; both sub-pages keep activate/edit/clone/delete.
+
 ## 2026-06-23: Food Category Icons Instead Of Provider Or Bundled Images
 
 - Food search results and food lists show a representative category icon on the

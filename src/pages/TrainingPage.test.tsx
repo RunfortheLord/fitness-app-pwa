@@ -203,7 +203,9 @@ describe('TrainingPage', () => {
     await seedExercise(db)
     renderTraining()
 
-    await screen.findByText('No inactive programs')
+    // The main library shows only user-owned programs (built-ins live under
+    // Browse programs), so wait for the create affordance to confirm load.
+    await screen.findAllByRole('button', { name: 'Create program' })
     await user.click(
       screen.getAllByRole('button', { name: 'Create program' })[0],
     )
@@ -272,7 +274,13 @@ describe('TrainingPage', () => {
     )
     await user.click(screen.getByRole('button', { name: 'Save prescription' }))
     await waitFor(async () => {
-      await expect(db.templateWorkoutExercises.count()).resolves.toBe(1)
+      // Ignore the seeded built-in library; only the created program's single
+      // prescription should be user-owned.
+      const all = await db.templateWorkoutExercises.toArray()
+      const userOwned = all.filter(
+        (entry) => !entry.templateId.startsWith('builtin-program:'),
+      )
+      expect(userOwned).toHaveLength(1)
     })
     await user.click(within(builder).getByRole('button', { name: /Close/ }))
 
@@ -531,7 +539,55 @@ describe('TrainingPage', () => {
     await waitFor(() =>
       expect(screen.queryByText('Upper Lower')).not.toBeInTheDocument(),
     )
-    expect(screen.getByText('No inactive programs')).toBeInTheDocument()
+    // The user template is gone; the main library shows its empty state.
+    expect(screen.getByText('No saved programs')).toBeInTheDocument()
+  })
+
+  it('adds a built-in program from Browse programs into the user library', async () => {
+    const user = userEvent.setup()
+    renderTraining()
+
+    await screen.findByText('No saved programs')
+
+    await user.click(screen.getByRole('button', { name: 'Browse programs' }))
+    expect(
+      await screen.findByText('Beginner Full Body A/B'),
+    ).toBeInTheDocument()
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Add Beginner Full Body A/B to library',
+      }),
+    )
+    expect(
+      await screen.findByText('Program added to your library.'),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Back to training' }))
+    expect(
+      await screen.findByText('Beginner Full Body A/B copy'),
+    ).toBeInTheDocument()
+  })
+
+  it('opens the full program library sub-page from Show More', async () => {
+    const user = userEvent.setup()
+    await seedProgram(db)
+    await seedProgram(db)
+    await seedProgram(db)
+    await seedProgram(db)
+    renderTraining()
+
+    await waitFor(() =>
+      expect(screen.getAllByText('Upper Lower').length).toBe(3),
+    )
+    await user.click(screen.getByRole('button', { name: 'Show More' }))
+
+    expect(
+      await screen.findByRole('button', { name: 'Back to training' }),
+    ).toBeInTheDocument()
+    // All four user programs are listed on the full library sub-page.
+    await waitFor(() =>
+      expect(screen.getAllByText('Upper Lower').length).toBe(4),
+    )
   })
 
   it('persists the active cycle after remount', async () => {

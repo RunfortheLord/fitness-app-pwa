@@ -9,9 +9,11 @@ export type FoodSearchResult =
   | { type: 'external'; food: GroupedFoodResult }
 
 // Provider results arrive already ranked and diversified from the server, so
-// showing all of them made the generic ("Common") list overwhelmingly long and
-// hard to scan. Cap each provider section to its most relevant entries.
-const MAX_PROVIDER_SECTION_ITEMS = 8
+// showing all of them made the lists overwhelmingly long. Cap each section to a
+// concise number of its most relevant entries.
+const COMMON_SECTION_CAP = 5
+const BRANDED_SECTION_CAP = 3
+const LOCAL_SECTION_CAP = 10
 
 export function createSearchSections({
   includeRecentFoods,
@@ -47,7 +49,7 @@ export function createSearchSections({
       ? [
           {
             title: 'Recent and previously used',
-            items: matchingRecent.map((food) => ({
+            items: matchingRecent.slice(0, LOCAL_SECTION_CAP).map((food) => ({
               type: 'local' as const,
               food,
               section:
@@ -60,7 +62,7 @@ export function createSearchSections({
       : []),
     {
       title: 'Custom foods',
-      items: customFoods.map((food) => ({
+      items: customFoods.slice(0, LOCAL_SECTION_CAP).map((food) => ({
         type: 'local',
         food,
         section: 'custom',
@@ -68,7 +70,7 @@ export function createSearchSections({
     },
     {
       title: 'Previously used provider foods',
-      items: usedProviderFoods.map((food) => ({
+      items: usedProviderFoods.slice(0, LOCAL_SECTION_CAP).map((food) => ({
         type: 'local',
         food,
         section: 'used',
@@ -78,14 +80,14 @@ export function createSearchSections({
       title: 'Common',
       items: providerResults
         .filter((food) => food.source.providerDataType !== 'Branded')
-        .slice(0, MAX_PROVIDER_SECTION_ITEMS)
+        .slice(0, COMMON_SECTION_CAP)
         .map((food) => ({ type: 'external', food })),
     },
     {
       title: 'Branded',
       items: providerResults
         .filter((food) => food.source.providerDataType === 'Branded')
-        .slice(0, MAX_PROVIDER_SECTION_ITEMS)
+        .slice(0, BRANDED_SECTION_CAP)
         .map((food) => ({ type: 'external', food })),
     },
   ]

@@ -1,34 +1,36 @@
 import { addDays } from 'date-fns'
 
-import type { NutritionTargetValues } from '@shared-types/app'
+import type {
+  GoalActivityLevel,
+  GoalDirection,
+  GoalSex,
+  NutritionTargetValues,
+} from '@shared-types/app'
 
-export type GoalSex = 'male' | 'female'
+export type { GoalActivityLevel, GoalDirection, GoalSex }
 
-export type GoalActivityLevel =
-  | 'sedentary'
-  | 'lightly_active'
-  | 'moderately_active'
-  | 'heavily_active'
+/**
+ * Identifies the calculation formula used for a goal so a stored goal stays
+ * reproducible even if the equations change in a later release.
+ */
+export const GOAL_FORMULA_VERSION = 1
 
-export type GoalDirection = 'cut' | 'bulk' | 'maintain'
-
-// The Set Goal form intentionally collects only bodyweight, height, activity,
-// goal weight, and sex (no age). The sex-aware Mifflin-St Jeor equation needs
-// an age, so a fixed default is assumed and documented in docs/DECISIONS.md.
-export const DEFAULT_GOAL_AGE_YEARS = 30
-
-// Protein target per pound of bodyweight, per the product spec.
+// Protein target per pound of calculation weight, per the product spec.
 export const PROTEIN_GRAMS_PER_LB = 0.7
 
-// Daily calorie offsets applied for a cut or a bulk relative to maintenance.
-export const CUT_DAILY_DEFICIT = 500
-export const BULK_DAILY_SURPLUS = 300
+// Intended weekly bodyweight change as a fraction of current bodyweight.
+export const CUT_WEEKLY_RATE_FRACTION = 0.005
+export const BULK_WEEKLY_RATE_FRACTION = 0.0025
 
-// Share of goal calories allocated to fat; the remainder after protein and fat
-// becomes carbohydrates.
+// Share of goal calories allocated to fat; carbohydrates take the remainder.
 export const FAT_CALORIE_SHARE = 0.25
 
-const CALORIES_PER_POUND = 3500
+// Energy used to translate a weekly weight change into a daily calorie delta.
+export const CALORIES_PER_POUND = 3500
+
+// Centralized guard so invalid input cannot create unusable calorie targets.
+export const MIN_GOAL_CALORIES = 1200
+
 const KG_PER_LB = 0.45359237
 const CM_PER_INCH = 2.54
 
@@ -47,31 +49,12 @@ export function mifflinStJeorBmr(input: {
   sex: GoalSex
   weightLb: number
   heightInches: number
-  ageYears?: number
+  ageYears: number
 }) {
-  const ageYears = input.ageYears ?? DEFAULT_GOAL_AGE_YEARS
   const kg = input.weightLb * KG_PER_LB
   const cm = input.heightInches * CM_PER_INCH
-  const base = 10 * kg + 6.25 * cm - 5 * ageYears
+  const base = 10 * kg + 6.25 * cm - 5 * input.ageYears
   return base + (input.sex === 'male' ? 5 : -161)
-}
-
-export type GoalPlanInput = {
-  sex: GoalSex
-  bodyweightLb: number
-  heightFeet: number
-  heightInches: number
-  activityLevel: GoalActivityLevel
-  goalWeightLb: number
-  ageYears?: number
-}
-
-export type GoalPlan = {
-  direction: GoalDirection
-  maintenanceCalories: number
-  goalCalories: number
-  dailyCalorieDelta: number
-  targets: NutritionTargetValues
 }
 
 export function goalDirection(
@@ -86,10 +69,78 @@ export function goalDirection(
 }
 
 /**
- * Computes maintenance calories, goal calories, and macro targets from the
- * Set Goal inputs. Cutting applies a deficit, bulking a surplus; protein is
- * driven by bodyweight, fat by a fixed share of goal calories, and carbs take
- * the remainder.
+ * Intended weekly bodyweight change in pounds (negative for a cut, positive for
+ * a bulk, zero for maintenance) based on a fraction of current bodyweight.
+ */
+export function weeklyRateLb(
+  direction: GoalDirection,
+  bodyweightLb: number,
+): number {
+  if (direction === 'cut') {
+    return -bodyweightLb * CUT_WEEKLY_RATE_FRACTION
+  }
+  if (direction === 'bulk') {
+    return bodyweightLb * BULK_WEEKLY_RATE_FRACTION
+  }
+  return 0
+}
+
+/**
+ * Allocates calories into macro grams: protein from bodyweight, fat from a fixed
+ * share of calories (protected against pushing carbs negative), and carbs as the
+ * reconciled remainder. Shared by initial goal creation and manual updates.
+ */
+export function computeMacroTargets(
+  calories: number,
+  calculationWeightLb: number,
+): NutritionTargetValues {
+  const safeCalories = Math.max(0, Math.round(calories))
+  const proteinGrams = Math.max(
+    0,
+    Math.round(calculationWeightLb * PROTEIN_GRAMS_PER_LB),
+  )
+  const proteinCalories = proteinGrams * 4
+  const caloriesAfterProtein = Math.max(0, safeCalories - proteinCalories)
+  // Fat takes its share of total calories, but never more than what remains
+  // after protein, so carbohydrates can never be negative.
+  const fatGrams = Math.max(
+    0,
+    Math.min(
+      Math.round((safeCalories * FAT_CALORIE_SHARE) / 9),
+      Math.floor(caloriesAfterProtein / 9),
+    ),
+  )
+  const carbohydrateGrams = Math.max(
+    0,
+    Math.round((caloriesAfterProtein - fatGrams * 9) / 4),
+  )
+
+  return { calories: safeCalories, proteinGrams, carbohydrateGrams, fatGrams }
+}
+
+export type GoalPlanInput = {
+  sex: GoalSex
+  bodyweightLb: number
+  heightFeet: number
+  heightInches: number
+  ageYears: number
+  activityLevel: GoalActivityLevel
+  goalWeightLb: number
+}
+
+export type GoalPlan = {
+  direction: GoalDirection
+  maintenanceCalories: number
+  goalCalories: number
+  dailyCalorieDelta: number
+  weeklyRateLb: number
+  targets: NutritionTargetValues
+}
+
+/**
+ * Computes maintenance calories, goal calories, and macro targets from the Set
+ * Goal inputs. The deficit/surplus is derived from a weekly rate that is a
+ * fraction of current bodyweight, converted to a daily calorie delta.
  */
 export function computeGoalPlan(input: GoalPlanInput): GoalPlan {
   const heightInches = input.heightFeet * 12 + input.heightInches
@@ -101,55 +152,44 @@ export function computeGoalPlan(input: GoalPlanInput): GoalPlan {
   })
   const maintenanceCalories = bmr * activityMultiplier(input.activityLevel)
   const direction = goalDirection(input.bodyweightLb, input.goalWeightLb)
-  const goalCalories =
-    direction === 'cut'
-      ? maintenanceCalories - CUT_DAILY_DEFICIT
-      : direction === 'bulk'
-        ? maintenanceCalories + BULK_DAILY_SURPLUS
-        : maintenanceCalories
-
-  const proteinGrams = Math.round(input.bodyweightLb * PROTEIN_GRAMS_PER_LB)
-  const proteinCalories = proteinGrams * 4
-  const fatCalories = goalCalories * FAT_CALORIE_SHARE
-  const fatGrams = Math.round(fatCalories / 9)
-  const carbCalories = goalCalories - proteinCalories - fatCalories
-  const carbohydrateGrams = Math.max(0, Math.round(carbCalories / 4))
+  const rateLb = weeklyRateLb(direction, input.bodyweightLb)
+  const dailyDelta = (rateLb * CALORIES_PER_POUND) / 7
+  const goalCalories = Math.max(
+    MIN_GOAL_CALORIES,
+    Math.round(maintenanceCalories + dailyDelta),
+  )
 
   return {
     direction,
     maintenanceCalories: Math.round(maintenanceCalories),
-    goalCalories: Math.round(goalCalories),
-    dailyCalorieDelta: Math.round(goalCalories - maintenanceCalories),
-    targets: {
-      calories: Math.round(goalCalories),
-      proteinGrams,
-      carbohydrateGrams,
-      fatGrams,
-    },
+    goalCalories,
+    dailyCalorieDelta: goalCalories - Math.round(maintenanceCalories),
+    weeklyRateLb: rateLb,
+    targets: computeMacroTargets(goalCalories, input.bodyweightLb),
   }
 }
 
 /**
- * Estimates the date the trend weight reaches the goal weight, given the daily
- * calorie delta from maintenance. Returns null when the goal is already met or
- * the calorie delta does not move the weight toward the goal.
+ * Estimates the date the trend weight reaches the goal weight given the intended
+ * weekly rate. Returns null when the goal is already met, the weights are equal,
+ * or the rate does not move weight toward the goal (e.g. the trend has crossed
+ * the goal).
  */
 export function estimateGoalDate(input: {
   currentWeightLb: number
   goalWeightLb: number
-  dailyCalorieDelta: number
+  weeklyRateLb: number
   from: Date
 }): Date | null {
   const remainingLb = input.goalWeightLb - input.currentWeightLb
   if (Math.abs(remainingLb) < 0.5) {
     return null
   }
-  const weeklyChangeLb = (input.dailyCalorieDelta * 7) / CALORIES_PER_POUND
-  if (weeklyChangeLb === 0) {
+  if (input.weeklyRateLb === 0) {
     return null
   }
-  const weeks = remainingLb / weeklyChangeLb
-  if (weeks <= 0) {
+  const weeks = remainingLb / input.weeklyRateLb
+  if (!Number.isFinite(weeks) || weeks <= 0) {
     return null
   }
   return addDays(input.from, Math.round(weeks * 7))

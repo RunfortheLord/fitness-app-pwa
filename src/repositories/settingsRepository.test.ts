@@ -35,6 +35,53 @@ describe('settingsRepository', () => {
     await expect(database.userSettings.get('settings')).resolves.toBeUndefined()
   })
 
+  it('stores a nutrition goal additively and preserves its created timestamp', async () => {
+    const repository = createSettingsRepository(database)
+
+    const created = await repository.saveNutritionGoal({
+      goalWeightLb: 170,
+      calculationWeightLb: 180,
+      heightInches: 70,
+      ageYears: 30,
+      sex: 'male',
+      activityLevel: 'moderately_active',
+      direction: 'cut',
+      weeklyRateLb: -0.9,
+      maintenanceCalories: 2763,
+      targets: {
+        calories: 2300,
+        proteinGrams: 126,
+        carbohydrateGrams: 305,
+        fatGrams: 64,
+      },
+      estimatedFinishDate: '2026-09-09',
+      formulaVersion: 1,
+      lastCalorieUpdate: null,
+    })
+
+    await expect(repository.getNutritionGoal()).resolves.toMatchObject({
+      goalWeightLb: 170,
+      direction: 'cut',
+      formulaVersion: 1,
+    })
+    // Existing target values are untouched by storing a goal.
+    await expect(database.userSettings.get('settings')).resolves.toMatchObject({
+      nutritionTargets: { calories: 0 },
+    })
+
+    const updated = await repository.saveNutritionGoal({
+      ...created,
+      targets: { ...created.targets, calories: 2100 },
+    })
+    expect(updated.createdAt).toBe(created.createdAt)
+    expect(updated.targets.calories).toBe(2100)
+  })
+
+  it('returns null when no nutrition goal exists', async () => {
+    const repository = createSettingsRepository(database)
+    await expect(repository.getNutritionGoal()).resolves.toBeNull()
+  })
+
   it('persists timer sound preferences on user settings', async () => {
     const repository = createSettingsRepository(database)
 

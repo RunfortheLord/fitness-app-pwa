@@ -1,12 +1,15 @@
 import { db, type TrainingLogDatabase } from '@db/database'
 import { createId } from '@domain/ids'
 import type {
+  NutritionGoal,
   NutritionTarget,
   NutritionTargetValues,
   ApiKeyIntegrationSettings,
   IntegrationConnectionStatus,
   UserSettings,
 } from '@shared-types/app'
+
+export type NutritionGoalInput = Omit<NutritionGoal, 'createdAt' | 'updatedAt'>
 
 const defaultNutritionTargets: NutritionTargetValues = {
   calories: 0,
@@ -19,6 +22,8 @@ export type SettingsRepository = {
   ensureSettings(): Promise<UserSettings>
   getSettings(): Promise<UserSettings | undefined>
   saveNutritionTargets(targets: NutritionTargetValues): Promise<NutritionTarget>
+  getNutritionGoal(): Promise<NutritionGoal | null>
+  saveNutritionGoal(goal: NutritionGoalInput): Promise<NutritionGoal>
   getUsdaApiKeySettings(): Promise<ApiKeyIntegrationSettings | undefined>
   saveUsdaApiKey(
     apiKey: string,
@@ -112,6 +117,29 @@ export function createSettingsRepository(
       )
 
       return target
+    },
+
+    async getNutritionGoal() {
+      const settings = await database.userSettings.get('settings')
+      return settings?.nutritionGoal ?? null
+    },
+
+    async saveNutritionGoal(goal) {
+      const now = new Date().toISOString()
+      return database.transaction('rw', database.userSettings, async () => {
+        const settings = await ensureSettings()
+        const stored: NutritionGoal = {
+          ...goal,
+          createdAt: settings.nutritionGoal?.createdAt ?? now,
+          updatedAt: now,
+        }
+        await database.userSettings.put({
+          ...settings,
+          nutritionGoal: stored,
+          updatedAt: now,
+        })
+        return stored
+      })
     },
 
     getUsdaApiKeySettings() {
