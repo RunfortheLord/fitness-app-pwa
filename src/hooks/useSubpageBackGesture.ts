@@ -26,6 +26,15 @@ export function useSubpageBackGesture(isOpen: boolean, onExit: () => void) {
       return
     }
 
+    // A sub-page is a fresh screen, so start it at the top rather than inheriting
+    // the parent page's scroll position. Guarded for environments (e.g. jsdom)
+    // that do not implement scrollTo.
+    try {
+      window.scrollTo({ top: 0 })
+    } catch {
+      // Non-critical: ignore environments without a real scroll implementation.
+    }
+
     const depth = ++openSubpageDepth
     let exitedViaPop = false
     window.history.pushState({ __subpage: depth }, '')
