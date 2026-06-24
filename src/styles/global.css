@@ -466,6 +466,64 @@ textarea:focus-visible {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
+.program-preview-trigger {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.program-preview-trigger strong,
+.program-preview-trigger small {
+  display: block;
+}
+
+.program-preview-trigger small {
+  margin-top: 2px;
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.program-preview-day {
+  margin-top: var(--space-4);
+}
+
+.program-preview-day h3 {
+  margin: 0 0 var(--space-2);
+  font-size: 15px;
+}
+
+.program-preview-exercises {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.program-preview-exercises li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-strong);
+}
+
+.program-preview-exercises small {
+  color: var(--color-muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 .nutrition-item .row-actions,
 .exercise-item .row-actions {
   grid-column: 2;
@@ -1463,6 +1521,29 @@ input::placeholder {
   margin: var(--space-2) auto var(--space-4);
   border-radius: 999px;
   background: var(--color-border);
+}
+
+/* Full-height sub-page variant of the sheet, navigated via a back arrow. */
+.sheet-backdrop--page {
+  align-items: stretch;
+}
+
+.bottom-sheet--page {
+  width: 100%;
+  max-width: 720px;
+  max-height: 100dvh;
+  height: 100dvh;
+  border: 0;
+  border-radius: 0;
+  padding-top: calc(env(safe-area-inset-top) + var(--space-3));
+}
+
+.sheet-header--page {
+  justify-content: flex-start;
+}
+
+.sheet-header--page h2 {
+  margin: 0;
 }
 
 .sheet-header {

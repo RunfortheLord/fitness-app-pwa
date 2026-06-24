@@ -165,6 +165,8 @@ export function TrainingPage() {
   const [programView, setProgramView] = useState<'main' | 'library' | 'browse'>(
     'main',
   )
+  const [previewTemplate, setPreviewTemplate] =
+    useState<ProgramTemplate | null>(null)
   const [programSearchQuery, setProgramSearchQuery] = useState('')
   const [trackingCategory, setTrackingCategory] =
     useState<ExerciseTrackingCategory>('all')
@@ -297,6 +299,7 @@ export function TrainingPage() {
   const leaveProgramSubpage = () => {
     setProgramView('main')
     setProgramSearchQuery('')
+    setPreviewTemplate(null)
   }
 
   return (
@@ -317,17 +320,31 @@ export function TrainingPage() {
           templates={userTemplates}
         />
       ) : programView === 'browse' ? (
-        <BrowseProgramsPage
-          loadStatus={loadState.status}
-          onActivate={onActivateProgram}
-          onAdd={(templateId) =>
-            cloneProgram(templateId, 'Program added to your library.')
-          }
-          onBack={leaveProgramSubpage}
-          query={programSearchQuery}
-          setQuery={setProgramSearchQuery}
-          templates={builtInTemplates}
-        />
+        previewTemplate ? (
+          <ProgramPreviewPage
+            onActivate={(template) => {
+              onActivateProgram(template)
+            }}
+            onAdd={(templateId) =>
+              cloneProgram(templateId, 'Program added to your library.')
+            }
+            onBack={() => setPreviewTemplate(null)}
+            template={previewTemplate}
+          />
+        ) : (
+          <BrowseProgramsPage
+            loadStatus={loadState.status}
+            onActivate={onActivateProgram}
+            onAdd={(templateId) =>
+              cloneProgram(templateId, 'Program added to your library.')
+            }
+            onBack={leaveProgramSubpage}
+            onPreview={(template) => setPreviewTemplate(template)}
+            query={programSearchQuery}
+            setQuery={setProgramSearchQuery}
+            templates={builtInTemplates}
+          />
+        )
       ) : (
         <>
           <ProgramOverview
@@ -926,6 +943,7 @@ function BrowseProgramsPage({
   onActivate,
   onAdd,
   onBack,
+  onPreview,
   query,
   setQuery,
   templates,
@@ -934,6 +952,7 @@ function BrowseProgramsPage({
   onActivate: (template: ProgramTemplate) => void
   onAdd: (templateId: string) => void
   onBack: () => void
+  onPreview: (template: ProgramTemplate) => void
   query: string
   setQuery: (query: string) => void
   templates: ProgramTemplate[]
@@ -979,12 +998,17 @@ function BrowseProgramsPage({
         <div className="program-library-list">
           {filteredTemplates.map((template) => (
             <div className="program-template-row" key={template.id}>
-              <div>
+              <button
+                aria-label={`Preview ${template.name}`}
+                className="program-preview-trigger"
+                type="button"
+                onClick={() => onPreview(template)}
+              >
                 <strong>{template.name}</strong>
                 <small>
                   {[template.level, template.goal].filter(Boolean).join(' · ')}
                 </small>
-              </div>
+              </button>
               <div className="row-actions">
                 <IconButton
                   aria-label={`Activate ${template.name}`}
@@ -1004,6 +1028,106 @@ function BrowseProgramsPage({
           ))}
         </div>
       ) : null}
+    </Card>
+  )
+}
+
+function formatPreviewPrescription(exercise: TemplateWorkoutExercise) {
+  const reps =
+    exercise.targetRepsMin != null && exercise.targetRepsMax != null
+      ? exercise.targetRepsMin === exercise.targetRepsMax
+        ? `${exercise.targetRepsMin}`
+        : `${exercise.targetRepsMin}–${exercise.targetRepsMax}`
+      : null
+  const setsAndReps = reps
+    ? `${exercise.targetSetCount} × ${reps}`
+    : `${exercise.targetSetCount} sets`
+  const rir = exercise.targetRir != null ? `${exercise.targetRir} RIR` : null
+  return [setsAndReps, rir].filter(Boolean).join(' · ')
+}
+
+function ProgramPreviewPage({
+  onActivate,
+  onAdd,
+  onBack,
+  template,
+}: {
+  onActivate: (template: ProgramTemplate) => void
+  onAdd: (templateId: string) => void
+  onBack: () => void
+  template: ProgramTemplate
+}) {
+  const [structure, setStructure] = useState<{
+    days: ProgramTemplateDay[]
+    exercisesByDay: Record<string, TemplateWorkoutExercise[]>
+  } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const subtitle = [template.level, template.goal].filter(Boolean).join(' · ')
+
+  useEffect(() => {
+    let isCurrent = true
+    void programRepository
+      .getTemplateStructure(template.id)
+      .then((loaded) => {
+        if (!isCurrent) {
+          return
+        }
+        setStructure({
+          days: loaded.days,
+          exercisesByDay: loaded.exercisesByDay,
+        })
+      })
+      .catch((caught: unknown) => {
+        if (!isCurrent) {
+          return
+        }
+        setError(
+          caught instanceof Error ? caught.message : 'Program could not load.',
+        )
+      })
+    return () => {
+      isCurrent = false
+    }
+  }, [template.id])
+
+  return (
+    <Card>
+      <div className="set-goal-header">
+        <IconButton aria-label="Back to browse programs" onClick={onBack}>
+          <ArrowLeft aria-hidden="true" size={20} />
+        </IconButton>
+        <h2 className="set-goal-title">{template.name}</h2>
+      </div>
+      {subtitle ? <p className="muted">{subtitle}</p> : null}
+      <div className="row-actions">
+        <SecondaryButton type="button" onClick={() => onActivate(template)}>
+          Activate
+        </SecondaryButton>
+        <SecondaryButton
+          aria-label={`Add ${template.name} to library`}
+          type="button"
+          onClick={() => onAdd(template.id)}
+        >
+          Add to library
+        </SecondaryButton>
+      </div>
+      {error ? <ValidationMessage message={error} /> : null}
+      {!structure ? <LoadingState label="Loading program" /> : null}
+      {structure
+        ? structure.days.map((day) => (
+            <section className="program-preview-day" key={day.id}>
+              <h3>{day.name}</h3>
+              <ul className="program-preview-exercises">
+                {(structure.exercisesByDay[day.id] ?? []).map((exercise) => (
+                  <li key={exercise.id}>
+                    <span>{exercise.exerciseSnapshot.exerciseName}</span>
+                    <small>{formatPreviewPrescription(exercise)}</small>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))
+        : null}
     </Card>
   )
 }
@@ -1431,6 +1555,7 @@ function ProgramBuilderSheet({
           onClose()
         }}
         title={mode === 'template' ? 'Edit template' : 'Edit current cycle'}
+        variant="page"
       >
         {!structure ? <LoadingState label="Loading program" /> : null}
         {structure && editingPrescription ? (

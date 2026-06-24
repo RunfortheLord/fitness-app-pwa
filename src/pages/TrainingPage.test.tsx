@@ -282,7 +282,9 @@ describe('TrainingPage', () => {
       )
       expect(userOwned).toHaveLength(1)
     })
-    await user.click(within(builder).getByRole('button', { name: /Close/ }))
+    await user.click(
+      within(builder).getByRole('button', { name: /Back from edit template/i }),
+    )
 
     await user.click(screen.getByRole('button', { name: 'Activate PPL' }))
     await user.click(
@@ -565,6 +567,38 @@ describe('TrainingPage', () => {
     await user.click(screen.getByRole('button', { name: 'Back to training' }))
     expect(
       await screen.findByText('Beginner Full Body A/B copy'),
+    ).toBeInTheDocument()
+  })
+
+  it('previews a built-in program from Browse and returns with the back arrow', async () => {
+    const user = userEvent.setup()
+    renderTraining()
+
+    await screen.findByText('No saved programs')
+    await user.click(screen.getByRole('button', { name: 'Browse programs' }))
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Preview Beginner Full Body A/B',
+      }),
+    )
+
+    // The preview sub-page lists the program's days and exercises read-only.
+    expect(
+      await screen.findByRole('button', {
+        name: 'Back to browse programs',
+      }),
+    ).toBeInTheDocument()
+    expect(await screen.findByText('Day A')).toBeInTheDocument()
+    expect(screen.getByText('Barbell Back Squat')).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole('button', { name: 'Back to browse programs' }),
+    )
+    // Back on the Browse list.
+    expect(
+      await screen.findByRole('button', {
+        name: 'Add Beginner Full Body A/B to library',
+      }),
     ).toBeInTheDocument()
   })
 

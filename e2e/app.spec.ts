@@ -672,7 +672,7 @@ async function addPrescription(
 }
 
 async function closeBuilder(builder: Locator) {
-  await builder.getByRole('button', { name: /^Close edit/ }).click()
+  await builder.getByRole('button', { name: /^Back from edit/ }).click()
   await expect(builder).not.toBeVisible()
 }
 

@@ -6,7 +6,7 @@ import type {
   ReactNode,
 } from 'react'
 import { useEffect, useId, useRef } from 'react'
-import { Check, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, X } from 'lucide-react'
 
 type AppHeaderProps = {
   title: string
@@ -97,6 +97,12 @@ type BottomSheetProps = {
   isOpen: boolean
   onClose: () => void
   title: string
+  /**
+   * 'sheet' (default) renders the standard bottom sheet with a close button.
+   * 'page' renders a full-height sub-page with a leading back arrow, for flows
+   * the user navigates into and backs out of (e.g. editing a program).
+   */
+  variant?: 'sheet' | 'page'
 }
 
 export function BottomSheet({
@@ -104,6 +110,7 @@ export function BottomSheet({
   isOpen,
   onClose,
   title,
+  variant = 'sheet',
 }: BottomSheetProps) {
   const titleId = useId()
   const sheetRef = useRef<HTMLElement>(null)
@@ -118,27 +125,47 @@ export function BottomSheet({
     return null
   }
 
+  const isPage = variant === 'page'
+
   return (
-    <div className="sheet-backdrop" role="presentation" onMouseDown={onClose}>
+    <div
+      className={`sheet-backdrop${isPage ? ' sheet-backdrop--page' : ''}`}
+      role="presentation"
+      onMouseDown={isPage ? undefined : onClose}
+    >
       <section
         aria-modal="true"
         aria-labelledby={titleId}
-        className="bottom-sheet"
+        className={isPage ? 'bottom-sheet bottom-sheet--page' : 'bottom-sheet'}
         ref={sheetRef}
         role="dialog"
         tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="sheet-handle" aria-hidden="true" />
-        <div className="sheet-header">
-          <h2 id={titleId}>{title}</h2>
-          <IconButton
-            aria-label={`Close ${title.toLowerCase()}`}
-            onClick={onClose}
-          >
-            <X aria-hidden="true" size={20} />
-          </IconButton>
-        </div>
+        {isPage ? (
+          <div className="sheet-header sheet-header--page">
+            <IconButton
+              aria-label={`Back from ${title.toLowerCase()}`}
+              onClick={onClose}
+            >
+              <ArrowLeft aria-hidden="true" size={20} />
+            </IconButton>
+            <h2 id={titleId}>{title}</h2>
+          </div>
+        ) : (
+          <>
+            <div className="sheet-handle" aria-hidden="true" />
+            <div className="sheet-header">
+              <h2 id={titleId}>{title}</h2>
+              <IconButton
+                aria-label={`Close ${title.toLowerCase()}`}
+                onClick={onClose}
+              >
+                <X aria-hidden="true" size={20} />
+              </IconButton>
+            </div>
+          </>
+        )}
         {children}
       </section>
     </div>
