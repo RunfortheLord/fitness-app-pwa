@@ -35,7 +35,12 @@ import {
   ValidationMessage,
 } from '@components/ui'
 import { getRestTimerRemainingSeconds } from '@domain/restTimer'
-import { DEFAULT_TIMER_SOUND_ID, playTimerSoundOnce } from '@domain/timerSounds'
+import {
+  DEFAULT_TIMER_SOUND_ID,
+  playTimerSoundOnce,
+  primeTimerSound,
+} from '@domain/timerSounds'
+import { canSkipWorkoutExercise } from '@domain/workoutSkip'
 import { exerciseRepository } from '@repositories/exerciseRepository'
 import { settingsRepository } from '@repositories/settingsRepository'
 import {
@@ -81,6 +86,8 @@ export function LiveWorkoutPage() {
   const [now, setNow] = useState(() => new Date())
   const [error, setError] = useState<string | null>(null)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const [confirmFinish, setConfirmFinish] = useState(false)
+  const [confirmRemove, setConfirmRemove] = useState(false)
   const [picker, setPicker] = useState<ExercisePickerState>(null)
   const [timerSound, setTimerSound] = useState({
     enabled: true,
@@ -300,11 +307,9 @@ export function LiveWorkoutPage() {
       <Card className="live-workout-hero">
         <div className="live-workout-title-row">
           <div>
-            <p className="eyebrow">Live workout</p>
             <h2>{state.workout.name}</h2>
             <p className="muted">
-              {state.workout.workoutSnapshot.activeCycleName ?? 'Program'} -{' '}
-              {state.workout.workoutSnapshot.dayName}
+              {state.workout.workoutSnapshot.activeCycleName ?? 'Program'}
             </p>
           </div>
           <SecondaryButton
@@ -376,6 +381,14 @@ export function LiveWorkoutPage() {
             const hasMoreSetsInExercise = activeSets.some(
               (candidate) => candidate.id !== set.id && !candidate.completed,
             )
+            // Unlock the selected completion sound synchronously within this
+            // tap gesture when a rest timer is about to start, so it can play
+            // when the timer later fires without its own user interaction.
+            if (completed && hasMoreSetsInExercise && restSeconds > 0) {
+              if (timerSound.enabled) {
+                primeTimerSound(timerSound.soundId)
+              }
+            }
             const nextIncompleteExercise = state.exercises.find(
               (exercise) =>
                 exercise.id !== activeExercise.id &&
@@ -414,13 +427,7 @@ export function LiveWorkoutPage() {
               workoutExerciseId: activeExercise.id,
             })
           }
-          onRemoveExercise={() =>
-            run(
-              workoutRepository.removeExerciseFromLiveWorkout(
-                activeExercise.id,
-              ),
-            )
-          }
+          onRemoveExercise={() => setConfirmRemove(true)}
           onSetMetric={(set, metricValues) => {
             run(
               workoutRepository.updateWorkoutSetMetricAndPropagate(
@@ -456,19 +463,7 @@ export function LiveWorkoutPage() {
           <Plus aria-hidden="true" size={18} />
           Add Exercise
         </SecondaryButton>
-        <PrimaryButton
-          type="button"
-          onClick={() =>
-            run(
-              workoutRepository
-                .completeWorkout({ workoutId: state.workout.id })
-                .then((completed) =>
-                  navigate(`/history?workout=${completed.history.id}`),
-                ),
-              'Workout could not finish.',
-            )
-          }
-        >
+        <PrimaryButton type="button" onClick={() => setConfirmFinish(true)}>
           Finish Workout
         </PrimaryButton>
       </div>
@@ -501,6 +496,50 @@ export function LiveWorkoutPage() {
       >
         This permanently discards the active workout and all recorded set data.
         It will not appear in history, graphs, or statistics.
+      </ModalConfirmationDialog>
+
+      <ModalConfirmationDialog
+        cancelLabel="Keep working out"
+        confirmLabel="Finish Workout"
+        isOpen={confirmFinish}
+        onCancel={() => setConfirmFinish(false)}
+        onConfirm={() => {
+          setConfirmFinish(false)
+          run(
+            workoutRepository
+              .completeWorkout({ workoutId: state.workout.id })
+              .then((completed) =>
+                navigate(`/history?workout=${completed.history.id}`),
+              ),
+            'Workout could not finish.',
+          )
+        }}
+        title="Finish workout?"
+      >
+        This saves the completed workout to your history and ends the active
+        session.
+      </ModalConfirmationDialog>
+
+      <ModalConfirmationDialog
+        confirmLabel="Remove Exercise"
+        isOpen={confirmRemove}
+        onCancel={() => setConfirmRemove(false)}
+        onConfirm={() => {
+          if (!activeExercise) {
+            setConfirmRemove(false)
+            return
+          }
+          setConfirmRemove(false)
+          run(
+            workoutRepository.removeExerciseFromLiveWorkout(activeExercise.id),
+            'Exercise could not be removed.',
+          )
+        }}
+        title="Remove exercise?"
+      >
+        Remove{' '}
+        {activeExercise?.exerciseSnapshot.exerciseName ?? 'this exercise'} and
+        its entered sets from this active workout?
       </ModalConfirmationDialog>
     </PageContainer>
   )
@@ -594,6 +633,7 @@ function ExerciseWorkspace({
           </SecondaryButton>
           <SecondaryButton
             type="button"
+            disabled={!exercise.skipped && !canSkipWorkoutExercise(sets)}
             onClick={() => onSkip(!exercise.skipped)}
           >
             {exercise.skipped ? 'Unskip' : 'Skip Exercise'}

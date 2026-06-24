@@ -1330,24 +1330,6 @@ export function createProgramRepository(
         },
       )
     },
-
-    async mergeTemplateDays(sourceDayId: string, destinationDayId: string) {
-      return mergeProgramDays({
-        database,
-        sourceDayId,
-        destinationDayId,
-        mode: 'template',
-      })
-    },
-
-    async mergeActiveCycleDays(sourceDayId: string, destinationDayId: string) {
-      return mergeProgramDays({
-        database,
-        sourceDayId,
-        destinationDayId,
-        mode: 'cycle',
-      })
-    },
   }
 }
 
@@ -1487,103 +1469,6 @@ async function reindexActiveExercises(
         updatedAt,
       }),
     ),
-  )
-}
-
-async function mergeProgramDays({
-  database,
-  destinationDayId,
-  mode,
-  sourceDayId,
-}: {
-  database: TrainingLogDatabase
-  destinationDayId: string
-  mode: 'template' | 'cycle'
-  sourceDayId: string
-}) {
-  if (sourceDayId === destinationDayId) {
-    throw new Error('Source and destination days must be different.')
-  }
-
-  const now = new Date().toISOString()
-  if (mode === 'template') {
-    return database.transaction(
-      'rw',
-      database.programTemplates,
-      database.templateWorkoutDays,
-      database.templateWorkoutExercises,
-      async () => {
-        const [sourceDay, destinationDay] = await Promise.all([
-          database.templateWorkoutDays.get(sourceDayId),
-          database.templateWorkoutDays.get(destinationDayId),
-        ])
-        if (!sourceDay || !destinationDay) {
-          throw new Error('Merge days were not found.')
-        }
-        if (sourceDay.templateId !== destinationDay.templateId) {
-          throw new Error('Days must belong to the same program.')
-        }
-        const destinationExercises = await database.templateWorkoutExercises
-          .where({ dayId: destinationDayId })
-          .sortBy('orderIndex')
-        const sourceExercises = await database.templateWorkoutExercises
-          .where({ dayId: sourceDayId })
-          .sortBy('orderIndex')
-        await Promise.all(
-          sourceExercises.map((exercise, index) =>
-            database.templateWorkoutExercises.update(exercise.id, {
-              dayId: destinationDayId,
-              orderIndex: destinationExercises.length + index,
-              updatedAt: now,
-            }),
-          ),
-        )
-        await database.templateWorkoutDays.delete(sourceDayId)
-        await reindexTemplateDays(database, sourceDay.templateId, now)
-        await database.programTemplates.update(sourceDay.templateId, {
-          updatedAt: now,
-        })
-      },
-    )
-  }
-
-  return database.transaction(
-    'rw',
-    database.activeProgramCycles,
-    database.activeCycleWorkoutDays,
-    database.activeCycleWorkoutExercises,
-    async () => {
-      const [sourceDay, destinationDay] = await Promise.all([
-        database.activeCycleWorkoutDays.get(sourceDayId),
-        database.activeCycleWorkoutDays.get(destinationDayId),
-      ])
-      if (!sourceDay || !destinationDay) {
-        throw new Error('Merge days were not found.')
-      }
-      if (sourceDay.activeCycleId !== destinationDay.activeCycleId) {
-        throw new Error('Days must belong to the same program.')
-      }
-      const destinationExercises = await database.activeCycleWorkoutExercises
-        .where({ dayId: destinationDayId })
-        .sortBy('orderIndex')
-      const sourceExercises = await database.activeCycleWorkoutExercises
-        .where({ dayId: sourceDayId })
-        .sortBy('orderIndex')
-      await Promise.all(
-        sourceExercises.map((exercise, index) =>
-          database.activeCycleWorkoutExercises.update(exercise.id, {
-            dayId: destinationDayId,
-            orderIndex: destinationExercises.length + index,
-            updatedAt: now,
-          }),
-        ),
-      )
-      await database.activeCycleWorkoutDays.delete(sourceDayId)
-      await reindexActiveDays(database, sourceDay.activeCycleId, now)
-      await database.activeProgramCycles.update(sourceDay.activeCycleId, {
-        updatedAt: now,
-      })
-    },
   )
 }
 

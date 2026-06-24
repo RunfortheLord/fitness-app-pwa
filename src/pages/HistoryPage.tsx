@@ -1,4 +1,4 @@
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, ChevronLeft } from 'lucide-react'
 import { useContext, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -6,6 +6,7 @@ import {
   Card,
   EmptyState,
   FormField,
+  IconButton,
   LoadingState,
   NumericInput,
   PageContainer,
@@ -565,6 +566,8 @@ function StrengthGraphsView({
   const [range, setRange] = useState<StrengthRange>('3m')
   const [points, setPoints] = useState<StrengthGraphPoint[]>([])
   const [selectedExerciseId, setSelectedExerciseId] = useState('')
+  const [exerciseQuery, setExerciseQuery] = useState('')
+  const [lastSyncedExerciseName, setLastSyncedExerciseName] = useState('')
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const today = formatLocalDate(new Date())
@@ -588,9 +591,6 @@ function StrengthGraphsView({
         setSelectedExerciseId(
           (current) => current || options[0]?.exerciseId || '',
         )
-        setSelectedPointId(
-          (current) => current ?? nextPoints.at(-1)?.id ?? null,
-        )
         setStatus('ready')
       })
       .catch(() => {
@@ -606,6 +606,18 @@ function StrengthGraphsView({
 
   const options = listStrengthExerciseOptions(points)
   const selectedExercise = selectedExerciseId || options[0]?.exerciseId || ''
+  const selectedExerciseName =
+    options.find((option) => option.exerciseId === selectedExercise)
+      ?.exerciseName ?? ''
+  // Keep the search field showing the resolved exercise name when the selection
+  // changes (initial load, fallback). Adjusting state during render only when
+  // the value actually changes is React's recommended alternative to an effect
+  // and never fights mid-typing, since typing does not change the selection
+  // until it matches an option.
+  if (selectedExerciseName !== lastSyncedExerciseName) {
+    setLastSyncedExerciseName(selectedExerciseName)
+    setExerciseQuery(selectedExerciseName)
+  }
   const exercisePoints = points.filter(
     (point) => point.exerciseId === selectedExercise,
   )
@@ -618,21 +630,23 @@ function StrengthGraphsView({
   const selectedPoint =
     model.status === 'empty'
       ? null
-      : (model.points.find((point) => point.id === selectedPointId) ??
-        model.points.at(-1) ??
-        null)
+      : (model.points.find((point) => point.id === selectedPointId) ?? null)
 
   return (
     <PageContainer>
       <SectionHeader
         title="Strength graphs"
         action={
-          <SecondaryButton type="button" onClick={onShowWorkouts}>
-            Workouts
-          </SecondaryButton>
+          <IconButton
+            aria-label="Back to history"
+            type="button"
+            onClick={onShowWorkouts}
+          >
+            <ChevronLeft aria-hidden="true" size={20} />
+          </IconButton>
         }
       />
-      <Card title="Estimated 1RM">
+      <Card title="Estimated 1 Rep Max">
         <SegmentedControl
           label="Strength graph range"
           onChange={(value) => {
@@ -653,24 +667,38 @@ function StrengthGraphsView({
         {status === 'ready' && options.length ? (
           <>
             <FormField id="strength-exercise" label="Exercise">
-              <select
+              <input
                 id="strength-exercise"
+                type="text"
+                autoComplete="off"
+                list="strength-exercise-options"
+                placeholder="Search exercise"
+                value={exerciseQuery}
                 onChange={(event) => {
-                  setSelectedExerciseId(event.target.value)
-                  setSelectedPointId(null)
+                  const value = event.target.value
+                  setExerciseQuery(value)
+                  const match = options.find(
+                    (option) => option.exerciseName === value,
+                  )
+                  if (match) {
+                    setSelectedExerciseId(match.exerciseId)
+                    setSelectedPointId(null)
+                  }
                 }}
-                value={selectedExercise}
-              >
+              />
+              <datalist id="strength-exercise-options">
                 {options.map((option) => (
-                  <option key={option.exerciseId} value={option.exerciseId}>
-                    {option.exerciseName}
-                  </option>
+                  <option key={option.exerciseId} value={option.exerciseName} />
                 ))}
-              </select>
+              </datalist>
             </FormField>
             <StrengthChart
               model={model}
-              onSelect={(point) => setSelectedPointId(point.id)}
+              onSelect={(point) =>
+                setSelectedPointId((current) =>
+                  current === point.id ? null : point.id,
+                )
+              }
               selectedPoint={selectedPoint}
             />
             <p className="muted">{strengthEstimateLimitText()}</p>
@@ -714,28 +742,7 @@ function StrengthChart({
       <p className="visually-hidden" aria-live="polite">
         {model.summary}
       </p>
-      <div className="bodyweight-chart-summary" aria-label="Strength summary">
-        <span>
-          <strong>
-            {formatEstimatedMax(model.latest.estimatedOneRepMax)} lb
-          </strong>
-          <small>Latest - {model.latest.localDate}</small>
-        </span>
-        <span>
-          <strong>
-            {formatEstimatedMax(model.allTimeBest.estimatedOneRepMax)} lb
-          </strong>
-          <small>Best - {model.allTimeBest.localDate}</small>
-        </span>
-        <span>
-          <strong>
-            {formatEstimatedMax(model.minEstimate)}-
-            {formatEstimatedMax(model.maxEstimate)} lb
-          </strong>
-          <small>Range</small>
-        </span>
-      </div>
-      <div className="bodyweight-chart" aria-label="Estimated 1RM graph">
+      <div className="bodyweight-chart" aria-label="Estimated 1 Rep Max graph">
         <span className="chart-axis-label chart-axis-label-x">Date</span>
         <span className="chart-axis-label chart-axis-label-y">
           Estimated 1RM (lb)
@@ -749,7 +756,7 @@ function StrengthChart({
           <line x1="0" x2="100" y1="100" y2="100" />
           {model.status === 'ready' ? <path d={path} /> : null}
           {model.points.map((point) => (
-            <circle cx={point.x} cy={point.y} key={point.id} r="1.8" />
+            <circle cx={point.x} cy={point.y} key={point.id} r="2.6" />
           ))}
         </svg>
         {model.points.map((point) => (
@@ -757,6 +764,7 @@ function StrengthChart({
             aria-label={`${point.localDate} ${formatEstimatedMax(
               point.estimatedOneRepMax,
             )} lb estimated one-repetition maximum`}
+            aria-pressed={selectedPoint?.id === point.id}
             className="bodyweight-point-button"
             key={point.id}
             onClick={() => onSelect(point)}
@@ -767,6 +775,18 @@ function StrengthChart({
             type="button"
           />
         ))}
+        {selectedPoint ? (
+          <span
+            aria-hidden="true"
+            className="bodyweight-point-value"
+            style={{
+              left: `${selectedPoint.x}%`,
+              top: `${selectedPoint.y}%`,
+            }}
+          >
+            {formatEstimatedMax(selectedPoint.estimatedOneRepMax)} lb
+          </span>
+        ) : null}
       </div>
       <p className="muted">{model.summary}</p>
       {model.status === 'single' ? (

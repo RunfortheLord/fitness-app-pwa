@@ -6,7 +6,7 @@ import type {
   TrackingMethodId,
 } from '@shared-types/app'
 
-export const BUILT_IN_EXERCISE_SEED_VERSION = 5
+export const BUILT_IN_EXERCISE_SEED_VERSION = 6
 export const BUILT_IN_EXERCISE_CREATED_AT = '2026-06-19T00:00:00.000Z'
 
 export type BuiltInExerciseSeed = Pick<
@@ -2100,6 +2100,12 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
       secondary: ['shoulders', 'triceps'],
     },
   ),
+  // Added for seed version 6: a weighted-repetition core exercise.
+  exercise('ghd-sit-up', 'GHD Sit-Up', 'bodyweight', ['core'], {
+    increment: 5,
+    rest: isolation,
+    tracking: 'weight_reps',
+  }),
   exercise('roman-chair-sit-up', 'Roman Chair Sit-Up', 'bodyweight', ['core'], {
     rest: isolation,
   }),

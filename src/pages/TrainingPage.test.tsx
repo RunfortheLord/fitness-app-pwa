@@ -371,7 +371,11 @@ describe('TrainingPage', () => {
     )
 
     expect(
-      await screen.findByText('Live workout', undefined, { timeout: 5_000 }),
+      await screen.findByRole(
+        'button',
+        { name: 'Finish Workout' },
+        { timeout: 5_000 },
+      ),
     ).toBeInTheDocument()
     await user.clear(screen.getByRole('textbox', { name: 'Set 1 Weight' }))
     await user.type(

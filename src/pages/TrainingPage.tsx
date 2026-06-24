@@ -284,6 +284,15 @@ export function TrainingPage() {
   const builtInTemplates = loadState.templates.filter(
     (template) => template.isBuiltIn,
   )
+  // Built-in programs already copied into the user's library, detected by the
+  // clone's "<name> copy" naming, so Browse can show them as added.
+  const addedBuiltInNames = new Set(
+    loadState.templates
+      .filter(
+        (template) => !template.isBuiltIn && template.name.endsWith(' copy'),
+      )
+      .map((template) => template.name.slice(0, -' copy'.length)),
+  )
 
   const onActivateProgram = (template: ProgramTemplate) =>
     setProgramConfirmation({ type: 'activate', template })
@@ -328,6 +337,7 @@ export function TrainingPage() {
       ) : programView === 'browse' ? (
         previewTemplate ? (
           <ProgramPreviewPage
+            isAdded={addedBuiltInNames.has(previewTemplate.name)}
             onActivate={(template) => {
               onActivateProgram(template)
             }}
@@ -339,6 +349,7 @@ export function TrainingPage() {
           />
         ) : (
           <BrowseProgramsPage
+            addedNames={addedBuiltInNames}
             loadStatus={loadState.status}
             onActivate={onActivateProgram}
             onAdd={(templateId) =>
@@ -945,6 +956,7 @@ function FullProgramLibraryPage({
 }
 
 function BrowseProgramsPage({
+  addedNames,
   loadStatus,
   onActivate,
   onAdd,
@@ -954,6 +966,7 @@ function BrowseProgramsPage({
   setQuery,
   templates,
 }: {
+  addedNames: Set<string>
   loadStatus: LoadState['status']
   onActivate: (template: ProgramTemplate) => void
   onAdd: (templateId: string) => void
@@ -1022,13 +1035,17 @@ function BrowseProgramsPage({
                 >
                   <Dumbbell aria-hidden="true" size={18} />
                 </IconButton>
-                <SecondaryButton
-                  aria-label={`Add ${template.name} to library`}
-                  type="button"
-                  onClick={() => onAdd(template.id)}
-                >
-                  Add to library
-                </SecondaryButton>
+                {addedNames.has(template.name) ? (
+                  <span className="program-added-tag">Added ✓</span>
+                ) : (
+                  <SecondaryButton
+                    aria-label={`Add ${template.name} to library`}
+                    type="button"
+                    onClick={() => onAdd(template.id)}
+                  >
+                    Add to library
+                  </SecondaryButton>
+                )}
               </div>
             </div>
           ))}
@@ -1053,11 +1070,13 @@ function formatPreviewPrescription(exercise: TemplateWorkoutExercise) {
 }
 
 function ProgramPreviewPage({
+  isAdded,
   onActivate,
   onAdd,
   onBack,
   template,
 }: {
+  isAdded: boolean
   onActivate: (template: ProgramTemplate) => void
   onAdd: (templateId: string) => void
   onBack: () => void
@@ -1109,13 +1128,17 @@ function ProgramPreviewPage({
         <SecondaryButton type="button" onClick={() => onActivate(template)}>
           Activate
         </SecondaryButton>
-        <SecondaryButton
-          aria-label={`Add ${template.name} to library`}
-          type="button"
-          onClick={() => onAdd(template.id)}
-        >
-          Add to library
-        </SecondaryButton>
+        {isAdded ? (
+          <span className="program-added-tag">Added ✓</span>
+        ) : (
+          <SecondaryButton
+            aria-label={`Add ${template.name} to library`}
+            type="button"
+            onClick={() => onAdd(template.id)}
+          >
+            Add to library
+          </SecondaryButton>
+        )}
       </div>
       {error ? <ValidationMessage message={error} /> : null}
       {!structure ? <LoadingState label="Loading program" /> : null}
@@ -1224,14 +1247,6 @@ function ProgramBuilderSheet({
     | { type: 'exercise'; id: string; name: string }
     | null
   >(null)
-  const [mergeSelection, setMergeSelection] = useState({
-    sourceDayId: '',
-    destinationDayId: '',
-  })
-  const [mergeConfirmation, setMergeConfirmation] = useState<{
-    sourceDayId: string
-    destinationDayId: string
-  } | null>(null)
   const [selectedDayId, setSelectedDayId] = useState('')
   const [draggedDayId, setDraggedDayId] = useState<string | null>(null)
 
@@ -1517,38 +1532,6 @@ function ProgramBuilderSheet({
     )
   }
 
-  function confirmMergeDays() {
-    if (!mergeSelection.sourceDayId || !mergeSelection.destinationDayId) {
-      setError('Choose source and destination days to merge.')
-      return
-    }
-    if (mergeSelection.sourceDayId === mergeSelection.destinationDayId) {
-      setError('Source and destination days must be different.')
-      return
-    }
-    setMergeConfirmation(mergeSelection)
-  }
-
-  function mergeDaysConfirmed() {
-    if (!mergeConfirmation) {
-      return
-    }
-    const target = mergeConfirmation
-    setMergeConfirmation(null)
-    run(
-      mode === 'template'
-        ? programRepository.mergeTemplateDays(
-            target.sourceDayId,
-            target.destinationDayId,
-          )
-        : programRepository.mergeActiveCycleDays(
-            target.sourceDayId,
-            target.destinationDayId,
-          ),
-    )
-    setMergeSelection({ sourceDayId: '', destinationDayId: '' })
-  }
-
   return (
     <>
       <BottomSheet
@@ -1606,52 +1589,6 @@ function ProgramBuilderSheet({
                 Add day
               </SecondaryButton>
             </div>
-
-            {structure.days.length > 1 ? (
-              <div className="program-builder-merge">
-                <FormField id="merge-source-day" label="Source day">
-                  <select
-                    id="merge-source-day"
-                    onChange={(event) =>
-                      setMergeSelection((current) => ({
-                        ...current,
-                        sourceDayId: event.target.value,
-                      }))
-                    }
-                    value={mergeSelection.sourceDayId}
-                  >
-                    <option value="">Choose source</option>
-                    {structure.days.map((day) => (
-                      <option key={day.id} value={day.id}>
-                        {day.name}
-                      </option>
-                    ))}
-                  </select>
-                </FormField>
-                <FormField id="merge-destination-day" label="Destination day">
-                  <select
-                    id="merge-destination-day"
-                    onChange={(event) =>
-                      setMergeSelection((current) => ({
-                        ...current,
-                        destinationDayId: event.target.value,
-                      }))
-                    }
-                    value={mergeSelection.destinationDayId}
-                  >
-                    <option value="">Choose destination</option>
-                    {structure.days.map((day) => (
-                      <option key={day.id} value={day.id}>
-                        {day.name}
-                      </option>
-                    ))}
-                  </select>
-                </FormField>
-                <SecondaryButton type="button" onClick={confirmMergeDays}>
-                  Merge Days
-                </SecondaryButton>
-              </div>
-            ) : null}
 
             {structure.days.length ? (
               <div className="program-day-tabs" aria-label="Program days">
@@ -1869,19 +1806,6 @@ function ProgramBuilderSheet({
           {removeConfirmation?.type === 'day'
             ? `${removeConfirmation.name} and its programmed exercises will be permanently deleted. Completed workout history is preserved.`
             : `Remove ${removeConfirmation?.name ?? 'this exercise'} from this workout day.`}
-        </p>
-      </ModalConfirmationDialog>
-      <ModalConfirmationDialog
-        confirmLabel="Merge Days"
-        isOpen={mergeConfirmation !== null}
-        onCancel={() => setMergeConfirmation(null)}
-        onConfirm={mergeDaysConfirmed}
-        title="Merge workout days?"
-      >
-        <p>
-          Source-day exercises will be appended to the destination day, then the
-          source day will be permanently deleted. Completed workout history is
-          preserved.
         </p>
       </ModalConfirmationDialog>
     </>

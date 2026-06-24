@@ -602,6 +602,10 @@ test('completes the release workflow through backup restore', async ({
   await page.getByRole('button', { name: 'Complete set 4' }).click()
 
   await page.getByRole('button', { name: 'Finish Workout' }).click()
+  await page
+    .getByRole('dialog', { name: 'Finish workout?' })
+    .getByRole('button', { name: 'Finish Workout' })
+    .click()
   await expect(page).toHaveURL(/\/history\?workout=/)
   await expect(page.getByText('Skipped: Audit curl')).toBeVisible()
   await expect(page.getByText('Review')).toHaveCount(0)

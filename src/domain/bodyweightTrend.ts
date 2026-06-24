@@ -1,9 +1,13 @@
+import { differenceInCalendarDays } from 'date-fns'
+
 import { parseLocalDate, type LocalDateString } from '@domain/dates'
-import { sortBodyweightEntries } from '@domain/bodyweightProgress'
 import type { BodyweightEntry } from '@shared-types/app'
 
-// Exponential smoothing factor applied per entry. A "trend weight" damps daily
-// scale fluctuations so a single high or low reading does not dominate.
+// Per-calendar-day exponential smoothing factor. A "trend weight" damps daily
+// scale fluctuations so a single high or low reading does not dominate. This is
+// the one-day alpha; gaps of several days compound it (see
+// effectiveTrendAlphaForCalendarDays) so a long pause between weigh-ins lets the
+// trend move proportionally further toward the new measurement.
 export const TREND_SMOOTHING = 0.25
 
 const MS_PER_DAY = 86_400_000
@@ -15,19 +19,84 @@ export type TrendWeightPoint = {
 }
 
 /**
- * Returns the smoothed (EMA) trend weight at each entry, oldest first. The first
- * point seeds the trend with the raw weight.
+ * Converts the one-calendar-day smoothing coefficient into the equivalent
+ * coefficient for a gap of several calendar days. Applying it once equals
+ * applying the daily update once per elapsed calendar day.
+ */
+export function effectiveTrendAlphaForCalendarDays(
+  dailyAlpha: number,
+  calendarDays: number,
+): number {
+  return calendarDays <= 0 ? 0 : 1 - Math.pow(1 - dailyAlpha, calendarDays)
+}
+
+/**
+ * Keeps the latest timestamped entry for every local calendar date, oldest
+ * first. Multiple weigh-ins on one day are measurements within the same day,
+ * not multiple days of smoothing.
+ */
+export function latestBodyweightEntryPerCalendarDate(
+  entries: BodyweightEntry[],
+): BodyweightEntry[] {
+  const latestByDate = new Map<LocalDateString, BodyweightEntry>()
+  for (const entry of entries) {
+    const current = latestByDate.get(entry.localDate)
+    if (!current || compareEntryRecency(entry, current) > 0) {
+      latestByDate.set(entry.localDate, entry)
+    }
+  }
+  return [...latestByDate.values()].sort(
+    (left, right) =>
+      left.localDate.localeCompare(right.localDate) ||
+      compareEntryRecency(left, right),
+  )
+}
+
+function compareEntryRecency(left: BodyweightEntry, right: BodyweightEntry) {
+  return (
+    left.updatedAt.localeCompare(right.updatedAt) ||
+    left.createdAt.localeCompare(right.createdAt) ||
+    left.id.localeCompare(right.id)
+  )
+}
+
+/**
+ * Returns the smoothed (EMA) trend weight at each local calendar date, oldest
+ * first. The first point seeds the trend with the raw weight; each later point
+ * smooths using a coefficient scaled by the number of calendar days since the
+ * previous weigh-in.
  */
 export function trendWeightSeries(
   entries: BodyweightEntry[],
 ): TrendWeightPoint[] {
-  const sorted = sortBodyweightEntries(entries)
-  let ema: number | null = null
-  return sorted.map((entry) => {
-    ema =
-      ema === null ? entry.weight : ema + TREND_SMOOTHING * (entry.weight - ema)
-    return { localDate: entry.localDate, weight: entry.weight, trend: ema }
-  })
+  const dailyEntries = latestBodyweightEntryPerCalendarDate(entries)
+  const series: TrendWeightPoint[] = []
+  let ema = 0
+  for (let index = 0; index < dailyEntries.length; index += 1) {
+    const entry = dailyEntries[index]
+    if (index === 0) {
+      ema = entry.weight
+    } else {
+      const calendarDays = Math.max(
+        1,
+        differenceInCalendarDays(
+          parseLocalDate(entry.localDate),
+          parseLocalDate(dailyEntries[index - 1].localDate),
+        ),
+      )
+      const effectiveAlpha = effectiveTrendAlphaForCalendarDays(
+        TREND_SMOOTHING,
+        calendarDays,
+      )
+      ema += effectiveAlpha * (entry.weight - ema)
+    }
+    series.push({
+      localDate: entry.localDate,
+      weight: entry.weight,
+      trend: ema,
+    })
+  }
+  return series
 }
 
 /**

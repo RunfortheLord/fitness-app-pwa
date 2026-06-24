@@ -139,9 +139,11 @@ describe('HistoryPage', () => {
     renderHistory('/history?view=graphs')
 
     expect(await screen.findByText('Strength graphs')).toBeInTheDocument()
-    expect(await screen.findByLabelText('Strength summary')).toHaveTextContent(
-      'Latest - 2026-06-19',
-    )
+    expect(await screen.findByText('Estimated 1 Rep Max')).toBeInTheDocument()
+    expect(
+      (await screen.findAllByText(/latest estimated 1 rep max: 120 lb/i))
+        .length,
+    ).toBeGreaterThan(0)
     await user.click(
       screen.getByRole('button', {
         name: '2026-06-19 120 lb estimated one-repetition maximum',

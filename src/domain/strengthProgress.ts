@@ -194,8 +194,21 @@ export function createStrengthGraphModel(
     latest: plotted.find((point) => point.id === latest.id) ?? plotted[0],
     allTimeBest:
       plotted.find((point) => point.id === allTimeBest.id) ?? plotted[0],
-    summary: `${latest.exerciseName} latest estimated 1RM is ${formatEstimatedMax(latest.estimatedOneRepMax)} lb. All-time best is ${formatEstimatedMax(allTimeBest.estimatedOneRepMax)} lb on ${allTimeBest.localDate}, from ${formatEstimatedMax(allTimeBest.weight)} lb x ${allTimeBest.repetitions}.`,
+    summary: `${latest.exerciseName} — latest estimated 1 rep max: ${formatEstimatedMax(latest.estimatedOneRepMax)} lb. Best: ${formatEstimatedMax(allTimeBest.estimatedOneRepMax)} lb on ${formatLongLocalDate(allTimeBest.localDate)}, based on ${formatEstimatedMax(allTimeBest.weight)} lb × ${allTimeBest.repetitions} reps.`,
   }
+}
+
+/** Formats a `YYYY-MM-DD` local date as e.g. `June 21, 2026` without UTC drift. */
+function formatLongLocalDate(localDate: string) {
+  const [year, month, day] = localDate.split('-').map(Number)
+  if (!year || !month || !day) {
+    return localDate
+  }
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
 }
 
 export function formatEstimatedMax(value: number) {

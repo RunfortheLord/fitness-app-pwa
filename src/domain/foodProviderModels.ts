@@ -603,8 +603,15 @@ function completeRestaurantItemBonus(
   }
   const categoryText = normalizeFoodText(food.foodCategory ?? '')
   const brand = food.normalizedBrand ?? ''
+  // Match a squished brand too, so spaceless variants such as "chickfila"
+  // still register brand intent against a brand stored as "chick fil a".
+  const brandSquished = brand.replace(/ /g, '')
   const queryTokens = query.split(' ').filter(Boolean)
-  const hasBrandToken = queryTokens.some((token) => brand.includes(token))
+  const hasBrandToken = queryTokens.some(
+    (token) =>
+      brand.includes(token) ||
+      (token.length >= 4 && brandSquished.includes(token)),
+  )
   const restaurantLike =
     brand.includes(query) ||
     hasBrandToken ||

@@ -2260,7 +2260,7 @@ function TargetsCard({
           value={form.fatGrams}
         />
       </FormField>
-      <p className="macro-calorie-equation">
+      <p className="macro-calorie-equation macro-calorie-equation--targets">
         P {macroCalories.proteinGrams}g x 4 + C{' '}
         {macroCalories.carbohydrateGrams}g x 4 + F {macroCalories.fatGrams}g x 9
         = {macroCalories.calories} kcal

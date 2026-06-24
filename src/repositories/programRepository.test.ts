@@ -362,35 +362,4 @@ describe('programRepository', () => {
       repository.deleteProgramTemplate(program.template.id),
     ).rejects.toThrow('The active program cannot be deleted')
   })
-
-  it('merges template days by appending source exercises and deleting the source day', async () => {
-    const repository = createProgramRepository(database)
-    const program = await seedProgram(database)
-    const lower = await repository.addTemplateDay(program.template.id, {
-      name: 'Lower',
-    })
-    const exerciseRepository = createExerciseRepository(database)
-    const squat = await exerciseRepository.createExercise({
-      name: 'Squat',
-      defaultRestSeconds: 120,
-      trackingMethodId: 'weight_reps',
-      notes: '',
-    })
-    const added = await repository.addTemplateExercise(lower.id, {
-      exerciseId: squat.id,
-      targetSetCount: 2,
-      targetRepsMin: 5,
-      targetRepsMax: 5,
-    })
-
-    await repository.mergeTemplateDays(lower.id, program.days[0].id)
-
-    const structure = await repository.getTemplateStructure(program.template.id)
-    expect(structure.days.map((day) => day.name)).toEqual(['Upper'])
-    expect(
-      structure.exercisesByDay[program.days[0].id].map(
-        (exercise) => exercise.id,
-      ),
-    ).toEqual([program.exercises[0].id, added.id])
-  })
 })

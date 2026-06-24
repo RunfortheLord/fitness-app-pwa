@@ -13,6 +13,7 @@ import {
 } from '@domain/progressionRecommendations'
 import { snapshotExercise } from '@domain/snapshots'
 import { detectWorkoutStructuralChanges } from '@domain/workoutChanges'
+import { canSkipWorkoutExercise } from '@domain/workoutSkip'
 import type { LocalDateString } from '@domain/dates'
 import type {
   ActiveCycleWorkoutExercise,
@@ -565,7 +566,7 @@ export function createWorkoutRepository(
       const now = new Date().toISOString()
       return database.transaction(
         'rw',
-        [database.workouts, database.workoutExercises],
+        [database.workouts, database.workoutExercises, database.workoutSets],
         async () => {
           const exercise =
             await database.workoutExercises.get(workoutExerciseId)
@@ -573,6 +574,14 @@ export function createWorkoutRepository(
             throw new Error(
               `Workout exercise ${workoutExerciseId} was not found.`,
             )
+          }
+          if (skipped) {
+            const sets = await database.workoutSets
+              .where({ workoutExerciseId })
+              .toArray()
+            if (!canSkipWorkoutExercise(sets, exercise.skipped)) {
+              throw new Error('A fully completed exercise cannot be skipped.')
+            }
           }
           const updated = { ...exercise, skipped, updatedAt: now }
           await database.workoutExercises.put(updated)
