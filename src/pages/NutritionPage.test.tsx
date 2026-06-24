@@ -547,10 +547,11 @@ describe('NutritionPage', () => {
       screen.getByRole('searchbox', { name: 'Search foods' }),
       'Recent four',
     )
-    expect(await screen.findByText('No acceptable results')).toBeInTheDocument()
+    // Recently added foods now surface first in the day-tab search when they
+    // match the query.
     expect(
-      screen.queryByRole('button', { name: 'Select Recent four' }),
-    ).not.toBeInTheDocument()
+      await screen.findByRole('button', { name: 'Select Recent four' }),
+    ).toBeInTheDocument()
     await user.clear(screen.getByRole('searchbox', { name: 'Search foods' }))
     await user.click(screen.getByRole('button', { name: 'Foods' }))
 
@@ -616,7 +617,7 @@ describe('createSearchSections', () => {
       recentFoods: [],
     })
 
-    expect(sections[0].title).toBe('Recent and previously used')
+    expect(sections[0].title).toBe('Recently added')
     const common = sections.find((section) => section.title === 'Common')
     const brandedSection = sections.find(
       (section) => section.title === 'Branded',

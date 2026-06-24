@@ -363,7 +363,7 @@ export function NutritionPage() {
 
   const daySearchResults = createSearchSections({
     localFoods: loadState.foods,
-    includeRecentFoods: false,
+    includeRecentFoods: true,
     providerResults: providerSearch.results,
     query,
     recentFoods: loadState.recentFoods,

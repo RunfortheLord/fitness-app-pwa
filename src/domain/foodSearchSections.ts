@@ -11,9 +11,15 @@ export type FoodSearchResult =
 // Provider results arrive already ranked and diversified from the server, so
 // showing all of them made the lists overwhelmingly long. Cap each section to a
 // concise number of its most relevant entries.
+const RECENT_SECTION_CAP = 3
 const COMMON_SECTION_CAP = 5
 const BRANDED_SECTION_CAP = 3
+const OTHER_SECTION_CAP = 5
 const LOCAL_SECTION_CAP = 10
+
+function providerDedupeKey(food: GroupedFoodResult) {
+  return `${food.normalizedSearchName}|${food.normalizedBrand ?? ''}`
+}
 
 export function createSearchSections({
   includeRecentFoods,
@@ -44,12 +50,51 @@ export function createSearchSections({
     (food) => food.sourceType === 'provider' && !recentIds.has(food.id),
   )
 
+  // Provider results can contain near-identical repetitions (same food name and
+  // brand from different records). Track which ones have already been placed so
+  // each food appears in at most one section, in relevance order.
+  const placedProviderKeys = new Set<string>()
+  function takeProvider(
+    predicate: (food: GroupedFoodResult) => boolean,
+    cap: number,
+  ): FoodSearchResult[] {
+    const items: FoodSearchResult[] = []
+    for (const food of providerResults) {
+      if (items.length >= cap) {
+        break
+      }
+      if (!predicate(food)) {
+        continue
+      }
+      const key = providerDedupeKey(food)
+      if (placedProviderKeys.has(key)) {
+        continue
+      }
+      placedProviderKeys.add(key)
+      items.push({ type: 'external', food })
+    }
+    return items
+  }
+
+  const commonItems = takeProvider(
+    (food) => food.source.providerDataType !== 'Branded',
+    COMMON_SECTION_CAP,
+  )
+  const brandedItems = takeProvider(
+    (food) => food.source.providerDataType === 'Branded',
+    BRANDED_SECTION_CAP,
+  )
+  // Whatever relevant provider results remain (either type), shown after the
+  // branded section so the list still surfaces additional close matches sorted
+  // by relevance.
+  const otherItems = takeProvider(() => true, OTHER_SECTION_CAP)
+
   return [
     ...(includeRecentFoods
       ? [
           {
-            title: 'Recent and previously used',
-            items: matchingRecent.slice(0, LOCAL_SECTION_CAP).map((food) => ({
+            title: 'Recently added',
+            items: matchingRecent.slice(0, RECENT_SECTION_CAP).map((food) => ({
               type: 'local' as const,
               food,
               section:
@@ -78,17 +123,15 @@ export function createSearchSections({
     },
     {
       title: 'Common',
-      items: providerResults
-        .filter((food) => food.source.providerDataType !== 'Branded')
-        .slice(0, COMMON_SECTION_CAP)
-        .map((food) => ({ type: 'external', food })),
+      items: commonItems,
     },
     {
       title: 'Branded',
-      items: providerResults
-        .filter((food) => food.source.providerDataType === 'Branded')
-        .slice(0, BRANDED_SECTION_CAP)
-        .map((food) => ({ type: 'external', food })),
+      items: brandedItems,
+    },
+    {
+      title: 'Other',
+      items: otherItems,
     },
   ]
 }

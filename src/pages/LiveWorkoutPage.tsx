@@ -1327,12 +1327,16 @@ function invalidRequiredMetricKeys(set: WorkoutSet, metrics: TrackingMetric[]) {
 }
 
 function getFinalProgrammedSetId(sets: WorkoutSet[]) {
-  return (
-    sets
-      .filter((set) => set.targetSnapshot)
-      .sort((first, second) => first.setNumber - second.setNumber)
-      .at(-1)?.id ?? null
-  )
+  const bySetNumber = (first: WorkoutSet, second: WorkoutSet) =>
+    first.setNumber - second.setNumber
+  const programmed = sets.filter((set) => set.targetSnapshot).sort(bySetNumber)
+  if (programmed.length) {
+    return programmed.at(-1)?.id ?? null
+  }
+  // Exercises added during a live workout have no programmed target, so no set
+  // carries a targetSnapshot. Still expose the RIR field on the final set so it
+  // can be recorded even when an RIR was never specified.
+  return [...sets].sort(bySetNumber).at(-1)?.id ?? null
 }
 
 function exerciseRecordsRepsPerSide(exercise: WorkoutExercise) {
