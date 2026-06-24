@@ -76,6 +76,12 @@ export type UserSettings = {
   nutritionGoal?: NutritionGoal | null
   timerSoundEnabled?: boolean
   selectedTimerSoundId?: string
+  /**
+   * User's preferred default rest-timer duration in seconds. When set, it takes
+   * precedence over an exercise's seeded default but not an explicit
+   * per-prescription rest override. Undefined preserves prior behavior.
+   */
+  defaultRestSeconds?: number
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }

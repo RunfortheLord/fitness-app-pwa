@@ -541,9 +541,13 @@ describe('workoutRepository', () => {
     })
 
     expect(second.sets.map((set) => set.metricValues.weight)).toEqual([
-      undefined,
-      undefined,
-      undefined,
+      135, 145, 155,
+    ])
+    expect(second.sets.map((set) => set.metricValues.reps)).toEqual([8, 8, 8])
+    expect(second.sets.map((set) => set.metricValueSources?.weight)).toEqual([
+      'auto',
+      'auto',
+      'auto',
     ])
     expect(
       second.sets.map((set) => set.targetRecommendation?.sourceSetId),
@@ -582,6 +586,50 @@ describe('workoutRepository', () => {
       localDate: testLocalDate,
     })
 
+    // Legacy snapshot-name matching still finds the prior performance and
+    // pre-logs its weight.
+    expect(second.sets[0].metricValues.weight).toBe(95)
+  })
+
+  it('does not pre-log weights from a different day sharing the same exercise', async () => {
+    const program = await seedProgram(database)
+    const programRepository = createProgramRepository(database)
+    const active = await programRepository.activateTemplate(program.template.id)
+    const repository = createWorkoutRepository(database)
+    const exerciseId = active.exercises[0].exerciseId
+
+    // A second active-cycle day that programs the same exercise.
+    const dayB = await programRepository.addActiveCycleDay(active.cycle.id, {
+      name: 'Lower',
+    })
+    await programRepository.addActiveCycleExercise(dayB.id, {
+      exerciseId,
+      targetSetCount: 1,
+      targetRepsMin: 8,
+      targetRepsMax: 10,
+    })
+
+    // Complete day A with a recorded weight.
+    const first = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(first.sets[0].id, {
+      metricValues: { weight: 200, reps: 8 },
+      completed: true,
+    })
+    await repository.completeWorkout({
+      workoutId: first.workout.id,
+      completedAt: first.workout.startedAt,
+    })
+
+    // Day B's first workout must not inherit day A's weights.
+    const second = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: dayB.id,
+      localDate: testLocalDate,
+    })
     expect(second.sets[0].metricValues.weight).toBeUndefined()
   })
 

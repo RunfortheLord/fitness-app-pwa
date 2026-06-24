@@ -37,6 +37,7 @@ export type SettingsRepository = {
     timerSoundEnabled: boolean
     selectedTimerSoundId: string
   }): Promise<UserSettings>
+  saveDefaultRestSeconds(seconds: number | null): Promise<UserSettings>
 }
 
 export type SettingsRepositoryTestHooks = {
@@ -196,6 +197,22 @@ export function createSettingsRepository(
         ...settings,
         timerSoundEnabled: input.timerSoundEnabled,
         selectedTimerSoundId: input.selectedTimerSoundId,
+        updatedAt: now,
+      }
+      await database.userSettings.put(updated)
+      return updated
+    },
+
+    async saveDefaultRestSeconds(seconds) {
+      const settings = await ensureSettings()
+      const now = new Date().toISOString()
+      const normalized =
+        seconds === null || !Number.isFinite(seconds) || seconds <= 0
+          ? undefined
+          : Math.round(seconds)
+      const updated: UserSettings = {
+        ...settings,
+        defaultRestSeconds: normalized,
         updatedAt: now,
       }
       await database.userSettings.put(updated)

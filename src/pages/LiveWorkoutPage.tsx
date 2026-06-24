@@ -7,6 +7,8 @@ import {
   Play,
   Plus,
   RefreshCcw,
+  Search,
+  Settings2,
   Square,
   Trash2,
 } from 'lucide-react'
@@ -40,6 +42,12 @@ import {
   playTimerSoundOnce,
   primeTimerSound,
 } from '@domain/timerSounds'
+import {
+  defaultExerciseResults,
+  hasSearchableQuery,
+  primaryMuscleLabel,
+  searchExercises,
+} from '@domain/exerciseSearch'
 import { canSkipWorkoutExercise } from '@domain/workoutSkip'
 import { exerciseRepository } from '@repositories/exerciseRepository'
 import { settingsRepository } from '@repositories/settingsRepository'
@@ -93,6 +101,9 @@ export function LiveWorkoutPage() {
     enabled: true,
     soundId: DEFAULT_TIMER_SOUND_ID,
   })
+  const [defaultRestSeconds, setDefaultRestSeconds] = useState<number | null>(
+    null,
+  )
   const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null)
   const alertedTimerIds = useRef(new Set<string>())
 
@@ -157,6 +168,7 @@ export function LiveWorkoutPage() {
         enabled: settings.timerSoundEnabled ?? true,
         soundId: settings.selectedTimerSoundId ?? DEFAULT_TIMER_SOUND_ID,
       })
+      setDefaultRestSeconds(settings.defaultRestSeconds ?? null)
     })
     return () => {
       isCurrent = false
@@ -347,6 +359,13 @@ export function LiveWorkoutPage() {
         }
         remainingSeconds={restRemaining}
         timer={state.workout.activeRestTimer}
+        defaultRestSeconds={defaultRestSeconds}
+        onChangeDefaultRest={(seconds) => {
+          setDefaultRestSeconds(seconds)
+          void settingsRepository
+            .saveDefaultRestSeconds(seconds)
+            .catch(() => setError('Default rest time could not be saved.'))
+        }}
       />
 
       <Card className="exercise-navigator" title="Exercises">
@@ -376,6 +395,7 @@ export function LiveWorkoutPage() {
           onCompleteSet={(set, completed) => {
             const restSeconds =
               set.restSecondsUsed ??
+              defaultRestSeconds ??
               activeExercise.exerciseSnapshot.defaultRestSeconds ??
               0
             const hasMoreSetsInExercise = activeSets.some(
@@ -855,7 +875,9 @@ function MetricNumericInput({
 }
 
 function RestTimerCard({
+  defaultRestSeconds,
   onAddTime,
+  onChangeDefaultRest,
   onDismiss,
   onPause,
   onResume,
@@ -863,7 +885,9 @@ function RestTimerCard({
   remainingSeconds,
   timer,
 }: {
+  defaultRestSeconds: number | null
   onAddTime: () => void
+  onChangeDefaultRest: (seconds: number | null) => void
   onDismiss: () => void
   onPause: () => void
   onResume: () => void
@@ -871,12 +895,73 @@ function RestTimerCard({
   remainingSeconds: number
   timer: Workout['activeRestTimer']
 }) {
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [draftRest, setDraftRest] = useState('')
+
   if (!timer || timer.status === 'dismissed') {
     return null
   }
 
+  function openSettings() {
+    setDraftRest(defaultRestSeconds != null ? String(defaultRestSeconds) : '')
+    setSettingsOpen(true)
+  }
+
+  function saveSettings() {
+    const trimmed = draftRest.trim()
+    if (trimmed === '') {
+      onChangeDefaultRest(null)
+    } else {
+      const parsed = Number(trimmed)
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return
+      }
+      onChangeDefaultRest(Math.round(parsed))
+    }
+    setSettingsOpen(false)
+  }
+
   return (
     <Card className="rest-timer-card" title="Rest timer">
+      <div className="rest-timer-header">
+        <IconButton
+          aria-label="Rest timer settings"
+          aria-expanded={settingsOpen}
+          type="button"
+          onClick={() =>
+            settingsOpen ? setSettingsOpen(false) : openSettings()
+          }
+        >
+          <Settings2 aria-hidden="true" size={18} />
+        </IconButton>
+      </div>
+      {settingsOpen ? (
+        <div className="rest-timer-settings">
+          <FormField id="default-rest-seconds" label="Default rest (seconds)">
+            <NumericInput
+              id="default-rest-seconds"
+              onChange={(event) => setDraftRest(event.target.value)}
+              placeholder="e.g. 90"
+              value={draftRest}
+            />
+          </FormField>
+          <p className="muted">
+            Applies to rest timers that start after a set. Leave blank to use
+            each exercise&rsquo;s own default.
+          </p>
+          <div className="button-row">
+            <SecondaryButton
+              type="button"
+              onClick={() => setSettingsOpen(false)}
+            >
+              Cancel
+            </SecondaryButton>
+            <PrimaryButton type="button" onClick={saveSettings}>
+              Save
+            </PrimaryButton>
+          </div>
+        </div>
+      ) : null}
       <p aria-live="polite" className="metric-value metric-value-small">
         {formatDuration(remainingSeconds)}
       </p>
@@ -936,8 +1021,18 @@ function ExercisePickerSheet({
   picker: ExercisePickerState
 }) {
   const [exercises, setExercises] = useState<Exercise[]>([])
-  const [exerciseId, setExerciseId] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [lastPicker, setLastPicker] = useState(picker)
+
+  // Reset the search field each time the picker opens or changes mode. Adjusting
+  // state during render (React's recommended alternative to an effect) keeps the
+  // lint rule happy and avoids a cascading render.
+  if (picker !== lastPicker) {
+    setLastPicker(picker)
+    setSearchQuery('')
+    setError(null)
+  }
 
   useEffect(() => {
     if (!picker) {
@@ -945,17 +1040,17 @@ function ExercisePickerSheet({
     }
     void exerciseRepository
       .searchExercises({ includeArchived: false, query: '' })
-      .then((loaded) => {
-        setExercises(loaded)
-        setExerciseId(loaded[0]?.id ?? '')
-      })
+      .then(setExercises)
   }, [picker])
 
   const title = picker?.mode === 'replace' ? 'Replace Exercise' : 'Add Exercise'
+  const searchable = hasSearchableQuery(searchQuery)
+  const results = searchable
+    ? searchExercises(exercises, searchQuery).map((result) => result.exercise)
+    : defaultExerciseResults(exercises)
 
-  function save() {
-    if (!picker || !exerciseId) {
-      setError('Exercise selection is required.')
+  function choose(exerciseId: string) {
+    if (!picker) {
       return
     }
     const action =
@@ -980,27 +1075,62 @@ function ExercisePickerSheet({
   }
 
   return (
-    <BottomSheet isOpen={picker !== null} onClose={onClose} title={title}>
-      <FormField id="live-exercise-picker" label="Exercise">
-        <select
-          id="live-exercise-picker"
-          onChange={(event) => setExerciseId(event.target.value)}
-          value={exerciseId}
-        >
-          {exercises.map((exercise) => (
-            <option key={exercise.id} value={exercise.id}>
-              {exercise.name}
-            </option>
-          ))}
-        </select>
+    <BottomSheet
+      isOpen={picker !== null}
+      onClose={onClose}
+      title={title}
+      variant="page"
+    >
+      <FormField id="live-exercise-search" label="Search exercises">
+        <div className="input-icon-row">
+          <Search aria-hidden="true" size={18} />
+          <input
+            autoFocus
+            id="live-exercise-search"
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search at least 2 characters"
+            type="search"
+            value={searchQuery}
+          />
+        </div>
       </FormField>
       {picker?.mode === 'replace' ? (
         <p className="muted">Replacement exercises start blank.</p>
       ) : null}
+      <p className="visually-hidden" role="status">
+        {searchable
+          ? `${results.length} exercise results`
+          : 'Enter at least two characters to search exercises'}
+      </p>
       {error ? <ValidationMessage message={error} /> : null}
-      <PrimaryButton disabled={!exerciseId} type="button" onClick={save}>
-        {title}
-      </PrimaryButton>
+      <div className="exercise-result-list">
+        {results.map((exercise) => (
+          <button
+            className="exercise-result-row"
+            key={exercise.id}
+            onClick={() => choose(exercise.id)}
+            type="button"
+          >
+            <strong>{exercise.name}</strong>
+            {exercise.primaryMuscleGroups[0] ? (
+              <small>
+                {primaryMuscleLabel(exercise.primaryMuscleGroups[0])}
+              </small>
+            ) : null}
+          </button>
+        ))}
+      </div>
+      {searchable && !results.length ? (
+        <EmptyState
+          title="No exercises found"
+          message="Try a different search term."
+        />
+      ) : !searchable && !results.length ? (
+        <EmptyState
+          title="Search exercise library"
+          message="Type at least two characters to find an exercise to add."
+        />
+      ) : null}
     </BottomSheet>
   )
 }

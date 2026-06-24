@@ -197,6 +197,7 @@ export function createWorkoutRepository(
               trackingMethodId:
                 sourceExercise.exerciseSnapshot.trackingMethodId,
               beforeStartedAt: now,
+              sourceDayId: day.id,
             })
 
             for (
@@ -213,6 +214,12 @@ export function createWorkoutRepository(
                 setNumber,
                 trackingMethodId:
                   sourceExercise.exerciseSnapshot.trackingMethodId,
+              })
+              // Pre-log the last recorded values for this day's exercise so the
+              // user sees their previous weights/reps and can adjust as needed.
+              const preloggedValues = preloggedMetricValuesForSet({
+                previousSets,
+                setNumber,
               })
               const set: WorkoutSet = {
                 id: createId(),
@@ -236,8 +243,12 @@ export function createWorkoutRepository(
                         generatedAt: now,
                       }
                     : null,
-                metricValues: initialMetricValuesForSet(),
-                metricValueSources: {},
+                metricValues: preloggedValues ?? initialMetricValuesForSet(),
+                metricValueSources: preloggedValues
+                  ? Object.fromEntries(
+                      Object.keys(preloggedValues).map((key) => [key, 'auto']),
+                    )
+                  : {},
                 rir: sourceExercise.targetRir,
                 completed: false,
                 completedAt: null,
@@ -1589,12 +1600,14 @@ async function getPreviousCompletedExerciseSets({
   exerciseName,
   trackingMethodId,
   beforeStartedAt,
+  sourceDayId,
 }: {
   database: TrainingLogDatabase
   exerciseId: string
   exerciseName: string
   trackingMethodId: TrackingMethodId
   beforeStartedAt: string
+  sourceDayId?: string | null
 }) {
   const previousExercise = await getPreviousCompletedExercise({
     database,
@@ -1602,6 +1615,7 @@ async function getPreviousCompletedExerciseSets({
     exerciseName,
     trackingMethodId,
     beforeStartedAt,
+    sourceDayId,
   })
   if (!previousExercise || previousExercise.skipped) {
     return []
@@ -1617,12 +1631,14 @@ async function getPreviousCompletedExercise({
   exerciseName,
   trackingMethodId,
   beforeStartedAt,
+  sourceDayId,
 }: {
   database: TrainingLogDatabase
   exerciseId: string
   exerciseName: string
   trackingMethodId: TrackingMethodId
   beforeStartedAt: string
+  sourceDayId?: string | null
 }) {
   const exactIdMatches = await database.workoutHistoryExercises
     .where({ exerciseId })
@@ -1648,7 +1664,12 @@ async function getPreviousCompletedExercise({
   return candidates
     .filter(
       (candidate) =>
-        candidate.workout && candidate.workout.completedAt < beforeStartedAt,
+        candidate.workout &&
+        candidate.workout.completedAt < beforeStartedAt &&
+        // When a day is provided, only consider prior workouts of that same
+        // program day, so an exercise shared by multiple days pre-fills from
+        // the correct day's last performance.
+        (sourceDayId == null || candidate.workout.sourceDayId === sourceDayId),
     )
     .sort((first, second) =>
       second.workout!.completedAt.localeCompare(first.workout!.completedAt),
@@ -1684,6 +1705,36 @@ function suggestedLoadForSetIndex({
   return typeof value === 'number' && Number.isFinite(value) && value > 0
     ? value
     : null
+}
+
+/**
+ * Numeric metric values (weight, reps, ...) from the most recent comparable
+ * completed set, to pre-log when repeating a day. Returns null when there is no
+ * usable prior set. Boolean flags such as `failed` are intentionally dropped.
+ */
+function preloggedMetricValuesForSet({
+  previousSets,
+  setNumber,
+}: {
+  previousSets: WorkoutHistorySet[]
+  setNumber: number
+}): WorkoutSet['metricValues'] | null {
+  const usable = previousSets.filter(
+    (set) => set.completed && set.metricValues.failed !== true,
+  )
+  const corresponding = usable.find((set) => set.setNumber === setNumber)
+  const fallback = usable.filter((set) => set.setNumber < setNumber).at(-1)
+  const source = corresponding ?? fallback
+  if (!source) {
+    return null
+  }
+  const values: WorkoutSet['metricValues'] = {}
+  for (const [key, value] of Object.entries(source.metricValues)) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      values[key] = value
+    }
+  }
+  return Object.keys(values).length ? values : null
 }
 
 function loadMetricKey(trackingMethodId: TrackingMethodId) {

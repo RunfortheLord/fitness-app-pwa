@@ -550,14 +550,9 @@ test('completes the release workflow through backup restore', async ({
   await page.getByRole('button', { name: /1 Audit squat/ }).click()
   await expect(page.getByRole('heading', { name: 'Audit squat' })).toBeVisible()
   await page.getByRole('button', { name: 'Replace Exercise' }).first().click()
-  await page
-    .getByRole('dialog', { name: 'Replace Exercise' })
-    .getByLabel('Exercise', { exact: true })
-    .selectOption({ label: 'Audit row' })
-  await page
-    .getByRole('dialog', { name: 'Replace Exercise' })
-    .getByRole('button', { name: 'Replace Exercise', exact: true })
-    .click()
+  const replaceSheet = page.getByRole('dialog', { name: 'Replace Exercise' })
+  await replaceSheet.getByLabel('Search exercises').fill('Audit row')
+  await replaceSheet.getByRole('button', { name: /Audit row/ }).click()
   await expect(page.getByRole('heading', { name: 'Audit row' })).toBeVisible()
   await page.getByRole('button', { name: /Audit curl/ }).click()
   await expect(page.getByRole('heading', { name: 'Audit curl' })).toBeVisible()

@@ -973,6 +973,21 @@ textarea:focus-visible {
   border-color: rgb(143 124 255 / 50%);
 }
 
+.rest-timer-header {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.rest-timer-settings {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken, rgb(0 0 0 / 15%));
+}
+
 .timer-adjust-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(64px, 1fr));
