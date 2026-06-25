@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronLeft } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronLeft, Search } from 'lucide-react'
 import { useContext, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -31,6 +31,7 @@ import {
   formatEstimatedMax,
   listStrengthExerciseOptions,
   strengthEstimateLimitText,
+  type StrengthExerciseOption,
   type StrengthGraphPoint,
   type StrengthRange,
 } from '@domain/strengthProgress'
@@ -43,6 +44,7 @@ import {
   exerciseHistorySummary,
   formatHistoryDate,
 } from '@domain/historyDisplay'
+import { useSubpageBackGesture } from '@hooks/useSubpageBackGesture'
 import { bodyweightRepository } from '@repositories/bodyweightRepository'
 import { runRepository, type RunStructure } from '@repositories/runRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
@@ -566,8 +568,7 @@ function StrengthGraphsView({
   const [range, setRange] = useState<StrengthRange>('3m')
   const [points, setPoints] = useState<StrengthGraphPoint[]>([])
   const [selectedExerciseId, setSelectedExerciseId] = useState('')
-  const [exerciseQuery, setExerciseQuery] = useState('')
-  const [lastSyncedExerciseName, setLastSyncedExerciseName] = useState('')
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const today = formatLocalDate(new Date())
@@ -604,20 +605,13 @@ function StrengthGraphsView({
     }
   }, [])
 
+  useSubpageBackGesture(pickerOpen, () => setPickerOpen(false))
+
   const options = listStrengthExerciseOptions(points)
   const selectedExercise = selectedExerciseId || options[0]?.exerciseId || ''
   const selectedExerciseName =
     options.find((option) => option.exerciseId === selectedExercise)
       ?.exerciseName ?? ''
-  // Keep the search field showing the resolved exercise name when the selection
-  // changes (initial load, fallback). Adjusting state during render only when
-  // the value actually changes is React's recommended alternative to an effect
-  // and never fights mid-typing, since typing does not change the selection
-  // until it matches an option.
-  if (selectedExerciseName !== lastSyncedExerciseName) {
-    setLastSyncedExerciseName(selectedExerciseName)
-    setExerciseQuery(selectedExerciseName)
-  }
   const exercisePoints = points.filter(
     (point) => point.exerciseId === selectedExercise,
   )
@@ -631,6 +625,21 @@ function StrengthGraphsView({
     model.status === 'empty'
       ? null
       : (model.points.find((point) => point.id === selectedPointId) ?? null)
+
+  if (pickerOpen) {
+    return (
+      <StrengthExercisePicker
+        options={options}
+        selectedExerciseId={selectedExercise}
+        onBack={() => setPickerOpen(false)}
+        onSelect={(exerciseId) => {
+          setSelectedExerciseId(exerciseId)
+          setSelectedPointId(null)
+          setPickerOpen(false)
+        }}
+      />
+    )
+  }
 
   return (
     <PageContainer>
@@ -667,30 +676,15 @@ function StrengthGraphsView({
         {status === 'ready' && options.length ? (
           <>
             <FormField id="strength-exercise" label="Exercise">
-              <input
+              <button
                 id="strength-exercise"
-                type="text"
-                autoComplete="off"
-                list="strength-exercise-options"
-                placeholder="Search exercise"
-                value={exerciseQuery}
-                onChange={(event) => {
-                  const value = event.target.value
-                  setExerciseQuery(value)
-                  const match = options.find(
-                    (option) => option.exerciseName === value,
-                  )
-                  if (match) {
-                    setSelectedExerciseId(match.exerciseId)
-                    setSelectedPointId(null)
-                  }
-                }}
-              />
-              <datalist id="strength-exercise-options">
-                {options.map((option) => (
-                  <option key={option.exerciseId} value={option.exerciseName} />
-                ))}
-              </datalist>
+                className="exercise-select-trigger"
+                type="button"
+                onClick={() => setPickerOpen(true)}
+              >
+                <span>{selectedExerciseName || 'Select exercise'}</span>
+                <ChevronDown aria-hidden="true" size={18} />
+              </button>
             </FormField>
             <StrengthChart
               model={model}
@@ -715,6 +709,79 @@ function StrengthGraphsView({
   )
 }
 
+function StrengthExercisePicker({
+  options,
+  selectedExerciseId,
+  onBack,
+  onSelect,
+}: {
+  options: StrengthExerciseOption[]
+  selectedExerciseId: string
+  onBack: () => void
+  onSelect: (exerciseId: string) => void
+}) {
+  const [query, setQuery] = useState('')
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const filtered = normalizedQuery
+    ? options.filter((option) =>
+        option.exerciseName.toLocaleLowerCase().includes(normalizedQuery),
+      )
+    : options
+
+  return (
+    <PageContainer>
+      <div className="exercise-picker">
+        <div className="exercise-picker-sticky">
+          <div className="exercise-picker-bar">
+            <IconButton aria-label="Back to strength graphs" onClick={onBack}>
+              <ArrowLeft aria-hidden="true" size={20} />
+            </IconButton>
+            <div className="input-icon-row">
+              <Search aria-hidden="true" size={18} />
+              <input
+                aria-label="Search exercises"
+                autoFocus
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search exercises"
+                type="search"
+                value={query}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="exercise-picker-body">
+          {filtered.length ? (
+            <div className="exercise-picker-list">
+              {filtered.map((option) => (
+                <button
+                  aria-pressed={option.exerciseId === selectedExerciseId}
+                  className="exercise-picker-row"
+                  key={option.exerciseId}
+                  onClick={() => onSelect(option.exerciseId)}
+                  type="button"
+                >
+                  <strong>{option.exerciseName}</strong>
+                  <small>
+                    {option.pointCount}{' '}
+                    {option.pointCount === 1 ? 'session' : 'sessions'} · best{' '}
+                    {formatEstimatedMax(option.allTimeBest.estimatedOneRepMax)}{' '}
+                    lb
+                  </small>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="No exercises found"
+              message="Only exercises with recorded weighted sets appear here."
+            />
+          )}
+        </div>
+      </div>
+    </PageContainer>
+  )
+}
+
 function StrengthChart({
   model,
   onSelect,
@@ -724,6 +791,7 @@ function StrengthChart({
   onSelect: (point: StrengthGraphPoint) => void
   selectedPoint: StrengthGraphPoint | null
 }) {
+  const [tooltipId, setTooltipId] = useFadingTooltip()
   if (model.status === 'empty') {
     return (
       <EmptyState
@@ -736,6 +804,15 @@ function StrengthChart({
   const path = model.points
     .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
     .join(' ')
+  const yTicks = buildValueAxisTicks(
+    model.chartMin,
+    model.chartMax,
+    (value) => `${formatEstimatedMax(value)}`,
+  )
+  const xTicks = buildDateAxisTicks(model.points)
+  const tooltipPoint = tooltipId
+    ? (model.points.find((point) => point.id === tooltipId) ?? null)
+    : null
 
   return (
     <div className="bodyweight-chart-panel">
@@ -747,6 +824,7 @@ function StrengthChart({
         <span className="chart-axis-label chart-axis-label-y">
           Estimated 1RM (lb)
         </span>
+        <ChartAxisTicks yTicks={yTicks} xTicks={xTicks} />
         <svg
           aria-hidden="true"
           focusable="false"
@@ -767,7 +845,10 @@ function StrengthChart({
             aria-pressed={selectedPoint?.id === point.id}
             className="bodyweight-point-button"
             key={point.id}
-            onClick={() => onSelect(point)}
+            onClick={() => {
+              onSelect(point)
+              setTooltipId(point.id)
+            }}
             style={{
               left: `${point.x}%`,
               top: `${point.y}%`,
@@ -775,16 +856,19 @@ function StrengthChart({
             type="button"
           />
         ))}
-        {selectedPoint ? (
+        {tooltipPoint ? (
           <span
             aria-hidden="true"
-            className="bodyweight-point-value"
+            className={`bodyweight-point-value chart-point-tooltip${
+              tooltipPoint.y < 18 ? ' chart-point-tooltip-below' : ''
+            }`}
+            key={tooltipPoint.id}
             style={{
-              left: `${selectedPoint.x}%`,
-              top: `${selectedPoint.y}%`,
+              left: `${tooltipPoint.x}%`,
+              top: `${tooltipPoint.y}%`,
             }}
           >
-            {formatEstimatedMax(selectedPoint.estimatedOneRepMax)} lb
+            {formatEstimatedMax(tooltipPoint.estimatedOneRepMax)} lb
           </span>
         ) : null}
       </div>
@@ -902,6 +986,7 @@ function BodyweightChart({
   onSelect: (entry: BodyweightEntry) => void
   selectedEntry: BodyweightEntry | null
 }) {
+  const [tooltipId, setTooltipId] = useFadingTooltip()
   if (model.status === 'empty') {
     return (
       <EmptyState
@@ -916,6 +1001,18 @@ function BodyweightChart({
     .join(' ')
   const first = model.entries[0]
   const latest = model.entries.at(-1) ?? first
+  const yTicks = buildValueAxisTicks(model.chartMin, model.chartMax, (value) =>
+    formatWeight(value),
+  )
+  const xTicks = buildDateAxisTicks(
+    model.points.map((point) => ({
+      x: point.x,
+      localDate: point.entry.localDate,
+    })),
+  )
+  const tooltipPoint = tooltipId
+    ? (model.points.find((point) => point.entry.id === tooltipId) ?? null)
+    : null
 
   return (
     <div className="bodyweight-chart-panel">
@@ -950,6 +1047,7 @@ function BodyweightChart({
         <span className="chart-axis-label chart-axis-label-y">
           Bodyweight ({latest.unit})
         </span>
+        <ChartAxisTicks yTicks={yTicks} xTicks={xTicks} />
         <svg
           aria-hidden="true"
           focusable="false"
@@ -969,7 +1067,10 @@ function BodyweightChart({
             )} ${point.entry.unit}`}
             className="bodyweight-point-button"
             key={point.entry.id}
-            onClick={() => onSelect(point.entry)}
+            onClick={() => {
+              onSelect(point.entry)
+              setTooltipId(point.entry.id)
+            }}
             style={{
               left: `${point.x}%`,
               top: `${point.y}%`,
@@ -977,6 +1078,21 @@ function BodyweightChart({
             type="button"
           />
         ))}
+        {tooltipPoint ? (
+          <span
+            aria-hidden="true"
+            className={`bodyweight-point-value chart-point-tooltip${
+              tooltipPoint.y < 18 ? ' chart-point-tooltip-below' : ''
+            }`}
+            key={tooltipPoint.entry.id}
+            style={{
+              left: `${tooltipPoint.x}%`,
+              top: `${tooltipPoint.y}%`,
+            }}
+          >
+            {formatWeight(tooltipPoint.entry.weight)} {tooltipPoint.entry.unit}
+          </span>
+        ) : null}
       </div>
       {model.summary.status !== 'empty' ? (
         <p className="muted">{model.summary.text}</p>
@@ -1161,6 +1277,109 @@ function formatTimestamp(timestamp: string) {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(timestamp))
+}
+
+// Shows a point's value tooltip on tap/click and clears it automatically after
+// 5 seconds so it never lingers over the rest of the chart UI.
+function useFadingTooltip() {
+  const [tooltipId, setTooltipId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!tooltipId) {
+      return
+    }
+    const timer = window.setTimeout(() => setTooltipId(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [tooltipId])
+  return [tooltipId, setTooltipId] as const
+}
+
+type ChartAxisTick = { key: string; position: number; label: string }
+
+// Evenly spaced Y-axis interval markers running from chartMax (top) to chartMin
+// (bottom), matching the value-to-position mapping the plotted points use.
+function buildValueAxisTicks(
+  chartMin: number,
+  chartMax: number,
+  format: (value: number) => string,
+): ChartAxisTick[] {
+  const span = chartMax - chartMin
+  if (!(span > 0)) {
+    return [{ key: 'mid', position: 50, label: format(chartMin) }]
+  }
+  const steps = 4
+  return Array.from({ length: steps + 1 }, (_, index) => {
+    const position = (index / steps) * 100
+    const value = chartMax - (index / steps) * span
+    return { key: String(index), position, label: format(value) }
+  })
+}
+
+// X-axis date markers placed at the first, middle, and last data points so the
+// time progression is readable without crowding the axis.
+function buildDateAxisTicks(
+  points: Array<{ x: number; localDate: string }>,
+): ChartAxisTick[] {
+  if (!points.length) {
+    return []
+  }
+  const lastIndex = points.length - 1
+  const candidateIndices =
+    points.length <= 2
+      ? [0, lastIndex]
+      : [0, Math.floor(lastIndex / 2), lastIndex]
+  const seen = new Set<number>()
+  const ticks: ChartAxisTick[] = []
+  for (const index of candidateIndices) {
+    if (seen.has(index)) {
+      continue
+    }
+    seen.add(index)
+    const point = points[index]
+    ticks.push({
+      key: String(index),
+      position: point.x,
+      label: formatShortLocalDate(point.localDate),
+    })
+  }
+  return ticks
+}
+
+function formatShortLocalDate(localDate: string) {
+  const [year, month, day] = localDate.split('-').map(Number)
+  if (!year || !month || !day) {
+    return localDate
+  }
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
+function ChartAxisTicks({
+  yTicks,
+  xTicks,
+}: {
+  yTicks: ChartAxisTick[]
+  xTicks: ChartAxisTick[]
+}) {
+  return (
+    <>
+      <div className="chart-axis-ticks chart-axis-ticks-y" aria-hidden="true">
+        {yTicks.map((tick) => (
+          <span key={tick.key} style={{ top: `${tick.position}%` }}>
+            {tick.label}
+          </span>
+        ))}
+      </div>
+      <div className="chart-axis-ticks chart-axis-ticks-x" aria-hidden="true">
+        {xTicks.map((tick) => (
+          <span key={tick.key} style={{ left: `${tick.position}%` }}>
+            {tick.label}
+          </span>
+        ))}
+      </div>
+    </>
+  )
 }
 
 function formatHistoryDetailDate(localDate: string) {

@@ -43,6 +43,8 @@ export type BodyweightChartModel =
       points: BodyweightChartPoint[]
       minWeight: number
       maxWeight: number
+      chartMin: number
+      chartMax: number
       summary: BodyweightTrendSummary
     }
 
@@ -158,6 +160,8 @@ export function createBodyweightChartModel(
     })),
     minWeight,
     maxWeight,
+    chartMin,
+    chartMax,
     summary,
   }
 }

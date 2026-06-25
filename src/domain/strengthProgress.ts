@@ -50,6 +50,8 @@ export type StrengthGraphModel =
       points: StrengthGraphPoint[]
       minEstimate: number
       maxEstimate: number
+      chartMin: number
+      chartMax: number
       latest: StrengthGraphPoint
       allTimeBest: StrengthGraphPoint
       summary: string
@@ -191,6 +193,8 @@ export function createStrengthGraphModel(
     points: plotted,
     minEstimate,
     maxEstimate,
+    chartMin,
+    chartMax,
     latest: plotted.find((point) => point.id === latest.id) ?? plotted[0],
     allTimeBest:
       plotted.find((point) => point.id === allTimeBest.id) ?? plotted[0],
