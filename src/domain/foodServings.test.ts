@@ -216,6 +216,28 @@ describe('food serving helpers', () => {
     expect(container.toServingMultiplier(2)).toBeCloseTo(340 / 245, 5)
   })
 
+  it('caps portion variants to the most common few and drops same-weight duplicates', () => {
+    const food = providerFood('Granola', 100, [
+      { amount: 1, unit: 'cup', description: '', gramWeight: 240 },
+      { amount: 1, unit: 'bowl', description: '', gramWeight: 300 },
+      { amount: 1, unit: 'scoop', description: '', gramWeight: 120 },
+      { amount: 1, unit: 'handful', description: '', gramWeight: 60 },
+      { amount: 1, unit: 'fistful', description: '', gramWeight: 60 }, // dup grams
+      { amount: 1, unit: 'ladle', description: '', gramWeight: 400 },
+      { amount: 1, unit: 'spoon', description: '', gramWeight: 15 },
+    ])
+
+    const keys = servingOptionsForFood(food).map((option) => option.key)
+    // Most-common portions are kept...
+    expect(keys).toEqual(
+      expect.arrayContaining(['cup', 'bowl', 'scoop', 'handful']),
+    )
+    // ...the same-weight duplicate and the overflow beyond the cap are dropped.
+    expect(keys).not.toContain('fistful')
+    expect(keys).not.toContain('ladle')
+    expect(keys).not.toContain('spoon')
+  })
+
   it('orders portions before the weight units', () => {
     const food = providerFood('Bagel, plain', 105, [
       { amount: 1, unit: 'bagel', description: '', gramWeight: 105 },
