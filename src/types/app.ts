@@ -17,6 +17,7 @@ export type IntegrationConnectionStatus =
   | 'network_unavailable'
   | 'service_unavailable'
 export type RawCookedStatus = 'raw' | 'cooked' | 'unknown'
+export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack'
 export type FoodMacroBasis = 'per_serving' | 'per_100g' | 'both'
 export type FoodConversionSource =
   | 'provider_serving_weight'
@@ -233,6 +234,7 @@ export type FoodLogEntry = {
   localDate: LocalDateString
   foodId: string | null
   foodSnapshot: FoodSnapshot
+  mealType: MealType
   servingMultiplier: number
   computedCalories: number
   computedProteinGrams: number

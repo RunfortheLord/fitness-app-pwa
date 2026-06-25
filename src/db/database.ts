@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie'
 
 import { getTrackingMethod } from '@domain/trackingMethods'
+import { isMealType, mealTypeForHour } from '@domain/meals'
 import type {
   ActiveCycleWorkoutDay,
   ActiveCycleWorkoutExercise,
@@ -35,7 +36,7 @@ import type {
   WorkoutSet,
 } from '@shared-types/app'
 
-export const DATABASE_SCHEMA_VERSION = 9
+export const DATABASE_SCHEMA_VERSION = 10
 export const BACKUP_SCHEMA_VERSION = 1
 export const DATABASE_NAME = 'training-log'
 
@@ -452,7 +453,7 @@ export class TrainingLogDatabase extends Dexie {
         }
       })
 
-    this.version(DATABASE_SCHEMA_VERSION)
+    this.version(9)
       .stores({
         appMetadata: '&id',
         userSettings: '&id',
@@ -583,6 +584,74 @@ export class TrainingLogDatabase extends Dexie {
               updatedAt: now,
             })),
           )
+
+        const metadata = await tx.table<AppMetadata>('appMetadata').get('app')
+        if (metadata) {
+          await tx.table<AppMetadata>('appMetadata').put({
+            ...metadata,
+            databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+            backupSchemaVersion: BACKUP_SCHEMA_VERSION,
+            updatedAt: now,
+          })
+        }
+      })
+
+    this.version(DATABASE_SCHEMA_VERSION)
+      .stores({
+        appMetadata: '&id',
+        userSettings: '&id',
+        nutritionTargets: '&id, updatedAt',
+        foods: '&id, status, name, updatedAt',
+        foodLogEntries: '&id, localDate, foodId, createdAt',
+        foodUnitPreferences: '&id, foodId, updatedAt',
+        barcodeProductCache: '&id, &barcode, foodId, updatedAt',
+        bodyweightEntries: '&id, localDate, createdAt, updatedAt',
+        exercises:
+          '&id, status, origin, seedDataVersion, name, trackingMethodId, updatedAt',
+        programTemplates: '&id, status, name, lastActiveAt, updatedAt',
+        templateWorkoutDays: '&id, templateId, [templateId+orderIndex]',
+        templateWorkoutExercises:
+          '&id, templateId, dayId, exerciseId, [dayId+orderIndex]',
+        activeProgramCycles:
+          '&id, sourceTemplateId, status, activatedAt, updatedAt',
+        activeCycleWorkoutDays:
+          '&id, activeCycleId, sourceTemplateDayId, [activeCycleId+orderIndex]',
+        activeCycleWorkoutExercises:
+          '&id, activeCycleId, dayId, exerciseId, sourceTemplateExerciseId, [dayId+orderIndex]',
+        workouts: '&id, status, localDate, sourceActiveCycleId, startedAt',
+        workoutExercises: '&id, workoutId, exerciseId, [workoutId+orderIndex]',
+        workoutSets:
+          '&id, workoutId, workoutExerciseId, [workoutExerciseId+setNumber]',
+        workoutHistoryEntries:
+          '&id, localDate, sourceActiveCycleId, sourceTemplateId, completedAt',
+        workoutHistoryExercises:
+          '&id, workoutId, exerciseId, [workoutId+orderIndex]',
+        workoutHistorySets:
+          '&id, workoutId, workoutExerciseId, [workoutExerciseId+setNumber]',
+        detectedWorkoutChanges: '&id, workoutId, status, type, createdAt',
+        appliedWorkoutChanges: '&id, detectedChangeId, workoutId, appliedAt',
+        runs: '&id, status, localDate, startedAt, completedAt',
+        runSamples:
+          '&id, runId, timestamp, decision, rejectionReason, [runId+timestamp]',
+        runPauses: '&id, runId, startedAt, endedAt',
+        runSplits: '&id, runId, mileNumber, completedAt',
+        runClassifications: '&id, runId, type, startedAt',
+        apiKeyIntegrationSettings: '&id, status, updatedAt',
+        backupMetadata: '&id, createdAt',
+      })
+      .upgrade(async (tx) => {
+        const now = new Date().toISOString()
+        // Backfill a meal on every existing food log. The log time of day is the
+        // best available signal for which meal an entry belonged to.
+        const entries = await tx.table<FoodLogEntry>('foodLogEntries').toArray()
+        await tx.table<FoodLogEntry>('foodLogEntries').bulkPut(
+          entries.map((entry) => ({
+            ...entry,
+            mealType: isMealType(entry.mealType)
+              ? entry.mealType
+              : mealTypeForHour(new Date(entry.createdAt).getHours()),
+          })),
+        )
 
         const metadata = await tx.table<AppMetadata>('appMetadata').get('app')
         if (metadata) {

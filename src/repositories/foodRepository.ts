@@ -6,6 +6,7 @@ import {
 } from '@domain/foodProviderModels'
 import type { LocalDateString } from '@domain/dates'
 import { createId } from '@domain/ids'
+import { mealTypeForDate } from '@domain/meals'
 import { snapshotFood } from '@domain/snapshots'
 import type {
   BarcodeProductCache,
@@ -13,6 +14,7 @@ import type {
   FoodLogEntry,
   FoodProviderId,
   FoodUnitPreference,
+  MealType,
 } from '@shared-types/app'
 
 export type CreateFoodInput = Omit<
@@ -25,6 +27,7 @@ export type LogFoodInput = {
   foodId: string
   localDate: LocalDateString
   servingMultiplier: number
+  mealType?: MealType
   notes?: string
 }
 
@@ -32,11 +35,13 @@ export type LogExternalFoodInput = {
   food: NormalizedFoodResult
   localDate: LocalDateString
   servingMultiplier: number
+  mealType?: MealType
   notes?: string
 }
 
 export type UpdateFoodLogInput = {
   servingMultiplier: number
+  mealType?: MealType
   notes?: string
 }
 
@@ -47,6 +52,7 @@ export type LogQuickAddInput = {
   proteinGrams: number
   carbohydrateGrams: number
   fatGrams: number
+  mealType?: MealType
   notes?: string
 }
 
@@ -249,6 +255,7 @@ export function createFoodRepository(
         foodId: food.id,
         localDate: input.localDate,
         servingMultiplier: input.servingMultiplier,
+        mealType: input.mealType,
         notes: input.notes,
       })
     },
@@ -339,6 +346,7 @@ export function createFoodRepository(
             localDate: input.localDate,
             foodId: food.id,
             foodSnapshot,
+            mealType: input.mealType ?? mealTypeForDate(new Date()),
             servingMultiplier: input.servingMultiplier,
             ...computeLogTotals(foodSnapshot, input.servingMultiplier),
             notes: input.notes ?? '',
@@ -385,6 +393,7 @@ export function createFoodRepository(
         localDate: input.localDate,
         foodId: null,
         foodSnapshot,
+        mealType: input.mealType ?? mealTypeForDate(new Date()),
         servingMultiplier: 1,
         ...computeLogTotals(foodSnapshot, 1),
         notes: input.notes ?? '',
@@ -409,6 +418,7 @@ export function createFoodRepository(
       const updated: FoodLogEntry = {
         ...existing,
         servingMultiplier: input.servingMultiplier,
+        mealType: input.mealType ?? existing.mealType,
         ...computeLogTotals(existing.foodSnapshot, input.servingMultiplier),
         notes: input.notes ?? existing.notes,
         updatedAt: new Date().toISOString(),

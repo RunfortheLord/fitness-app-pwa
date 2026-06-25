@@ -335,6 +335,9 @@ const foodLogEntrySchema = z.object({
   localDate: localDateSchema,
   foodId: nullableId,
   foodSnapshot: foodSnapshotSchema,
+  // Tolerate backups taken before meal grouping existed: missing or invalid
+  // values fall back to the catch-all "snack" meal.
+  mealType: z.enum(['breakfast', 'lunch', 'dinner', 'snack']).catch('snack'),
   servingMultiplier: nonNegativeNumber,
   computedCalories: nonNegativeNumber,
   computedProteinGrams: nonNegativeNumber,

@@ -86,6 +86,43 @@ describe('foodRepository', () => {
     )
   })
 
+  it('stores the chosen meal and can move an entry to another meal', async () => {
+    const repository = createFoodRepository(database)
+    const food = await seedFood(database)
+
+    const log = await repository.logFood({
+      foodId: food.id,
+      localDate: testLocalDate,
+      servingMultiplier: 1,
+      mealType: 'breakfast',
+    })
+    expect(log.mealType).toBe('breakfast')
+
+    const moved = await repository.updateFoodLogEntry(log.id, {
+      servingMultiplier: 1,
+      mealType: 'dinner',
+    })
+    expect(moved.mealType).toBe('dinner')
+
+    const retained = await repository.updateFoodLogEntry(log.id, {
+      servingMultiplier: 2,
+    })
+    expect(retained.mealType).toBe('dinner')
+  })
+
+  it('defaults a logged meal from the time of day when none is given', async () => {
+    const repository = createFoodRepository(database)
+    const food = await seedFood(database)
+
+    const log = await repository.logFood({
+      foodId: food.id,
+      localDate: testLocalDate,
+      servingMultiplier: 1,
+    })
+
+    expect(['breakfast', 'lunch', 'dinner', 'snack']).toContain(log.mealType)
+  })
+
   it('multiplies calories and macros for quantity two custom foods', async () => {
     const repository = createFoodRepository(database)
     const food = await repository.createFood({

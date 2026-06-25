@@ -77,6 +77,12 @@ import {
   createSearchSections,
   type FoodSearchResult,
 } from '@domain/foodSearchSections'
+import {
+  MEAL_LABELS,
+  MEAL_TYPES,
+  groupEntriesByMeal,
+  mealTypeForDate,
+} from '@domain/meals'
 import { useDashboardContext } from '@hooks/useDashboardContext'
 import {
   foodRepository,
@@ -102,6 +108,7 @@ import type {
   Food,
   FoodLogEntry,
   IntegrationConnectionStatus,
+  MealType,
   NutritionGoal,
   NutritionTargetValues,
 } from '@shared-types/app'
@@ -1139,6 +1146,9 @@ function QuickAddSheet({
   onSaved: () => void
 }) {
   const [form, setForm] = useState(emptyQuickAddForm)
+  const [mealType, setMealType] = useState<MealType>(() =>
+    mealTypeForDate(new Date()),
+  )
   const [error, setError] = useState<string | null>(null)
   const parsed = parseQuickAddForm(form)
 
@@ -1160,6 +1170,7 @@ function QuickAddSheet({
         proteinGrams: parsed.value.proteinGrams,
         carbohydrateGrams: parsed.value.carbohydrateGrams,
         fatGrams: parsed.value.fatGrams,
+        mealType,
       })
       .then(onSaved)
       .catch((caught: unknown) => {
@@ -1213,6 +1224,7 @@ function QuickAddSheet({
           />
         </FormField>
       </div>
+      <MealTypeField value={mealType} onChange={setMealType} />
       <p className="muted">Macros are optional. Blank macros log as 0 g.</p>
       {error ? <ValidationMessage message={error} /> : null}
       <PrimaryButton disabled={!parsed.ok} type="button" onClick={saveQuickAdd}>
@@ -1380,6 +1392,29 @@ function providerServingLabel(food: NormalizedFoodResult) {
   return formatFoodServingLabel(food)
 }
 
+function MealTypeField({
+  value,
+  onChange,
+}: {
+  value: MealType
+  onChange: (value: MealType) => void
+}) {
+  return (
+    <div className="form-field meal-field">
+      <span className="meal-field-label">Meal</span>
+      <SegmentedControl
+        label="Meal"
+        options={MEAL_TYPES.map((meal) => ({
+          value: meal,
+          label: MEAL_LABELS[meal],
+        }))}
+        value={value}
+        onChange={(next) => onChange(next as MealType)}
+      />
+    </div>
+  )
+}
+
 function LoggedFoodsCard({
   entries,
   onDelete,
@@ -1389,41 +1424,57 @@ function LoggedFoodsCard({
   onDelete: (entry: FoodLogEntry) => void
   onEdit: (entry: FoodLogEntry) => void
 }) {
+  const mealGroups = groupEntriesByMeal(entries)
   return (
     <Card title="Logged foods">
-      {entries.length ? (
-        <div className="nutrition-list">
-          {entries.map((entry) => (
-            <div className="nutrition-item" key={entry.id}>
-              <span className="quick-action-icon">
-                <Utensils aria-hidden="true" size={18} />
-              </span>
-              <div>
-                <strong>{entry.foodSnapshot.foodName}</strong>
-                <small>
-                  {entry.servingMultiplier}x {snapshotServingLabel(entry)} -{' '}
-                  {roundMacro(entry.computedCalories)} kcal - P{' '}
-                  {roundMacro(entry.computedProteinGrams)} C{' '}
-                  {roundMacro(entry.computedCarbohydrateGrams)} F{' '}
-                  {roundMacro(entry.computedFatGrams)}
-                </small>
+      {mealGroups.length ? (
+        <div className="meal-groups">
+          {mealGroups.map((group) => (
+            <section className="meal-group" key={group.mealType}>
+              <header className="meal-group-header">
+                <h3>{group.label}</h3>
+                <span className="muted">
+                  {roundMacro(group.calories)} kcal - P{' '}
+                  {roundMacro(group.proteinGrams)} C{' '}
+                  {roundMacro(group.carbohydrateGrams)} F{' '}
+                  {roundMacro(group.fatGrams)}
+                </span>
+              </header>
+              <div className="nutrition-list">
+                {group.entries.map((entry) => (
+                  <div className="nutrition-item" key={entry.id}>
+                    <span className="quick-action-icon">
+                      <Utensils aria-hidden="true" size={18} />
+                    </span>
+                    <div>
+                      <strong>{entry.foodSnapshot.foodName}</strong>
+                      <small>
+                        {entry.servingMultiplier}x {snapshotServingLabel(entry)}{' '}
+                        - {roundMacro(entry.computedCalories)} kcal - P{' '}
+                        {roundMacro(entry.computedProteinGrams)} C{' '}
+                        {roundMacro(entry.computedCarbohydrateGrams)} F{' '}
+                        {roundMacro(entry.computedFatGrams)}
+                      </small>
+                    </div>
+                    <div className="row-actions">
+                      <IconButton
+                        aria-label={`Edit ${entry.foodSnapshot.foodName} log`}
+                        onClick={() => onEdit(entry)}
+                        onPointerDown={() => onEdit(entry)}
+                      >
+                        <Edit2 aria-hidden="true" size={18} />
+                      </IconButton>
+                      <IconButton
+                        aria-label={`Delete ${entry.foodSnapshot.foodName} log`}
+                        onClick={() => onDelete(entry)}
+                      >
+                        <Trash2 aria-hidden="true" size={18} />
+                      </IconButton>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="row-actions">
-                <IconButton
-                  aria-label={`Edit ${entry.foodSnapshot.foodName} log`}
-                  onClick={() => onEdit(entry)}
-                  onPointerDown={() => onEdit(entry)}
-                >
-                  <Edit2 aria-hidden="true" size={18} />
-                </IconButton>
-                <IconButton
-                  aria-label={`Delete ${entry.foodSnapshot.foodName} log`}
-                  onClick={() => onDelete(entry)}
-                >
-                  <Trash2 aria-hidden="true" size={18} />
-                </IconButton>
-              </div>
-            </div>
+            </section>
           ))}
         </div>
       ) : (
@@ -1756,6 +1807,9 @@ function SelectedFoodSheet({
   }, [foodId, result])
   const options = servingOptionsForResult(result, rememberedUnit)
   const [error, setError] = useState<string | null>(null)
+  const [mealType, setMealType] = useState<MealType>(() =>
+    mealTypeForDate(new Date()),
+  )
   const selectedOption =
     options.find((option) => option.key === unit) ?? options[0]
   const unitKey = selectedOption?.key ?? unit
@@ -1810,11 +1864,13 @@ function SelectedFoodSheet({
             food: result.food,
             localDate,
             servingMultiplier,
+            mealType,
           })
         : foodRepository.logFood({
             foodId: result.food.id,
             localDate,
             servingMultiplier,
+            mealType,
           })
 
     return action
@@ -1915,6 +1971,7 @@ function SelectedFoodSheet({
           ))}
         </select>
       </FormField>
+      <MealTypeField value={mealType} onChange={setMealType} />
       {preview ? (
         <p className="muted">
           Preview: {formatCalories(preview.calories)} kcal - P{' '}
@@ -2055,6 +2112,7 @@ function EditFoodLogSheet({
   onSaved: () => void
 }) {
   const [multiplier, setMultiplier] = useState(String(entry.servingMultiplier))
+  const [mealType, setMealType] = useState<MealType>(entry.mealType)
   const [error, setError] = useState<string | null>(null)
   const parsedMultiplier = parsePositiveNumber(multiplier)
   const preview = parsedMultiplier
@@ -2074,7 +2132,10 @@ function EditFoodLogSheet({
     }
 
     return foodRepository
-      .updateFoodLogEntry(entry.id, { servingMultiplier: parsedMultiplier })
+      .updateFoodLogEntry(entry.id, {
+        servingMultiplier: parsedMultiplier,
+        mealType,
+      })
       .then(onSaved)
       .catch((caught: unknown) => {
         setError(
@@ -2099,6 +2160,7 @@ function EditFoodLogSheet({
           value={multiplier}
         />
       </FormField>
+      <MealTypeField value={mealType} onChange={setMealType} />
       {preview ? (
         <p className="muted">
           Preview: {roundMacro(preview.calories)} kcal - P{' '}

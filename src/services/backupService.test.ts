@@ -44,6 +44,7 @@ describe('backupService', () => {
       id: 'food-log-1',
       localDate: testLocalDate,
       foodId: food.id,
+      mealType: 'lunch',
       foodSnapshot: {
         foodName: food.name,
         servingQuantity: food.servingQuantity,
@@ -326,6 +327,7 @@ describe('backupService', () => {
       id: 'provider-log-1',
       localDate: testLocalDate,
       foodId: 'usda:123',
+      mealType: 'dinner',
       foodSnapshot: {
         snapshotId: 'snapshot-1',
         foodName: 'Chicken breast cooked',

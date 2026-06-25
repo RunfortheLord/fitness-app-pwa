@@ -7,6 +7,7 @@ import {
   TrainingLogDatabase,
 } from '@db/database'
 import { diagnoseDatabaseHealth } from '@db/health'
+import { mealTypeForHour } from '@domain/meals'
 import { createAppMetadataRepository } from '@repositories/appMetadataRepository'
 import { createTestDatabase, destroyTestDatabase } from '@test/database'
 
@@ -544,6 +545,91 @@ describe('database', () => {
 
     await destroyTestDatabase(migratedDatabase)
   })
+
+  it('backfills a meal on existing food logs when migrating to v10', async () => {
+    const name = `training-log-v10-meal-migration-${crypto.randomUUID()}`
+    const oldDatabase = new Dexie(name)
+    oldDatabase.version(9).stores(v9Stores)
+    await oldDatabase.table('appMetadata').put({
+      id: 'app',
+      databaseSchemaVersion: 9,
+      backupSchemaVersion: 1,
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    const legacyCreatedAt = '2026-06-18T08:30:00.000Z'
+    // The backfill infers the meal from the log's local time of day, so derive
+    // the expectation the same way to stay timezone-independent.
+    const expectedInferredMeal = mealTypeForHour(
+      new Date(legacyCreatedAt).getHours(),
+    )
+    await oldDatabase.table('foodLogEntries').put({
+      id: 'legacy-log',
+      localDate: '2026-06-18',
+      foodId: 'food-1',
+      foodSnapshot: {
+        foodName: 'Oats',
+        servingQuantity: 1,
+        servingUnit: 'cup',
+        servingDescription: '',
+        caloriesPerServing: 150,
+        proteinGramsPerServing: 5,
+        carbohydrateGramsPerServing: 27,
+        fatGramsPerServing: 3,
+        notes: '',
+      },
+      servingMultiplier: 1,
+      computedCalories: 150,
+      computedProteinGrams: 5,
+      computedCarbohydrateGrams: 27,
+      computedFatGrams: 3,
+      notes: '',
+      createdAt: legacyCreatedAt,
+      updatedAt: legacyCreatedAt,
+    })
+    await oldDatabase.table('foodLogEntries').put({
+      id: 'already-tagged-log',
+      localDate: '2026-06-18',
+      foodId: 'food-2',
+      foodSnapshot: {
+        foodName: 'Steak',
+        servingQuantity: 4,
+        servingUnit: 'oz',
+        servingDescription: '',
+        caloriesPerServing: 200,
+        proteinGramsPerServing: 30,
+        carbohydrateGramsPerServing: 0,
+        fatGramsPerServing: 9,
+        notes: '',
+      },
+      mealType: 'dinner',
+      servingMultiplier: 1,
+      computedCalories: 200,
+      computedProteinGrams: 30,
+      computedCarbohydrateGrams: 0,
+      computedFatGrams: 9,
+      notes: '',
+      createdAt: '2026-06-18T19:00:00.000Z',
+      updatedAt: '2026-06-18T19:00:00.000Z',
+    })
+    oldDatabase.close()
+
+    const migratedDatabase = new TrainingLogDatabase(name)
+
+    await expect(
+      migratedDatabase.foodLogEntries.get('legacy-log'),
+    ).resolves.toMatchObject({ mealType: expectedInferredMeal })
+    await expect(
+      migratedDatabase.foodLogEntries.get('already-tagged-log'),
+    ).resolves.toMatchObject({ mealType: 'dinner' })
+    await expect(
+      migratedDatabase.appMetadata.get('app'),
+    ).resolves.toMatchObject({
+      databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+    })
+
+    await destroyTestDatabase(migratedDatabase)
+  })
 })
 
 const v2Stores = {
@@ -593,4 +679,12 @@ const v6Stores = {
   runSplits: '&id, runId, mileNumber, completedAt',
   runClassifications: '&id, runId, type, startedAt',
   apiKeyIntegrationSettings: '&id, status, updatedAt',
+}
+
+const v9Stores = {
+  ...v6Stores,
+  foodUnitPreferences: '&id, foodId, updatedAt',
+  barcodeProductCache: '&id, &barcode, foodId, updatedAt',
+  programTemplates: '&id, status, name, lastActiveAt, updatedAt',
+  activeProgramCycles: '&id, sourceTemplateId, status, activatedAt, updatedAt',
 }
