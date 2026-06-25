@@ -546,6 +546,12 @@ describe('database', () => {
     await destroyTestDatabase(migratedDatabase)
   })
 
+  it('exposes the saved meals store at the current schema version', async () => {
+    const database = createTestDatabase()
+    expect(database.tables.map((table) => table.name)).toContain('savedMeals')
+    await destroyTestDatabase(database)
+  })
+
   it('backfills a meal on existing food logs when migrating to v10', async () => {
     const name = `training-log-v10-meal-migration-${crypto.randomUUID()}`
     const oldDatabase = new Dexie(name)

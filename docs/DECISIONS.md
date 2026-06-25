@@ -1,5 +1,28 @@
 # Decisions
 
+## 2026-06-25: Nutrition Logging Upgrades (Meal Grouping, Favorites, Saved Meals)
+
+- The daily food log groups entries by meal (Breakfast/Lunch/Dinner/Snacks) via a
+  required `mealType` on `FoodLogEntry`. A v10 migration backfills existing logs
+  from each entry's local time of day; `mealTypeForHour` also seeds the meal
+  selector default when logging. Empty meals are hidden in the day view.
+- Foods gain an optional `isFavorite` flag (no migration; undefined means not
+  favorite) with one-tap re-log that reuses the food's remembered unit+amount and
+  the current time-of-day meal.
+- **Saved meals** (a named reusable combination of foods, e.g. "my usual oatmeal
+  bowl") are added as a new `savedMeals` table (v11 migration). This intentionally
+  overrides the documented First-Release Exclusion "meal plans" at the product
+  owner's explicit request. Components store immutable food snapshots so a saved
+  meal logs identically even after its source foods change or are removed; logging
+  expands it into individual `FoodLogEntry` rows for the chosen date and meal.
+  Saved meals are created from a logged meal section ("Save as meal") and are
+  included in backups.
+- Serving entry defaults are habit-driven first: the add-food sheet defaults to the
+  food's representative portion (label serving / first USDA portion) and overrides
+  with the user's remembered last unit+amount when present.
+- New implementations are surfaced in-app via a versioned changelog ("What's new"),
+  shown once after an update and listed on the Settings page.
+
 ## 2026-06-23: Custom Nutrition Goal Workflow
 
 - The Set Goal subpage collects current bodyweight, height (feet + inches),

@@ -1,6 +1,7 @@
 import {
   Archive,
   ArrowLeft,
+  BookmarkPlus,
   Camera,
   CopyPlus,
   Edit2,
@@ -113,6 +114,8 @@ import type {
   MealType,
   NutritionGoal,
   NutritionTargetValues,
+  SavedMeal,
+  SavedMealComponent,
 } from '@shared-types/app'
 
 type NutritionMode = 'day' | 'foods' | 'targets'
@@ -133,6 +136,11 @@ type SheetState =
   | { type: 'entry'; entry: FoodLogEntry }
   | { type: 'quickAdd' }
   | { type: 'scanner' }
+  | {
+      type: 'saveMeal'
+      components: SavedMealComponent[]
+      defaultName: string
+    }
   | null
 
 type FoodFormState = {
@@ -171,6 +179,7 @@ type LoadState = {
   logs: FoodLogEntry[]
   recentFoods: Food[]
   favoriteFoods: Food[]
+  savedMeals: SavedMeal[]
   summary: DailyNutritionSummary | null
   status: 'loading' | 'ready' | 'error'
 }
@@ -227,9 +236,13 @@ export function NutritionPage() {
     logs: [],
     recentFoods: [],
     favoriteFoods: [],
+    savedMeals: [],
     summary: null,
     status: 'loading',
   })
+  const [savedMealToDelete, setSavedMealToDelete] = useState<SavedMeal | null>(
+    null,
+  )
   const [revision, setRevision] = useState(0)
   const [message, setMessage] = useState<string | null>(null)
   const [targetsView, setTargetsView] = useState<'main' | 'setGoal'>('main')
@@ -289,22 +302,26 @@ export function NutritionPage() {
       foodRepository.listFoodLogsByDate(selectedDate),
       foodRepository.listRecentFoods(50),
       foodRepository.listFavoriteFoods(),
+      foodRepository.listSavedMeals(),
       nutritionSummaryService.getDailySummary(selectedDate),
     ])
-      .then(([foods, logs, recentFoods, favoriteFoods, summary]) => {
-        if (!isCurrent) {
-          return
-        }
+      .then(
+        ([foods, logs, recentFoods, favoriteFoods, savedMeals, summary]) => {
+          if (!isCurrent) {
+            return
+          }
 
-        setLoadState({
-          foods,
-          logs,
-          recentFoods,
-          favoriteFoods,
-          summary,
-          status: 'ready',
-        })
-      })
+          setLoadState({
+            foods,
+            logs,
+            recentFoods,
+            favoriteFoods,
+            savedMeals,
+            summary,
+            status: 'ready',
+          })
+        },
+      )
       .catch(() => {
         if (!isCurrent) {
           return
@@ -480,6 +497,30 @@ export function NutritionPage() {
       .catch(() => setMessage('Could not log that food.'))
   }
 
+  const logSavedMeal = (meal: SavedMeal) => {
+    void foodRepository
+      .logSavedMeal({ savedMealId: meal.id, localDate: selectedDate })
+      .then((entries) => {
+        setMessage(`Logged ${meal.name} (${entries.length} items).`)
+        reload()
+      })
+      .catch(() => setMessage('Could not log that meal.'))
+  }
+
+  // Turn a logged meal section into a reusable saved meal, carrying each entry's
+  // snapshot and serving so the saved meal logs identically later.
+  const saveMealFromEntries = (label: string, entries: FoodLogEntry[]) => {
+    setSheet({
+      type: 'saveMeal',
+      defaultName: label,
+      components: entries.map((entry) => ({
+        foodId: entry.foodId,
+        foodSnapshot: entry.foodSnapshot,
+        servingMultiplier: entry.servingMultiplier,
+      })),
+    })
+  }
+
   return (
     <PageContainer>
       <Toast message={message} onDismiss={() => setMessage(null)} />
@@ -546,6 +587,7 @@ export function NutritionPage() {
                 entries={loadState.logs}
                 onDelete={setDeleteEntry}
                 onEdit={(entry) => setSheet({ type: 'entry', entry })}
+                onSaveMeal={saveMealFromEntries}
               />
             </>
           ) : null}
@@ -568,6 +610,13 @@ export function NutritionPage() {
                 onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
                 onOpenScanner={() => setSheet({ type: 'scanner' })}
               />
+              {loadState.savedMeals.length ? (
+                <SavedMealsCard
+                  meals={loadState.savedMeals}
+                  onLog={logSavedMeal}
+                  onDelete={setSavedMealToDelete}
+                />
+              ) : null}
               {loadState.favoriteFoods.length ? (
                 <FoodShortcutCard
                   title="Favorites"
@@ -739,6 +788,44 @@ export function NutritionPage() {
           onFound={(result) => setSheet({ type: 'select', result })}
         />
       ) : null}
+
+      {sheet?.type === 'saveMeal' ? (
+        <SaveMealSheet
+          defaultName={sheet.defaultName}
+          components={sheet.components}
+          isOpen
+          onClose={() => setSheet(null)}
+          onSaved={() => {
+            setMessage('Meal saved.')
+            setSheet(null)
+            reload()
+          }}
+        />
+      ) : null}
+
+      <ModalConfirmationDialog
+        confirmLabel="Delete"
+        isOpen={savedMealToDelete !== null}
+        onCancel={() => setSavedMealToDelete(null)}
+        onConfirm={() => {
+          if (!savedMealToDelete) {
+            return
+          }
+          void foodRepository
+            .archiveSavedMeal(savedMealToDelete.id)
+            .then(() => {
+              setSavedMealToDelete(null)
+              setMessage('Saved meal deleted.')
+              reload()
+            })
+        }}
+        title="Delete saved meal?"
+      >
+        <p>
+          &ldquo;{savedMealToDelete?.name ?? ''}&rdquo; will be removed. Entries
+          you already logged from it stay.
+        </p>
+      </ModalConfirmationDialog>
 
       <ModalConfirmationDialog
         confirmLabel="Delete"
@@ -1487,6 +1574,126 @@ function FoodShortcutCard({
   )
 }
 
+function savedMealCalories(meal: SavedMeal) {
+  return meal.components.reduce(
+    (total, component) =>
+      total +
+      component.foodSnapshot.caloriesPerServing * component.servingMultiplier,
+    0,
+  )
+}
+
+function SavedMealsCard({
+  meals,
+  onLog,
+  onDelete,
+}: {
+  meals: SavedMeal[]
+  onLog: (meal: SavedMeal) => void
+  onDelete: (meal: SavedMeal) => void
+}) {
+  return (
+    <Card title="Saved meals">
+      <div className="nutrition-list">
+        {meals.map((meal) => (
+          <div className="nutrition-item" key={meal.id}>
+            <span className="quick-action-icon">
+              <Utensils aria-hidden="true" size={18} />
+            </span>
+            <div>
+              <strong>{meal.name}</strong>
+              <small>
+                {meal.components.length}{' '}
+                {meal.components.length === 1 ? 'item' : 'items'} -{' '}
+                {roundMacro(savedMealCalories(meal))} kcal
+              </small>
+            </div>
+            <div className="row-actions">
+              <IconButton
+                aria-label={`Delete saved meal ${meal.name}`}
+                onClick={() => onDelete(meal)}
+              >
+                <Trash2 aria-hidden="true" size={18} />
+              </IconButton>
+              <IconButton
+                aria-label={`Log saved meal ${meal.name}`}
+                onClick={() => onLog(meal)}
+              >
+                <Plus aria-hidden="true" size={18} />
+              </IconButton>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  )
+}
+
+function SaveMealSheet({
+  defaultName,
+  components,
+  isOpen,
+  onClose,
+  onSaved,
+}: {
+  defaultName: string
+  components: SavedMealComponent[]
+  isOpen: boolean
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [name, setName] = useState(defaultName)
+  const [error, setError] = useState<string | null>(null)
+
+  function save() {
+    if (!name.trim()) {
+      setError('Give the meal a name.')
+      return
+    }
+    return foodRepository
+      .createSavedMeal({ name, components })
+      .then(onSaved)
+      .catch((caught: unknown) => {
+        setError(
+          caught instanceof Error ? caught.message : 'Meal could not save.',
+        )
+      })
+  }
+
+  return (
+    <Sheet isOpen={isOpen} onClose={onClose} title="Save as meal">
+      <FormField id="saved-meal-name" label="Meal name">
+        <input
+          id="saved-meal-name"
+          autoFocus
+          onChange={(event) => setName(event.target.value)}
+          placeholder="My usual oatmeal bowl"
+          value={name}
+        />
+      </FormField>
+      <div className="nutrition-list">
+        {components.map((component, index) => (
+          <p
+            className="muted"
+            key={`${component.foodSnapshot.foodName}-${index}`}
+          >
+            {component.foodSnapshot.foodName} -{' '}
+            {roundMacro(
+              component.foodSnapshot.caloriesPerServing *
+                component.servingMultiplier,
+            )}{' '}
+            kcal
+          </p>
+        ))}
+      </div>
+      {error ? <ValidationMessage message={error} /> : null}
+      <PrimaryButton type="button" onClick={save}>
+        Save meal
+      </PrimaryButton>
+    </Sheet>
+  )
+}
+
 function resultKey(result: FoodSearchResult) {
   return result.type === 'local' ? `local-${result.food.id}` : result.food.id
 }
@@ -1522,10 +1729,12 @@ function LoggedFoodsCard({
   entries,
   onDelete,
   onEdit,
+  onSaveMeal,
 }: {
   entries: FoodLogEntry[]
   onDelete: (entry: FoodLogEntry) => void
   onEdit: (entry: FoodLogEntry) => void
+  onSaveMeal: (label: string, entries: FoodLogEntry[]) => void
 }) {
   const mealGroups = groupEntriesByMeal(entries)
   return (
@@ -1536,11 +1745,19 @@ function LoggedFoodsCard({
             <section className="meal-group" key={group.mealType}>
               <header className="meal-group-header">
                 <h3>{group.label}</h3>
-                <span className="muted">
-                  {roundMacro(group.calories)} kcal - P{' '}
-                  {roundMacro(group.proteinGrams)} C{' '}
-                  {roundMacro(group.carbohydrateGrams)} F{' '}
-                  {roundMacro(group.fatGrams)}
+                <span className="meal-group-meta">
+                  <span className="muted">
+                    {roundMacro(group.calories)} kcal - P{' '}
+                    {roundMacro(group.proteinGrams)} C{' '}
+                    {roundMacro(group.carbohydrateGrams)} F{' '}
+                    {roundMacro(group.fatGrams)}
+                  </span>
+                  <IconButton
+                    aria-label={`Save ${group.label} as a meal`}
+                    onClick={() => onSaveMeal(group.label, group.entries)}
+                  >
+                    <BookmarkPlus aria-hidden="true" size={16} />
+                  </IconButton>
                 </span>
               </header>
               <div className="nutrition-list">

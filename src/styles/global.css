@@ -1271,8 +1271,19 @@ textarea:focus-visible {
   font-weight: 800;
 }
 
+.meal-group-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .meal-group-header .muted {
   font-size: 12px;
+}
+
+.meal-group-meta .icon-button {
+  min-width: 32px;
+  min-height: 32px;
 }
 
 .nutrition-row {

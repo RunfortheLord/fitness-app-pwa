@@ -29,6 +29,7 @@ import type {
   RunPause,
   RunSample,
   RunSplit,
+  SavedMeal,
   TemplateWorkoutExercise,
   UserSettings,
   Workout,
@@ -48,6 +49,7 @@ const tableNames = [
   'nutritionTargets',
   'foods',
   'foodLogEntries',
+  'savedMeals',
   'foodUnitPreferences',
   'barcodeProductCache',
   'bodyweightEntries',
@@ -80,6 +82,7 @@ export type BackupData = {
   nutritionTargets: NutritionTarget[]
   foods: Food[]
   foodLogEntries: FoodLogEntry[]
+  savedMeals: SavedMeal[]
   foodUnitPreferences: FoodUnitPreference[]
   barcodeProductCache: BarcodeProductCache[]
   bodyweightEntries: BodyweightEntry[]
@@ -344,6 +347,20 @@ const foodLogEntrySchema = z.object({
   computedCarbohydrateGrams: nonNegativeNumber,
   computedFatGrams: nonNegativeNumber,
   notes: z.string(),
+  createdAt: isoTimestampSchema,
+  updatedAt: isoTimestampSchema,
+})
+const savedMealComponentSchema = z.object({
+  foodId: nullableId,
+  foodSnapshot: foodSnapshotSchema,
+  servingMultiplier: nonNegativeNumber,
+})
+const savedMealSchema = z.object({
+  id: idSchema,
+  name: z.string(),
+  components: z.array(savedMealComponentSchema),
+  notes: z.string(),
+  status: entityStatusSchema,
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })
@@ -732,6 +749,7 @@ const backupDataSchema = z.object({
   nutritionTargets: z.array(nutritionTargetSchema),
   foods: z.array(foodSchema),
   foodLogEntries: z.array(foodLogEntrySchema),
+  savedMeals: z.array(savedMealSchema).optional().default([]),
   foodUnitPreferences: z.array(foodUnitPreferenceSchema).optional().default([]),
   barcodeProductCache: z
     .array(barcodeProductCacheSchema)
@@ -949,6 +967,7 @@ async function readBackupData(
       nutritionTargets: await sortedTable(database.nutritionTargets),
       foods: await sortedTable(database.foods),
       foodLogEntries: await sortedTable(database.foodLogEntries),
+      savedMeals: await sortedTable(database.savedMeals),
       foodUnitPreferences: await sortedTable(database.foodUnitPreferences),
       barcodeProductCache: await sortedTable(database.barcodeProductCache),
       bodyweightEntries: await sortedTable(database.bodyweightEntries),
@@ -1000,6 +1019,7 @@ async function putBackupData(database: TrainingLogDatabase, data: BackupData) {
   await database.nutritionTargets.bulkPut(data.nutritionTargets)
   await database.foods.bulkPut(data.foods)
   await database.foodLogEntries.bulkPut(data.foodLogEntries)
+  await database.savedMeals.bulkPut(data.savedMeals)
   await database.foodUnitPreferences.bulkPut(data.foodUnitPreferences)
   await database.barcodeProductCache.bulkPut(data.barcodeProductCache)
   await database.bodyweightEntries.bulkPut(data.bodyweightEntries)

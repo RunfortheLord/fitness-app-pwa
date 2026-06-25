@@ -247,6 +247,28 @@ export type FoodLogEntry = {
   updatedAt: IsoTimestamp
 }
 
+export type SavedMealComponent = {
+  /** Reference to the source food when it still exists; the snapshot is authoritative. */
+  foodId: string | null
+  foodSnapshot: FoodSnapshot
+  servingMultiplier: number
+}
+
+/**
+ * A named, reusable combination of foods (e.g. "my usual oatmeal bowl").
+ * Components carry immutable snapshots so a saved meal keeps logging correctly
+ * even after its source foods are edited or removed.
+ */
+export type SavedMeal = {
+  id: string
+  name: string
+  components: SavedMealComponent[]
+  notes: string
+  status: EntityStatus
+  createdAt: IsoTimestamp
+  updatedAt: IsoTimestamp
+}
+
 export type BodyweightEntry = {
   id: string
   localDate: LocalDateString

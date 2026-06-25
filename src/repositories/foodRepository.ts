@@ -15,6 +15,8 @@ import type {
   FoodProviderId,
   FoodUnitPreference,
   MealType,
+  SavedMeal,
+  SavedMealComponent,
 } from '@shared-types/app'
 
 export type CreateFoodInput = Omit<
@@ -60,6 +62,23 @@ export type RememberFoodUnitInput = {
   foodId: string
   unitKey: string
   amount: number
+}
+
+export type SaveMealInput = {
+  name: string
+  components: SavedMealComponent[]
+  notes?: string
+}
+
+export type UpdateSavedMealInput = {
+  name?: string
+  notes?: string
+}
+
+export type LogSavedMealInput = {
+  savedMealId: string
+  localDate: LocalDateString
+  mealType?: MealType
 }
 
 export type FoodRepositoryTestHooks = {
@@ -447,6 +466,106 @@ export function createFoodRepository(
 
     async deleteFoodLogEntry(id: string) {
       await database.foodLogEntries.delete(id)
+    },
+
+    async createSavedMeal(input: SaveMealInput) {
+      const name = input.name.trim()
+      if (!name) {
+        throw new Error('Saved meal name is required.')
+      }
+      if (input.components.length === 0) {
+        throw new Error('A saved meal needs at least one food.')
+      }
+      for (const component of input.components) {
+        if (
+          component.servingMultiplier <= 0 ||
+          !Number.isFinite(component.servingMultiplier)
+        ) {
+          throw new Error('Saved meal servings must be greater than zero.')
+        }
+      }
+      const now = new Date().toISOString()
+      const meal: SavedMeal = {
+        id: createId(),
+        name,
+        components: input.components,
+        notes: input.notes ?? '',
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+      }
+      await database.savedMeals.add(meal)
+      return meal
+    },
+
+    async updateSavedMeal(id: string, input: UpdateSavedMealInput) {
+      const meal = await database.savedMeals.get(id)
+      if (!meal) {
+        throw new Error(`Saved meal ${id} was not found.`)
+      }
+      const name = (input.name ?? meal.name).trim()
+      if (!name) {
+        throw new Error('Saved meal name is required.')
+      }
+      const updated: SavedMeal = {
+        ...meal,
+        name,
+        notes: input.notes ?? meal.notes,
+        updatedAt: new Date().toISOString(),
+      }
+      await database.savedMeals.put(updated)
+      return updated
+    },
+
+    async archiveSavedMeal(id: string) {
+      await database.savedMeals.update(id, {
+        status: 'archived',
+        updatedAt: new Date().toISOString(),
+      })
+    },
+
+    getSavedMeal(id: string) {
+      return database.savedMeals.get(id)
+    },
+
+    listSavedMeals() {
+      return database.savedMeals.where('status').equals('active').sortBy('name')
+    },
+
+    // Expands a saved meal into individual food log entries for the chosen day
+    // and meal, snapshotting from the stored components so the result is stable
+    // even if the source foods changed or were removed.
+    async logSavedMeal(input: LogSavedMealInput) {
+      const meal = await database.savedMeals.get(input.savedMealId)
+      if (!meal) {
+        throw new Error(`Saved meal ${input.savedMealId} was not found.`)
+      }
+      const mealType = input.mealType ?? mealTypeForDate(new Date())
+      return database.transaction('rw', database.foodLogEntries, async () => {
+        const entries: FoodLogEntry[] = []
+        for (const component of meal.components) {
+          const now = createMonotonicTimestamp()
+          const entry: FoodLogEntry = {
+            id: createId(),
+            localDate: input.localDate,
+            foodId: component.foodId,
+            foodSnapshot: component.foodSnapshot,
+            mealType,
+            servingMultiplier: component.servingMultiplier,
+            ...computeLogTotals(
+              component.foodSnapshot,
+              component.servingMultiplier,
+            ),
+            notes: '',
+            createdAt: now,
+            updatedAt: now,
+          }
+          await database.foodLogEntries.add(entry)
+          entries.push(entry)
+        }
+        await testHooks.afterFoodLogAdded?.()
+        return entries
+      })
     },
 
     getFood(id: string) {
