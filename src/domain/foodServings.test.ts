@@ -6,6 +6,11 @@ import {
   formatMacroGram,
   servingOptionsForFood,
 } from './foodServings'
+import {
+  normalizeFoodText,
+  type NormalizedFoodPortion,
+  type NormalizedFoodResult,
+} from './foodProviderModels'
 import type { Food } from '@shared-types/app'
 
 const baseFood: Food = {
@@ -187,9 +192,102 @@ describe('food serving helpers', () => {
     expect(formatFoodServingLabel(food)).toBe('5 crackers (30 g)')
   })
 
+  it('exposes provider household portions as units with their gram weights', () => {
+    const food = providerFood('Yogurt, Greek, plain', 245, [
+      { amount: 1, unit: 'cup', description: '', gramWeight: 245 },
+      { amount: 1, unit: 'container', description: '', gramWeight: 170 },
+      { amount: 1, unit: 'oz', description: '', gramWeight: 28.35 },
+      { amount: 1, unit: 'undetermined', description: '', gramWeight: 200 },
+    ])
+
+    const options = servingOptionsForFood(food)
+    const keys = options.map((option) => option.key)
+
+    // Both meaningful household portions are selectable.
+    expect(keys).toContain('cup')
+    expect(keys).toContain('container')
+    // Mass-only and meaningless portion units are not duplicated as portions.
+    expect(keys.filter((key) => key === 'oz')).toHaveLength(1)
+    expect(keys).not.toContain('undetermined')
+
+    const container = options.find((option) => option.key === 'container')!
+    expect(container.label).toBe('1 container (170 g)')
+    // 2 containers = 340 g; the food's serving is 245 g, so 340/245 servings.
+    expect(container.toServingMultiplier(2)).toBeCloseTo(340 / 245, 5)
+  })
+
+  it('orders portions before the weight units', () => {
+    const food = providerFood('Bagel, plain', 105, [
+      { amount: 1, unit: 'bagel', description: '', gramWeight: 105 },
+    ])
+
+    const keys = servingOptionsForFood(food).map((option) => option.key)
+    expect(keys.indexOf('bagel')).toBeLessThan(keys.indexOf('oz'))
+    expect(keys.indexOf('oz')).toBeLessThan(keys.indexOf('g'))
+    expect(keys.indexOf('g')).toBeLessThan(keys.indexOf('100g'))
+  })
+
   it('formats calories and macros for display', () => {
     expect(formatCalories(123.6)).toBe('124')
     expect(formatMacroGram(3)).toBe('3.0')
     expect(formatMacroGram(3.24)).toBe('3.2')
   })
 })
+
+function providerFood(
+  name: string,
+  gramsPerServing: number,
+  sourcePortions: NormalizedFoodPortion[],
+): NormalizedFoodResult {
+  return {
+    id: `usda:${name}`,
+    source: {
+      provider: 'usda',
+      providerRecordId: name,
+      providerDataType: 'Survey (FNDDS)',
+      sourceName: 'test',
+      sourceUrl: null,
+      barcode: null,
+      sourceUpdatedAt: null,
+      ingestedAt: '2026-06-26T00:00:00.000Z',
+    },
+    name,
+    brandName: null,
+    foodCategory: null,
+    descriptionQualifiers: [],
+    rawCookedStatus: 'unknown',
+    rawCookedBasis: null,
+    serving: {
+      quantity: 1,
+      unit: 'serving',
+      description: '',
+      gramsPerServing,
+      ouncesPerServing: gramsPerServing / 28.349523125,
+      conversionReliable: true,
+      conversionSource: 'provider_serving_weight',
+      sourcePortions,
+    },
+    macrosPerServing: {
+      calories: 150,
+      proteinGrams: 12,
+      carbohydrateGrams: 10,
+      fatGrams: 6,
+    },
+    macrosPer100Grams: {
+      calories: 150,
+      proteinGrams: 12,
+      carbohydrateGrams: 10,
+      fatGrams: 6,
+    },
+    macroBasis: 'both',
+    sourcePrecision: {},
+    normalizedSearchName: normalizeFoodText(name),
+    normalizedBrand: null,
+    providerPriority: 1,
+    relevanceScore: 0,
+    duplicateGroupId: `usda:${name}`,
+    alternateResultIds: [],
+    groupingReasons: [],
+    normalizerVersion: 1,
+  }
+}

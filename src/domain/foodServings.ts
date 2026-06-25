@@ -40,7 +40,13 @@ export function servingOptionsForFood(
 ): FoodServingOption[] {
   const parts = servingParts(food)
   const primary = choosePrimaryServing(parts)
-  const options: FoodServingOption[] = [primary]
+  // Expose every real provider household portion (e.g. "1 breast", "1 cup")
+  // with its true gram weight, ordered after the default and before the
+  // weight units. Duplicates of the default collapse in dedupeOptions.
+  const options: FoodServingOption[] = [
+    primary,
+    ...householdPortionOptions(parts),
+  ]
 
   if (parts.reliable && parts.gramsPerServing && parts.ouncesPerServing) {
     options.push({
@@ -197,6 +203,47 @@ function isMeatCut(text: string): boolean {
   const preparedDish =
     /\b(sandwich|nugget|nuggets|tender|tenders|wing|wings|soup|salad|wrap|burrito|taco|pizza|bake|casserole|stew|pie|roll|pasta|noodle|rice|curry|bowl|sub|patty|jerky|sauce|gravy|broth|spread|dip|popper|poppers|finger|fingers|stick|sticks|ball|balls|cake|loaf|dog|dumpling|ravioli|lasagna|quesadilla|enchilada|nacho|nachos|chowder|bisque)\b/u
   return meat.test(text) && !preparedDish.test(text)
+}
+
+// Skipped portion units that carry no useful household meaning.
+const UNUSABLE_PORTION_UNITS = new Set([
+  '',
+  'serving',
+  'undetermined',
+  'quantity not specified',
+  'portion',
+])
+
+// Turns each provider household portion into a selectable serving option with
+// its true gram weight. Requires a reliable per-serving gram weight to convert
+// the portion back into a serving multiplier.
+function householdPortionOptions(parts: ServingParts): FoodServingOption[] {
+  const gramsPerServing = parts.gramsPerServing
+  if (!gramsPerServing || gramsPerServing <= 0) {
+    return []
+  }
+  return parts.sourcePortions
+    .filter(
+      (portion) =>
+        portion.gramWeight !== null &&
+        portion.gramWeight > 0 &&
+        portion.unit &&
+        !isMassOnly(portion.unit) &&
+        !UNUSABLE_PORTION_UNITS.has(normalizeFoodText(portion.unit)),
+    )
+    .map((portion) => {
+      const grams = portion.gramWeight as number
+      const amount = portion.amount > 0 ? portion.amount : 1
+      return {
+        amount,
+        key: normalizeFoodText(portion.unit),
+        label: `${round(amount)} ${portion.unit.trim()} (${round(grams)} g)`,
+        group: 'primary' as const,
+        grams,
+        toServingMultiplier: (entered: number) =>
+          (entered * grams) / gramsPerServing,
+      }
+    })
 }
 
 function sourceHouseholdPortion(parts: ServingParts): FoodServingOption | null {
