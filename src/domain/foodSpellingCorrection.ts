@@ -1,4 +1,4 @@
-import { boundedEditDistance, normalizeFoodText } from './foodProviderModels'
+import { boundedEditDistance, normalizeFoodText } from './foodProviderModels.js'
 
 // A compact lexicon of common, frequently-misspelled food words. It exists ONLY
 // to correct the spelling of a retry query when the provider returns nothing for
