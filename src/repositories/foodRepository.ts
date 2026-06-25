@@ -327,6 +327,24 @@ export function createFoodRepository(
       })
     },
 
+    async setFoodFavorite(id: string, isFavorite: boolean) {
+      await database.foods.update(id, {
+        isFavorite,
+        updatedAt: new Date().toISOString(),
+      })
+    },
+
+    async listFavoriteFoods(limit = 20) {
+      const foods = await database.foods
+        .where('status')
+        .equals('active')
+        .toArray()
+      return foods
+        .filter((food) => food.isFavorite)
+        .sort((left, right) => left.name.localeCompare(right.name))
+        .slice(0, limit)
+    },
+
     async logFood(input: LogFoodInput) {
       validateServingMultiplier(input.servingMultiplier)
       const now = createMonotonicTimestamp()

@@ -8,7 +8,9 @@ import {
   Minus,
   Plus,
   ReceiptText,
+  RotateCcw,
   Search,
+  Star,
   Trash2,
   Utensils,
 } from 'lucide-react'
@@ -168,6 +170,7 @@ type LoadState = {
   foods: Food[]
   logs: FoodLogEntry[]
   recentFoods: Food[]
+  favoriteFoods: Food[]
   summary: DailyNutritionSummary | null
   status: 'loading' | 'ready' | 'error'
 }
@@ -223,6 +226,7 @@ export function NutritionPage() {
     foods: [],
     logs: [],
     recentFoods: [],
+    favoriteFoods: [],
     summary: null,
     status: 'loading',
   })
@@ -284,9 +288,10 @@ export function NutritionPage() {
       foodRepository.searchFoods(query),
       foodRepository.listFoodLogsByDate(selectedDate),
       foodRepository.listRecentFoods(50),
+      foodRepository.listFavoriteFoods(),
       nutritionSummaryService.getDailySummary(selectedDate),
     ])
-      .then(([foods, logs, recentFoods, summary]) => {
+      .then(([foods, logs, recentFoods, favoriteFoods, summary]) => {
         if (!isCurrent) {
           return
         }
@@ -295,6 +300,7 @@ export function NutritionPage() {
           foods,
           logs,
           recentFoods,
+          favoriteFoods,
           summary,
           status: 'ready',
         })
@@ -440,6 +446,40 @@ export function NutritionPage() {
     refreshDashboard()
   }
 
+  const toggleFavorite = (food: Food) => {
+    void foodRepository.setFoodFavorite(food.id, !food.isFavorite).then(() => {
+      setMessage(food.isFavorite ? 'Removed favorite.' : 'Added favorite.')
+      reload()
+    })
+  }
+
+  // One-tap re-log: reuse the food's remembered unit+amount (falling back to its
+  // representative portion) and file it under the current time-of-day meal, with
+  // no sheet to confirm.
+  const quickLog = (food: Food) => {
+    void foodRepository
+      .getRememberedFoodUnit(food.id)
+      .then((preference) => {
+        const options = servingOptionsForFood(food, preference?.unitKey ?? null)
+        const option =
+          options.find((candidate) => candidate.key === preference?.unitKey) ??
+          options[0]
+        const amount = preference?.amount ?? option?.amount ?? 1
+        const servingMultiplier = option?.toServingMultiplier(amount) ?? 1
+        return foodRepository.logFood({
+          foodId: food.id,
+          localDate: selectedDate,
+          servingMultiplier: servingMultiplier > 0 ? servingMultiplier : 1,
+          mealType: mealTypeForDate(new Date()),
+        })
+      })
+      .then(() => {
+        setMessage('Logged again.')
+        reload()
+      })
+      .catch(() => setMessage('Could not log that food.'))
+  }
+
   return (
     <PageContainer>
       <Toast message={message} onDismiss={() => setMessage(null)} />
@@ -528,14 +568,35 @@ export function NutritionPage() {
                 onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
                 onOpenScanner={() => setSheet({ type: 'scanner' })}
               />
-              <RecentFoodsCard
+              {loadState.favoriteFoods.length ? (
+                <FoodShortcutCard
+                  title="Favorites"
+                  foods={loadState.favoriteFoods}
+                  emptyTitle="No favorites"
+                  emptyMessage="Star a food to pin it here for one-tap logging."
+                  onSelect={(food) =>
+                    setSheet({
+                      type: 'select',
+                      result: { type: 'local', food, section: 'recent' },
+                    })
+                  }
+                  onQuickLog={quickLog}
+                  onToggleFavorite={toggleFavorite}
+                />
+              ) : null}
+              <FoodShortcutCard
+                title="Recent foods"
                 foods={loadState.recentFoods}
+                emptyTitle="No recent foods"
+                emptyMessage="Logged reusable foods appear here for repeat entries."
                 onSelect={(food) =>
                   setSheet({
                     type: 'select',
                     result: { type: 'local', food, section: 'recent' },
                   })
                 }
+                onQuickLog={quickLog}
+                onToggleFavorite={toggleFavorite}
               />
             </>
           ) : null}
@@ -1276,10 +1337,16 @@ function FoodLibraryRow({
   result,
   onEdit,
   onSelect,
+  isFavorite,
+  onToggleFavorite,
+  onQuickLog,
 }: {
   result: FoodSearchResult
   onEdit: (() => void) | null
   onSelect: () => void
+  isFavorite?: boolean
+  onToggleFavorite?: (() => void) | null
+  onQuickLog?: (() => void) | null
 }) {
   const display = resultDisplay(result)
   const iconCategory =
@@ -1308,9 +1375,35 @@ function FoodLibraryRow({
         </span>
       </button>
       <div className="row-actions">
+        {onToggleFavorite ? (
+          <IconButton
+            aria-label={
+              isFavorite
+                ? `Unfavorite ${display.name}`
+                : `Favorite ${display.name}`
+            }
+            aria-pressed={isFavorite}
+            className={isFavorite ? 'is-favorite' : ''}
+            onClick={onToggleFavorite}
+          >
+            <Star
+              aria-hidden="true"
+              size={18}
+              fill={isFavorite ? 'currentColor' : 'none'}
+            />
+          </IconButton>
+        ) : null}
         {onEdit ? (
           <IconButton aria-label={`Edit ${display.name}`} onClick={onEdit}>
             <Edit2 aria-hidden="true" size={18} />
+          </IconButton>
+        ) : null}
+        {onQuickLog ? (
+          <IconButton
+            aria-label={`Log ${display.name} again`}
+            onClick={onQuickLog}
+          >
+            <RotateCcw aria-hidden="true" size={18} />
           </IconButton>
         ) : null}
         <IconButton aria-label={`Open ${display.name}`} onClick={onSelect}>
@@ -1349,16 +1442,26 @@ function resultDisplay(result: FoodSearchResult) {
 // Cap the recent foods list so the section stays a short, scannable shortcut.
 const RECENT_FOODS_DISPLAY_CAP = 7
 
-function RecentFoodsCard({
+function FoodShortcutCard({
+  title,
   foods,
+  emptyTitle,
+  emptyMessage,
   onSelect,
+  onQuickLog,
+  onToggleFavorite,
 }: {
+  title: string
   foods: Food[]
+  emptyTitle: string
+  emptyMessage: string
   onSelect: (food: Food) => void
+  onQuickLog: (food: Food) => void
+  onToggleFavorite: (food: Food) => void
 }) {
   const visibleFoods = foods.slice(0, RECENT_FOODS_DISPLAY_CAP)
   return (
-    <Card title="Recent foods">
+    <Card title={title}>
       {visibleFoods.length ? (
         <div className="nutrition-list">
           {visibleFoods.map((food) => (
@@ -1371,14 +1474,14 @@ function RecentFoodsCard({
               }}
               onEdit={null}
               onSelect={() => onSelect(food)}
+              isFavorite={Boolean(food.isFavorite)}
+              onToggleFavorite={() => onToggleFavorite(food)}
+              onQuickLog={() => onQuickLog(food)}
             />
           ))}
         </div>
       ) : (
-        <EmptyState
-          title="No recent foods"
-          message="Logged reusable foods appear here for repeat entries."
-        />
+        <EmptyState title={emptyTitle} message={emptyMessage} />
       )}
     </Card>
   )

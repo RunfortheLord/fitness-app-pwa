@@ -123,6 +123,45 @@ describe('foodRepository', () => {
     expect(['breakfast', 'lunch', 'dinner', 'snack']).toContain(log.mealType)
   })
 
+  it('stars and unstars foods and lists favorites alphabetically', async () => {
+    const repository = createFoodRepository(database)
+    const apple = await repository.createFood({
+      name: 'Apple',
+      servingQuantity: 1,
+      servingUnit: 'medium',
+      servingDescription: '',
+      caloriesPerServing: 95,
+      proteinGramsPerServing: 0,
+      carbohydrateGramsPerServing: 25,
+      fatGramsPerServing: 0,
+      notes: '',
+    })
+    const banana = await repository.createFood({
+      name: 'Banana',
+      servingQuantity: 1,
+      servingUnit: 'medium',
+      servingDescription: '',
+      caloriesPerServing: 105,
+      proteinGramsPerServing: 1,
+      carbohydrateGramsPerServing: 27,
+      fatGramsPerServing: 0,
+      notes: '',
+    })
+
+    await expect(repository.listFavoriteFoods()).resolves.toEqual([])
+
+    await repository.setFoodFavorite(banana.id, true)
+    await repository.setFoodFavorite(apple.id, true)
+    await expect(
+      repository.listFavoriteFoods().then((foods) => foods.map((f) => f.name)),
+    ).resolves.toEqual(['Apple', 'Banana'])
+
+    await repository.setFoodFavorite(banana.id, false)
+    await expect(
+      repository.listFavoriteFoods().then((foods) => foods.map((f) => f.name)),
+    ).resolves.toEqual(['Apple'])
+  })
+
   it('multiplies calories and macros for quantity two custom foods', async () => {
     const repository = createFoodRepository(database)
     const food = await repository.createFood({

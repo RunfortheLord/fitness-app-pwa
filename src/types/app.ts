@@ -178,6 +178,8 @@ export type Food = {
   normalizerVersion?: number | null
   rawCookedStatus?: RawCookedStatus
   macroBasis?: FoodMacroBasis
+  /** Starred by the user for one-tap re-logging. Undefined means not favorite. */
+  isFavorite?: boolean
   notes: string
   status: EntityStatus
   createdAt: IsoTimestamp
