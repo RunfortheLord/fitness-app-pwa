@@ -14,6 +14,7 @@ import {
   ValidationMessage,
 } from '@components/ui'
 import { BACKUP_SCHEMA_VERSION, DATABASE_SCHEMA_VERSION } from '@db/database'
+import { CHANGELOG, markChangelogSeen } from '@domain/changelog'
 import {
   DEFAULT_TIMER_SOUND_ID,
   TIMER_SOUNDS,
@@ -48,6 +49,12 @@ const emptyTargets = {
 }
 
 export function SettingsPage() {
+  // Visiting Settings (where the full changelog lives) counts as seeing the
+  // latest update, so the app-wide "What's new" banner clears.
+  useEffect(() => {
+    markChangelogSeen()
+  }, [])
+
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false)
   const [clearConfirmation, setClearConfirmation] = useState('')
@@ -606,6 +613,25 @@ export function SettingsPage() {
         >
           Clear all data
         </SecondaryButton>
+      </Card>
+
+      <SectionHeader title="What's new" />
+      <Card>
+        <div className="changelog">
+          {CHANGELOG.map((entry) => (
+            <section className="changelog-entry" key={entry.id}>
+              <header className="changelog-entry-header">
+                <h3>{entry.title}</h3>
+                <span className="muted">{entry.date}</span>
+              </header>
+              <ul className="changelog-items">
+                {entry.items.map((item, index) => (
+                  <li key={index}>{item}</li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
       </Card>
 
       <SectionHeader title="Application" />

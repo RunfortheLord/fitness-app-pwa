@@ -4,12 +4,20 @@ import {
   NotebookPen,
   Plus,
   Scale,
+  Sparkles,
   SquarePen,
   Settings,
   Utensils,
+  X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+
+import {
+  LATEST_CHANGELOG_ENTRY,
+  hasUnseenChangelog,
+  markChangelogSeen,
+} from '@domain/changelog'
 
 import {
   registerServiceWorkerUpdateHandler,
@@ -56,6 +64,7 @@ function AppShellContent({ children }: AppShellProps) {
     null,
   )
   const [isOffline, setIsOffline] = useState(() => !navigator.onLine)
+  const [showWhatsNew, setShowWhatsNew] = useState(() => hasUnseenChangelog())
   const [isQuickActionOpen, setIsQuickActionOpen] = useState(false)
   const [activeActivity, setActiveActivity] = useState<ActiveActivity>(null)
   const { bodyweightSheet, closeBodyweightSheet, openBodyweightSheet } =
@@ -141,6 +150,11 @@ function AppShellContent({ children }: AppShellProps) {
   const routeTitle = getRouteTitle(location.pathname)
   const hasUpdateReady = pendingUpdate !== null
 
+  function dismissWhatsNew() {
+    markChangelogSeen()
+    setShowWhatsNew(false)
+  }
+
   function applyUpdate() {
     if (!pendingUpdate) {
       return
@@ -185,6 +199,29 @@ function AppShellContent({ children }: AppShellProps) {
           </div>
           {updateInstruction ? <p>{updateInstruction}</p> : null}
         </StatusMessage>
+      ) : null}
+
+      {showWhatsNew && LATEST_CHANGELOG_ENTRY ? (
+        <div className="whats-new-banner">
+          <Sparkles aria-hidden="true" size={18} />
+          <span className="whats-new-banner-text">
+            New: {LATEST_CHANGELOG_ENTRY.title}
+          </span>
+          <Link
+            className="whats-new-banner-link"
+            to="/settings"
+            onClick={dismissWhatsNew}
+          >
+            See what&rsquo;s new
+          </Link>
+          <IconButton
+            aria-label="Dismiss what's new"
+            className="whats-new-banner-dismiss"
+            onClick={dismissWhatsNew}
+          >
+            <X aria-hidden="true" size={18} />
+          </IconButton>
+        </div>
       ) : null}
 
       {activeActivity && !isActiveActivityRoute(location.pathname) ? (
