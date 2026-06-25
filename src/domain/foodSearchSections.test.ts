@@ -171,4 +171,42 @@ describe('createSearchSections', () => {
     const recent = section(sections, 'Recently added')!
     expect(recent.items).toHaveLength(0)
   })
+
+  it('hides incidental low-relevance provider rows from the sections', () => {
+    const sections = createSearchSections({
+      includeRecentFoods: false,
+      localFoods: [],
+      providerResults: [
+        makeProvider('keep', 'Greek Yogurt Plain', 'Foundation', 2.85),
+        makeProvider('junk', 'Sloppy Joe Sandwich', 'Survey (FNDDS)', 0),
+      ],
+      query: 'chobani',
+      recentFoods: [],
+    })
+
+    const common = section(sections, 'Common')!
+    const names = common.items.map((item) =>
+      item.type === 'external' ? item.food.name : item.food.name,
+    )
+    expect(names).toContain('Greek Yogurt Plain')
+    expect(names).not.toContain('Sloppy Joe Sandwich')
+  })
+
+  it('boosts a misspelled history match but only above a minimum relevance', () => {
+    const sections = createSearchSections({
+      includeRecentFoods: true,
+      localFoods: [],
+      providerResults: [],
+      query: 'chiken',
+      recentFoods: [
+        makeRecentFood('r1', 'Chicken Thigh'),
+        makeRecentFood('r2', 'Oatmeal'),
+      ],
+    })
+
+    const recent = section(sections, 'Recently added')!
+    const recentNames = recent.items.map((item) => item.food.name)
+    expect(recentNames).toContain('Chicken Thigh')
+    expect(recentNames).not.toContain('Oatmeal')
+  })
 })

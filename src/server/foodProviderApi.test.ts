@@ -95,6 +95,67 @@ describe('food provider API core', () => {
     expect(offCalls).toHaveLength(1)
   })
 
+  it('retries a misspelled query with a corrected spelling and merges canonical results', async () => {
+    const fetcher = vi.fn(
+      async (url: URL | RequestInfo, init?: RequestInit) => {
+        const href = String(url)
+        if (!href.includes('api.nal.usda.gov')) {
+          return jsonResponse({ products: [] })
+        }
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+          query: string
+          dataType?: string[]
+        }
+        const isBranded = Boolean(body.dataType?.includes('Branded'))
+        if (body.query === 'chicken' && !isBranded) {
+          return jsonResponse({
+            foods: [usdaFoodRecord(1, 'Chicken Breast, cooked', 'Foundation')],
+          })
+        }
+        if (body.query === 'chiken' && isBranded) {
+          return jsonResponse({
+            foods: [usdaFoodRecord(2, 'CHIKEN FINGERS', 'Branded')],
+          })
+        }
+        return jsonResponse({ foods: [] })
+      },
+    )
+
+    const response = await handleFoodSearch(
+      { query: 'chiken', provider: 'usda' },
+      { usdaApiKey: 'USDA_FDC_API_KEY_TEST_SENTINEL', fetcher },
+    )
+
+    expect(response.ok).toBe(true)
+    const names =
+      response.ok && isSearchData(response.data)
+        ? response.data.results.map((result) => result.name)
+        : []
+    expect(names).toContain('Chicken Breast, cooked')
+    expect(names).toContain('CHIKEN FINGERS')
+  })
+
+  it('does not issue a correction retry for a correctly spelled query', async () => {
+    const fetcher = vi.fn(async (url: URL | RequestInfo) => {
+      const href = String(url)
+      if (href.includes('api.nal.usda.gov')) {
+        return jsonResponse({ foods: [] })
+      }
+      return jsonResponse({ products: [] })
+    })
+
+    await handleFoodSearch(
+      { query: 'chicken', provider: 'usda' },
+      { usdaApiKey: 'USDA_FDC_API_KEY_TEST_SENTINEL', fetcher },
+    )
+
+    // One search => canonical + branded data-type calls only; no corrected retry.
+    const usdaCalls = fetcher.mock.calls.filter(([url]) =>
+      String(url).includes('api.nal.usda.gov'),
+    )
+    expect(usdaCalls).toHaveLength(2)
+  })
+
   it('coalesces concurrent identical cache misses and evicts by bounded size', async () => {
     let now = 1_000
     const cache = new TtlCache<string>(2, 100, () => now)
@@ -174,6 +235,27 @@ function jsonResponse(payload: unknown) {
     status: 200,
     headers: { 'content-type': 'application/json' },
   })
+}
+
+function isSearchData(
+  data: unknown,
+): data is { results: Array<{ name: string }> } {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    Array.isArray((data as { results?: unknown }).results)
+  )
+}
+
+function usdaFoodRecord(id: number, description: string, dataType: string) {
+  return {
+    fdcId: id,
+    description,
+    dataType,
+    servingSize: 100,
+    servingSizeUnit: 'g',
+    foodNutrients: usdaMacros(),
+  }
 }
 
 function usdaMacros() {

@@ -1,5 +1,9 @@
 import { db, type TrainingLogDatabase } from '@db/database'
-import type { NormalizedFoodResult } from '@domain/foodProviderModels'
+import {
+  queryRelevanceScore,
+  MIN_QUERY_RELEVANCE,
+  type NormalizedFoodResult,
+} from '@domain/foodProviderModels'
 import type { LocalDateString } from '@domain/dates'
 import { createId } from '@domain/ids'
 import { snapshotFood } from '@domain/snapshots'
@@ -456,6 +460,18 @@ export function createFoodRepository(
               queryWords.every((word) => normalizedName.includes(word))
             ) {
               rank = 3
+            } else {
+              // Conservative typo/token fallback so a misspelled query (e.g.
+              // "chiken") still finds a custom food. Ranked below all literal
+              // matches above.
+              const relevance = queryRelevanceScore(
+                food.name,
+                food.brandName ?? null,
+                normalizedQuery,
+              )
+              if (relevance >= MIN_QUERY_RELEVANCE) {
+                rank = 4 + 1 / (1 + relevance)
+              }
             }
           }
 

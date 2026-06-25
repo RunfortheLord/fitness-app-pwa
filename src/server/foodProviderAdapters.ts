@@ -40,6 +40,44 @@ export function createUsdaAdapter(
   apiKey: string | undefined,
   fetcher: Fetcher = fetch,
 ): ProviderAdapter {
+  // USDA returns results ranked by its own relevance, so for staple queries the
+  // many branded products literally named "MILK"/"WHITE RICE" can fill the whole
+  // page and starve the canonical Common section. Query the canonical data types
+  // and Branded separately, then merge, so both are always represented.
+  async function fetchRecords(
+    query: string,
+    dataType: string[],
+    page: number,
+    pageSize: number,
+    signal?: AbortSignal,
+  ): Promise<unknown[]> {
+    const url = new URL(USDA_SEARCH_URL)
+    url.searchParams.set('api_key', apiKey as string)
+    const response = await fetchWithTimeout(
+      fetcher,
+      url,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'User-Agent': USER_AGENT,
+        },
+        body: JSON.stringify({
+          query,
+          pageSize,
+          pageNumber: page,
+          dataType,
+        }),
+      },
+      signal,
+    )
+    const payload = await readProviderJson(response)
+    return isRecord(payload) && Array.isArray(payload.foods)
+      ? payload.foods
+      : []
+  }
+
   return {
     id: 'usda',
     async search(input) {
@@ -47,33 +85,35 @@ export function createUsdaAdapter(
         throw new ProviderError('missing_api_key', 'USDA API key is missing.')
       }
 
-      const url = new URL(USDA_SEARCH_URL)
-      url.searchParams.set('api_key', apiKey)
-      const response = await fetchWithTimeout(
-        fetcher,
-        url,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-            'User-Agent': USER_AGENT,
-          },
-          body: JSON.stringify({
-            query: input.query,
-            pageSize: input.pageSize,
-            pageNumber: input.page,
-            dataType: ['Foundation', 'SR Legacy', 'Survey (FNDDS)', 'Branded'],
-          }),
-        },
-        input.signal,
-      )
-      const payload = await readProviderJson(response)
-      const records =
-        isRecord(payload) && Array.isArray(payload.foods) ? payload.foods : []
-      const foods = records
-        .map((record) => normalizeUsdaFood(record, input.now ?? new Date()))
+      const [canonical, branded] = await Promise.all([
+        fetchRecords(
+          input.query,
+          ['Foundation', 'SR Legacy', 'Survey (FNDDS)'],
+          input.page,
+          input.pageSize,
+          input.signal,
+        ),
+        fetchRecords(
+          input.query,
+          ['Branded'],
+          input.page,
+          input.pageSize,
+          input.signal,
+        ),
+      ])
+
+      const now = input.now ?? new Date()
+      const seenIds = new Set<string>()
+      const foods = [...canonical, ...branded]
+        .map((record) => normalizeUsdaFood(record, now))
         .filter((food): food is NormalizedFoodResult => food !== null)
+        .filter((food) => {
+          if (seenIds.has(food.id)) {
+            return false
+          }
+          seenIds.add(food.id)
+          return true
+        })
       return groupDuplicateFoods(rankFoods(foods, input.query))
     },
   }

@@ -117,10 +117,6 @@ function choosePrimaryServing(parts: ServingParts): FoodServingOption {
   const text = normalizeFoodText(
     `${parts.name} ${parts.description} ${parts.unit}`,
   )
-  const sourcePortion = sourceHouseholdPortion(parts)
-  if (sourcePortion) {
-    return sourcePortion
-  }
 
   const withGrams = (
     amount: number,
@@ -139,16 +135,25 @@ function choosePrimaryServing(parts: ServingParts): FoodServingOption {
         : null,
   })
 
-  if (
-    parts.reliable &&
-    text.includes('chicken breast') &&
-    parts.rawCookedStatus === 'raw'
-  ) {
-    return withGrams(4, 'oz', '4 oz raw', 4 * GRAMS_PER_OUNCE)
-  }
+  // Meat is conventionally logged by weight, so default a plain cut to ounces —
+  // even ahead of a household portion or branded serving label.
   if (parts.reliable && text.includes('chicken breast')) {
-    return withGrams(4, 'oz', '4 oz cooked', 4 * GRAMS_PER_OUNCE)
+    return withGrams(
+      4,
+      'oz',
+      parts.rawCookedStatus === 'raw' ? '4 oz raw' : '4 oz cooked',
+      4 * GRAMS_PER_OUNCE,
+    )
   }
+  if (parts.reliable && isMeatCut(text)) {
+    return withGrams(4, 'oz', '4 oz', 4 * GRAMS_PER_OUNCE)
+  }
+
+  const sourcePortion = sourceHouseholdPortion(parts)
+  if (sourcePortion) {
+    return sourcePortion
+  }
+
   if (
     parts.reliable &&
     text.includes('rice') &&
@@ -171,12 +176,6 @@ function choosePrimaryServing(parts: ServingParts): FoodServingOption {
   if (parts.reliable && /\btortillas?\b/u.test(text)) {
     return withGrams(1, 'tortilla', '1 tortilla', parts.gramsPerServing ?? 45)
   }
-  if (
-    parts.reliable &&
-    /\b(beef|pork|fish|salmon|tuna|turkey|meat|steak)\b/u.test(text)
-  ) {
-    return withGrams(4, 'oz', '4 oz', 4 * GRAMS_PER_OUNCE)
-  }
 
   const label = servingDescription(parts)
   return {
@@ -187,6 +186,17 @@ function choosePrimaryServing(parts: ServingParts): FoodServingOption {
     grams: parts.gramsPerServing,
     toServingMultiplier: (amount) => amount / parts.quantity,
   }
+}
+
+// True for a recognizable cut of meat/fish/poultry, but not for prepared dishes
+// that merely contain meat (a sandwich, soup, nugget, etc.), which keep their
+// own household or label serving.
+function isMeatCut(text: string): boolean {
+  const meat =
+    /\b(chicken|beef|pork|turkey|fish|salmon|tuna|shrimp|steak|lamb|bacon|ham|sausage|veal|bison|venison|cod|tilapia|halibut|meat)\b/u
+  const preparedDish =
+    /\b(sandwich|nugget|nuggets|tender|tenders|wing|wings|soup|salad|wrap|burrito|taco|pizza|bake|casserole|stew|pie|roll|pasta|noodle|rice|curry|bowl|sub|patty|jerky|sauce|gravy|broth|spread|dip|popper|poppers|finger|fingers|stick|sticks|ball|balls|cake|loaf|dog|dumpling|ravioli|lasagna|quesadilla|enchilada|nacho|nachos|chowder|bisque)\b/u
+  return meat.test(text) && !preparedDish.test(text)
 }
 
 function sourceHouseholdPortion(parts: ServingParts): FoodServingOption | null {

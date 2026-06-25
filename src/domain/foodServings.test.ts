@@ -59,6 +59,46 @@ describe('food serving helpers', () => {
     expect(options[0].label).toBe('4 oz raw')
   })
 
+  it('defaults plain meat cuts to ounces', () => {
+    const cases = [
+      'Chicken thigh, cooked',
+      'Beef, ground, cooked',
+      'Pork chop, grilled',
+      'Salmon, baked',
+      'Turkey breast, roasted',
+    ]
+    for (const name of cases) {
+      const options = servingOptionsForFood({ ...baseFood, id: name, name })
+      expect(options[0]).toMatchObject({ key: 'oz', amount: 4, label: '4 oz' })
+    }
+  })
+
+  it('defaults meat cuts to ounces even for branded products with a label serving', () => {
+    const options = servingOptionsForFood({
+      ...baseFood,
+      id: 'branded-beef',
+      name: 'Ground Beef 80/20',
+      servingQuantity: 1,
+      servingUnit: 'serving',
+      servingDescription: '1 serving',
+      providerDataType: 'Branded',
+    })
+    expect(options[0]).toMatchObject({ key: 'oz', amount: 4 })
+  })
+
+  it('keeps prepared meat dishes on their household serving rather than ounces', () => {
+    const options = servingOptionsForFood({
+      ...baseFood,
+      id: 'soup',
+      name: 'Chicken noodle soup',
+      servingQuantity: 1,
+      servingUnit: 'cup',
+      servingDescription: '1 cup',
+      rawCookedStatus: 'cooked',
+    })
+    expect(options[0].key).not.toBe('oz')
+  })
+
   it('defaults cooked rice to one cup', () => {
     const options = servingOptionsForFood({
       ...baseFood,

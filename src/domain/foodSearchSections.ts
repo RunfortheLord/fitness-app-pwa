@@ -1,5 +1,7 @@
 import {
+  matchesQuery,
   normalizeProviderQuery,
+  queryRelevanceScore,
   type GroupedFoodResult,
 } from '@domain/foodProviderModels'
 import type { Food } from '@shared-types/app'
@@ -16,6 +18,12 @@ const COMMON_SECTION_CAP = 5
 const BRANDED_SECTION_CAP = 3
 const OTHER_SECTION_CAP = 5
 const LOCAL_SECTION_CAP = 10
+
+// Provider rows below this relevance are incidental matches (a shared stopword,
+// one matched token out of several, an unrelated brand). Hiding them keeps the
+// sections meaningful and lets genuinely unmatched queries read as empty rather
+// than padding the list with noise.
+const SECTION_MIN_RELEVANCE = 1
 
 function providerDedupeKey(food: GroupedFoodResult) {
   return `${food.normalizedSearchName}|${food.normalizedBrand ?? ''}`
@@ -40,9 +48,22 @@ export function createSearchSections({
   }
 
   const recentIds = new Set(recentFoods.map((food) => food.id))
-  const matchingRecent = recentFoods.filter((food) =>
-    food.name.toLocaleLowerCase().includes(normalizedQuery.toLocaleLowerCase()),
-  )
+  // History is boosted only after a minimum textual relevance, and uses the same
+  // typo-tolerant matcher as ranking so a misspelled query still surfaces a
+  // previously logged food. Most relevant history first.
+  const matchingRecent = recentFoods
+    .filter((food) =>
+      matchesQuery(food.name, food.brandName ?? null, normalizedQuery),
+    )
+    .sort(
+      (left, right) =>
+        queryRelevanceScore(
+          right.name,
+          right.brandName ?? null,
+          normalizedQuery,
+        ) -
+        queryRelevanceScore(left.name, left.brandName ?? null, normalizedQuery),
+    )
   const customFoods = localFoods.filter(
     (food) => food.sourceType !== 'provider' && !recentIds.has(food.id),
   )
@@ -62,6 +83,9 @@ export function createSearchSections({
     for (const food of providerResults) {
       if (items.length >= cap) {
         break
+      }
+      if (food.relevanceScore < SECTION_MIN_RELEVANCE) {
+        continue
       }
       if (!predicate(food)) {
         continue
