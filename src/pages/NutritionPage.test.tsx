@@ -96,7 +96,7 @@ describe('NutritionPage', () => {
     await closeFoodSearch(user)
 
     expect(await screen.findByText('300 kcal')).toBeInTheDocument()
-    await expect(screen.findByText(/1.5x 1 cup/)).resolves.toBeInTheDocument()
+    await expect(screen.findByText(/1.5 cup/)).resolves.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Foods' }))
     await user.type(await openFoodSearch(user), 'rice')
@@ -491,7 +491,7 @@ describe('NutritionPage', () => {
 
     expect(await screen.findByText('Quick add logged.')).toBeInTheDocument()
     await expect(
-      screen.findByText(/1x 1 entry - 250 kcal - P 20 C 0 F 0/),
+      screen.findByText(/1 entry - 250 kcal - P 20 C 0 F 0/),
     ).resolves.toBeInTheDocument()
     // Quick Add must not pollute the reusable food library/search.
     await expect(db.foods.count()).resolves.toBe(0)

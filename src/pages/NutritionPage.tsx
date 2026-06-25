@@ -86,6 +86,7 @@ import {
   groupEntriesByMeal,
   mealTypeForDate,
 } from '@domain/meals'
+import { snapshotFood } from '@domain/snapshots'
 import { useDashboardContext } from '@hooks/useDashboardContext'
 import {
   foodRepository,
@@ -115,7 +116,6 @@ import type {
   NutritionGoal,
   NutritionTargetValues,
   SavedMeal,
-  SavedMealComponent,
 } from '@shared-types/app'
 
 type NutritionMode = 'day' | 'foods' | 'targets'
@@ -136,11 +136,7 @@ type SheetState =
   | { type: 'entry'; entry: FoodLogEntry }
   | { type: 'quickAdd' }
   | { type: 'scanner' }
-  | {
-      type: 'saveMeal'
-      components: SavedMealComponent[]
-      defaultName: string
-    }
+  | { type: 'recipe' }
   | null
 
 type FoodFormState = {
@@ -507,20 +503,6 @@ export function NutritionPage() {
       .catch(() => setMessage('Could not log that meal.'))
   }
 
-  // Turn a logged meal section into a reusable saved meal, carrying each entry's
-  // snapshot and serving so the saved meal logs identically later.
-  const saveMealFromEntries = (label: string, entries: FoodLogEntry[]) => {
-    setSheet({
-      type: 'saveMeal',
-      defaultName: label,
-      components: entries.map((entry) => ({
-        foodId: entry.foodId,
-        foodSnapshot: entry.foodSnapshot,
-        servingMultiplier: entry.servingMultiplier,
-      })),
-    })
-  }
-
   return (
     <PageContainer>
       <Toast message={message} onDismiss={() => setMessage(null)} />
@@ -531,6 +513,7 @@ export function NutritionPage() {
           addedItems={addedItems}
           onBack={() => setSearchOpen(false)}
           onEditFood={(food) => setSheet({ type: 'food', food })}
+          onOpenRecipe={() => setSheet({ type: 'recipe' })}
           onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
           onOpenScanner={() => setSheet({ type: 'scanner' })}
           onSelectResult={(result) => setSheet({ type: 'select', result })}
@@ -579,6 +562,7 @@ export function NutritionPage() {
                 onOpen={openSearch}
                 onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
                 onOpenScanner={() => setSheet({ type: 'scanner' })}
+                onOpenRecipe={() => setSheet({ type: 'recipe' })}
               />
               <NutritionActionCard
                 onCreateFood={() => setSheet({ type: 'food', food: null })}
@@ -587,7 +571,6 @@ export function NutritionPage() {
                 entries={loadState.logs}
                 onDelete={setDeleteEntry}
                 onEdit={(entry) => setSheet({ type: 'entry', entry })}
-                onSaveMeal={saveMealFromEntries}
               />
             </>
           ) : null}
@@ -609,6 +592,7 @@ export function NutritionPage() {
                 onOpen={openSearch}
                 onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
                 onOpenScanner={() => setSheet({ type: 'scanner' })}
+                onOpenRecipe={() => setSheet({ type: 'recipe' })}
               />
               {loadState.savedMeals.length ? (
                 <SavedMealsCard
@@ -789,14 +773,12 @@ export function NutritionPage() {
         />
       ) : null}
 
-      {sheet?.type === 'saveMeal' ? (
-        <SaveMealSheet
-          defaultName={sheet.defaultName}
-          components={sheet.components}
+      {sheet?.type === 'recipe' ? (
+        <RecipeBuilderSheet
           isOpen
           onClose={() => setSheet(null)}
           onSaved={() => {
-            setMessage('Meal saved.')
+            setMessage('Recipe saved.')
             setSheet(null)
             reload()
           }}
@@ -889,10 +871,12 @@ function FoodSearchTrigger({
   onOpen,
   onOpenQuickAdd,
   onOpenScanner,
+  onOpenRecipe,
 }: {
   onOpen: () => void
   onOpenQuickAdd: () => void
   onOpenScanner: () => void
+  onOpenRecipe: () => void
 }) {
   return (
     <Card>
@@ -901,6 +885,9 @@ function FoodSearchTrigger({
         <div className="row-actions">
           <IconButton aria-label="Quick add nutrition" onClick={onOpenQuickAdd}>
             <Flame aria-hidden="true" size={20} />
+          </IconButton>
+          <IconButton aria-label="New recipe" onClick={onOpenRecipe}>
+            <BookmarkPlus aria-hidden="true" size={20} />
           </IconButton>
           <IconButton aria-label="Scan barcode" onClick={onOpenScanner}>
             <Camera aria-hidden="true" size={20} />
@@ -923,6 +910,7 @@ function FoodSearchSubpage({
   onEditFood,
   onOpenQuickAdd,
   onOpenScanner,
+  onOpenRecipe,
   onSelectResult,
   onSearch,
   query,
@@ -935,6 +923,7 @@ function FoodSearchSubpage({
   onEditFood: (food: Food) => void
   onOpenQuickAdd: () => void
   onOpenScanner: () => void
+  onOpenRecipe: () => void
   onSelectResult: (result: FoodSearchResult) => void
   onSearch: () => void
   query: string
@@ -973,6 +962,9 @@ function FoodSearchSubpage({
               onClick={onOpenQuickAdd}
             >
               <Flame aria-hidden="true" size={20} />
+            </IconButton>
+            <IconButton aria-label="New recipe" onClick={onOpenRecipe}>
+              <BookmarkPlus aria-hidden="true" size={20} />
             </IconButton>
             <IconButton aria-label="Scan barcode" onClick={onOpenScanner}>
               <Camera aria-hidden="true" size={20} />
@@ -1204,6 +1196,36 @@ function BarcodeScannerSheet({
     },
     [apiKey, onCreateCustom, onFound],
   )
+
+  // Reuse a previously granted camera permission: when the browser reports the
+  // camera as already granted, start scanning immediately instead of waiting for
+  // another tap on "Request camera access". The Permissions API is not available
+  // everywhere (e.g. some iOS Safari versions), so any failure falls back to the
+  // manual button, and getUserMedia still gates an actual prompt when needed.
+  useEffect(() => {
+    if (!isOpen || scanning) {
+      return
+    }
+    const permissions = navigator.permissions
+    if (!permissions?.query) {
+      return
+    }
+    let cancelled = false
+    void permissions
+      .query({ name: 'camera' as PermissionName })
+      .then((permissionStatus) => {
+        if (!cancelled && permissionStatus.state === 'granted') {
+          setStatus('Point the camera at the product barcode.')
+          setScanning(true)
+        }
+      })
+      .catch(() => {
+        // Permissions API unsupported for "camera"; keep the manual button.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, scanning])
 
   useEffect(() => {
     if (!isOpen || !scanning || !video) {
@@ -1629,66 +1651,203 @@ function SavedMealsCard({
   )
 }
 
-function SaveMealSheet({
-  defaultName,
-  components,
+type RecipeComponentDraft = { food: Food; servingMultiplier: number }
+
+function RecipeBuilderSheet({
   isOpen,
   onClose,
   onSaved,
 }: {
-  defaultName: string
-  components: SavedMealComponent[]
   isOpen: boolean
   onClose: () => void
   onSaved: () => void
 }) {
-  const [name, setName] = useState(defaultName)
+  const [name, setName] = useState('')
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<Food[]>([])
+  const [components, setComponents] = useState<RecipeComponentDraft[]>([])
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let isCurrent = true
+    void foodRepository.searchFoods(query, 8).then((foods) => {
+      if (isCurrent) {
+        setResults(foods)
+      }
+    })
+    return () => {
+      isCurrent = false
+    }
+  }, [query])
+
+  function addFood(food: Food) {
+    setComponents((current) =>
+      current.some((component) => component.food.id === food.id)
+        ? current
+        : [...current, { food, servingMultiplier: 1 }],
+    )
+  }
+
+  function adjust(id: string, delta: number) {
+    setComponents((current) =>
+      current.map((component) =>
+        component.food.id === id
+          ? {
+              ...component,
+              servingMultiplier: Math.max(
+                0.5,
+                Math.round((component.servingMultiplier + delta) * 100) / 100,
+              ),
+            }
+          : component,
+      ),
+    )
+  }
+
+  function remove(id: string) {
+    setComponents((current) =>
+      current.filter((component) => component.food.id !== id),
+    )
+  }
+
+  const totalCalories = components.reduce(
+    (total, component) =>
+      total + component.food.caloriesPerServing * component.servingMultiplier,
+    0,
+  )
 
   function save() {
     if (!name.trim()) {
-      setError('Give the meal a name.')
+      setError('Give the recipe a name.')
+      return
+    }
+    if (components.length === 0) {
+      setError('Add at least one food to the recipe.')
       return
     }
     return foodRepository
-      .createSavedMeal({ name, components })
+      .createSavedMeal({
+        name,
+        components: components.map((component) => ({
+          foodId: component.food.id,
+          foodSnapshot: snapshotFood(component.food),
+          servingMultiplier: component.servingMultiplier,
+        })),
+      })
       .then(onSaved)
       .catch((caught: unknown) => {
         setError(
-          caught instanceof Error ? caught.message : 'Meal could not save.',
+          caught instanceof Error ? caught.message : 'Recipe could not save.',
         )
       })
   }
 
   return (
-    <Sheet isOpen={isOpen} onClose={onClose} title="Save as meal">
-      <FormField id="saved-meal-name" label="Meal name">
+    <Sheet isOpen={isOpen} onClose={onClose} title="New recipe">
+      <FormField id="recipe-name" label="Recipe name">
         <input
-          id="saved-meal-name"
+          id="recipe-name"
           autoFocus
           onChange={(event) => setName(event.target.value)}
           placeholder="My usual oatmeal bowl"
           value={name}
         />
       </FormField>
-      <div className="nutrition-list">
-        {components.map((component, index) => (
-          <p
-            className="muted"
-            key={`${component.foodSnapshot.foodName}-${index}`}
-          >
-            {component.foodSnapshot.foodName} -{' '}
-            {roundMacro(
-              component.foodSnapshot.caloriesPerServing *
-                component.servingMultiplier,
-            )}{' '}
-            kcal
+
+      {components.length ? (
+        <div className="recipe-components">
+          {components.map((component) => (
+            <div className="recipe-component" key={component.food.id}>
+              <div className="recipe-component-main">
+                <strong>{component.food.name}</strong>
+                <small>
+                  {roundMacro(
+                    component.servingMultiplier *
+                      component.food.servingQuantity,
+                  )}{' '}
+                  {component.food.servingUnit} -{' '}
+                  {roundMacro(
+                    component.servingMultiplier *
+                      component.food.caloriesPerServing,
+                  )}{' '}
+                  kcal
+                </small>
+              </div>
+              <div className="row-actions">
+                <IconButton
+                  aria-label={`Decrease ${component.food.name}`}
+                  disabled={component.servingMultiplier <= 0.5}
+                  onClick={() => adjust(component.food.id, -0.5)}
+                >
+                  <Minus aria-hidden="true" size={16} />
+                </IconButton>
+                <IconButton
+                  aria-label={`Increase ${component.food.name}`}
+                  onClick={() => adjust(component.food.id, 0.5)}
+                >
+                  <Plus aria-hidden="true" size={16} />
+                </IconButton>
+                <IconButton
+                  aria-label={`Remove ${component.food.name}`}
+                  onClick={() => remove(component.food.id)}
+                >
+                  <Trash2 aria-hidden="true" size={16} />
+                </IconButton>
+              </div>
+            </div>
+          ))}
+          <p className="muted">
+            Total: {roundMacro(totalCalories)} kcal · {components.length}{' '}
+            {components.length === 1 ? 'item' : 'items'}
           </p>
+        </div>
+      ) : (
+        <p className="muted">
+          Search your foods below and add them to the recipe.
+        </p>
+      )}
+
+      <FormField id="recipe-search" label="Add food">
+        <div className="food-search-subpage-input">
+          <Search aria-hidden="true" size={18} />
+          <input
+            id="recipe-search"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search your foods"
+            type="search"
+            value={query}
+          />
+        </div>
+      </FormField>
+      <div className="nutrition-list">
+        {results.map((food) => (
+          <button
+            className="recipe-add-row"
+            key={food.id}
+            type="button"
+            onClick={() => addFood(food)}
+          >
+            <span className="food-result-main">
+              <strong>{food.name}</strong>
+              <small>
+                {roundMacro(food.caloriesPerServing)} kcal /{' '}
+                {formatFoodServingLabel(food)}
+              </small>
+            </span>
+            <Plus aria-hidden="true" size={18} />
+          </button>
         ))}
+        {query && results.length === 0 ? (
+          <EmptyState
+            title="No foods found"
+            message="Create the food first, then add it to a recipe."
+          />
+        ) : null}
       </div>
+
       {error ? <ValidationMessage message={error} /> : null}
       <PrimaryButton type="button" onClick={save}>
-        Save meal
+        Save recipe
       </PrimaryButton>
     </Sheet>
   )
@@ -1729,12 +1888,10 @@ function LoggedFoodsCard({
   entries,
   onDelete,
   onEdit,
-  onSaveMeal,
 }: {
   entries: FoodLogEntry[]
   onDelete: (entry: FoodLogEntry) => void
   onEdit: (entry: FoodLogEntry) => void
-  onSaveMeal: (label: string, entries: FoodLogEntry[]) => void
 }) {
   const mealGroups = groupEntriesByMeal(entries)
   return (
@@ -1745,19 +1902,11 @@ function LoggedFoodsCard({
             <section className="meal-group" key={group.mealType}>
               <header className="meal-group-header">
                 <h3>{group.label}</h3>
-                <span className="meal-group-meta">
-                  <span className="muted">
-                    {roundMacro(group.calories)} kcal - P{' '}
-                    {roundMacro(group.proteinGrams)} C{' '}
-                    {roundMacro(group.carbohydrateGrams)} F{' '}
-                    {roundMacro(group.fatGrams)}
-                  </span>
-                  <IconButton
-                    aria-label={`Save ${group.label} as a meal`}
-                    onClick={() => onSaveMeal(group.label, group.entries)}
-                  >
-                    <BookmarkPlus aria-hidden="true" size={16} />
-                  </IconButton>
+                <span className="muted">
+                  {roundMacro(group.calories)} kcal - P{' '}
+                  {roundMacro(group.proteinGrams)} C{' '}
+                  {roundMacro(group.carbohydrateGrams)} F{' '}
+                  {roundMacro(group.fatGrams)}
                 </span>
               </header>
               <div className="nutrition-list">
@@ -1769,8 +1918,8 @@ function LoggedFoodsCard({
                     <div>
                       <strong>{entry.foodSnapshot.foodName}</strong>
                       <small>
-                        {entry.servingMultiplier}x {snapshotServingLabel(entry)}{' '}
-                        - {roundMacro(entry.computedCalories)} kcal - P{' '}
+                        {formatLoggedAmount(entry)} -{' '}
+                        {roundMacro(entry.computedCalories)} kcal - P{' '}
                         {roundMacro(entry.computedProteinGrams)} C{' '}
                         {roundMacro(entry.computedCarbohydrateGrams)} F{' '}
                         {roundMacro(entry.computedFatGrams)}
@@ -3149,6 +3298,15 @@ function snapshotServingLabel(entry: FoodLogEntry) {
   return `${roundMacro(entry.foodSnapshot.servingQuantity)} ${
     entry.foodSnapshot.servingUnit || entry.foodSnapshot.servingDescription
   }`
+}
+
+// The actual logged portion in the food's own unit (multiplier applied), so the
+// list reads "1.7 cup, cooked" instead of an ugly raw "1.744…x" multiplier.
+function formatLoggedAmount(entry: FoodLogEntry) {
+  const snapshot = entry.foodSnapshot
+  const amount = roundMacro(entry.servingMultiplier * snapshot.servingQuantity)
+  const unit = snapshot.servingUnit || snapshot.servingDescription
+  return unit ? `${amount} ${unit}` : `${amount}`
 }
 
 function targetKey(targets: NutritionTargetValues | null) {

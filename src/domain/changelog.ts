@@ -18,7 +18,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Serving amounts default to your remembered unit and amount for each food.',
       'Your daily log is grouped into Breakfast, Lunch, Dinner, and Snacks with per-meal totals.',
       'Star favorite foods and re-log any recent or favorite in one tap.',
-      'Save a meal as a reusable saved meal and log the whole thing in one tap.',
+      'Build a recipe from your foods (New recipe, beside Quick add) and log the whole thing in one tap.',
     ],
   },
 ]

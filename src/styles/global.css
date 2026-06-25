@@ -1335,19 +1335,62 @@ textarea:focus-visible {
   font-weight: 800;
 }
 
-.meal-group-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
 .meal-group-header .muted {
   font-size: 12px;
 }
 
-.meal-group-meta .icon-button {
-  min-width: 32px;
-  min-height: 32px;
+.recipe-components {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.recipe-component {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-strong);
+}
+
+.recipe-component-main {
+  min-width: 0;
+}
+
+.recipe-component-main strong,
+.recipe-component-main small {
+  display: block;
+}
+
+.recipe-component-main small {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.recipe-component .icon-button {
+  min-width: 36px;
+  min-height: 36px;
+}
+
+.recipe-add-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.recipe-add-row:hover {
+  background: var(--color-surface-strong);
 }
 
 .nutrition-row {
@@ -2327,6 +2370,158 @@ input::placeholder {
 
 .bodyweight-detail {
   margin-top: 0;
+}
+
+/* Axis interval markers: numeric Y values down the left edge and date X values
+   along the bottom, aligned to the inset plot area where the line is drawn. */
+.chart-axis-ticks {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-axis-ticks-y {
+  inset: var(--space-3) 0;
+}
+
+.chart-axis-ticks-y span {
+  position: absolute;
+  left: var(--space-4);
+  transform: translateY(-50%);
+  padding: 0 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--color-surface-strong) 78%, transparent);
+}
+
+.chart-axis-ticks-x {
+  inset: 0 var(--space-3);
+}
+
+.chart-axis-ticks-x span {
+  position: absolute;
+  bottom: var(--space-3);
+  transform: translateX(-50%);
+  padding: 0 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--color-surface-strong) 78%, transparent);
+  white-space: nowrap;
+}
+
+/* Tap/click tooltip on a data point. The JS timer removes it after 5s; this
+   animation fades it out over the final second so it does not pop away. */
+.chart-point-tooltip {
+  z-index: 4;
+  animation: chart-tooltip-fade 5s ease forwards;
+}
+
+.chart-point-tooltip-below {
+  transform: translate(-50%, var(--space-2));
+}
+
+@keyframes chart-tooltip-fade {
+  0%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chart-point-tooltip {
+    animation: none;
+  }
+}
+
+/* Trigger that opens the strength-graph exercise-selection sub-page. */
+.exercise-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-strong);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.exercise-select-trigger:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.exercise-select-trigger svg {
+  flex-shrink: 0;
+  color: var(--color-muted);
+}
+
+.exercise-picker {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.exercise-picker-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2) 0 var(--space-3);
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.exercise-picker-bar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.exercise-picker-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.exercise-picker-row {
+  display: grid;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.exercise-picker-row[aria-pressed='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-surface-strong);
+}
+
+.exercise-picker-row strong {
+  display: block;
+}
+
+.exercise-picker-row small {
+  color: var(--color-muted);
+}
+
+.exercise-picker-row:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }
 
 .change-review-item {

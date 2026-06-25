@@ -15,8 +15,10 @@
   owner's explicit request. Components store immutable food snapshots so a saved
   meal logs identically even after its source foods change or are removed; logging
   expands it into individual `FoodLogEntry` rows for the chosen date and meal.
-  Saved meals are created from a logged meal section ("Save as meal") and are
-  included in backups.
+  Recipes are built in a dedicated "New recipe" sheet (a top-level action beside
+  Quick add) where foods are searched, added, and given per-component servings;
+  saved meals are included in backups. Logged-list rows show the resolved portion
+  in the food's own unit (e.g. "1.7 cup") rather than a raw serving multiplier.
 - Serving entry defaults are habit-driven first: the add-food sheet defaults to the
   food's representative portion (label serving / first USDA portion) and overrides
   with the user's remembered last unit+amount when present.
