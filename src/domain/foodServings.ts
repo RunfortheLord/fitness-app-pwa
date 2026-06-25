@@ -115,6 +115,72 @@ export function formatCalories(value: number | undefined | null) {
   return String(Math.round(value ?? 0))
 }
 
+const ONE_THIRD = 1 / 3
+
+// Quick-amount chips offered for the chosen unit. Serving/portion units get the
+// common cooking fractions and small multiples; weight units get sensible
+// gram/ounce steps instead, since "¼ g" is meaningless.
+export function quantityChipsForUnit(unitKey: string): number[] {
+  if (unitKey === 'oz') {
+    return [1, 2, 3, 4, 6, 8]
+  }
+  if (unitKey === 'g' || unitKey === '100g') {
+    return [25, 50, 100, 150, 200]
+  }
+  return [0.25, ONE_THIRD, 0.5, 0.75, 1, 1.5, 2]
+}
+
+const FRACTION_CHIP_LABELS: Array<[number, string]> = [
+  [0.25, '¼'],
+  [ONE_THIRD, '⅓'],
+  [0.5, '½'],
+  [0.75, '¾'],
+  [1.5, '1½'],
+]
+
+export function formatQuantityChipLabel(value: number): string {
+  const fraction = FRACTION_CHIP_LABELS.find(
+    ([candidate]) => Math.abs(candidate - value) < 1e-6,
+  )
+  return fraction ? fraction[1] : formatAmountValue(value)
+}
+
+// Step size for the −/+ stepper, matched to how each unit is usually adjusted.
+export function amountStepForUnit(unitKey: string): number {
+  if (unitKey === 'g' || unitKey === '100g') {
+    return 10
+  }
+  if (unitKey === 'oz') {
+    return 1
+  }
+  return 0.5
+}
+
+// Next amount after a stepper tap, or null when a decrement would reach a
+// non-positive amount (so the − button can be disabled at the bottom).
+export function nextSteppedAmount(
+  current: number,
+  unitKey: string,
+  direction: 1 | -1,
+): number | null {
+  const step = amountStepForUnit(unitKey)
+  const next = Math.round((current + direction * step) * 1000) / 1000
+  return next > 0 ? next : null
+}
+
+// Stringifies a chip/stepper amount for the text input without trailing-zero or
+// long-decimal noise (e.g. ⅓ → "0.333", 1 → "1").
+export function formatAmountValue(value: number): string {
+  return String(Math.round(value * 1000) / 1000)
+}
+
+// Resulting weight for the chosen amount, shown next to the live macros so the
+// logged gram weight is never ambiguous.
+export function formatGrams(value: number): string {
+  const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10
+  return `${rounded} g`
+}
+
 export function formatMacroGram(value: number | undefined | null) {
   return (Math.round((value ?? 0) * 10) / 10).toFixed(1)
 }

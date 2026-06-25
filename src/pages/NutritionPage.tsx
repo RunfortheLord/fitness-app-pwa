@@ -5,6 +5,7 @@ import {
   CopyPlus,
   Edit2,
   Flame,
+  Minus,
   Plus,
   ReceiptText,
   Search,
@@ -55,9 +56,14 @@ import {
 } from '@domain/goalMacros'
 import { evaluateCalorieUpdate } from '@domain/calorieAdjustment'
 import {
+  formatAmountValue,
   formatCalories,
   formatFoodServingLabel,
+  formatGrams,
   formatMacroGram,
+  formatQuantityChipLabel,
+  nextSteppedAmount,
+  quantityChipsForUnit,
   servingOptionsForFood,
   type FoodServingOption,
 } from '@domain/foodServings'
@@ -593,6 +599,7 @@ export function NutritionPage() {
 
       {sheet?.type === 'select' ? (
         <SelectedFoodSheet
+          key={sheet.result.food.id}
           result={sheet.result}
           isOpen
           localDate={selectedDate}
@@ -1327,6 +1334,9 @@ function resultDisplay(result: FoodSearchResult) {
   }
 }
 
+// Cap the recent foods list so the section stays a short, scannable shortcut.
+const RECENT_FOODS_DISPLAY_CAP = 7
+
 function RecentFoodsCard({
   foods,
   onSelect,
@@ -1334,11 +1344,12 @@ function RecentFoodsCard({
   foods: Food[]
   onSelect: (food: Food) => void
 }) {
+  const visibleFoods = foods.slice(0, RECENT_FOODS_DISPLAY_CAP)
   return (
     <Card title="Recent foods">
-      {foods.length ? (
+      {visibleFoods.length ? (
         <div className="nutrition-list">
-          {foods.map((food) => (
+          {visibleFoods.map((food) => (
             <FoodLibraryRow
               key={food.id}
               result={{
@@ -1710,31 +1721,51 @@ function SelectedFoodSheet({
   onClose: () => void
   onSaved: () => void
 }) {
-  const foodId = result.type === 'local' ? result.food.id : result.food.id
+  // The parent gives this sheet a key of the food id, so it remounts per food
+  // and these initializers run fresh — defaulting to the food's most
+  // representative portion (label serving / first USDA portion).
+  const foodId = result.food.id
+  const defaultOptions = servingOptionsForResult(result, null)
   const [rememberedUnit, setRememberedUnit] = useState<string | null>(null)
+  const [amount, setAmount] = useState(() =>
+    formatAmountValue(defaultOptions[0]?.amount ?? 1),
+  )
+  const [unit, setUnit] = useState(() => defaultOptions[0]?.key ?? 'serving')
+  // A user edit before the (fast, local) preference lookup resolves wins over
+  // the remembered default.
+  const editedRef = useRef(false)
   useEffect(() => {
     let isCurrent = true
     void foodRepository.getRememberedFoodUnit(foodId).then((preference) => {
-      if (isCurrent) {
-        setRememberedUnit(preference?.unitKey ?? null)
+      if (!isCurrent || editedRef.current || !preference) {
+        return
+      }
+      const remembered = servingOptionsForResult(
+        result,
+        preference.unitKey,
+      ).find((option) => option.key === preference.unitKey)
+      if (remembered) {
+        setRememberedUnit(preference.unitKey)
+        setUnit(preference.unitKey)
+        setAmount(formatAmountValue(preference.amount))
       }
     })
     return () => {
       isCurrent = false
     }
-  }, [foodId])
+  }, [foodId, result])
   const options = servingOptionsForResult(result, rememberedUnit)
-  const [amount, setAmount] = useState(() => String(options[0]?.amount ?? 1))
-  const [unit, setUnit] = useState(() => options[0]?.key ?? 'serving')
   const [error, setError] = useState<string | null>(null)
   const selectedOption =
     options.find((option) => option.key === unit) ?? options[0]
+  const unitKey = selectedOption?.key ?? unit
   const parsedAmount = parsePositiveNumber(amount)
   const servingMultiplier =
     parsedAmount && selectedOption
       ? selectedOption.toServingMultiplier(parsedAmount)
       : null
   const base = baseMacrosForResult(result)
+  const baseGrams = baseGramsForResult(result)
   const preview =
     servingMultiplier && base
       ? {
@@ -1742,8 +1773,26 @@ function SelectedFoodSheet({
           protein: base.protein * servingMultiplier,
           carbs: base.carbs * servingMultiplier,
           fat: base.fat * servingMultiplier,
+          grams: baseGrams != null ? servingMultiplier * baseGrams : null,
         }
       : null
+  const quantityChips = quantityChipsForUnit(unitKey)
+
+  function applyAmount(next: string) {
+    editedRef.current = true
+    setAmount(next)
+  }
+
+  function stepAmount(direction: 1 | -1) {
+    const current = parsedAmount ?? selectedOption?.amount ?? 1
+    const next = nextSteppedAmount(current, unitKey, direction)
+    if (next != null) {
+      applyAmount(formatAmountValue(next))
+    }
+  }
+
+  const decrementDisabled =
+    nextSteppedAmount(parsedAmount ?? 0, unitKey, -1) == null
   const display = resultDisplay(result)
   const isImported =
     result.type === 'external' ||
@@ -1802,14 +1851,48 @@ function SelectedFoodSheet({
         <span>Fat {formatMacroGram(base?.fat)} g</span>
       </div>
       <FormField id="serving-amount" label="Serving amount">
-        <NumericInput
-          id="serving-amount"
-          autoFocus
-          onFocus={(event) => event.currentTarget.select()}
-          onChange={(event) => setAmount(event.target.value)}
-          value={amount}
-        />
+        <div className="amount-stepper">
+          <IconButton
+            type="button"
+            aria-label="Decrease amount"
+            disabled={decrementDisabled}
+            onClick={() => stepAmount(-1)}
+          >
+            <Minus aria-hidden="true" size={18} />
+          </IconButton>
+          <NumericInput
+            id="serving-amount"
+            autoFocus
+            onFocus={(event) => event.currentTarget.select()}
+            onChange={(event) => applyAmount(event.target.value)}
+            value={amount}
+          />
+          <IconButton
+            type="button"
+            aria-label="Increase amount"
+            onClick={() => stepAmount(1)}
+          >
+            <Plus aria-hidden="true" size={18} />
+          </IconButton>
+        </div>
       </FormField>
+      <div className="quantity-chips" role="group" aria-label="Quick amounts">
+        {quantityChips.map((value) => {
+          const isActive =
+            parsedAmount != null && Math.abs(parsedAmount - value) < 0.01
+          return (
+            <button
+              key={value}
+              type="button"
+              className={`quantity-chip${isActive ? ' is-active' : ''}`}
+              aria-pressed={isActive}
+              onClick={() => applyAmount(formatAmountValue(value))}
+            >
+              {formatQuantityChipLabel(value)}
+            </button>
+          )
+        })}
+      </div>
       <FormField id="serving-unit-select" label="Serving unit">
         <select
           id="serving-unit-select"
@@ -1817,9 +1900,10 @@ function SelectedFoodSheet({
             const next = options.find(
               (option) => option.key === event.target.value,
             )
+            editedRef.current = true
             setUnit(event.target.value)
             if (next) {
-              setAmount(String(next.amount))
+              setAmount(formatAmountValue(next.amount))
             }
           }}
           value={unit}
@@ -1836,6 +1920,7 @@ function SelectedFoodSheet({
           Preview: {formatCalories(preview.calories)} kcal - P{' '}
           {formatMacroGram(preview.protein)} C {formatMacroGram(preview.carbs)}{' '}
           F {formatMacroGram(preview.fat)}
+          {preview.grams != null ? ` = ${formatGrams(preview.grams)}` : ''}
         </p>
       ) : null}
       {result.type === 'external' && result.food.alternates.length > 0 ? (
@@ -1913,6 +1998,15 @@ function baseMacrosForResult(result: FoodSearchResult) {
         fat: macros.fatGrams,
       }
     : null
+}
+
+// Grams in one base serving, used to translate the chosen amount into a
+// resulting weight. Null when the food has no reliable gram conversion.
+function baseGramsForResult(result: FoodSearchResult): number | null {
+  if (result.type === 'local') {
+    return result.food.gramsPerServing ?? null
+  }
+  return result.food.serving.gramsPerServing ?? null
 }
 
 function foodFormFromExternal(

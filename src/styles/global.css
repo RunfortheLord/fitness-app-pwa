@@ -1187,6 +1187,54 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
+.amount-stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.amount-stepper input {
+  flex: 1 1 auto;
+  text-align: center;
+}
+
+.amount-stepper .icon-button {
+  flex: 0 0 auto;
+}
+
+.icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.quantity-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: calc(-1 * var(--space-2)) 0 var(--space-4);
+}
+
+.quantity-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface-strong);
+  color: var(--color-text);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.quantity-chip.is-active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}
+
 .nutrition-row {
   margin-top: var(--space-4);
 }

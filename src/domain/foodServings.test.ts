@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  amountStepForUnit,
+  formatAmountValue,
   formatCalories,
   formatFoodServingLabel,
+  formatGrams,
   formatMacroGram,
+  formatQuantityChipLabel,
+  nextSteppedAmount,
+  quantityChipsForUnit,
   servingOptionsForFood,
 } from './foodServings'
 import {
@@ -253,6 +259,64 @@ describe('food serving helpers', () => {
     expect(formatCalories(123.6)).toBe('124')
     expect(formatMacroGram(3)).toBe('3.0')
     expect(formatMacroGram(3.24)).toBe('3.2')
+  })
+})
+
+describe('quick-amount helpers', () => {
+  it('offers cooking fractions for serving/portion units', () => {
+    expect(quantityChipsForUnit('serving')).toEqual([
+      0.25,
+      1 / 3,
+      0.5,
+      0.75,
+      1,
+      1.5,
+      2,
+    ])
+    expect(quantityChipsForUnit('egg')).toContain(1)
+  })
+
+  it('offers weight steps for mass units instead of fractions', () => {
+    expect(quantityChipsForUnit('oz')).toEqual([1, 2, 3, 4, 6, 8])
+    expect(quantityChipsForUnit('g')).toEqual([25, 50, 100, 150, 200])
+    expect(quantityChipsForUnit('100g')).toEqual([25, 50, 100, 150, 200])
+  })
+
+  it('labels common fractions with glyphs', () => {
+    expect(formatQuantityChipLabel(0.25)).toBe('¼')
+    expect(formatQuantityChipLabel(1 / 3)).toBe('⅓')
+    expect(formatQuantityChipLabel(0.5)).toBe('½')
+    expect(formatQuantityChipLabel(0.75)).toBe('¾')
+    expect(formatQuantityChipLabel(1.5)).toBe('1½')
+    expect(formatQuantityChipLabel(2)).toBe('2')
+    expect(formatQuantityChipLabel(150)).toBe('150')
+  })
+
+  it('uses unit-appropriate stepper increments', () => {
+    expect(amountStepForUnit('serving')).toBe(0.5)
+    expect(amountStepForUnit('oz')).toBe(1)
+    expect(amountStepForUnit('g')).toBe(10)
+    expect(amountStepForUnit('100g')).toBe(10)
+  })
+
+  it('steps amounts and blocks decrements past zero', () => {
+    expect(nextSteppedAmount(1, 'serving', 1)).toBe(1.5)
+    expect(nextSteppedAmount(1, 'serving', -1)).toBe(0.5)
+    expect(nextSteppedAmount(0.5, 'serving', -1)).toBeNull()
+    expect(nextSteppedAmount(0.25, 'serving', -1)).toBeNull()
+    expect(nextSteppedAmount(100, 'g', -1)).toBe(90)
+  })
+
+  it('stringifies amounts without long-decimal noise', () => {
+    expect(formatAmountValue(1)).toBe('1')
+    expect(formatAmountValue(1 / 3)).toBe('0.333')
+    expect(formatAmountValue(0.5)).toBe('0.5')
+  })
+
+  it('formats resulting grams readably', () => {
+    expect(formatGrams(168)).toBe('168 g')
+    expect(formatGrams(167.6)).toBe('168 g')
+    expect(formatGrams(4.27)).toBe('4.3 g')
   })
 })
 
