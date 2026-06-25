@@ -52,6 +52,43 @@ describe('food provider adapters', () => {
     expect(food?.macrosPerServing?.fatGrams).toBeCloseTo(4.32)
   })
 
+  it('parses search-result foodMeasures into household portions, ranked and cleaned', () => {
+    const food = normalizeUsdaFood(
+      {
+        fdcId: 555,
+        description: 'Rice, white, cooked',
+        dataType: 'Survey (FNDDS)',
+        foodNutrients: [
+          { nutrientId: 1008, value: 130 },
+          { nutrientId: 1003, value: 2.7 },
+          { nutrientId: 1005, value: 28 },
+          { nutrientId: 1004, value: 0.3 },
+        ],
+        foodMeasures: [
+          {
+            disseminationText: 'Quantity not specified',
+            gramWeight: 158,
+            rank: 2,
+          },
+          { disseminationText: '1 cup', gramWeight: 186, rank: 1 },
+          { disseminationText: '1 cup, NFS', gramWeight: 200, rank: 3 },
+        ],
+      },
+      now,
+    )
+
+    const portions = food?.serving.sourcePortions ?? []
+    // "Quantity not specified" is dropped; rank 1 comes first.
+    expect(portions.map((portion) => portion.unit)).toEqual(['cup', 'cup'])
+    expect(portions[0]).toMatchObject({
+      amount: 1,
+      unit: 'cup',
+      gramWeight: 186,
+    })
+    // The rank-1 portion seeds the base serving weight.
+    expect(food?.serving.gramsPerServing).toBe(186)
+  })
+
   it('normalizes USDA branded and restaurant-like records while preserving brand and barcode metadata', () => {
     const food = normalizeUsdaFood(
       {

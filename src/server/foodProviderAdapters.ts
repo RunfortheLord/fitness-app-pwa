@@ -562,9 +562,14 @@ function extractUsdaMacros(nutrients: unknown[]) {
 function extractUsdaPortions(
   record: Record<string, unknown>,
 ): NormalizedFoodPortion[] {
-  const portions = Array.isArray(record.foodPortions) ? record.foodPortions : []
-  return portions
-    .map((portion) => {
+  // The detail endpoint returns structured `foodPortions`; the search endpoint
+  // instead returns `foodMeasures` whose readable portion lives in
+  // `disseminationText` (e.g. "1 cup"). Parse whichever is present so a
+  // search-logged food still exposes its real household portions.
+  const fromPortions = (
+    Array.isArray(record.foodPortions) ? record.foodPortions : []
+  )
+    .map((portion): NormalizedFoodPortion | null => {
       if (!isRecord(portion)) {
         return null
       }
@@ -582,6 +587,66 @@ function extractUsdaPortions(
       }
     })
     .filter((portion): portion is NormalizedFoodPortion => portion !== null)
+
+  const fromMeasures = (
+    Array.isArray(record.foodMeasures) ? record.foodMeasures : []
+  )
+    .filter(isRecord)
+    .sort(
+      (left, right) =>
+        (readNumber(left.rank) ?? 999) - (readNumber(right.rank) ?? 999),
+    )
+    .map((measure): NormalizedFoodPortion | null => {
+      const gramWeight = readNumber(measure.gramWeight)
+      const parsed = parsePortionText(readString(measure.disseminationText))
+      if (!parsed || gramWeight === null) {
+        return null
+      }
+      return {
+        amount: parsed.amount,
+        unit: parsed.unit,
+        description: parsed.unit,
+        gramWeight,
+      }
+    })
+    .filter((portion): portion is NormalizedFoodPortion => portion !== null)
+
+  return [...fromPortions, ...fromMeasures]
+}
+
+// Parses a USDA foodMeasure label such as "1 cup", "1/2 cup", or "1 cup, NFS"
+// into an amount and a clean unit. Returns null for unusable text like
+// "Quantity not specified".
+function parsePortionText(
+  text: string | null,
+): { amount: number; unit: string } | null {
+  if (!text) {
+    return null
+  }
+  const trimmed = text.trim()
+  if (!trimmed || /quantity not specified/i.test(trimmed)) {
+    return null
+  }
+  const match = trimmed.match(/^(\d+(?:\.\d+)?|\d+\/\d+)\s+(.+)$/)
+  let amount = 1
+  let unit = trimmed
+  if (match) {
+    amount = parseFractionText(match[1])
+    unit = match[2]
+  }
+  unit = unit.replace(/,?\s*nfs$/i, '').trim()
+  if (!unit || amount <= 0) {
+    return null
+  }
+  return { amount, unit }
+}
+
+function parseFractionText(value: string): number {
+  if (value.includes('/')) {
+    const [numerator, denominator] = value.split('/').map(Number)
+    return denominator ? numerator / denominator : 0
+  }
+  return Number(value)
 }
 
 function gramsFromUsdaServingSize(record: Record<string, unknown>) {
