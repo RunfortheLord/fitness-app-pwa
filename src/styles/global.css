@@ -1085,6 +1085,108 @@ textarea:focus-visible {
   margin: 0;
 }
 
+/* Day/Foods tabs: a tappable field that opens the full search subpage. */
+.food-search-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 48px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-input);
+  color: var(--color-dim);
+  text-align: left;
+}
+
+.food-search-trigger svg {
+  color: var(--color-muted);
+}
+
+/* Full-screen food search subpage. */
+.food-search-subpage {
+  display: grid;
+  gap: var(--space-3);
+}
+
+/* The search bar (and added-items tray) stay pinned while results scroll. */
+.food-search-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2) 0 var(--space-3);
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.food-search-subpage-bar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.food-search-subpage-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.food-search-subpage-input svg {
+  position: absolute;
+  left: var(--space-3);
+  color: var(--color-muted);
+  pointer-events: none;
+}
+
+.food-search-subpage-input input {
+  padding-left: 40px;
+}
+
+.added-items-tray {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.added-items-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.added-item-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--color-surface-strong);
+  color: var(--color-text);
+}
+
+.added-items-done {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-soft);
+  border-radius: 999px;
+  background: var(--color-surface-strong);
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .nutrition-row {
   margin-top: var(--space-4);
 }
@@ -1532,6 +1634,10 @@ input::placeholder {
   border-top: 1px solid var(--color-border-soft);
   background: rgb(18 18 20 / 96%);
   backdrop-filter: blur(18px);
+  /* When the on-screen keyboard opens, iOS floats fixed bottom: 0 elements up
+     above it. Translate the nav back down by the keyboard overlap so it stays
+     pinned to the bottom of the screen instead of jumping up. */
+  transform: translateY(var(--keyboard-inset, 0px));
 }
 
 .bottom-nav-link {

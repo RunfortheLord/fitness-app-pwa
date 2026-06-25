@@ -272,11 +272,14 @@ test('creates, logs, edits, deletes, and persists nutrition entries', async ({
   await page.getByRole('textbox', { name: 'Fat per serving' }).fill('1')
   await page.getByRole('button', { name: 'Save food' }).click()
 
+  await page.getByRole('button', { name: 'Search foods' }).click()
   await page.getByRole('searchbox', { name: 'Search foods' }).fill('e2e')
   await page.getByRole('button', { name: 'Select E2E Rice' }).click()
   await page.getByRole('textbox', { name: 'Serving amount' }).fill('1.5')
   await expect(page.getByText(/Preview: 300 kcal/)).toBeVisible()
   await page.getByRole('button', { name: 'Log food', exact: true }).click()
+  // The food logs into the day view behind the search subpage; return to it.
+  await page.getByRole('button', { name: 'Back to nutrition' }).click()
   await expect(
     page.locator('.metric-value').filter({ hasText: '300 kcal' }),
   ).toBeVisible()
@@ -470,11 +473,13 @@ test('completes the release workflow through backup restore', async ({
     .fill('30')
   await page.getByRole('textbox', { name: 'Fat per serving' }).fill('4')
   await page.getByRole('button', { name: 'Save food' }).click()
+  await page.getByRole('button', { name: 'Search foods' }).click()
   await page.getByRole('searchbox', { name: 'Search foods' }).fill('audit')
   await page.getByRole('button', { name: 'Select Audit oats' }).click()
   await page.getByRole('textbox', { name: 'Serving amount' }).fill('1.25')
   await expect(page.getByText(/Preview: 250 kcal/)).toBeVisible()
   await page.getByRole('button', { name: 'Log food', exact: true }).click()
+  await page.getByRole('button', { name: 'Back to nutrition' }).click()
   await expect(page.getByText(/1.25x 1 cup .* 250 kcal/)).toBeVisible()
 
   await page.goto('/')
@@ -619,7 +624,7 @@ test('completes the release workflow through backup restore', async ({
   await expect(clearDialog).not.toBeVisible({ timeout: 15_000 })
   await page.waitForLoadState('load').catch(() => undefined)
   await page.goto('/nutrition')
-  await page.getByRole('button', { name: 'Foods' }).click()
+  await page.getByRole('button', { name: 'Foods', exact: true }).click()
   await expect(page.getByText('No recent foods')).toBeVisible()
 
   await page.goto('/settings')

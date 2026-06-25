@@ -27,6 +27,7 @@ import {
   StatusMessage,
 } from '@components/ui'
 import { useDashboardContext } from '@hooks/useDashboardContext'
+import { useKeyboardInset } from '@hooks/useKeyboardInset'
 import { runRepository } from '@repositories/runRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
 
@@ -61,6 +62,8 @@ function AppShellContent({ children }: AppShellProps) {
     useDashboardContext()
   const location = useLocation()
   const navigate = useNavigate()
+
+  useKeyboardInset()
 
   useEffect(() => {
     const update = registerServiceWorkerUpdateHandler((nextUpdate) => {

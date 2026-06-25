@@ -80,10 +80,7 @@ describe('NutritionPage', () => {
       ).not.toBeInTheDocument(),
     )
 
-    await user.type(
-      screen.getByRole('searchbox', { name: 'Search foods' }),
-      'rice',
-    )
+    await user.type(await openFoodSearch(user), 'rice')
     await user.click(await screen.findByRole('button', { name: 'Select Rice' }))
     await user.clear(screen.getByRole('textbox', { name: 'Serving amount' }))
     await user.type(
@@ -93,11 +90,17 @@ describe('NutritionPage', () => {
     expect(screen.getByText(/Preview: 300 kcal/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Log food' }))
 
+    // The added item appears in the subpage tray; return to the day view to see
+    // the logged totals.
+    expect(await screen.findByText('1 added · Done')).toBeInTheDocument()
+    await closeFoodSearch(user)
+
     expect(await screen.findByText('300 kcal')).toBeInTheDocument()
     await expect(screen.findByText(/1.5x 1 cup/)).resolves.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Foods' }))
-    await user.click(screen.getByRole('button', { name: 'Edit Rice' }))
+    await user.type(await openFoodSearch(user), 'rice')
+    await user.click(await screen.findByRole('button', { name: 'Edit Rice' }))
     await user.clear(
       screen.getByRole('textbox', { name: 'Calories per serving' }),
     )
@@ -113,6 +116,7 @@ describe('NutritionPage', () => {
       foodSnapshot: { caloriesPerServing: 200, foodName: 'Rice' },
     })
 
+    await closeFoodSearch(user)
     await user.click(screen.getByRole('button', { name: 'Day' }))
     await user.click(screen.getByRole('button', { name: 'Edit Rice log' }))
     const servingMultiplier = await screen.findByRole('textbox', {
@@ -290,10 +294,7 @@ describe('NutritionPage', () => {
     )
     renderNutrition()
 
-    await user.type(
-      await screen.findByRole('searchbox', { name: 'Search foods' }),
-      'rice',
-    )
+    await user.type(await openFoodSearch(user), 'rice')
 
     // Without a stored user key the client still attempts the search so the
     // server-configured USDA key can be used. Only a server missing_api_key
@@ -313,10 +314,7 @@ describe('NutritionPage', () => {
     renderNutrition()
     await screen.findByText('Connected')
 
-    await user.type(
-      screen.getByRole('searchbox', { name: 'Search foods' }),
-      'r',
-    )
+    await user.type(await openFoodSearch(user), 'r')
     await delay(550)
     expect(mockSearchProviderFoods).not.toHaveBeenCalled()
 
@@ -349,10 +347,7 @@ describe('NutritionPage', () => {
     renderNutrition()
     await screen.findByText('Connected')
 
-    await user.type(
-      await screen.findByRole('searchbox', { name: 'Search foods' }),
-      'zzz',
-    )
+    await user.type(await openFoodSearch(user), 'zzz')
 
     expect(
       await screen.findByText(/Food providers are unavailable/),
@@ -372,10 +367,7 @@ describe('NutritionPage', () => {
     renderNutrition()
     await screen.findByText('Connected')
 
-    await user.type(
-      await screen.findByRole('searchbox', { name: 'Search foods' }),
-      'chicken',
-    )
+    await user.type(await openFoodSearch(user), 'chicken')
     await user.click(
       await screen.findByRole('button', {
         name: 'Select Chicken breast cooked',
@@ -432,10 +424,7 @@ describe('NutritionPage', () => {
     renderNutrition()
     await screen.findByText('Connected')
 
-    await user.type(
-      await screen.findByRole('searchbox', { name: 'Search foods' }),
-      'chicken',
-    )
+    await user.type(await openFoodSearch(user), 'chicken')
     await user.click(
       await screen.findByRole('button', {
         name: 'Select Chicken breast cooked',
@@ -531,28 +520,22 @@ describe('NutritionPage', () => {
           screen.queryByRole('dialog', { name: 'Create food' }),
         ).not.toBeInTheDocument(),
       )
-      await user.type(
-        screen.getByRole('searchbox', { name: 'Search foods' }),
-        name,
-      )
+      await user.type(await openFoodSearch(user), name)
       await user.click(
         await screen.findByRole('button', { name: `Select ${name}` }),
       )
       await user.click(screen.getByRole('button', { name: 'Log food' }))
-      await user.clear(screen.getByRole('searchbox', { name: 'Search foods' }))
+      await closeFoodSearch(user)
       await new Promise((resolve) => setTimeout(resolve, 2))
     }
 
-    await user.type(
-      screen.getByRole('searchbox', { name: 'Search foods' }),
-      'Recent four',
-    )
+    await user.type(await openFoodSearch(user), 'Recent four')
     // Recently added foods now surface first in the day-tab search when they
     // match the query.
     expect(
       await screen.findByRole('button', { name: 'Select Recent four' }),
     ).toBeInTheDocument()
-    await user.clear(screen.getByRole('searchbox', { name: 'Search foods' }))
+    await closeFoodSearch(user)
     await user.click(screen.getByRole('button', { name: 'Foods' }))
 
     const recentCard = await screen.findByRole('region', {
@@ -721,6 +704,18 @@ function delay(ms: number) {
 
 async function configureUsdaKey() {
   await settingsRepository.saveUsdaApiKey('test-usda-key', 'connected')
+}
+
+// Food search now lives in a subpage opened from the day/foods tabs. Tests that
+// drive the search field open it first via this helper.
+async function openFoodSearch(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('button', { name: 'Search foods' }))
+  return screen.getByRole('searchbox', { name: 'Search foods' })
+}
+
+// Returns to the day view from the search subpage.
+async function closeFoodSearch(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: 'Back to nutrition' }))
 }
 
 async function expectSaveFoodAvailable() {

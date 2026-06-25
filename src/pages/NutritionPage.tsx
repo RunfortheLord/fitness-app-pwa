@@ -14,6 +14,7 @@ import {
 import { BrowserMultiFormatReader } from '@zxing/browser'
 import { format } from 'date-fns'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 import {
   Card,
@@ -100,6 +101,17 @@ import type {
 } from '@shared-types/app'
 
 type NutritionMode = 'day' | 'foods' | 'targets'
+
+// A food logged from within the search subpage during the current session. The
+// subpage shows these as a running tray so several items can be added before
+// returning to the day view.
+type AddedItem = {
+  id: number
+  name: string
+  iconName: string
+  iconCategory: string | null
+}
+
 type SheetState =
   | { type: 'food'; food: Food | null; initialForm?: FoodFormState }
   | { type: 'select'; result: FoodSearchResult }
@@ -204,12 +216,53 @@ export function NutritionPage() {
   const [revision, setRevision] = useState(0)
   const [message, setMessage] = useState<string | null>(null)
   const [targetsView, setTargetsView] = useState<'main' | 'setGoal'>('main')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [addedItems, setAddedItems] = useState<AddedItem[]>([])
+  const addedItemIdRef = useRef(0)
+  const [searchParams, setSearchParams] = useSearchParams()
   const [goalData, setGoalData] = useState<{
     goal: NutritionGoal | null
     entries: BodyweightEntry[]
   }>({ goal: null, entries: [] })
 
   useSubpageBackGesture(targetsView === 'setGoal', () => setTargetsView('main'))
+  useSubpageBackGesture(searchOpen, () => setSearchOpen(false))
+
+  const openSearch = useCallback(() => {
+    setQuery('')
+    setAddedItems([])
+    setSearchOpen(true)
+  }, [])
+
+  const appendAddedItem = useCallback((result: FoodSearchResult) => {
+    const display = resultDisplay(result)
+    const iconCategory =
+      result.type === 'external' ? result.food.foodCategory : null
+    setAddedItems((current) => [
+      ...current,
+      {
+        id: ++addedItemIdRef.current,
+        name: display.name,
+        iconName: result.food.name,
+        iconCategory,
+      },
+    ])
+  }, [])
+
+  // The quick-action "Log food" entry point navigates here with ?logFood=1;
+  // open the search subpage and drop the param so a refresh does not reopen it.
+  useEffect(() => {
+    if (searchParams.get('logFood') !== '1') {
+      return
+    }
+    const timeoutId = window.setTimeout(() => {
+      openSearch()
+      const next = new URLSearchParams(searchParams)
+      next.delete('logFood')
+      setSearchParams(next, { replace: true })
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [openSearch, searchParams, setSearchParams])
 
   useEffect(() => {
     let isCurrent = true
@@ -368,13 +421,6 @@ export function NutritionPage() {
     query,
     recentFoods: loadState.recentFoods,
   })
-  const foodSearchResults = createSearchSections({
-    localFoods: loadState.foods,
-    includeRecentFoods: true,
-    providerResults: providerSearch.results,
-    query,
-    recentFoods: loadState.recentFoods,
-  })
   const summary = loadState.summary
   const reload = () => {
     setRevision((value) => value + 1)
@@ -383,147 +429,153 @@ export function NutritionPage() {
 
   return (
     <PageContainer>
-      <DateSelector
-        dateLabel={formatSelectedDateLabel(selectedDate)}
-        onNext={() => setSelectedDate(addLocalDays(selectedDate, 1))}
-        onPrevious={() => setSelectedDate(addLocalDays(selectedDate, -1))}
-        onToday={() => setSelectedDate(today)}
-      />
-
-      <SegmentedControl
-        label="Nutrition mode"
-        onChange={(value) => setMode(value as NutritionMode)}
-        options={[
-          { label: 'Day', value: 'day' },
-          { label: 'Foods', value: 'foods' },
-          { label: 'Targets', value: 'targets' },
-        ]}
-        value={mode}
-      />
-
-      {loadState.status === 'loading' ? (
-        <LoadingState label="Loading nutrition" />
-      ) : null}
-      {loadState.status === 'error' ? (
-        <StatusMessage tone="warning">
-          Nutrition data could not load.
-        </StatusMessage>
-      ) : null}
       <Toast message={message} onDismiss={() => setMessage(null)} />
-      {usdaKey.configured ? (
-        <span className="visually-hidden">
-          {usdaStatusLabel(usdaKey.status)}
-        </span>
-      ) : null}
-
-      {mode === 'day' ? (
+      {searchOpen ? (
+        <FoodSearchSubpage
+          providerSearch={providerSearch}
+          results={daySearchResults}
+          addedItems={addedItems}
+          onBack={() => setSearchOpen(false)}
+          onEditFood={(food) => setSheet({ type: 'food', food })}
+          onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
+          onOpenScanner={() => setSheet({ type: 'scanner' })}
+          onSelectResult={(result) => setSheet({ type: 'select', result })}
+          onSearch={() => setProviderSearchNonce((current) => current + 1)}
+          query={query}
+          setQuery={setQuery}
+        />
+      ) : (
         <>
-          <DailyTotalsCard summary={summary} />
-          <FoodSearchCard
-            providerSearch={providerSearch}
-            results={daySearchResults}
-            onEditFood={(food) => setSheet({ type: 'food', food })}
-            onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
-            onOpenScanner={() => setSheet({ type: 'scanner' })}
-            onSelectResult={(result) => setSheet({ type: 'select', result })}
-            onSearch={() => setProviderSearchNonce((current) => current + 1)}
-            query={query}
-            setQuery={setQuery}
+          <DateSelector
+            dateLabel={formatSelectedDateLabel(selectedDate)}
+            onNext={() => setSelectedDate(addLocalDays(selectedDate, 1))}
+            onPrevious={() => setSelectedDate(addLocalDays(selectedDate, -1))}
+            onToday={() => setSelectedDate(today)}
           />
-          <NutritionActionCard
-            onCreateFood={() => setSheet({ type: 'food', food: null })}
-          />
-          <LoggedFoodsCard
-            entries={loadState.logs}
-            onDelete={setDeleteEntry}
-            onEdit={(entry) => setSheet({ type: 'entry', entry })}
-          />
-        </>
-      ) : null}
 
-      {mode === 'foods' ? (
-        <>
-          <SectionHeader
-            title="Food library"
-            action={
-              <IconButton
-                aria-label="Create food"
-                onClick={() => setSheet({ type: 'food', food: null })}
-              >
-                <Plus aria-hidden="true" size={20} />
-              </IconButton>
-            }
+          <SegmentedControl
+            label="Nutrition mode"
+            onChange={(value) => setMode(value as NutritionMode)}
+            options={[
+              { label: 'Day', value: 'day' },
+              { label: 'Foods', value: 'foods' },
+              { label: 'Targets', value: 'targets' },
+            ]}
+            value={mode}
           />
-          <FoodSearchCard
-            providerSearch={providerSearch}
-            results={foodSearchResults}
-            onEditFood={(food) => setSheet({ type: 'food', food })}
-            onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
-            onOpenScanner={() => setSheet({ type: 'scanner' })}
-            onSelectResult={(result) => setSheet({ type: 'select', result })}
-            onSearch={() => setProviderSearchNonce((current) => current + 1)}
-            query={query}
-            setQuery={setQuery}
-          />
-          <RecentFoodsCard
-            foods={loadState.recentFoods}
-            onSelect={(food) =>
-              setSheet({
-                type: 'select',
-                result: { type: 'local', food, section: 'recent' },
-              })
-            }
-          />
-        </>
-      ) : null}
 
-      {mode === 'targets' ? (
-        targetsView === 'setGoal' ? (
-          <SetGoalSubpage
-            entries={goalData.entries}
-            existingGoal={goalData.goal}
-            onBack={() => setTargetsView('main')}
-            onCalculated={() => {
-              setMessage('Macros calculated and targets saved.')
-              setTargetsView('main')
-              reload()
-            }}
-          />
-        ) : (
-          <>
-            <TargetsCard
-              key={targetKey(summary?.targets ?? null)}
-              currentTargets={summary?.targets ?? null}
-              onSaved={() => {
-                setMessage('Nutrition targets saved.')
-                reload()
-              }}
-            />
-            {goalData.goal ? (
-              <GoalProgressCard
+          {loadState.status === 'loading' ? (
+            <LoadingState label="Loading nutrition" />
+          ) : null}
+          {loadState.status === 'error' ? (
+            <StatusMessage tone="warning">
+              Nutrition data could not load.
+            </StatusMessage>
+          ) : null}
+          {usdaKey.configured ? (
+            <span className="visually-hidden">
+              {usdaStatusLabel(usdaKey.status)}
+            </span>
+          ) : null}
+
+          {mode === 'day' ? (
+            <>
+              <DailyTotalsCard summary={summary} />
+              <FoodSearchTrigger
+                onOpen={openSearch}
+                onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
+                onOpenScanner={() => setSheet({ type: 'scanner' })}
+              />
+              <NutritionActionCard
+                onCreateFood={() => setSheet({ type: 'food', food: null })}
+              />
+              <LoggedFoodsCard
+                entries={loadState.logs}
+                onDelete={setDeleteEntry}
+                onEdit={(entry) => setSheet({ type: 'entry', entry })}
+              />
+            </>
+          ) : null}
+
+          {mode === 'foods' ? (
+            <>
+              <SectionHeader
+                title="Food library"
+                action={
+                  <IconButton
+                    aria-label="Create food"
+                    onClick={() => setSheet({ type: 'food', food: null })}
+                  >
+                    <Plus aria-hidden="true" size={20} />
+                  </IconButton>
+                }
+              />
+              <FoodSearchTrigger
+                onOpen={openSearch}
+                onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
+                onOpenScanner={() => setSheet({ type: 'scanner' })}
+              />
+              <RecentFoodsCard
+                foods={loadState.recentFoods}
+                onSelect={(food) =>
+                  setSheet({
+                    type: 'select',
+                    result: { type: 'local', food, section: 'recent' },
+                  })
+                }
+              />
+            </>
+          ) : null}
+
+          {mode === 'targets' ? (
+            targetsView === 'setGoal' ? (
+              <SetGoalSubpage
                 entries={goalData.entries}
-                goal={goalData.goal}
-                onUpdated={(label) => {
-                  setMessage(label)
+                existingGoal={goalData.goal}
+                onBack={() => setTargetsView('main')}
+                onCalculated={() => {
+                  setMessage('Macros calculated and targets saved.')
+                  setTargetsView('main')
                   reload()
                 }}
               />
-            ) : null}
-            <Card title="Custom goal">
-              <p className="muted">
-                Build calorie and macro targets from your bodyweight, height,
-                activity, and goal weight.
-              </p>
-              <PrimaryButton
-                type="button"
-                onClick={() => setTargetsView('setGoal')}
-              >
-                Set Goal
-              </PrimaryButton>
-            </Card>
-          </>
-        )
-      ) : null}
+            ) : (
+              <>
+                <TargetsCard
+                  key={targetKey(summary?.targets ?? null)}
+                  currentTargets={summary?.targets ?? null}
+                  onSaved={() => {
+                    setMessage('Nutrition targets saved.')
+                    reload()
+                  }}
+                />
+                {goalData.goal ? (
+                  <GoalProgressCard
+                    entries={goalData.entries}
+                    goal={goalData.goal}
+                    onUpdated={(label) => {
+                      setMessage(label)
+                      reload()
+                    }}
+                  />
+                ) : null}
+                <Card title="Custom goal">
+                  <p className="muted">
+                    Build calorie and macro targets from your bodyweight,
+                    height, activity, and goal weight.
+                  </p>
+                  <PrimaryButton
+                    type="button"
+                    onClick={() => setTargetsView('setGoal')}
+                  >
+                    Set Goal
+                  </PrimaryButton>
+                </Card>
+              </>
+            )
+          ) : null}
+        </>
+      )}
 
       {sheet?.type === 'food' ? (
         <FoodFormSheet
@@ -558,6 +610,11 @@ export function NutritionPage() {
           }
           onClose={() => setSheet(null)}
           onSaved={() => {
+            // Logging from the search subpage keeps the subpage open so several
+            // foods can be added in one pass; record the item in the tray.
+            if (searchOpen && sheet.type === 'select') {
+              appendAddedItem(sheet.result)
+            }
             setMessage('Food logged.')
             setSheet(null)
             reload()
@@ -664,30 +721,17 @@ function DailyTotalsCard({
   )
 }
 
-function FoodSearchCard({
-  providerSearch,
-  results,
-  onEditFood,
+// Day/Foods tabs show this compact card; tapping it opens the full search
+// subpage. Quick add and barcode scan stay reachable here without a detour.
+function FoodSearchTrigger({
+  onOpen,
   onOpenQuickAdd,
   onOpenScanner,
-  onSelectResult,
-  onSearch,
-  query,
-  setQuery,
 }: {
-  providerSearch: ProviderSearchState
-  results: Array<{ title: string; items: FoodSearchResult[] }>
-  onEditFood: (food: Food) => void
+  onOpen: () => void
   onOpenQuickAdd: () => void
   onOpenScanner: () => void
-  onSelectResult: (result: FoodSearchResult) => void
-  onSearch: () => void
-  query: string
-  setQuery: (query: string) => void
 }) {
-  const hasResults = results.some((section) => section.items.length > 0)
-  const normalizedQuery = normalizeProviderQuery(query)
-
   return (
     <Card>
       <div className="food-search-heading">
@@ -701,74 +745,150 @@ function FoodSearchCard({
           </IconButton>
         </div>
       </div>
-      <FormField id="food-search" label="Search foods">
-        <div className="input-icon-row">
-          <Search aria-hidden="true" size={18} />
-          <input
-            id="food-search"
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                onSearch()
-              }
-            }}
-            placeholder="Search foods"
-            type="search"
-            value={query}
-          />
-          <SecondaryButton type="button" onClick={onSearch}>
-            Search
-          </SecondaryButton>
-        </div>
-      </FormField>
-
-      <ProviderSearchStatus
-        state={providerSearch}
-        query={normalizedQuery}
-        onRetry={onSearch}
-      />
-
-      {hasResults ? (
-        <div className="nutrition-search-sections">
-          {results.map((section) =>
-            section.items.length ? (
-              <section
-                aria-label={section.title}
-                className="nutrition-result-section"
-                key={section.title}
-              >
-                <h3>{section.title}</h3>
-                <div className="nutrition-list">
-                  {section.items.map((result) => (
-                    <FoodLibraryRow
-                      key={resultKey(result)}
-                      result={result}
-                      onEdit={
-                        result.type === 'local' &&
-                        result.food.sourceType !== 'provider'
-                          ? () => onEditFood(result.food)
-                          : null
-                      }
-                      onSelect={() => onSelectResult(result)}
-                    />
-                  ))}
-                </div>
-              </section>
-            ) : null,
-          )}
-        </div>
-      ) : (
-        <EmptyState
-          title={normalizedQuery ? 'No acceptable results' : 'Search foods'}
-          message={
-            normalizedQuery
-              ? 'No local or provider foods with calories, protein, total carbohydrates, and fat matched.'
-              : 'Search local foods and USDA provider foods by name, brand, or restaurant.'
-          }
-        />
-      )}
+      <button className="food-search-trigger" type="button" onClick={onOpen}>
+        <Search aria-hidden="true" size={18} />
+        <span>Search foods</span>
+      </button>
     </Card>
+  )
+}
+
+function FoodSearchSubpage({
+  providerSearch,
+  results,
+  addedItems,
+  onBack,
+  onEditFood,
+  onOpenQuickAdd,
+  onOpenScanner,
+  onSelectResult,
+  onSearch,
+  query,
+  setQuery,
+}: {
+  providerSearch: ProviderSearchState
+  results: Array<{ title: string; items: FoodSearchResult[] }>
+  addedItems: AddedItem[]
+  onBack: () => void
+  onEditFood: (food: Food) => void
+  onOpenQuickAdd: () => void
+  onOpenScanner: () => void
+  onSelectResult: (result: FoodSearchResult) => void
+  onSearch: () => void
+  query: string
+  setQuery: (query: string) => void
+}) {
+  const hasResults = results.some((section) => section.items.length > 0)
+  const normalizedQuery = normalizeProviderQuery(query)
+
+  return (
+    <div className="food-search-subpage">
+      <div className="food-search-sticky">
+        <div className="food-search-subpage-bar">
+          <IconButton aria-label="Back to nutrition" onClick={onBack}>
+            <ArrowLeft aria-hidden="true" size={20} />
+          </IconButton>
+          <div className="food-search-subpage-input">
+            <Search aria-hidden="true" size={18} />
+            <input
+              aria-label="Search foods"
+              autoFocus
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  onSearch()
+                }
+              }}
+              placeholder="Search foods"
+              type="search"
+              value={query}
+            />
+          </div>
+          <div className="row-actions">
+            <IconButton
+              aria-label="Quick add nutrition"
+              onClick={onOpenQuickAdd}
+            >
+              <Flame aria-hidden="true" size={20} />
+            </IconButton>
+            <IconButton aria-label="Scan barcode" onClick={onOpenScanner}>
+              <Camera aria-hidden="true" size={20} />
+            </IconButton>
+          </div>
+        </div>
+        {addedItems.length ? (
+          <div className="added-items-tray" aria-label="Items added">
+            <div className="added-items-row">
+              {addedItems.map((item) => (
+                <span
+                  className="added-item-chip"
+                  key={item.id}
+                  title={item.name}
+                >
+                  <FoodIcon
+                    name={item.iconName}
+                    category={item.iconCategory}
+                    size={18}
+                  />
+                </span>
+              ))}
+            </div>
+            <button className="added-items-done" type="button" onClick={onBack}>
+              {addedItems.length} added · Done
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="food-search-subpage-body">
+        <ProviderSearchStatus
+          state={providerSearch}
+          query={normalizedQuery}
+          onRetry={onSearch}
+        />
+
+        {hasResults ? (
+          <div className="nutrition-search-sections">
+            {results.map((section) =>
+              section.items.length ? (
+                <section
+                  aria-label={section.title}
+                  className="nutrition-result-section"
+                  key={section.title}
+                >
+                  <h3>{section.title}</h3>
+                  <div className="nutrition-list">
+                    {section.items.map((result) => (
+                      <FoodLibraryRow
+                        key={resultKey(result)}
+                        result={result}
+                        onEdit={
+                          result.type === 'local' &&
+                          result.food.sourceType !== 'provider'
+                            ? () => onEditFood(result.food)
+                            : null
+                        }
+                        onSelect={() => onSelectResult(result)}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ) : null,
+            )}
+          </div>
+        ) : (
+          <EmptyState
+            title={normalizedQuery ? 'No acceptable results' : 'Search foods'}
+            message={
+              normalizedQuery
+                ? 'No local or provider foods with calories, protein, total carbohydrates, and fat matched.'
+                : 'Search local foods and USDA provider foods by name, brand, or restaurant.'
+            }
+          />
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -1684,6 +1804,8 @@ function SelectedFoodSheet({
       <FormField id="serving-amount" label="Serving amount">
         <NumericInput
           id="serving-amount"
+          autoFocus
+          onFocus={(event) => event.currentTarget.select()}
           onChange={(event) => setAmount(event.target.value)}
           value={amount}
         />
@@ -1877,6 +1999,8 @@ function EditFoodLogSheet({
       <FormField id="edit-serving-multiplier" label="Serving multiplier">
         <NumericInput
           id="edit-serving-multiplier"
+          autoFocus
+          onFocus={(event) => event.currentTarget.select()}
           onChange={(event) => setMultiplier(event.target.value)}
           value={multiplier}
         />
