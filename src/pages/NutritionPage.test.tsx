@@ -11,9 +11,11 @@ import {
   type GroupedFoodResult,
   type NormalizedFoodResult,
 } from '@domain/foodProviderModels'
+import { snapshotFood } from '@domain/snapshots'
 import { HomePage } from '@pages/HomePage'
 import { createSearchSections } from '@domain/foodSearchSections'
 import { NutritionPage } from '@pages/NutritionPage'
+import { createFoodRepository } from '@repositories/foodRepository'
 import { settingsRepository } from '@repositories/settingsRepository'
 import { initializeAppData } from '@services/appInitializationService'
 import {
@@ -140,6 +142,46 @@ describe('NutritionPage', () => {
       expect(screen.getByText('No foods logged')).toBeInTheDocument(),
     )
     await expect(db.foodLogEntries.toArray()).resolves.toEqual([])
+  })
+
+  it('quick-adds a food at its displayed serving from the search "+" without opening the sheet', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await user.click(screen.getByRole('button', { name: /Create custom food/ }))
+    await expectSaveFoodAvailable()
+    await fillFoodForm(user, {
+      name: 'Oats',
+      calories: '150',
+      protein: '5',
+      carbs: '27',
+      fat: '3',
+    })
+    await user.click(screen.getByRole('button', { name: 'Save food' }))
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: 'Create food' }),
+      ).not.toBeInTheDocument(),
+    )
+
+    await user.type(await openFoodSearch(user), 'oats')
+    // The "+" logs immediately at the displayed serving — no serving sheet opens.
+    await user.click(await screen.findByRole('button', { name: 'Add Oats' }))
+    expect(
+      screen.queryByRole('button', { name: 'Log food' }),
+    ).not.toBeInTheDocument()
+    expect(await screen.findByText('1 added · Done')).toBeInTheDocument()
+
+    await waitFor(async () => {
+      const [entry] = await db.foodLogEntries.toArray()
+      expect(entry).toMatchObject({
+        computedCalories: 150,
+        foodSnapshot: { foodName: 'Oats', caloriesPerServing: 150 },
+      })
+    })
+
+    await closeFoodSearch(user)
+    expect(await screen.findByText('150 kcal')).toBeInTheDocument()
   })
 
   it('saves manual targets and updates the home dashboard', async () => {
@@ -272,6 +314,15 @@ describe('NutritionPage', () => {
       saveButton.compareDocumentPosition(nameField) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
+    expect(
+      within(dialog).getByRole('button', { name: 'Back from create food' }),
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).queryByRole('textbox', { name: 'Brand or restaurant' }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(dialog).queryByRole('textbox', { name: 'Notes' }),
+    ).not.toBeInTheDocument()
 
     await fillFoodForm(user, {
       name: 'Oats',
@@ -451,6 +502,44 @@ describe('NutritionPage', () => {
       .first()
     expect(saved).toMatchObject({ name: 'Corrected chicken' })
     expect(saved?.sourceType).toBeUndefined()
+    expect(saved?.brandName).toBeNull()
+    expect(saved?.notes).toBe('')
+  })
+
+  it('surfaces strict matching saved recipes first in food search', async () => {
+    const user = userEvent.setup()
+    await seedSavedRecipe()
+    renderNutrition()
+
+    await user.type(await openFoodSearch(user), 'chicken rice')
+
+    const recipes = await screen.findByRole('region', { name: 'Recipes' })
+    expect(
+      within(recipes).getByRole('button', { name: 'Select Chicken and Rice' }),
+    ).toBeInTheDocument()
+
+    await user.click(
+      within(recipes).getByRole('button', { name: 'Select Chicken and Rice' }),
+    )
+
+    expect(
+      await screen.findByText('Logged Chicken and Rice (1 items).'),
+    ).toBeInTheDocument()
+    await expect(db.foodLogEntries.count()).resolves.toBe(1)
+  })
+
+  it('does not create a recipe search section for one-character-off queries', async () => {
+    const user = userEvent.setup()
+    await seedSavedRecipe()
+    renderNutrition()
+
+    await user.type(await openFoodSearch(user), 'chicken ric')
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('region', { name: 'Recipes' }),
+      ).not.toBeInTheDocument(),
+    )
   })
 
   it('allows legitimate zero macros for custom foods', async () => {
@@ -704,6 +793,31 @@ function delay(ms: number) {
 
 async function configureUsdaKey() {
   await settingsRepository.saveUsdaApiKey('test-usda-key', 'connected')
+}
+
+async function seedSavedRecipe() {
+  const repository = createFoodRepository(db)
+  const food = await repository.createFood({
+    name: 'Chicken',
+    servingQuantity: 1,
+    servingUnit: 'serving',
+    servingDescription: '',
+    caloriesPerServing: 200,
+    proteinGramsPerServing: 20,
+    carbohydrateGramsPerServing: 10,
+    fatGramsPerServing: 5,
+    notes: '',
+  })
+  await repository.createSavedMeal({
+    name: 'Chicken and Rice',
+    components: [
+      {
+        foodId: food.id,
+        foodSnapshot: snapshotFood(food),
+        servingMultiplier: 1,
+      },
+    ],
+  })
 }
 
 // Food search now lives in a subpage opened from the day/foods tabs. Tests that

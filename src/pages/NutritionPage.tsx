@@ -78,6 +78,7 @@ import {
 } from '@domain/foodProviderModels'
 import {
   createSearchSections,
+  type FoodResult,
   type FoodSearchResult,
 } from '@domain/foodSearchSections'
 import {
@@ -133,7 +134,7 @@ type AddedItem = {
 
 type SheetState =
   | { type: 'food'; food: Food | null; initialForm?: FoodFormState }
-  | { type: 'select'; result: FoodSearchResult }
+  | { type: 'select'; result: FoodResult }
   | { type: 'entry'; entry: FoodLogEntry }
   | { type: 'quickAdd' }
   | { type: 'scanner' }
@@ -356,7 +357,7 @@ export function NutritionPage() {
     )
   }, [])
 
-  const appendAddedItem = useCallback((result: FoodSearchResult) => {
+  const appendAddedItem = useCallback((result: FoodResult) => {
     const display = resultDisplay(result)
     const iconCategory =
       result.type === 'external' ? result.food.foodCategory : null
@@ -548,6 +549,7 @@ export function NutritionPage() {
     providerResults: providerSearch.results,
     query,
     recentFoods: loadState.recentFoods,
+    savedMeals: loadState.savedMeals,
   })
   const summary = loadState.summary
   const reload = () => {
@@ -584,6 +586,46 @@ export function NutritionPage() {
       })
       .then(() => {
         setMessage('Logged again.')
+        reload()
+      })
+      .catch(() => setMessage('Could not log that food.'))
+  }
+
+  // Trailing "+" on a search row: log the food immediately at its displayed
+  // serving (the representative portion shown on the row), no sheet. Tapping the
+  // row banner still opens the sheet for adjusting serving size.
+  const quickAddResult = (result: FoodSearchResult) => {
+    if (result.type === 'savedMeal') {
+      logSavedMeal(result.meal)
+      return
+    }
+    const option = servingOptionsForResult(result, null)[0]
+    const amount = option?.amount ?? 1
+    const multiplier = option?.toServingMultiplier(amount) ?? 1
+    const servingMultiplier = multiplier > 0 ? multiplier : 1
+    const mealType = mealTypeForDate(new Date())
+    const action =
+      result.type === 'external'
+        ? foodRepository.logExternalFood({
+            food: result.food,
+            localDate: selectedDate,
+            servingMultiplier,
+            mealType,
+          })
+        : foodRepository.logFood({
+            foodId: result.food.id,
+            localDate: selectedDate,
+            servingMultiplier,
+            mealType,
+          })
+    void action
+      .then(() => {
+        // Mirror the sheet's behaviour: keep the search subpage open and record
+        // the item in the "added" tray so several foods can be added in a pass.
+        if (searchOpen) {
+          appendAddedItem(result)
+        }
+        setMessage('Food logged.')
         reload()
       })
       .catch(() => setMessage('Could not log that food.'))
@@ -667,7 +709,14 @@ export function NutritionPage() {
           onOpenRecipe={startRecipe}
           onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
           onOpenScanner={() => setSheet({ type: 'scanner' })}
-          onSelectResult={(result) => setSheet({ type: 'select', result })}
+          onSelectResult={(result) => {
+            if (result.type === 'savedMeal') {
+              logSavedMeal(result.meal)
+              return
+            }
+            setSheet({ type: 'select', result })
+          }}
+          onAddResult={quickAddResult}
           onSearch={() => setProviderSearchNonce((current) => current + 1)}
           query={query}
           setQuery={setQuery}
@@ -1070,6 +1119,7 @@ function FoodSearchSubpage({
   onOpenScanner,
   onOpenRecipe,
   onSelectResult,
+  onAddResult,
   onSearch,
   query,
   setQuery,
@@ -1089,6 +1139,7 @@ function FoodSearchSubpage({
   onOpenScanner: () => void
   onOpenRecipe: () => void
   onSelectResult: (result: FoodSearchResult) => void
+  onAddResult: (result: FoodSearchResult) => void
   onSearch: () => void
   query: string
   setQuery: (query: string) => void
@@ -1272,6 +1323,7 @@ function FoodSearchSubpage({
                             : null
                         }
                         onSelect={() => onSelectResult(result)}
+                        onAdd={() => onAddResult(result)}
                       />
                     ))}
                   </div>
@@ -1399,7 +1451,7 @@ function BarcodeScannerSheet({
   localDate: LocalDateString
   onClose: () => void
   onCreateCustom: (barcode: string) => void
-  onFound: (result: FoodSearchResult) => void
+  onFound: (result: FoodResult) => void
 }) {
   const videoRef = useState<HTMLVideoElement | null>(null)
   const [video, setVideo] = videoRef
@@ -1694,6 +1746,7 @@ function FoodLibraryRow({
   result,
   onEdit,
   onSelect,
+  onAdd,
   isFavorite,
   onToggleFavorite,
   onQuickLog,
@@ -1701,6 +1754,9 @@ function FoodLibraryRow({
   result: FoodSearchResult
   onEdit: (() => void) | null
   onSelect: () => void
+  // When provided, the trailing "+" logs the food at its displayed serving
+  // instead of opening the serving sheet (which the row banner still does).
+  onAdd?: (() => void) | null
   isFavorite?: boolean
   onToggleFavorite?: (() => void) | null
   onQuickLog?: (() => void) | null
@@ -1708,11 +1764,17 @@ function FoodLibraryRow({
   const display = resultDisplay(result)
   const iconCategory =
     result.type === 'external' ? result.food.foodCategory : null
+  const iconName =
+    result.type === 'savedMeal' ? result.meal.name : result.food.name
 
   return (
     <div className="nutrition-item">
       <span className="quick-action-icon">
-        <FoodIcon name={result.food.name} category={iconCategory} size={18} />
+        {result.type === 'savedMeal' ? (
+          <Utensils aria-hidden="true" size={18} />
+        ) : (
+          <FoodIcon name={iconName} category={iconCategory} size={18} />
+        )}
       </span>
       <button
         aria-label={`Select ${display.name}`}
@@ -1763,7 +1825,10 @@ function FoodLibraryRow({
             <RotateCcw aria-hidden="true" size={18} />
           </IconButton>
         ) : null}
-        <IconButton aria-label={`Open ${display.name}`} onClick={onSelect}>
+        <IconButton
+          aria-label={onAdd ? `Add ${display.name}` : `Open ${display.name}`}
+          onClick={onAdd ?? onSelect}
+        >
           <Plus aria-hidden="true" size={18} />
         </IconButton>
       </div>
@@ -1772,6 +1837,17 @@ function FoodLibraryRow({
 }
 
 function resultDisplay(result: FoodSearchResult) {
+  if (result.type === 'savedMeal') {
+    return {
+      name: result.meal.name,
+      brand: null,
+      serving: `${result.meal.components.length} ${
+        result.meal.components.length === 1 ? 'item' : 'items'
+      }`,
+      calories: savedMealCalories(result.meal),
+    }
+  }
+
   if (result.type === 'local') {
     const split = splitBrandFromName(result.food.name, result.food.brandName)
     return {
@@ -1908,6 +1984,9 @@ function SavedMealsCard({
 }
 
 function resultKey(result: FoodSearchResult) {
+  if (result.type === 'savedMeal') {
+    return `recipe-${result.meal.id}`
+  }
   return result.type === 'local' ? `local-${result.food.id}` : result.food.id
 }
 
@@ -2092,6 +2171,7 @@ function FoodFormSheet({
       isOpen={isOpen}
       onClose={onClose}
       title={food ? 'Edit food' : 'Create food'}
+      variant="page"
     >
       <div className="button-row">
         <PrimaryButton type="button" onClick={saveFood}>
@@ -2140,13 +2220,6 @@ function FoodFormFields({
           value={form.name}
         />
       </FormField>
-      <FormField id="food-brand" label="Brand or restaurant">
-        <input
-          id="food-brand"
-          onChange={(event) => update('brandName', event.target.value)}
-          value={form.brandName}
-        />
-      </FormField>
       <FormField
         id="serving-quantity"
         label="Serving amount"
@@ -2176,13 +2249,6 @@ function FoodFormFields({
       </FormField>
       <MacroInputs form={form} update={update} />
       <FoodCalorieEquation form={form} />
-      <FormField id="food-notes" label="Notes">
-        <textarea
-          id="food-notes"
-          onChange={(event) => update('notes', event.target.value)}
-          value={form.notes}
-        />
-      </FormField>
     </>
   )
 }
@@ -2288,7 +2354,7 @@ function SelectedFoodSheet({
   onSaved,
   onAddToRecipe,
 }: {
-  result: FoodSearchResult
+  result: FoodResult
   isOpen: boolean
   localDate: LocalDateString
   onCreateCopy: (initialForm: FoodFormState) => void
@@ -2580,7 +2646,7 @@ function SelectedFoodSheet({
 }
 
 function servingOptionsForResult(
-  result: FoodSearchResult,
+  result: FoodResult,
   rememberedUnitKey: string | null,
 ): FoodServingOption[] {
   if (result.type === 'local') {
@@ -2589,7 +2655,7 @@ function servingOptionsForResult(
   return servingOptionsForFood(result.food, rememberedUnitKey)
 }
 
-function baseMacrosForResult(result: FoodSearchResult) {
+function baseMacrosForResult(result: FoodResult) {
   if (result.type === 'local') {
     return {
       calories: result.food.caloriesPerServing,
@@ -2612,7 +2678,7 @@ function baseMacrosForResult(result: FoodSearchResult) {
 
 // Grams in one base serving, used to translate the chosen amount into a
 // resulting weight. Null when the food has no reliable gram conversion.
-function baseGramsForResult(result: FoodSearchResult): number | null {
+function baseGramsForResult(result: FoodResult): number | null {
   if (result.type === 'local') {
     return result.food.gramsPerServing ?? null
   }
@@ -3111,14 +3177,21 @@ function Sheet({
   isOpen,
   onClose,
   title,
+  variant = 'sheet',
 }: {
   children: React.ReactNode
   isOpen: boolean
   onClose: () => void
   title: string
+  variant?: 'sheet' | 'page'
 }) {
   return (
-    <BottomSheet isOpen={isOpen} onClose={onClose} title={title}>
+    <BottomSheet
+      isOpen={isOpen}
+      onClose={onClose}
+      title={title}
+      variant={variant}
+    >
       {children}
     </BottomSheet>
   )
@@ -3167,7 +3240,7 @@ function parseFoodForm(
     ok: true,
     value: {
       name,
-      brandName: form.brandName.trim() || null,
+      brandName: null,
       servingQuantity,
       servingUnit: form.servingUnit.trim(),
       servingDescription: '',
@@ -3175,7 +3248,7 @@ function parseFoodForm(
       proteinGramsPerServing,
       carbohydrateGramsPerServing,
       fatGramsPerServing,
-      notes: form.notes.trim(),
+      notes: '',
       barcode: form.barcode.trim() || null,
       barcodeSource: form.barcode.trim() ? 'custom' : null,
     },

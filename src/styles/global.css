@@ -320,6 +320,15 @@ textarea:focus-visible {
   margin-top: var(--space-3);
 }
 
+.cloud-backup-card {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.cloud-backup-card .settings-list {
+  margin: 0;
+}
+
 .macro-row {
   margin-bottom: var(--space-3);
   color: var(--color-muted);
@@ -1739,6 +1748,23 @@ input::placeholder {
   overflow-wrap: anywhere;
 }
 
+/* Let food names use up to two lines (instead of a single ellipsis-clipped row)
+   and slim the secondary serving/calorie text so more of the name is visible. */
+.food-result-main strong {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.food-result-main small {
+  font-size: 12px;
+}
+
 .brand-badge {
   width: fit-content;
   max-width: 100%;
@@ -1754,7 +1780,7 @@ input::placeholder {
 .food-result-calories {
   white-space: nowrap;
   color: var(--color-text);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 900;
 }
 
@@ -2398,7 +2424,7 @@ input::placeholder {
 
 .bodyweight-chart-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
   gap: var(--space-2);
 }
 
@@ -2420,6 +2446,11 @@ input::placeholder {
   margin-top: var(--space-1);
   color: var(--color-muted);
   font-size: 12px;
+}
+
+.bodyweight-chart-summary-primary strong {
+  font-size: 28px;
+  line-height: 1.1;
 }
 
 .bodyweight-chart {
@@ -2604,13 +2635,13 @@ input::placeholder {
 .exercise-select-trigger {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-2);
   width: 100%;
-  padding: var(--space-2) var(--space-3);
+  min-height: 48px;
+  padding: 0 var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  background: var(--color-surface-strong);
+  background: var(--color-input);
   color: var(--color-text);
   font: inherit;
   text-align: left;
@@ -2625,6 +2656,13 @@ input::placeholder {
 .exercise-select-trigger svg {
   flex-shrink: 0;
   color: var(--color-muted);
+}
+
+.exercise-select-trigger span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .exercise-picker {
