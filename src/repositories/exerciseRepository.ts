@@ -230,7 +230,11 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
     },
 
     async searchExercises(options: ExerciseSearchOptions = {}) {
-      const { includeArchived = false, query = '', limit = 300 } = options
+      // The built-in library alone is ~300 entries and grows over time; a cap at
+      // its size silently drops late-alphabet exercises (the list is name-sorted
+      // before slicing). Keep the ceiling well clear of the full library plus any
+      // user-created exercises so search never hides part of someone's library.
+      const { includeArchived = false, query = '', limit = 1000 } = options
       const normalizedQuery = query.trim().toLocaleLowerCase()
       const exercises = includeArchived
         ? await database.exercises.toArray()

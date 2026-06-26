@@ -209,7 +209,10 @@ describe('TrainingPage', () => {
     await user.click(
       screen.getAllByRole('button', { name: 'Create program' })[0],
     )
-    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'PPL')
+    await user.type(
+      screen.getByRole('textbox', { name: 'Program name' }),
+      'PPL',
+    )
     await user.click(screen.getByRole('button', { name: 'Save program' }))
 
     expect(
@@ -320,7 +323,10 @@ describe('TrainingPage', () => {
     await user.click(
       screen.getAllByRole('button', { name: 'Create program' })[0],
     )
-    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Search')
+    await user.type(
+      screen.getByRole('textbox', { name: 'Program name' }),
+      'Search',
+    )
     await user.click(screen.getByRole('button', { name: 'Save program' }))
     const builder = await screen.findByRole('dialog', { name: 'Edit template' })
     await user.type(
@@ -671,7 +677,7 @@ describe('TrainingPage', () => {
       name: 'Edit current cycle',
     })
     const cycleNameInput = await within(cycleEditor).findByRole('textbox', {
-      name: 'Name',
+      name: 'Program name',
     })
     await waitFor(() => expect(cycleNameInput).toHaveValue('Upper Lower'))
     await user.clear(cycleNameInput)
@@ -679,7 +685,7 @@ describe('TrainingPage', () => {
     expect(screen.getByText('Program name is required.')).toBeInTheDocument()
     expect(cycleEditor).toBeInTheDocument()
     await user.type(
-      within(cycleEditor).getByRole('textbox', { name: 'Name' }),
+      within(cycleEditor).getByRole('textbox', { name: 'Program name' }),
       'Upper Lower',
     )
     await user.tab()

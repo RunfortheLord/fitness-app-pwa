@@ -103,6 +103,16 @@ export function createProgramRepository(
             ]),
           )
 
+          // Built-in programs reference built-in exercises by id. If the exercise
+          // library has not been seeded yet there is nothing valid to seed
+          // against, so skip instead of throwing. In normal startup
+          // seedBuiltInExercises() runs (and is awaited) before this, so the
+          // library is always present; an empty table only happens when a stale,
+          // in-flight seed call races a database reset (e.g. between tests).
+          if (exerciseById.size === 0) {
+            return
+          }
+
           const existingTemplates = new Map(
             (await database.programTemplates.toArray()).map((template) => [
               template.id,

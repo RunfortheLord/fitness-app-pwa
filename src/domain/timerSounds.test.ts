@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  configureAmbientAudioSession,
   DEFAULT_TIMER_SOUND_ID,
   getTimerSound,
   playTimerSoundOnce,
@@ -94,6 +95,35 @@ describe('rest timer completion audio', () => {
 
     expect(audioInstances).toHaveLength(1)
     expect(audioInstances[0]?.src).toBe('/sounds/clear-ding.mp3')
+  })
+
+  it('switches the iOS audio session to ambient so background music keeps playing', async () => {
+    const audioSession = { type: 'auto' }
+    Object.defineProperty(navigator, 'audioSession', {
+      configurable: true,
+      value: audioSession,
+    })
+
+    try {
+      configureAmbientAudioSession()
+      expect(audioSession.type).toBe('ambient')
+
+      audioSession.type = 'auto'
+      primeTimerSound('bright-bell')
+      await Promise.resolve()
+      expect(audioSession.type).toBe('ambient')
+
+      audioSession.type = 'auto'
+      await playTimerSoundOnce('bright-bell')
+      expect(audioSession.type).toBe('ambient')
+    } finally {
+      delete (navigator as Navigator & { audioSession?: unknown }).audioSession
+    }
+  })
+
+  it('does not throw when the audio session API is unavailable', () => {
+    expect('audioSession' in navigator).toBe(false)
+    expect(() => configureAmbientAudioSession()).not.toThrow()
   })
 
   it('stops completion playback before a preview begins', async () => {

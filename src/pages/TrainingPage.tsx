@@ -862,7 +862,11 @@ function ProgramLibrary({
             ) : null}
           </div>
         ) : null}
-        <SecondaryButton type="button" onClick={onBrowse}>
+        <SecondaryButton
+          className="program-browse-button"
+          type="button"
+          onClick={onBrowse}
+        >
           Browse programs
         </SecondaryButton>
       </Card>
@@ -1195,7 +1199,7 @@ function ProgramCreateSheet({
 
   return (
     <BottomSheet isOpen={isOpen} onClose={onClose} title="Create program">
-      <FormField id="program-name" label="Name">
+      <FormField id="program-name" label="Program name">
         <input
           id="program-name"
           onChange={(event) =>
@@ -1562,7 +1566,7 @@ function ProgramBuilderSheet({
         ) : null}
         {structure && !editingPrescription ? (
           <>
-            <FormField id="builder-program-name" label="Name">
+            <FormField id="builder-program-name" label="Program name">
               <input
                 id="builder-program-name"
                 onBlur={() => saveName()}

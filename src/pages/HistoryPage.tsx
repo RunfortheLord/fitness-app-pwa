@@ -802,14 +802,23 @@ function StrengthChart({
   }
 
   const path = model.points
-    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+    .map(
+      (point, index) =>
+        `${index === 0 ? 'M' : 'L'} ${projectChartX(point.x)} ${projectChartY(point.y)}`,
+    )
     .join(' ')
-  const yTicks = buildValueAxisTicks(
-    model.chartMin,
-    model.chartMax,
-    (value) => `${formatEstimatedMax(value)}`,
+  const yTicks = projectAxisTicks(
+    buildValueAxisTicks(
+      model.chartMin,
+      model.chartMax,
+      (value) => `${formatEstimatedMax(value)}`,
+    ),
+    projectChartY,
   )
-  const xTicks = buildDateAxisTicks(model.points)
+  const xTicks = projectAxisTicks(
+    buildDateAxisTicks(model.points),
+    projectChartX,
+  )
   const tooltipPoint = tooltipId
     ? (model.points.find((point) => point.id === tooltipId) ?? null)
     : null
@@ -831,10 +840,20 @@ function StrengthChart({
           preserveAspectRatio="none"
           viewBox="0 0 100 100"
         >
-          <line x1="0" x2="100" y1="100" y2="100" />
+          <line
+            x1={projectChartX(0)}
+            x2={projectChartX(100)}
+            y1={CHART_BASELINE_Y}
+            y2={CHART_BASELINE_Y}
+          />
           {model.status === 'ready' ? <path d={path} /> : null}
           {model.points.map((point) => (
-            <circle cx={point.x} cy={point.y} key={point.id} r="2.6" />
+            <circle
+              cx={projectChartX(point.x)}
+              cy={projectChartY(point.y)}
+              key={point.id}
+              r="2.6"
+            />
           ))}
         </svg>
         {model.points.map((point) => (
@@ -850,8 +869,8 @@ function StrengthChart({
               setTooltipId(point.id)
             }}
             style={{
-              left: `${point.x}%`,
-              top: `${point.y}%`,
+              left: `${projectChartX(point.x)}%`,
+              top: `${projectChartY(point.y)}%`,
             }}
             type="button"
           />
@@ -860,12 +879,14 @@ function StrengthChart({
           <span
             aria-hidden="true"
             className={`bodyweight-point-value chart-point-tooltip${
-              tooltipPoint.y < 18 ? ' chart-point-tooltip-below' : ''
+              projectChartY(tooltipPoint.y) < 18
+                ? ' chart-point-tooltip-below'
+                : ''
             }`}
             key={tooltipPoint.id}
             style={{
-              left: `${tooltipPoint.x}%`,
-              top: `${tooltipPoint.y}%`,
+              left: `${projectChartX(tooltipPoint.x)}%`,
+              top: `${projectChartY(tooltipPoint.y)}%`,
             }}
           >
             {formatEstimatedMax(tooltipPoint.estimatedOneRepMax)} lb
@@ -997,18 +1018,27 @@ function BodyweightChart({
   }
 
   const path = model.points
-    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+    .map(
+      (point, index) =>
+        `${index === 0 ? 'M' : 'L'} ${projectChartX(point.x)} ${projectChartY(point.y)}`,
+    )
     .join(' ')
   const first = model.entries[0]
   const latest = model.entries.at(-1) ?? first
-  const yTicks = buildValueAxisTicks(model.chartMin, model.chartMax, (value) =>
-    formatWeight(value),
+  const yTicks = projectAxisTicks(
+    buildValueAxisTicks(model.chartMin, model.chartMax, (value) =>
+      formatWeight(value),
+    ),
+    projectChartY,
   )
-  const xTicks = buildDateAxisTicks(
-    model.points.map((point) => ({
-      x: point.x,
-      localDate: point.entry.localDate,
-    })),
+  const xTicks = projectAxisTicks(
+    buildDateAxisTicks(
+      model.points.map((point) => ({
+        x: point.x,
+        localDate: point.entry.localDate,
+      })),
+    ),
+    projectChartX,
   )
   const tooltipPoint = tooltipId
     ? (model.points.find((point) => point.entry.id === tooltipId) ?? null)
@@ -1054,10 +1084,20 @@ function BodyweightChart({
           preserveAspectRatio="none"
           viewBox="0 0 100 100"
         >
-          <line x1="0" x2="100" y1="100" y2="100" />
+          <line
+            x1={projectChartX(0)}
+            x2={projectChartX(100)}
+            y1={CHART_BASELINE_Y}
+            y2={CHART_BASELINE_Y}
+          />
           {model.status === 'ready' ? <path d={path} /> : null}
           {model.points.map((point) => (
-            <circle cx={point.x} cy={point.y} key={point.entry.id} r="1.8" />
+            <circle
+              cx={projectChartX(point.x)}
+              cy={projectChartY(point.y)}
+              key={point.entry.id}
+              r="1.8"
+            />
           ))}
         </svg>
         {model.points.map((point) => (
@@ -1072,8 +1112,8 @@ function BodyweightChart({
               setTooltipId(point.entry.id)
             }}
             style={{
-              left: `${point.x}%`,
-              top: `${point.y}%`,
+              left: `${projectChartX(point.x)}%`,
+              top: `${projectChartY(point.y)}%`,
             }}
             type="button"
           />
@@ -1082,12 +1122,14 @@ function BodyweightChart({
           <span
             aria-hidden="true"
             className={`bodyweight-point-value chart-point-tooltip${
-              tooltipPoint.y < 18 ? ' chart-point-tooltip-below' : ''
+              projectChartY(tooltipPoint.y) < 18
+                ? ' chart-point-tooltip-below'
+                : ''
             }`}
             key={tooltipPoint.entry.id}
             style={{
-              left: `${tooltipPoint.x}%`,
-              top: `${tooltipPoint.y}%`,
+              left: `${projectChartX(tooltipPoint.x)}%`,
+              top: `${projectChartY(tooltipPoint.y)}%`,
             }}
           >
             {formatWeight(tooltipPoint.entry.weight)} {tooltipPoint.entry.unit}
@@ -1295,6 +1337,34 @@ function useFadingTooltip() {
 
 type ChartAxisTick = { key: string; position: number; label: string }
 
+// Reserve a margin (in 0-100 chart units) around the plotted data so points and
+// the trend line never sit on top of the axis baseline or the chart border, and
+// so the first/last date labels clear the y-axis value column. Model coordinates
+// arrive as a raw 0-100 range; these helpers remap them into the inset band that
+// every renderer (line, points, tap targets, tooltips, axis ticks) shares.
+const CHART_PLOT_INSET = { top: 8, bottom: 8, left: 9, right: 5 }
+
+// The axis baseline sits below the lowest plottable point (at the bottom inset
+// edge, ~92) so chart-minimum points float just above it instead of on it.
+const CHART_BASELINE_Y = 96
+
+function projectChartX(x: number): number {
+  const span = 100 - CHART_PLOT_INSET.left - CHART_PLOT_INSET.right
+  return CHART_PLOT_INSET.left + (x / 100) * span
+}
+
+function projectChartY(y: number): number {
+  const span = 100 - CHART_PLOT_INSET.top - CHART_PLOT_INSET.bottom
+  return CHART_PLOT_INSET.top + (y / 100) * span
+}
+
+function projectAxisTicks(
+  ticks: ChartAxisTick[],
+  project: (position: number) => number,
+): ChartAxisTick[] {
+  return ticks.map((tick) => ({ ...tick, position: project(tick.position) }))
+}
+
 // Evenly spaced Y-axis interval markers running from chartMax (top) to chartMin
 // (bottom), matching the value-to-position mapping the plotted points use.
 function buildValueAxisTicks(
@@ -1372,11 +1442,23 @@ function ChartAxisTicks({
         ))}
       </div>
       <div className="chart-axis-ticks chart-axis-ticks-x" aria-hidden="true">
-        {xTicks.map((tick) => (
-          <span key={tick.key} style={{ left: `${tick.position}%` }}>
-            {tick.label}
-          </span>
-        ))}
+        {xTicks.map((tick, index) => {
+          const edgeClass =
+            index === 0
+              ? ' chart-axis-tick-first'
+              : index === xTicks.length - 1
+                ? ' chart-axis-tick-last'
+                : ''
+          return (
+            <span
+              className={`chart-axis-tick${edgeClass}`}
+              key={tick.key}
+              style={{ left: `${tick.position}%` }}
+            >
+              {tick.label}
+            </span>
+          )
+        })}
       </div>
     </>
   )

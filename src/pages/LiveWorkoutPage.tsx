@@ -49,6 +49,7 @@ import {
   searchExercises,
 } from '@domain/exerciseSearch'
 import { canSkipWorkoutExercise } from '@domain/workoutSkip'
+import { TRACKING_METHODS } from '@domain/trackingMethods'
 import { exerciseRepository } from '@repositories/exerciseRepository'
 import { settingsRepository } from '@repositories/settingsRepository'
 import {
@@ -59,6 +60,7 @@ import type {
   Exercise,
   ActiveCycleWorkoutExercise,
   TrackingMetric,
+  TrackingMethodId,
   Workout,
   WorkoutExercise,
   WorkoutSet,
@@ -490,6 +492,9 @@ export function LiveWorkoutPage() {
 
       <ExercisePickerSheet
         currentWorkoutId={state.workout.id}
+        existingExerciseIds={state.exercises
+          .map((exercise) => exercise.exerciseId)
+          .filter((id): id is string => id !== null)}
         onClose={() => setPicker(null)}
         onSelected={(selectedExerciseId) => {
           setPicker(null)
@@ -1011,11 +1016,13 @@ function RestTimerCard({
 
 function ExercisePickerSheet({
   currentWorkoutId,
+  existingExerciseIds,
   onClose,
   onSelected,
   picker,
 }: {
   currentWorkoutId: string
+  existingExerciseIds: string[]
   onClose: () => void
   onSelected: (selectedExerciseId: string) => void
   picker: ExercisePickerState
@@ -1023,6 +1030,10 @@ function ExercisePickerSheet({
   const [exercises, setExercises] = useState<Exercise[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newTrackingMethodId, setNewTrackingMethodId] =
+    useState<TrackingMethodId>('weight_reps')
   const [lastPicker, setLastPicker] = useState(picker)
 
   // Reset the search field each time the picker opens or changes mode. Adjusting
@@ -1032,6 +1043,9 @@ function ExercisePickerSheet({
     setLastPicker(picker)
     setSearchQuery('')
     setError(null)
+    setCreating(false)
+    setNewName('')
+    setNewTrackingMethodId('weight_reps')
   }
 
   useEffect(() => {
@@ -1043,6 +1057,10 @@ function ExercisePickerSheet({
       .then(setExercises)
   }, [picker])
 
+  // Only the "add" flow guards against duplicates; replacing intentionally swaps
+  // one exercise for another and may legitimately reuse a name already present.
+  const blockedExerciseIds =
+    picker?.mode === 'add' ? new Set(existingExerciseIds) : new Set<string>()
   const title = picker?.mode === 'replace' ? 'Replace Exercise' : 'Add Exercise'
   const searchable = hasSearchableQuery(searchQuery)
   const results = searchable
@@ -1051,6 +1069,10 @@ function ExercisePickerSheet({
 
   function choose(exerciseId: string) {
     if (!picker) {
+      return
+    }
+    if (blockedExerciseIds.has(exerciseId)) {
+      setError('That exercise is already in this workout.')
       return
     }
     const action =
@@ -1074,6 +1096,27 @@ function ExercisePickerSheet({
       })
   }
 
+  function createAndChoose() {
+    if (!newName.trim()) {
+      setError('Exercise name is required.')
+      return
+    }
+    void exerciseRepository
+      .createExercise({
+        name: newName,
+        defaultRestSeconds: 120,
+        trackingMethodId: newTrackingMethodId,
+      })
+      .then((created) => choose(created.id))
+      .catch((caught: unknown) => {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : 'Custom exercise could not be created.',
+        )
+      })
+  }
+
   return (
     <BottomSheet
       isOpen={picker !== null}
@@ -1081,56 +1124,125 @@ function ExercisePickerSheet({
       title={title}
       variant="page"
     >
-      <FormField id="live-exercise-search" label="Search exercises">
-        <div className="input-icon-row">
-          <Search aria-hidden="true" size={18} />
-          <input
-            autoFocus
-            id="live-exercise-search"
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search at least 2 characters"
-            type="search"
-            value={searchQuery}
-          />
-        </div>
-      </FormField>
-      {picker?.mode === 'replace' ? (
-        <p className="muted">Replacement exercises start blank.</p>
-      ) : null}
-      <p className="visually-hidden" role="status">
-        {searchable
-          ? `${results.length} exercise results`
-          : 'Enter at least two characters to search exercises'}
-      </p>
-      {error ? <ValidationMessage message={error} /> : null}
-      <div className="exercise-result-list">
-        {results.map((exercise) => (
-          <button
-            className="exercise-result-row"
-            key={exercise.id}
-            onClick={() => choose(exercise.id)}
+      {creating ? (
+        <>
+          <FormField id="live-new-exercise-name" label="Exercise name">
+            <input
+              autoFocus
+              id="live-new-exercise-name"
+              onChange={(event) => setNewName(event.target.value)}
+              placeholder="e.g. Cable Pull-Through"
+              type="text"
+              value={newName}
+            />
+          </FormField>
+          <FormField id="live-new-exercise-tracking" label="Tracking method">
+            <select
+              id="live-new-exercise-tracking"
+              onChange={(event) =>
+                setNewTrackingMethodId(event.target.value as TrackingMethodId)
+              }
+              value={newTrackingMethodId}
+            >
+              {TRACKING_METHODS.map((method) => (
+                <option key={method.id} value={method.id}>
+                  {method.name}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <p className="muted">
+            Added as a custom exercise. Edit muscle groups and defaults later in
+            Training.
+          </p>
+          {error ? <ValidationMessage message={error} /> : null}
+          <div className="button-row">
+            <SecondaryButton
+              type="button"
+              onClick={() => {
+                setCreating(false)
+                setError(null)
+              }}
+            >
+              Cancel
+            </SecondaryButton>
+            <PrimaryButton type="button" onClick={createAndChoose}>
+              Create &amp; add
+            </PrimaryButton>
+          </div>
+        </>
+      ) : (
+        <>
+          <FormField id="live-exercise-search" label="Search exercises">
+            <div className="input-icon-row">
+              <Search aria-hidden="true" size={18} />
+              <input
+                autoFocus
+                id="live-exercise-search"
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search at least 2 characters"
+                type="search"
+                value={searchQuery}
+              />
+            </div>
+          </FormField>
+          {picker?.mode === 'replace' ? (
+            <p className="muted">Replacement exercises start blank.</p>
+          ) : null}
+          <p className="visually-hidden" role="status">
+            {searchable
+              ? `${results.length} exercise results`
+              : 'Enter at least two characters to search exercises'}
+          </p>
+          {error ? <ValidationMessage message={error} /> : null}
+          <div className="exercise-result-list">
+            {results.map((exercise) => {
+              const alreadyAdded = blockedExerciseIds.has(exercise.id)
+              return (
+                <button
+                  className="exercise-result-row"
+                  disabled={alreadyAdded}
+                  key={exercise.id}
+                  onClick={() => choose(exercise.id)}
+                  type="button"
+                >
+                  <strong>{exercise.name}</strong>
+                  {alreadyAdded ? (
+                    <small>Already in workout</small>
+                  ) : exercise.primaryMuscleGroups[0] ? (
+                    <small>
+                      {primaryMuscleLabel(exercise.primaryMuscleGroups[0])}
+                    </small>
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
+          {searchable && !results.length ? (
+            <EmptyState
+              title="No exercises found"
+              message="Try a different search term."
+            />
+          ) : !searchable && !results.length ? (
+            <EmptyState
+              title="Search exercise library"
+              message="Type at least two characters to find an exercise to add."
+            />
+          ) : null}
+          <SecondaryButton
+            className="live-create-exercise-button"
             type="button"
+            onClick={() => {
+              setError(null)
+              setNewName(searchable ? searchQuery.trim() : '')
+              setCreating(true)
+            }}
           >
-            <strong>{exercise.name}</strong>
-            {exercise.primaryMuscleGroups[0] ? (
-              <small>
-                {primaryMuscleLabel(exercise.primaryMuscleGroups[0])}
-              </small>
-            ) : null}
-          </button>
-        ))}
-      </div>
-      {searchable && !results.length ? (
-        <EmptyState
-          title="No exercises found"
-          message="Try a different search term."
-        />
-      ) : !searchable && !results.length ? (
-        <EmptyState
-          title="Search exercise library"
-          message="Type at least two characters to find an exercise to add."
-        />
-      ) : null}
+            <Plus aria-hidden="true" size={18} />
+            Create custom exercise
+          </SecondaryButton>
+        </>
+      )}
     </BottomSheet>
   )
 }

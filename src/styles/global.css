@@ -403,6 +403,14 @@ textarea:focus-visible {
   gap: var(--space-2);
 }
 
+.program-browse-button {
+  margin-top: var(--space-3);
+}
+
+.live-create-exercise-button {
+  margin-top: var(--space-3);
+}
+
 .nutrition-search-sections {
   display: grid;
   gap: var(--space-3);
@@ -2310,9 +2318,9 @@ input::placeholder {
 
 .bodyweight-chart svg {
   position: absolute;
-  inset: var(--space-3);
-  width: calc(100% - var(--space-6));
-  height: calc(100% - var(--space-6));
+  inset: 0;
+  width: 100%;
+  height: 100%;
   overflow: visible;
 }
 
@@ -2394,7 +2402,7 @@ input::placeholder {
   transform: translateY(-50%);
   padding: 0 2px;
   border-radius: 2px;
-  background: color-mix(in srgb, var(--color-surface-strong) 78%, transparent);
+  background: color-mix(in srgb, var(--color-surface-strong) 92%, transparent);
 }
 
 .chart-axis-ticks-x {
@@ -2407,8 +2415,18 @@ input::placeholder {
   transform: translateX(-50%);
   padding: 0 2px;
   border-radius: 2px;
-  background: color-mix(in srgb, var(--color-surface-strong) 78%, transparent);
+  background: color-mix(in srgb, var(--color-surface-strong) 92%, transparent);
   white-space: nowrap;
+}
+
+/* Keep the first/last date labels from spilling past the plot edge (and into
+   the y-axis value column) by anchoring them inward instead of centering. */
+.chart-axis-ticks-x span.chart-axis-tick-first {
+  transform: translateX(0);
+}
+
+.chart-axis-ticks-x span.chart-axis-tick-last {
+  transform: translateX(-100%);
 }
 
 /* Tap/click tooltip on a data point. The JS timer removes it after 5s; this
