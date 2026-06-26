@@ -95,10 +95,22 @@ export function SettingsPage() {
   const { refreshDashboard } = useDashboardContext()
   const parsedTargets = parseTargetForm(targetForm)
 
+  const requestedSection = searchParams.get('section')
   useEffect(() => {
+    // Arriving from the "See what's new" banner deep-links to that section;
+    // scroll it into view once the page has painted. Otherwise start at the top.
+    if (requestedSection === 'whats-new') {
+      const target = document.getElementById('settings-whats-new')
+      if (target) {
+        requestAnimationFrame(() =>
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+        )
+        return
+      }
+    }
     document.documentElement.scrollTop = 0
     document.body.scrollTop = 0
-  }, [])
+  }, [requestedSection])
 
   useEffect(() => {
     let isCurrent = true
@@ -684,24 +696,26 @@ export function SettingsPage() {
         </PrimaryButton>
       </Card>
 
-      <SectionHeader title="What's new" />
-      <Card>
-        <div className="changelog">
-          {CHANGELOG.map((entry) => (
-            <section className="changelog-entry" key={entry.id}>
-              <header className="changelog-entry-header">
-                <h3>{entry.title}</h3>
-                <span className="muted">{entry.date}</span>
-              </header>
-              <ul className="changelog-items">
-                {entry.items.map((item, index) => (
-                  <li key={index}>{item}</li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
-      </Card>
+      <div id="settings-whats-new">
+        <SectionHeader title="What's new" />
+        <Card>
+          <div className="changelog">
+            {CHANGELOG.map((entry) => (
+              <section className="changelog-entry" key={entry.id}>
+                <header className="changelog-entry-header">
+                  <h3>{entry.title}</h3>
+                  <span className="muted">{entry.date}</span>
+                </header>
+                <ul className="changelog-items">
+                  {entry.items.map((item, index) => (
+                    <li key={index}>{item}</li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        </Card>
+      </div>
 
       <SectionHeader title="Application" />
       <Card>

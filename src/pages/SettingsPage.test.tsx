@@ -40,7 +40,7 @@ afterEach(async () => {
   await db.delete()
 })
 
-function renderSettings() {
+function renderSettings(initialEntry = '/settings') {
   const router = createMemoryRouter(
     [
       {
@@ -49,13 +49,37 @@ function renderSettings() {
         children: [{ path: 'settings', element: <SettingsPage /> }],
       },
     ],
-    { initialEntries: ['/settings'] },
+    { initialEntries: [initialEntry] },
   )
 
   render(<RouterProvider router={router} />)
 }
 
 describe('SettingsPage', () => {
+  it('scrolls to the What’s new section when deep-linked from the banner', async () => {
+    const scrollIntoView = vi.fn()
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = scrollIntoView
+    const rafSpy = vi
+      .spyOn(window, 'requestAnimationFrame')
+      .mockImplementation((cb) => {
+        cb(0)
+        return 0
+      })
+
+    try {
+      renderSettings('/settings?section=whats-new')
+      const heading = await screen.findByRole('heading', { name: "What's new" })
+      const section = document.getElementById('settings-whats-new')
+      expect(section).not.toBeNull()
+      expect(section).toContainElement(heading)
+      expect(scrollIntoView).toHaveBeenCalled()
+    } finally {
+      rafSpy.mockRestore()
+      Element.prototype.scrollIntoView = original
+    }
+  })
+
   it('shows settings metadata, local-only explanation, and data actions', async () => {
     renderSettings()
 

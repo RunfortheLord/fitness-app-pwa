@@ -209,7 +209,7 @@ function AppShellContent({ children }: AppShellProps) {
           </span>
           <Link
             className="whats-new-banner-link"
-            to="/settings"
+            to="/settings?section=whats-new"
             onClick={dismissWhatsNew}
           >
             See what&rsquo;s new
