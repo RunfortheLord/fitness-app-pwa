@@ -11,6 +11,7 @@ import {
 } from '@domain/programWeeks'
 import type { ExerciseUsageSummary } from '@domain/exerciseSearch'
 import type {
+  ActiveCycleDayCheck,
   ActiveCycleWorkoutDay,
   ActiveCycleWorkoutExercise,
   ActiveProgramCycle,
@@ -934,6 +935,48 @@ export function createProgramRepository(
       }
 
       return this.getActiveCycleStructure(cycle.id)
+    },
+
+    async listActiveCycleDayChecks(activeCycleId: string, weekNumber: number) {
+      return database.activeCycleDayChecks
+        .where('[activeCycleId+weekNumber]')
+        .equals([activeCycleId, weekNumber])
+        .toArray()
+    },
+
+    // Manual toggle from the dashboard check-box. Upserts the per-week record so
+    // a completed-then-unchecked day stays unchecked until toggled again.
+    async setActiveCycleDayCheck(input: {
+      activeCycleId: string
+      dayId: string
+      weekNumber: number
+      checked: boolean
+    }) {
+      const now = new Date().toISOString()
+      const existing = await database.activeCycleDayChecks
+        .where('[activeCycleId+dayId+weekNumber]')
+        .equals([input.activeCycleId, input.dayId, input.weekNumber])
+        .first()
+      if (existing) {
+        const updated: ActiveCycleDayCheck = {
+          ...existing,
+          checked: input.checked,
+          updatedAt: now,
+        }
+        await database.activeCycleDayChecks.put(updated)
+        return updated
+      }
+      const record: ActiveCycleDayCheck = {
+        id: createId(),
+        activeCycleId: input.activeCycleId,
+        dayId: input.dayId,
+        weekNumber: input.weekNumber,
+        checked: input.checked,
+        createdAt: now,
+        updatedAt: now,
+      }
+      await database.activeCycleDayChecks.add(record)
+      return record
     },
 
     async getExerciseUsageSummary(): Promise<ExerciseUsageSummary> {

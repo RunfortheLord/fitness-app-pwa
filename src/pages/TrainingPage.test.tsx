@@ -301,7 +301,7 @@ describe('TrainingPage', () => {
       expect(activeCycle?.name).toBe('PPL')
     })
     await user.click(
-      await screen.findByRole('button', { name: /Pull/ }, { timeout: 5_000 }),
+      await screen.findByRole('button', { name: /^Pull/ }, { timeout: 5_000 }),
     )
     expect(
       await screen.findByRole('dialog', { name: 'Pull' }),
@@ -401,7 +401,7 @@ describe('TrainingPage', () => {
 
     await user.click(
       within(await screen.findByLabelText('Workout days')).getByRole('button', {
-        name: /Upper/,
+        name: /^Upper/,
       }),
     )
     await user.click(
@@ -457,7 +457,7 @@ describe('TrainingPage', () => {
     ).toBeInTheDocument()
 
     await user.click(
-      within(upperDay as HTMLElement).getByRole('button', { name: /Upper/ }),
+      within(upperDay as HTMLElement).getByRole('button', { name: /^Upper/ }),
     )
     const dialog = await screen.findByRole('dialog', { name: 'Upper' })
     const startButton = within(dialog).getByRole('button', {
@@ -477,6 +477,34 @@ describe('TrainingPage', () => {
 
     // A freshly activated cycle is in its first week.
     expect(await screen.findByText('Week 1')).toBeInTheDocument()
+  })
+
+  it('checks off and unchecks a workout day for the current week with no confirmation', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    await createProgramRepository(db).activateTemplate(program.template.id)
+    renderTraining()
+
+    const checkButton = await screen.findByRole('button', {
+      name: 'Mark Upper done this week',
+    })
+    await user.click(checkButton)
+
+    const checked = await screen.findByRole('button', {
+      name: 'Mark Upper not done this week',
+    })
+    expect(checked).toHaveAttribute('aria-pressed', 'true')
+
+    // Unchecking is also a single tap (no "are you sure" dialog).
+    await user.click(checked)
+    expect(
+      await screen.findByRole('button', {
+        name: 'Mark Upper done this week',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('dialog', { name: /sure/i }),
+    ).not.toBeInTheDocument()
   })
 
   it('shows one live exercise workspace and keeps the active exercise stable after edits, swipes, and reload', async () => {
@@ -712,7 +740,7 @@ describe('TrainingPage', () => {
     )
     expect(
       within(screen.getByLabelText('Workout days')).getByRole('button', {
-        name: /Upper/,
+        name: /^Upper/,
       }),
     ).toBeInTheDocument()
 

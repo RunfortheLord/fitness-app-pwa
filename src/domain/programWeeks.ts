@@ -35,6 +35,22 @@ export function formatProgramWeek(
   return `Week ${currentProgramWeek(activatedAt, now)}`
 }
 
+/**
+ * The next day to train this week: the first day, in order, that has not been
+ * checked off. Returns the first day when everything is checked (the week's
+ * rotation has wrapped) and null when there are no days.
+ */
+export function nextUpDayId(
+  orderedDayIds: string[],
+  checkedDayIds: ReadonlySet<string>,
+): string | null {
+  if (orderedDayIds.length === 0) {
+    return null
+  }
+  const next = orderedDayIds.find((dayId) => !checkedDayIds.has(dayId))
+  return next ?? orderedDayIds[0]
+}
+
 /** Clamp a (possibly user-entered) week count to the supported range. */
 export function clampProgramDurationWeeks(weeks: number): number {
   if (!Number.isFinite(weeks)) {

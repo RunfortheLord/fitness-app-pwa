@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   ArrowDown,
   ArrowUp,
+  CheckSquare,
   ChevronDown,
   Copy,
   Dumbbell,
@@ -11,6 +12,7 @@ import {
   Plus,
   RotateCcw,
   Search,
+  Square,
   Trash2,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
@@ -38,6 +40,7 @@ import { TRACKING_METHODS, getTrackingMethod } from '@domain/trackingMethods'
 import { formatLocalDate } from '@domain/dates'
 import {
   clampProgramDurationWeeks,
+  currentProgramWeek,
   DEFAULT_PROGRAM_DURATION_WEEKS,
   formatProgramWeek,
 } from '@domain/programWeeks'
@@ -185,6 +188,12 @@ export function TrainingPage() {
     useState<ProgramConfirmation>(null)
   const [revision, setRevision] = useState(0)
   const [message, setMessage] = useState<string | null>(null)
+  // Check-offs for the active cycle's current week (keyed by week so they reset
+  // weekly). Loaded alongside the active cycle.
+  const [weekChecks, setWeekChecks] = useState<{
+    week: number
+    checkedDayIds: string[]
+  }>({ week: 1, checkedDayIds: [] })
   const [loadState, setLoadState] = useState<LoadState>({
     exercises: [],
     templates: [],
@@ -237,7 +246,7 @@ export function TrainingPage() {
       programRepository.getCurrentActiveCycleStructure(),
       programRepository.getExerciseUsageSummary(),
     ])
-      .then(([exercises, templates, currentCycle, exerciseUsage]) => {
+      .then(async ([exercises, templates, currentCycle, exerciseUsage]) => {
         if (!isCurrent) {
           return
         }
@@ -252,6 +261,24 @@ export function TrainingPage() {
           currentCycle,
           status: 'ready',
         })
+
+        if (currentCycle) {
+          const week = currentProgramWeek(currentCycle.cycle.activatedAt)
+          const checks = await programRepository.listActiveCycleDayChecks(
+            currentCycle.cycle.id,
+            week,
+          )
+          if (isCurrent) {
+            setWeekChecks({
+              week,
+              checkedDayIds: checks
+                .filter((check) => check.checked)
+                .map((check) => check.dayId),
+            })
+          }
+        } else if (isCurrent) {
+          setWeekChecks({ week: 1, checkedDayIds: [] })
+        }
       })
       .catch(() => {
         if (!isCurrent) {
@@ -268,6 +295,24 @@ export function TrainingPage() {
 
   function reload() {
     setRevision((current) => current + 1)
+  }
+
+  // Toggle a day's check-off for the current week. No confirmation — checking
+  // and unchecking are both single taps.
+  function toggleDayCheck(
+    cycle: ActiveProgramCycle,
+    dayId: string,
+    checked: boolean,
+  ) {
+    void programRepository
+      .setActiveCycleDayCheck({
+        activeCycleId: cycle.id,
+        dayId,
+        weekNumber: weekChecks.week,
+        checked,
+      })
+      .then(() => reload())
+      .catch(() => setMessage('Could not update the check-off.'))
   }
 
   function startWorkoutDay(
@@ -379,6 +424,8 @@ export function TrainingPage() {
         <>
           <ProgramOverview
             currentCycle={loadState.currentCycle}
+            checkedDayIds={weekChecks.checkedDayIds}
+            onToggleDayCheck={toggleDayCheck}
             loadStatus={loadState.status}
             onCreateProgram={onCreateProgram}
             onDeactivate={(cycle) =>
@@ -653,6 +700,8 @@ function groupActiveExercisesByDay(
 
 function ProgramOverview({
   currentCycle,
+  checkedDayIds,
+  onToggleDayCheck,
   loadStatus,
   onCreateProgram,
   onDeactivate,
@@ -661,6 +710,12 @@ function ProgramOverview({
   onStartDay,
 }: {
   currentCycle: LoadState['currentCycle']
+  checkedDayIds: string[]
+  onToggleDayCheck: (
+    cycle: ActiveProgramCycle,
+    dayId: string,
+    checked: boolean,
+  ) => void
   loadStatus: LoadState['status']
   onCreateProgram: () => void
   onDeactivate: (cycle: ActiveProgramCycle) => void
@@ -672,6 +727,7 @@ function ProgramOverview({
   ) => void
   onStartDay: (cycle: ActiveProgramCycle, day: ActiveCycleWorkoutDay) => void
 }) {
+  const checkedSet = new Set(checkedDayIds)
   return (
     <Card title="Current active cycle">
       {loadStatus === 'loading' ? <LoadingState label="Loading cycle" /> : null}
@@ -715,36 +771,66 @@ function ProgramOverview({
           </p>
           {currentCycle.days.length ? (
             <div className="program-day-grid" aria-label="Workout days">
-              {currentCycle.days.map((day) => (
-                <div className="program-day-card" key={day.id}>
-                  <button
-                    className="program-day-open"
-                    type="button"
-                    onClick={() =>
-                      onSelectDay(
-                        currentCycle.cycle,
-                        day,
-                        currentCycle.exercisesByDay[day.id] ?? [],
-                      )
-                    }
-                  >
-                    <strong>{day.name}</strong>
-                    <small>
-                      {(currentCycle.exercisesByDay[day.id] ?? []).length}{' '}
-                      exercises
-                    </small>
-                  </button>
-                  <SecondaryButton
-                    disabled={
-                      !(currentCycle.exercisesByDay[day.id] ?? []).length
-                    }
-                    type="button"
-                    onClick={() => onStartDay(currentCycle.cycle, day)}
-                  >
-                    Start Workout
-                  </SecondaryButton>
-                </div>
-              ))}
+              {currentCycle.days.map((day) => {
+                const isChecked = checkedSet.has(day.id)
+                return (
+                  <div className="program-day-card" key={day.id}>
+                    <div className="program-day-card-head">
+                      <button
+                        className={`program-day-check${
+                          isChecked ? ' is-checked' : ''
+                        }`}
+                        type="button"
+                        aria-pressed={isChecked}
+                        aria-label={
+                          isChecked
+                            ? `Mark ${day.name} not done this week`
+                            : `Mark ${day.name} done this week`
+                        }
+                        onClick={() =>
+                          onToggleDayCheck(
+                            currentCycle.cycle,
+                            day.id,
+                            !isChecked,
+                          )
+                        }
+                      >
+                        {isChecked ? (
+                          <CheckSquare aria-hidden="true" size={20} />
+                        ) : (
+                          <Square aria-hidden="true" size={20} />
+                        )}
+                      </button>
+                      <button
+                        className="program-day-open"
+                        type="button"
+                        onClick={() =>
+                          onSelectDay(
+                            currentCycle.cycle,
+                            day,
+                            currentCycle.exercisesByDay[day.id] ?? [],
+                          )
+                        }
+                      >
+                        <strong>{day.name}</strong>
+                        <small>
+                          {(currentCycle.exercisesByDay[day.id] ?? []).length}{' '}
+                          exercises
+                        </small>
+                      </button>
+                    </div>
+                    <SecondaryButton
+                      disabled={
+                        !(currentCycle.exercisesByDay[day.id] ?? []).length
+                      }
+                      type="button"
+                      onClick={() => onStartDay(currentCycle.cycle, day)}
+                    >
+                      Start Workout
+                    </SecondaryButton>
+                  </div>
+                )
+              })}
             </div>
           ) : (
             <EmptyState

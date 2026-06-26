@@ -12,6 +12,7 @@ import {
   type NextWorkoutPerformance,
 } from '@domain/progressionRecommendations'
 import { snapshotExercise } from '@domain/snapshots'
+import { currentProgramWeek } from '@domain/programWeeks'
 import { detectWorkoutStructuralChanges } from '@domain/workoutChanges'
 import { canSkipWorkoutExercise } from '@domain/workoutSkip'
 import type { LocalDateString } from '@domain/dates'
@@ -887,6 +888,8 @@ export function createWorkoutRepository(
           database.workoutHistorySets,
           database.detectedWorkoutChanges,
           database.activeCycleWorkoutExercises,
+          database.activeProgramCycles,
+          database.activeCycleDayChecks,
           database.exercises,
         ],
         async () => {
@@ -988,6 +991,44 @@ export function createWorkoutRepository(
             updatedAt: completedAt,
           }))
           await database.detectedWorkoutChanges.bulkAdd(changes)
+
+          // Check the program day off for the current week so the dashboard can
+          // surface which day is next. Records are keyed by week, so they reset
+          // automatically each week.
+          if (workout.sourceActiveCycleId && workout.sourceDayId) {
+            const cycle = await database.activeProgramCycles.get(
+              workout.sourceActiveCycleId,
+            )
+            if (cycle && cycle.status === 'active') {
+              const weekNumber = currentProgramWeek(
+                cycle.activatedAt,
+                new Date(completedAt),
+              )
+              const existing = await database.activeCycleDayChecks
+                .where('[activeCycleId+dayId+weekNumber]')
+                .equals([cycle.id, workout.sourceDayId, weekNumber])
+                .first()
+              if (existing) {
+                if (!existing.checked) {
+                  await database.activeCycleDayChecks.put({
+                    ...existing,
+                    checked: true,
+                    updatedAt: completedAt,
+                  })
+                }
+              } else {
+                await database.activeCycleDayChecks.add({
+                  id: createId(),
+                  activeCycleId: cycle.id,
+                  dayId: workout.sourceDayId,
+                  weekNumber,
+                  checked: true,
+                  createdAt: completedAt,
+                  updatedAt: completedAt,
+                })
+              }
+            }
+          }
 
           await database.workoutSets.where({ workoutId: workout.id }).delete()
           await database.workoutExercises

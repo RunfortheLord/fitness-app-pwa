@@ -170,7 +170,7 @@ test('creates, activates, manually selects, and persists a program cycle', async
     .getByRole('button', { name: 'Activate' })
     .click()
   await expect(page.getByText('Program activated.')).toBeVisible()
-  await page.getByRole('button', { name: /Day A/ }).click()
+  await page.getByRole('button', { name: /^Day A/ }).click()
   const dayDetail = page.getByRole('dialog', { name: 'Day A' })
   await expect(dayDetail).toBeVisible()
   await expect(dayDetail.getByText('E2E Squat')).toBeVisible()
@@ -179,7 +179,7 @@ test('creates, activates, manually selects, and persists a program cycle', async
   await expect(
     page.getByLabel('Current active cycle').getByText('E2E Strength'),
   ).toBeVisible()
-  await expect(page.getByRole('button', { name: /Day A/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /^Day A/ })).toBeVisible()
 })
 
 test('starts, resumes, edits, and cancels a live workout', async ({
@@ -216,7 +216,7 @@ test('starts, resumes, edits, and cancels a live workout', async ({
     .getByRole('dialog', { name: 'Activate program?' })
     .getByRole('button', { name: 'Activate' })
     .click()
-  await page.getByRole('button', { name: /Live A/ }).click()
+  await page.getByRole('button', { name: /^Live A/ }).click()
   await page
     .getByRole('dialog', { name: 'Live A' })
     .getByRole('button', { name: 'Start Workout' })
@@ -425,9 +425,13 @@ test('settings exposes local data controls and validates malformed restore files
   await expect(page.getByText('Pounds (lb)')).toBeVisible()
   await expect(page.getByText('Backup format version')).toBeVisible()
   await expect(
-    page.getByText(
-      /Backups, restore files, and CSV exports stay on this device/,
-    ),
+    page.getByText(/Local backup files and CSV exports stay on this device/),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Cloud backup' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Sign in with Google' }),
   ).toBeVisible()
   await expect(
     page.getByRole('button', { name: 'Export JSON backup' }),
@@ -527,7 +531,7 @@ test('completes the release workflow through backup restore', async ({
     .getByRole('dialog', { name: 'Activate program?' })
     .getByRole('button', { name: 'Activate' })
     .click()
-  await page.getByRole('button', { name: /Audit A/ }).click()
+  await page.getByRole('button', { name: /^Audit A/ }).click()
   await page
     .getByRole('dialog', { name: 'Audit A' })
     .getByRole('button', { name: 'Start Workout' })

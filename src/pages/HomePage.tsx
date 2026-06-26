@@ -168,7 +168,10 @@ export function HomePage() {
             </PrimaryButton>
             {dashboard?.activeProgram?.days.length ? (
               <SecondaryButton type="button">
-                {dashboard.activeProgram.days[0]?.name}
+                {`Next: ${
+                  dashboard.activeProgram.nextDay?.name ??
+                  dashboard.activeProgram.days[0]?.name
+                }`}
               </SecondaryButton>
             ) : (
               <SecondaryButton type="button">Create program</SecondaryButton>

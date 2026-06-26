@@ -275,7 +275,7 @@ async function createActiveWorkout(page: Page) {
     .getByRole('dialog', { name: 'Activate program?' })
     .getByRole('button', { name: 'Activate' })
     .click()
-  await page.getByRole('button', { name: /Offline A/ }).click()
+  await page.getByRole('button', { name: /^Offline A/ }).click()
   await page
     .getByRole('dialog', { name: 'Offline A' })
     .getByRole('button', { name: 'Start Workout' })

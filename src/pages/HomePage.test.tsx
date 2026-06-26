@@ -91,7 +91,10 @@ describe('HomePage', () => {
     expect(
       screen.getByRole('button', { name: 'Start workout' }),
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Upper' })).toBeInTheDocument()
+    // The card surfaces the next-up day (the first day of a fresh cycle).
+    expect(
+      screen.getByRole('button', { name: 'Next: Upper' }),
+    ).toBeInTheDocument()
   })
 
   it('creates, edits, and deletes bodyweight through the dashboard sheet', async () => {

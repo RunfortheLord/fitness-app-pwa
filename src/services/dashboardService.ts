@@ -1,5 +1,6 @@
 import { db, type TrainingLogDatabase } from '@db/database'
 import type { LocalDateString } from '@domain/dates'
+import { currentProgramWeek, nextUpDayId } from '@domain/programWeeks'
 import {
   filterBodyweightEntriesForRange,
   latestBodyweight,
@@ -39,6 +40,10 @@ export type DashboardData = {
         days: ActiveCycleWorkoutDay[]
         exerciseCount: number
         exercisesByDay: Record<string, ActiveCycleWorkoutExercise[]>
+        /** The next day to train this week (first not yet checked off). */
+        nextDay: ActiveCycleWorkoutDay | undefined
+        /** 1-based current week of the cycle. */
+        weekNumber: number
       }
     | undefined
   activeWorkout: Workout | undefined
@@ -117,6 +122,34 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
         ? await getWorkoutSummary(database, mostRecentCompletedWorkout.id)
         : undefined
 
+      let activeProgram: DashboardData['activeProgram']
+      if (activeProgramStructure) {
+        const weekNumber = currentProgramWeek(
+          activeProgramStructure.cycle.activatedAt,
+        )
+        const checks = await programRepository.listActiveCycleDayChecks(
+          activeProgramStructure.cycle.id,
+          weekNumber,
+        )
+        const checkedDayIds = new Set(
+          checks.filter((check) => check.checked).map((check) => check.dayId),
+        )
+        const nextDayId = nextUpDayId(
+          activeProgramStructure.days.map((day) => day.id),
+          checkedDayIds,
+        )
+        activeProgram = {
+          ...activeProgramStructure,
+          exerciseCount: Object.values(
+            activeProgramStructure.exercisesByDay,
+          ).reduce((count, exercises) => count + exercises.length, 0),
+          nextDay: activeProgramStructure.days.find(
+            (day) => day.id === nextDayId,
+          ),
+          weekNumber,
+        }
+      }
+
       return {
         selectedDate,
         metadata,
@@ -125,14 +158,7 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
         currentBodyweight,
         bodyweightEntries,
         bodyweightTrend,
-        activeProgram: activeProgramStructure
-          ? {
-              ...activeProgramStructure,
-              exerciseCount: Object.values(
-                activeProgramStructure.exercisesByDay,
-              ).reduce((count, exercises) => count + exercises.length, 0),
-            }
-          : undefined,
+        activeProgram,
         activeWorkout,
         mostRecentCompletedWorkout,
         mostRecentCompletedWorkoutSummary,

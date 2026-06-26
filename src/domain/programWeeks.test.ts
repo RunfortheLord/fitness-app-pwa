@@ -7,6 +7,7 @@ import {
   formatProgramWeek,
   MAX_PROGRAM_DURATION_WEEKS,
   MIN_PROGRAM_DURATION_WEEKS,
+  nextUpDayId,
 } from './programWeeks'
 
 describe('currentProgramWeek', () => {
@@ -55,6 +56,28 @@ describe('formatProgramWeek', () => {
         new Date('2026-01-15T08:00:00Z'),
       ),
     ).toBe('Week 3')
+  })
+})
+
+describe('nextUpDayId', () => {
+  const days = ['a', 'b', 'c']
+
+  it('returns the first unchecked day in order', () => {
+    expect(nextUpDayId(days, new Set(['a']))).toBe('b')
+    expect(nextUpDayId(days, new Set(['a', 'b']))).toBe('c')
+    expect(nextUpDayId(days, new Set())).toBe('a')
+  })
+
+  it('skips checked days that are out of order', () => {
+    expect(nextUpDayId(days, new Set(['b']))).toBe('a')
+  })
+
+  it('wraps to the first day when every day is checked', () => {
+    expect(nextUpDayId(days, new Set(['a', 'b', 'c']))).toBe('a')
+  })
+
+  it('returns null when there are no days', () => {
+    expect(nextUpDayId([], new Set())).toBeNull()
   })
 })
 

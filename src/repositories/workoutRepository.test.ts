@@ -114,6 +114,32 @@ describe('workoutRepository', () => {
     await expect(database.detectedWorkoutChanges.toArray()).resolves.toEqual([])
   })
 
+  it('checks the program day off for the current week when a workout is completed', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    const repository = createWorkoutRepository(database)
+
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(started.sets[0].id, { completed: true })
+    await repository.completeWorkout({ workoutId: started.workout.id })
+
+    const checks = await database.activeCycleDayChecks.toArray()
+    expect(checks).toMatchObject([
+      {
+        activeCycleId: active.cycle.id,
+        dayId: active.days[0].id,
+        weekNumber: 1,
+        checked: true,
+      },
+    ])
+  })
+
   it('rejects invalid active-cycle and workout-day relationships', async () => {
     const firstProgram = await seedProgram(database)
     const firstActive = await createProgramRepository(
