@@ -136,8 +136,14 @@ type SheetState =
   | { type: 'entry'; entry: FoodLogEntry }
   | { type: 'quickAdd' }
   | { type: 'scanner' }
-  | { type: 'recipe' }
   | null
+
+type RecipeComponentDraft = { food: Food; servingMultiplier: number }
+
+// An in-progress recipe built from the shared food-search subpage. While this is
+// non-null the subpage is in "recipe mode": selecting a food adds it to the
+// recipe instead of logging it to the day.
+type RecipeDraft = { name: string; components: RecipeComponentDraft[] }
 
 type FoodFormState = {
   name: string
@@ -245,6 +251,9 @@ export function NutritionPage() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [addedItems, setAddedItems] = useState<AddedItem[]>([])
   const addedItemIdRef = useRef(0)
+  const [recipeDraft, setRecipeDraft] = useState<RecipeDraft | null>(null)
+  const [recipeError, setRecipeError] = useState<string | null>(null)
+  const [recipeSaving, setRecipeSaving] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
   const [goalData, setGoalData] = useState<{
     goal: NutritionGoal | null
@@ -252,12 +261,64 @@ export function NutritionPage() {
   }>({ goal: null, entries: [] })
 
   useSubpageBackGesture(targetsView === 'setGoal', () => setTargetsView('main'))
-  useSubpageBackGesture(searchOpen, () => setSearchOpen(false))
+  useSubpageBackGesture(searchOpen, () => {
+    setSearchOpen(false)
+    setRecipeDraft(null)
+  })
 
   const openSearch = useCallback(() => {
     setQuery('')
     setAddedItems([])
+    setRecipeDraft(null)
     setSearchOpen(true)
+  }, [])
+
+  // Start a new recipe in the shared search subpage. Same search experience as
+  // logging food, but selections go into the recipe (see SelectedFoodSheet's
+  // recipe mode) rather than the day's log.
+  const startRecipe = useCallback(() => {
+    setQuery('')
+    setAddedItems([])
+    setRecipeError(null)
+    setRecipeDraft({ name: '', components: [] })
+    setSearchOpen(true)
+  }, [])
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false)
+    setRecipeDraft(null)
+    setRecipeError(null)
+  }, [])
+
+  const addRecipeComponent = useCallback(
+    (food: Food, servingMultiplier: number) => {
+      setRecipeDraft((current) => {
+        if (!current) {
+          return current
+        }
+        if (current.components.some((item) => item.food.id === food.id)) {
+          return current
+        }
+        return {
+          ...current,
+          components: [...current.components, { food, servingMultiplier }],
+        }
+      })
+    },
+    [],
+  )
+
+  const removeRecipeComponent = useCallback((foodId: string) => {
+    setRecipeDraft((current) =>
+      current
+        ? {
+            ...current,
+            components: current.components.filter(
+              (item) => item.food.id !== foodId,
+            ),
+          }
+        : current,
+    )
   }, [])
 
   const appendAddedItem = useCallback((result: FoodSearchResult) => {
@@ -503,6 +564,44 @@ export function NutritionPage() {
       .catch(() => setMessage('Could not log that meal.'))
   }
 
+  const saveRecipe = () => {
+    if (!recipeDraft) {
+      return
+    }
+    if (!recipeDraft.name.trim()) {
+      setRecipeError('Give the recipe a name.')
+      return
+    }
+    if (recipeDraft.components.length === 0) {
+      setRecipeError('Add at least one food to the recipe.')
+      return
+    }
+    setRecipeSaving(true)
+    void foodRepository
+      .createSavedMeal({
+        name: recipeDraft.name.trim(),
+        components: recipeDraft.components.map((component) => ({
+          foodId: component.food.id,
+          foodSnapshot: snapshotFood(component.food),
+          servingMultiplier: component.servingMultiplier,
+        })),
+      })
+      .then(() => {
+        setRecipeSaving(false)
+        setSearchOpen(false)
+        setRecipeDraft(null)
+        setRecipeError(null)
+        setMessage('Recipe saved.')
+        reload()
+      })
+      .catch((caught: unknown) => {
+        setRecipeSaving(false)
+        setRecipeError(
+          caught instanceof Error ? caught.message : 'Recipe could not save.',
+        )
+      })
+  }
+
   return (
     <PageContainer>
       <Toast message={message} onDismiss={() => setMessage(null)} />
@@ -511,9 +610,19 @@ export function NutritionPage() {
           providerSearch={providerSearch}
           results={daySearchResults}
           addedItems={addedItems}
-          onBack={() => setSearchOpen(false)}
+          recipeDraft={recipeDraft}
+          recipeError={recipeError}
+          recipeSaving={recipeSaving}
+          onRecipeNameChange={(name) =>
+            setRecipeDraft((current) =>
+              current ? { ...current, name } : current,
+            )
+          }
+          onRemoveRecipeComponent={removeRecipeComponent}
+          onSaveRecipe={saveRecipe}
+          onBack={closeSearch}
           onEditFood={(food) => setSheet({ type: 'food', food })}
-          onOpenRecipe={() => setSheet({ type: 'recipe' })}
+          onOpenRecipe={startRecipe}
           onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
           onOpenScanner={() => setSheet({ type: 'scanner' })}
           onSelectResult={(result) => setSheet({ type: 'select', result })}
@@ -562,7 +671,7 @@ export function NutritionPage() {
                 onOpen={openSearch}
                 onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
                 onOpenScanner={() => setSheet({ type: 'scanner' })}
-                onOpenRecipe={() => setSheet({ type: 'recipe' })}
+                onOpenRecipe={startRecipe}
               />
               <NutritionActionCard
                 onCreateFood={() => setSheet({ type: 'food', food: null })}
@@ -592,7 +701,7 @@ export function NutritionPage() {
                 onOpen={openSearch}
                 onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
                 onOpenScanner={() => setSheet({ type: 'scanner' })}
-                onOpenRecipe={() => setSheet({ type: 'recipe' })}
+                onOpenRecipe={startRecipe}
               />
               {loadState.savedMeals.length ? (
                 <SavedMealsCard
@@ -717,6 +826,14 @@ export function NutritionPage() {
             })
           }
           onClose={() => setSheet(null)}
+          onAddToRecipe={
+            recipeDraft
+              ? (food, servingMultiplier) => {
+                  addRecipeComponent(food, servingMultiplier)
+                  setSheet(null)
+                }
+              : undefined
+          }
           onSaved={() => {
             // Logging from the search subpage keeps the subpage open so several
             // foods can be added in one pass; record the item in the tray.
@@ -770,18 +887,6 @@ export function NutritionPage() {
             })
           }
           onFound={(result) => setSheet({ type: 'select', result })}
-        />
-      ) : null}
-
-      {sheet?.type === 'recipe' ? (
-        <RecipeBuilderSheet
-          isOpen
-          onClose={() => setSheet(null)}
-          onSaved={() => {
-            setMessage('Recipe saved.')
-            setSheet(null)
-            reload()
-          }}
         />
       ) : null}
 
@@ -906,6 +1011,12 @@ function FoodSearchSubpage({
   providerSearch,
   results,
   addedItems,
+  recipeDraft,
+  recipeError,
+  recipeSaving,
+  onRecipeNameChange,
+  onRemoveRecipeComponent,
+  onSaveRecipe,
   onBack,
   onEditFood,
   onOpenQuickAdd,
@@ -919,6 +1030,12 @@ function FoodSearchSubpage({
   providerSearch: ProviderSearchState
   results: Array<{ title: string; items: FoodSearchResult[] }>
   addedItems: AddedItem[]
+  recipeDraft: RecipeDraft | null
+  recipeError: string | null
+  recipeSaving: boolean
+  onRecipeNameChange: (name: string) => void
+  onRemoveRecipeComponent: (foodId: string) => void
+  onSaveRecipe: () => void
   onBack: () => void
   onEditFood: (food: Food) => void
   onOpenQuickAdd: () => void
@@ -931,6 +1048,7 @@ function FoodSearchSubpage({
 }) {
   const hasResults = results.some((section) => section.items.length > 0)
   const normalizedQuery = normalizeProviderQuery(query)
+  const recipeMode = recipeDraft !== null
 
   return (
     <div className="food-search-subpage">
@@ -957,21 +1075,86 @@ function FoodSearchSubpage({
             />
           </div>
           <div className="row-actions">
-            <IconButton
-              aria-label="Quick add nutrition"
-              onClick={onOpenQuickAdd}
-            >
-              <Flame aria-hidden="true" size={20} />
-            </IconButton>
-            <IconButton aria-label="New recipe" onClick={onOpenRecipe}>
-              <BookmarkPlus aria-hidden="true" size={20} />
-            </IconButton>
+            {recipeMode ? (
+              <span
+                className="recipe-mode-badge"
+                aria-label="Building a recipe"
+              >
+                <BookmarkPlus aria-hidden="true" size={20} />
+              </span>
+            ) : (
+              <>
+                <IconButton
+                  aria-label="Quick add nutrition"
+                  onClick={onOpenQuickAdd}
+                >
+                  <Flame aria-hidden="true" size={20} />
+                </IconButton>
+                <IconButton aria-label="New recipe" onClick={onOpenRecipe}>
+                  <BookmarkPlus aria-hidden="true" size={20} />
+                </IconButton>
+              </>
+            )}
             <IconButton aria-label="Scan barcode" onClick={onOpenScanner}>
               <Camera aria-hidden="true" size={20} />
             </IconButton>
           </div>
         </div>
-        {addedItems.length ? (
+        {recipeMode && recipeDraft ? (
+          <div className="recipe-build-bar" aria-label="Recipe builder">
+            <div className="food-search-subpage-input">
+              <BookmarkPlus aria-hidden="true" size={18} />
+              <input
+                aria-label="Recipe name"
+                onChange={(event) => onRecipeNameChange(event.target.value)}
+                placeholder="Recipe name"
+                type="text"
+                value={recipeDraft.name}
+              />
+            </div>
+            {recipeDraft.components.length ? (
+              <div className="recipe-build-components">
+                {recipeDraft.components.map((component) => (
+                  <span
+                    className="recipe-build-chip"
+                    key={component.food.id}
+                    title={component.food.name}
+                  >
+                    <FoodIcon name={component.food.name} size={16} />
+                    <span className="recipe-build-chip-name">
+                      {component.food.name}
+                    </span>
+                    <button
+                      aria-label={`Remove ${component.food.name}`}
+                      onClick={() => onRemoveRecipeComponent(component.food.id)}
+                      type="button"
+                    >
+                      <Trash2 aria-hidden="true" size={14} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="muted recipe-build-hint">
+                Search foods below and add them to this recipe.
+              </p>
+            )}
+            {recipeError ? <ValidationMessage message={recipeError} /> : null}
+            <PrimaryButton
+              disabled={recipeSaving}
+              onClick={onSaveRecipe}
+              type="button"
+            >
+              {recipeSaving
+                ? 'Saving…'
+                : `Save recipe${
+                    recipeDraft.components.length
+                      ? ` (${recipeDraft.components.length})`
+                      : ''
+                  }`}
+            </PrimaryButton>
+          </div>
+        ) : addedItems.length ? (
           <div className="added-items-tray" aria-label="Items added">
             <div className="added-items-row">
               {addedItems.map((item) => (
@@ -1651,208 +1834,6 @@ function SavedMealsCard({
   )
 }
 
-type RecipeComponentDraft = { food: Food; servingMultiplier: number }
-
-function RecipeBuilderSheet({
-  isOpen,
-  onClose,
-  onSaved,
-}: {
-  isOpen: boolean
-  onClose: () => void
-  onSaved: () => void
-}) {
-  const [name, setName] = useState('')
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState<Food[]>([])
-  const [components, setComponents] = useState<RecipeComponentDraft[]>([])
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let isCurrent = true
-    void foodRepository.searchFoods(query, 8).then((foods) => {
-      if (isCurrent) {
-        setResults(foods)
-      }
-    })
-    return () => {
-      isCurrent = false
-    }
-  }, [query])
-
-  function addFood(food: Food) {
-    setComponents((current) =>
-      current.some((component) => component.food.id === food.id)
-        ? current
-        : [...current, { food, servingMultiplier: 1 }],
-    )
-  }
-
-  function adjust(id: string, delta: number) {
-    setComponents((current) =>
-      current.map((component) =>
-        component.food.id === id
-          ? {
-              ...component,
-              servingMultiplier: Math.max(
-                0.5,
-                Math.round((component.servingMultiplier + delta) * 100) / 100,
-              ),
-            }
-          : component,
-      ),
-    )
-  }
-
-  function remove(id: string) {
-    setComponents((current) =>
-      current.filter((component) => component.food.id !== id),
-    )
-  }
-
-  const totalCalories = components.reduce(
-    (total, component) =>
-      total + component.food.caloriesPerServing * component.servingMultiplier,
-    0,
-  )
-
-  function save() {
-    if (!name.trim()) {
-      setError('Give the recipe a name.')
-      return
-    }
-    if (components.length === 0) {
-      setError('Add at least one food to the recipe.')
-      return
-    }
-    return foodRepository
-      .createSavedMeal({
-        name,
-        components: components.map((component) => ({
-          foodId: component.food.id,
-          foodSnapshot: snapshotFood(component.food),
-          servingMultiplier: component.servingMultiplier,
-        })),
-      })
-      .then(onSaved)
-      .catch((caught: unknown) => {
-        setError(
-          caught instanceof Error ? caught.message : 'Recipe could not save.',
-        )
-      })
-  }
-
-  return (
-    <Sheet isOpen={isOpen} onClose={onClose} title="New recipe">
-      <FormField id="recipe-name" label="Recipe name">
-        <input
-          id="recipe-name"
-          autoFocus
-          onChange={(event) => setName(event.target.value)}
-          placeholder="My usual oatmeal bowl"
-          value={name}
-        />
-      </FormField>
-
-      {components.length ? (
-        <div className="recipe-components">
-          {components.map((component) => (
-            <div className="recipe-component" key={component.food.id}>
-              <div className="recipe-component-main">
-                <strong>{component.food.name}</strong>
-                <small>
-                  {roundMacro(
-                    component.servingMultiplier *
-                      component.food.servingQuantity,
-                  )}{' '}
-                  {component.food.servingUnit} -{' '}
-                  {roundMacro(
-                    component.servingMultiplier *
-                      component.food.caloriesPerServing,
-                  )}{' '}
-                  kcal
-                </small>
-              </div>
-              <div className="row-actions">
-                <IconButton
-                  aria-label={`Decrease ${component.food.name}`}
-                  disabled={component.servingMultiplier <= 0.5}
-                  onClick={() => adjust(component.food.id, -0.5)}
-                >
-                  <Minus aria-hidden="true" size={16} />
-                </IconButton>
-                <IconButton
-                  aria-label={`Increase ${component.food.name}`}
-                  onClick={() => adjust(component.food.id, 0.5)}
-                >
-                  <Plus aria-hidden="true" size={16} />
-                </IconButton>
-                <IconButton
-                  aria-label={`Remove ${component.food.name}`}
-                  onClick={() => remove(component.food.id)}
-                >
-                  <Trash2 aria-hidden="true" size={16} />
-                </IconButton>
-              </div>
-            </div>
-          ))}
-          <p className="muted">
-            Total: {roundMacro(totalCalories)} kcal · {components.length}{' '}
-            {components.length === 1 ? 'item' : 'items'}
-          </p>
-        </div>
-      ) : (
-        <p className="muted">
-          Search your foods below and add them to the recipe.
-        </p>
-      )}
-
-      <FormField id="recipe-search" label="Add food">
-        <div className="food-search-subpage-input">
-          <Search aria-hidden="true" size={18} />
-          <input
-            id="recipe-search"
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search your foods"
-            type="search"
-            value={query}
-          />
-        </div>
-      </FormField>
-      <div className="nutrition-list">
-        {results.map((food) => (
-          <button
-            className="recipe-add-row"
-            key={food.id}
-            type="button"
-            onClick={() => addFood(food)}
-          >
-            <span className="food-result-main">
-              <strong>{food.name}</strong>
-              <small>
-                {roundMacro(food.caloriesPerServing)} kcal /{' '}
-                {formatFoodServingLabel(food)}
-              </small>
-            </span>
-            <Plus aria-hidden="true" size={18} />
-          </button>
-        ))}
-        {query && results.length === 0 ? (
-          <EmptyState
-            title="No foods found"
-            message="Create the food first, then add it to a recipe."
-          />
-        ) : null}
-      </div>
-
-      {error ? <ValidationMessage message={error} /> : null}
-      <PrimaryButton type="button" onClick={save}>
-        Save recipe
-      </PrimaryButton>
-    </Sheet>
-  )
-}
-
 function resultKey(result: FoodSearchResult) {
   return result.type === 'local' ? `local-${result.food.id}` : result.food.id
 }
@@ -2232,6 +2213,7 @@ function SelectedFoodSheet({
   onSelectAlternate,
   onClose,
   onSaved,
+  onAddToRecipe,
 }: {
   result: FoodSearchResult
   isOpen: boolean
@@ -2240,6 +2222,9 @@ function SelectedFoodSheet({
   onSelectAlternate: (food: NormalizedFoodResult) => void
   onClose: () => void
   onSaved: () => void
+  // When present the sheet adds the chosen food (at the chosen serving) to a
+  // recipe instead of logging it to the day.
+  onAddToRecipe?: (food: Food, servingMultiplier: number) => void
 }) {
   // The parent gives this sheet a key of the food id, so it remounts per food
   // and these initializers run fresh — defaulting to the food's most
@@ -2327,6 +2312,26 @@ function SelectedFoodSheet({
       return
     }
 
+    if (onAddToRecipe) {
+      // Persist a provider food locally first so the recipe can reference it by
+      // id (and snapshot it), matching how logging an external food works.
+      const resolveFood =
+        result.type === 'external'
+          ? foodRepository.upsertProviderFood(result.food)
+          : Promise.resolve(result.food)
+      return resolveFood
+        .then((food) => {
+          onAddToRecipe(food, servingMultiplier)
+        })
+        .catch((caught: unknown) => {
+          setError(
+            caught instanceof Error
+              ? caught.message
+              : 'Food could not be added to the recipe.',
+          )
+        })
+    }
+
     const action =
       result.type === 'external'
         ? foodRepository.logExternalFood({
@@ -2359,7 +2364,11 @@ function SelectedFoodSheet({
   }
 
   return (
-    <Sheet isOpen={isOpen} onClose={onClose} title="Food details">
+    <Sheet
+      isOpen={isOpen}
+      onClose={onClose}
+      title={onAddToRecipe ? 'Add to recipe' : 'Food details'}
+    >
       <p className="sheet-context">
         <strong>{display.name}</strong>
         <br />
@@ -2440,7 +2449,9 @@ function SelectedFoodSheet({
           ))}
         </select>
       </FormField>
-      <MealTypeField value={mealType} onChange={setMealType} />
+      {onAddToRecipe ? null : (
+        <MealTypeField value={mealType} onChange={setMealType} />
+      )}
       {preview ? (
         <p className="muted">
           Preview: {formatCalories(preview.calories)} kcal - P{' '}
@@ -2473,7 +2484,7 @@ function SelectedFoodSheet({
       {error ? <ValidationMessage message={error} /> : null}
       <div className="button-row">
         <PrimaryButton disabled={!preview} type="button" onClick={saveLog}>
-          Log food
+          {onAddToRecipe ? 'Add to recipe' : 'Log food'}
         </PrimaryButton>
         {isImported ? (
           <SecondaryButton
