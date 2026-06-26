@@ -283,18 +283,18 @@ test('creates, logs, edits, deletes, and persists nutrition entries', async ({
   await expect(
     page.locator('.metric-value').filter({ hasText: '300 kcal' }),
   ).toBeVisible()
-  await expect(page.getByText(/1.5x 1 cup .* 300 kcal/)).toBeVisible()
+  await expect(page.getByText(/1.5 cup .* 300 kcal/)).toBeVisible()
 
   await page.reload()
   await expect(
     page.locator('.metric-value').filter({ hasText: '300 kcal' }),
   ).toBeVisible()
-  await expect(page.getByText(/1.5x 1 cup .* 300 kcal/)).toBeVisible()
+  await expect(page.getByText(/1.5 cup .* 300 kcal/)).toBeVisible()
 
   await page.getByRole('button', { name: 'Edit E2E Rice log' }).click()
   await page.getByRole('textbox', { name: 'Serving multiplier' }).fill('2')
   await page.getByRole('button', { name: 'Save log' }).click()
-  await expect(page.getByText(/2x 1 cup .* 400 kcal/)).toBeVisible()
+  await expect(page.getByText(/2 cup .* 400 kcal/)).toBeVisible()
   await expect(
     page.locator('.metric-value').filter({ hasText: '400 kcal' }),
   ).toBeVisible()
@@ -480,7 +480,7 @@ test('completes the release workflow through backup restore', async ({
   await expect(page.getByText(/Preview: 250 kcal/)).toBeVisible()
   await page.getByRole('button', { name: 'Log food', exact: true }).click()
   await page.getByRole('button', { name: 'Back to nutrition' }).click()
-  await expect(page.getByText(/1.25x 1 cup .* 250 kcal/)).toBeVisible()
+  await expect(page.getByText(/1.25 cup .* 250 kcal/)).toBeVisible()
 
   await page.goto('/')
   await page.getByRole('button', { name: 'Open quick actions' }).click()
@@ -644,7 +644,7 @@ test('completes the release workflow through backup restore', async ({
   await page.getByRole('button', { name: /Audit row/ }).click()
   await expect(page.getByLabel('Exercise notes')).toBeVisible()
   await page.goto('/nutrition')
-  await expect(page.getByText(/1.25x 1 cup .* 250 kcal/)).toBeVisible()
+  await expect(page.getByText(/1.25 cup .* 250 kcal/)).toBeVisible()
 })
 
 async function createExercise(page: Page, name: string, rest: string) {

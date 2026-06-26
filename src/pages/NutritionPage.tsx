@@ -3301,10 +3301,12 @@ function snapshotServingLabel(entry: FoodLogEntry) {
 }
 
 // The actual logged portion in the food's own unit (multiplier applied), so the
-// list reads "1.7 cup, cooked" instead of an ugly raw "1.744…x" multiplier.
+// list reads "1.25 cup, cooked" instead of an ugly raw "1.744…x" multiplier.
+// Rounded to 2 decimals so quarter/third servings (¼, ⅓, ¾) stay faithful.
 function formatLoggedAmount(entry: FoodLogEntry) {
   const snapshot = entry.foodSnapshot
-  const amount = roundMacro(entry.servingMultiplier * snapshot.servingQuantity)
+  const amount =
+    Math.round(entry.servingMultiplier * snapshot.servingQuantity * 100) / 100
   const unit = snapshot.servingUnit || snapshot.servingDescription
   return unit ? `${amount} ${unit}` : `${amount}`
 }
