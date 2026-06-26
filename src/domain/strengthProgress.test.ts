@@ -83,7 +83,10 @@ describe('strength progress calculations', () => {
     })
     expect(ranged).toHaveLength(1)
     expect(createStrengthGraphModel([]).status).toBe('empty')
-    expect(createStrengthGraphModel(ranged).status).toBe('single')
+    const singleModel = createStrengthGraphModel(ranged)
+    expect(singleModel.status).toBe('single')
+    // A lone point is centered horizontally so it clears the y-axis labels.
+    expect(singleModel.points[0]?.x).toBe(50)
     expect(createStrengthGraphModel(points).status).toBe('ready')
   })
 })

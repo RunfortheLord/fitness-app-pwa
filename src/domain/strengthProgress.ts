@@ -183,9 +183,12 @@ export function createStrengthGraphModel(
       right.estimatedOneRepMax - left.estimatedOneRepMax ||
       right.completedAt.localeCompare(left.completedAt),
   )[0]
+  // A lone point has no time spread to position against; center it so it floats
+  // in the plot area instead of sitting at x=0, on top of the y-axis labels.
+  const isSinglePoint = sorted.length === 1
   const plotted = sorted.map((point) => ({
     ...point,
-    x: ((pointTime(point) - firstTime) / timeSpread) * 100,
+    x: isSinglePoint ? 50 : ((pointTime(point) - firstTime) / timeSpread) * 100,
     y: 100 - ((point.estimatedOneRepMax - chartMin) / chartSpread) * 100,
   }))
   return {
