@@ -1139,6 +1139,21 @@ function FoodSearchSubpage({
                 Search foods below and add them to this recipe.
               </p>
             )}
+            {recipeDraft.components.length ? (
+              <p className="muted recipe-build-total">
+                Total:{' '}
+                {roundMacro(
+                  recipeDraft.components.reduce(
+                    (total, component) =>
+                      total +
+                      component.food.caloriesPerServing *
+                        component.servingMultiplier,
+                    0,
+                  ),
+                )}{' '}
+                kcal
+              </p>
+            ) : null}
             {recipeError ? <ValidationMessage message={recipeError} /> : null}
             <PrimaryButton
               disabled={recipeSaving}

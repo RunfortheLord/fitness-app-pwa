@@ -201,6 +201,12 @@ export function TrainingPage() {
     void exerciseRepository
       .seedBuiltInExercises()
       .then(() => programRepository.seedBuiltInPrograms())
+      .catch(() => {
+        // Seeding is idempotent and retried on the next mount, so a failure here
+        // (for example a database closed/reset while this background seed was
+        // still in flight) is non-fatal — swallow it rather than surfacing an
+        // unhandled rejection. reload() below still reflects whatever seeded.
+      })
       .finally(() => {
         if (isCurrent) {
           reload()
