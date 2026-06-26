@@ -10,6 +10,16 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-06-26-recipes-and-feedback',
+    date: '2026-06-26',
+    title: 'Edit recipes and send feedback',
+    items: [
+      'Edit a saved recipe any time — tap Edit on a saved meal to change its name or foods, then save.',
+      'Building a recipe now clears the search after each food you add, so the next ingredient starts with a fresh search.',
+      'New "Send feedback" box in Settings — tell the developer about bugs or ideas right from the app.',
+    ],
+  },
+  {
     id: '2026-06-26-training-and-bodyweight',
     date: '2026-06-26',
     title: 'Trend weight, recipes, and live-workout upgrades',
