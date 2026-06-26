@@ -75,6 +75,15 @@ describe('bodyweightProgress', () => {
     expect(model.status === 'ready' ? model.points : []).toHaveLength(40)
   })
 
+  it('centers a lone chart point so it clears the y-axis labels', () => {
+    const model = createBodyweightChartModel([
+      entry('only', '2026-06-19', 188, '2026-06-19T12:00:00.000Z'),
+    ])
+
+    expect(model.status).toBe('single')
+    expect(model.status !== 'empty' ? model.points[0]?.x : null).toBe(50)
+  })
+
   it('formats bodyweight changes without relying only on direction', () => {
     expect(formatBodyweightChange(1.25)).toBe('+1.3 lb')
     expect(formatBodyweightChange(-1)).toBe('-1 lb')

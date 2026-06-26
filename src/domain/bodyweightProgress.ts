@@ -149,13 +149,16 @@ export function createBodyweightChartModel(
   const chartMin = minWeight - yPadding
   const chartMax = maxWeight + yPadding
   const chartSpread = Math.max(1, chartMax - chartMin)
+  // A lone entry has no time spread to position against; center it so it floats
+  // in the plot area instead of sitting at x=0, on top of the y-axis labels.
+  const isSingleEntry = sorted.length === 1
 
   return {
     status: sorted.length === 1 ? 'single' : 'ready',
     entries: sorted,
     points: sorted.map((entry) => ({
       entry,
-      x: ((chartTime(entry) - firstTime) / timeSpread) * 100,
+      x: isSingleEntry ? 50 : ((chartTime(entry) - firstTime) / timeSpread) * 100,
       y: 100 - ((entry.weight - chartMin) / chartSpread) * 100,
     })),
     minWeight,
