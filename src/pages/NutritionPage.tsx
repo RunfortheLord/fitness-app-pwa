@@ -111,6 +111,7 @@ import type {
   BodyweightEntry,
   Food,
   FoodLogEntry,
+  FoodSnapshot,
   IntegrationConnectionStatus,
   MealType,
   NutritionGoal,
@@ -138,12 +139,23 @@ type SheetState =
   | { type: 'scanner' }
   | null
 
-type RecipeComponentDraft = { food: Food; servingMultiplier: number }
+// A recipe component while editing in the subpage. Uses the same shape as a
+// persisted SavedMealComponent so saved recipes load and re-save directly.
+type RecipeComponentDraft = {
+  foodId: string | null
+  foodSnapshot: FoodSnapshot
+  servingMultiplier: number
+}
 
 // An in-progress recipe built from the shared food-search subpage. While this is
 // non-null the subpage is in "recipe mode": selecting a food adds it to the
 // recipe instead of logging it to the day.
-type RecipeDraft = { name: string; components: RecipeComponentDraft[] }
+type RecipeDraft = {
+  // The saved-meal id when editing an existing recipe; null when creating one.
+  editingId: string | null
+  name: string
+  components: RecipeComponentDraft[]
+}
 
 type FoodFormState = {
   name: string
@@ -280,7 +292,25 @@ export function NutritionPage() {
     setQuery('')
     setAddedItems([])
     setRecipeError(null)
-    setRecipeDraft({ name: '', components: [] })
+    setRecipeDraft({ editingId: null, name: '', components: [] })
+    setSearchOpen(true)
+  }, [])
+
+  // Edit an existing saved recipe in the same subpage, prefilled with its name
+  // and components.
+  const startEditRecipe = useCallback((meal: SavedMeal) => {
+    setQuery('')
+    setAddedItems([])
+    setRecipeError(null)
+    setRecipeDraft({
+      editingId: meal.id,
+      name: meal.name,
+      components: meal.components.map((component) => ({
+        foodId: component.foodId,
+        foodSnapshot: component.foodSnapshot,
+        servingMultiplier: component.servingMultiplier,
+      })),
+    })
     setSearchOpen(true)
   }, [])
 
@@ -296,26 +326,31 @@ export function NutritionPage() {
         if (!current) {
           return current
         }
-        if (current.components.some((item) => item.food.id === food.id)) {
+        if (current.components.some((item) => item.foodId === food.id)) {
           return current
         }
         return {
           ...current,
-          components: [...current.components, { food, servingMultiplier }],
+          components: [
+            ...current.components,
+            {
+              foodId: food.id,
+              foodSnapshot: snapshotFood(food),
+              servingMultiplier,
+            },
+          ],
         }
       })
     },
     [],
   )
 
-  const removeRecipeComponent = useCallback((foodId: string) => {
+  const removeRecipeComponent = useCallback((index: number) => {
     setRecipeDraft((current) =>
       current
         ? {
             ...current,
-            components: current.components.filter(
-              (item) => item.food.id !== foodId,
-            ),
+            components: current.components.filter((_, i) => i !== index),
           }
         : current,
     )
@@ -577,21 +612,28 @@ export function NutritionPage() {
       return
     }
     setRecipeSaving(true)
-    void foodRepository
-      .createSavedMeal({
-        name: recipeDraft.name.trim(),
-        components: recipeDraft.components.map((component) => ({
-          foodId: component.food.id,
-          foodSnapshot: snapshotFood(component.food),
-          servingMultiplier: component.servingMultiplier,
-        })),
-      })
+    const { editingId } = recipeDraft
+    const components = recipeDraft.components.map((component) => ({
+      foodId: component.foodId,
+      foodSnapshot: component.foodSnapshot,
+      servingMultiplier: component.servingMultiplier,
+    }))
+    const action = editingId
+      ? foodRepository.updateSavedMeal(editingId, {
+          name: recipeDraft.name.trim(),
+          components,
+        })
+      : foodRepository.createSavedMeal({
+          name: recipeDraft.name.trim(),
+          components,
+        })
+    void action
       .then(() => {
         setRecipeSaving(false)
         setSearchOpen(false)
         setRecipeDraft(null)
         setRecipeError(null)
-        setMessage('Recipe saved.')
+        setMessage(editingId ? 'Recipe updated.' : 'Recipe saved.')
         reload()
       })
       .catch((caught: unknown) => {
@@ -707,6 +749,7 @@ export function NutritionPage() {
                 <SavedMealsCard
                   meals={loadState.savedMeals}
                   onLog={logSavedMeal}
+                  onEdit={startEditRecipe}
                   onDelete={setSavedMealToDelete}
                 />
               ) : null}
@@ -831,6 +874,10 @@ export function NutritionPage() {
               ? (food, servingMultiplier) => {
                   addRecipeComponent(food, servingMultiplier)
                   setSheet(null)
+                  // Recipes are built from several different ingredients, so reset
+                  // the search after each add to give a fresh field for the next
+                  // one (unlike logging, which keeps the query to add repeats).
+                  setQuery('')
                 }
               : undefined
           }
@@ -1034,7 +1081,7 @@ function FoodSearchSubpage({
   recipeError: string | null
   recipeSaving: boolean
   onRecipeNameChange: (name: string) => void
-  onRemoveRecipeComponent: (foodId: string) => void
+  onRemoveRecipeComponent: (index: number) => void
   onSaveRecipe: () => void
   onBack: () => void
   onEditFood: (food: Food) => void
@@ -1114,19 +1161,22 @@ function FoodSearchSubpage({
             </div>
             {recipeDraft.components.length ? (
               <div className="recipe-build-components">
-                {recipeDraft.components.map((component) => (
+                {recipeDraft.components.map((component, index) => (
                   <span
                     className="recipe-build-chip"
-                    key={component.food.id}
-                    title={component.food.name}
+                    key={`${component.foodId ?? component.foodSnapshot.foodName}-${index}`}
+                    title={component.foodSnapshot.foodName}
                   >
-                    <FoodIcon name={component.food.name} size={16} />
+                    <FoodIcon
+                      name={component.foodSnapshot.foodName}
+                      size={16}
+                    />
                     <span className="recipe-build-chip-name">
-                      {component.food.name}
+                      {component.foodSnapshot.foodName}
                     </span>
                     <button
-                      aria-label={`Remove ${component.food.name}`}
-                      onClick={() => onRemoveRecipeComponent(component.food.id)}
+                      aria-label={`Remove ${component.foodSnapshot.foodName}`}
+                      onClick={() => onRemoveRecipeComponent(index)}
                       type="button"
                     >
                       <Trash2 aria-hidden="true" size={14} />
@@ -1146,7 +1196,7 @@ function FoodSearchSubpage({
                   recipeDraft.components.reduce(
                     (total, component) =>
                       total +
-                      component.food.caloriesPerServing *
+                      component.foodSnapshot.caloriesPerServing *
                         component.servingMultiplier,
                     0,
                   ),
@@ -1162,7 +1212,7 @@ function FoodSearchSubpage({
             >
               {recipeSaving
                 ? 'Saving…'
-                : `Save recipe${
+                : `${recipeDraft.editingId ? 'Update' : 'Save'} recipe${
                     recipeDraft.components.length
                       ? ` (${recipeDraft.components.length})`
                       : ''
@@ -1806,10 +1856,12 @@ function savedMealCalories(meal: SavedMeal) {
 function SavedMealsCard({
   meals,
   onLog,
+  onEdit,
   onDelete,
 }: {
   meals: SavedMeal[]
   onLog: (meal: SavedMeal) => void
+  onEdit: (meal: SavedMeal) => void
   onDelete: (meal: SavedMeal) => void
 }) {
   return (
@@ -1829,6 +1881,12 @@ function SavedMealsCard({
               </small>
             </div>
             <div className="row-actions">
+              <IconButton
+                aria-label={`Edit saved meal ${meal.name}`}
+                onClick={() => onEdit(meal)}
+              >
+                <Edit2 aria-hidden="true" size={18} />
+              </IconButton>
               <IconButton
                 aria-label={`Delete saved meal ${meal.name}`}
                 onClick={() => onDelete(meal)}

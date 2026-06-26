@@ -73,6 +73,7 @@ export type SaveMealInput = {
 export type UpdateSavedMealInput = {
   name?: string
   notes?: string
+  components?: SavedMealComponent[]
 }
 
 export type LogSavedMealInput = {
@@ -507,9 +508,24 @@ export function createFoodRepository(
       if (!name) {
         throw new Error('Saved meal name is required.')
       }
+      const components = input.components ?? meal.components
+      if (input.components) {
+        if (input.components.length === 0) {
+          throw new Error('A saved meal needs at least one food.')
+        }
+        for (const component of input.components) {
+          if (
+            component.servingMultiplier <= 0 ||
+            !Number.isFinite(component.servingMultiplier)
+          ) {
+            throw new Error('Saved meal servings must be greater than zero.')
+          }
+        }
+      }
       const updated: SavedMeal = {
         ...meal,
         name,
+        components,
         notes: input.notes ?? meal.notes,
         updatedAt: new Date().toISOString(),
       }

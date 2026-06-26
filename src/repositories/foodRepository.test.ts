@@ -209,6 +209,66 @@ describe('foodRepository', () => {
     await expect(repository.listSavedMeals()).resolves.toEqual([])
   })
 
+  it('edits a saved meal name and components', async () => {
+    const repository = createFoodRepository(database)
+    const makeFood = (name: string, calories: number) =>
+      repository.createFood({
+        name,
+        servingQuantity: 1,
+        servingUnit: 'serving',
+        servingDescription: '',
+        caloriesPerServing: calories,
+        proteinGramsPerServing: 10,
+        carbohydrateGramsPerServing: 20,
+        fatGramsPerServing: 5,
+        notes: '',
+      })
+    const rice = await makeFood('Rice', 205)
+    const chicken = await makeFood('Chicken', 165)
+
+    const meal = await repository.createSavedMeal({
+      name: 'Chicken bowl',
+      components: [
+        {
+          foodId: chicken.id,
+          foodSnapshot: snapshotFood(chicken),
+          servingMultiplier: 1,
+        },
+      ],
+    })
+
+    const updated = await repository.updateSavedMeal(meal.id, {
+      name: 'Chicken & rice',
+      components: [
+        {
+          foodId: chicken.id,
+          foodSnapshot: snapshotFood(chicken),
+          servingMultiplier: 2,
+        },
+        {
+          foodId: rice.id,
+          foodSnapshot: snapshotFood(rice),
+          servingMultiplier: 1,
+        },
+      ],
+    })
+
+    expect(updated.name).toBe('Chicken & rice')
+    expect(updated.components).toHaveLength(2)
+    expect(updated.components[0].servingMultiplier).toBe(2)
+
+    const reloaded = await repository.listSavedMeals()
+    expect(reloaded).toHaveLength(1)
+    expect(reloaded[0].components.map((c) => c.foodSnapshot.foodName)).toEqual([
+      'Chicken',
+      'Rice',
+    ])
+
+    await expect(
+      repository.updateSavedMeal(meal.id, { components: [] }),
+    ).rejects.toThrow('at least one food')
+  })
+
   it('stars and unstars foods and lists favorites alphabetically', async () => {
     const repository = createFoodRepository(database)
     const apple = await repository.createFood({

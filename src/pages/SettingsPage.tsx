@@ -656,14 +656,16 @@ export function SettingsPage() {
           }}
         />
         {restorePreview ? <ImportPreview preview={restorePreview} /> : null}
-        <SecondaryButton
-          className="button-danger"
-          disabled={isDestructiveOperationRunning}
-          type="button"
-          onClick={() => setIsClearConfirmOpen(true)}
-        >
-          Clear all data
-        </SecondaryButton>
+        <div className="button-row settings-clear-all-row">
+          <SecondaryButton
+            className="button-danger"
+            disabled={isDestructiveOperationRunning}
+            type="button"
+            onClick={() => setIsClearConfirmOpen(true)}
+          >
+            Clear all data
+          </SecondaryButton>
+        </div>
       </Card>
 
       <SectionHeader title="Send feedback" />
