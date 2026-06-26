@@ -309,6 +309,41 @@ describe('TrainingPage', () => {
     expect(screen.getByText(/stays on this day/)).toBeInTheDocument()
   }, 15_000)
 
+  it('renames the selected workout day inline by editing its name field', async () => {
+    const user = userEvent.setup()
+    renderTraining()
+
+    await screen.findAllByRole('button', { name: 'Create program' })
+    await user.click(
+      screen.getAllByRole('button', { name: 'Create program' })[0],
+    )
+    await user.type(
+      screen.getByRole('textbox', { name: 'Program name' }),
+      'Split',
+    )
+    await user.click(screen.getByRole('button', { name: 'Save program' }))
+
+    const builder = await screen.findByRole('dialog', { name: 'Edit template' })
+    await user.type(
+      await within(builder).findByRole('textbox', { name: 'Add workout day' }),
+      'Push',
+    )
+    await user.click(within(builder).getByRole('button', { name: 'Add day' }))
+
+    const dayNameField = await within(builder).findByRole('textbox', {
+      name: 'Workout day name',
+    })
+    expect(dayNameField).toHaveValue('Push')
+    await user.clear(dayNameField)
+    await user.type(dayNameField, 'Pull')
+    await user.tab()
+
+    await waitFor(() => {
+      expect(within(builder).getAllByText('Pull').length).toBeGreaterThan(0)
+      expect(within(builder).queryByText('Push')).not.toBeInTheDocument()
+    })
+  })
+
   it('searches built-in and visible custom exercises while excluding hidden custom exercises', async () => {
     const user = userEvent.setup()
     const visible = await seedExercise(db)

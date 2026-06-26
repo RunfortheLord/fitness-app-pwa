@@ -18,6 +18,7 @@ import {
 } from '@components/ui'
 import { DashboardContext } from '@components/dashboardContextValue'
 import { formatLocalDate } from '@domain/dates'
+import { currentTrendWeight } from '@domain/bodyweightTrend'
 import {
   createBodyweightChartModel,
   filterBodyweightEntriesForRange,
@@ -550,6 +551,7 @@ function BodyweightProgressView({
           {status === 'ready' ? (
             <BodyweightChart
               model={model}
+              trendWeight={currentTrendWeight(entries)}
               onSelect={(entry) => setSelectedEntryId(entry.id)}
               selectedEntry={selectedEntry}
             />
@@ -1000,10 +1002,12 @@ function RunHistoryDetail({ structure }: { structure: RunStructure }) {
 
 function BodyweightChart({
   model,
+  trendWeight,
   onSelect,
   selectedEntry,
 }: {
   model: ReturnType<typeof createBodyweightChartModel>
+  trendWeight: number | null
   onSelect: (entry: BodyweightEntry) => void
   selectedEntry: BodyweightEntry | null
 }) {
@@ -1064,6 +1068,14 @@ function BodyweightChart({
           </strong>
           <small>Latest - {latest.localDate}</small>
         </span>
+        {trendWeight !== null ? (
+          <span>
+            <strong>
+              {formatWeight(trendWeight)} {latest.unit}
+            </strong>
+            <small>Trend weight</small>
+          </span>
+        ) : null}
         <span>
           <strong>
             {formatWeight(model.minWeight)}-{formatWeight(model.maxWeight)}{' '}

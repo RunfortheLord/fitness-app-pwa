@@ -1409,6 +1409,22 @@ function ProgramBuilderSheet({
       })
   }
 
+  function saveDayName(dayId: string, nextName: string) {
+    const trimmed = nextName.trim()
+    if (!trimmed) {
+      return
+    }
+    const current = structure?.days.find((day) => day.id === dayId)
+    if (!current || trimmed === current.name) {
+      return
+    }
+    run(
+      mode === 'template'
+        ? programRepository.updateTemplateDay(dayId, { name: trimmed })
+        : programRepository.updateActiveCycleDay(dayId, { name: trimmed }),
+    )
+  }
+
   function removeConfirmed() {
     if (!removeConfirmation) {
       return
@@ -1567,17 +1583,31 @@ function ProgramBuilderSheet({
         {structure && !editingPrescription ? (
           <>
             <FormField id="builder-program-name" label="Program name">
-              <input
-                id="builder-program-name"
-                onBlur={() => saveName()}
-                onChange={(event) =>
-                  setNameForm((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-                value={nameForm.name}
-              />
+              <div className="rename-field">
+                <input
+                  className="rename-field-input"
+                  id="builder-program-name"
+                  onBlur={() => saveName()}
+                  onChange={(event) =>
+                    setNameForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.currentTarget.blur()
+                    }
+                  }}
+                  value={nameForm.name}
+                />
+                <Edit2
+                  aria-hidden="true"
+                  className="rename-field-icon"
+                  size={16}
+                />
+              </div>
+              <small className="rename-field-hint">Tap to rename</small>
             </FormField>
 
             <div className="program-builder-add">
@@ -1623,41 +1653,36 @@ function ProgramBuilderSheet({
                   key={selectedDay.id}
                   {...daySwipe}
                 >
-                  <div>
-                    <strong>Selected day</strong>
+                  <div className="program-builder-day-head">
+                    <FormField id="builder-day-name" label="Workout day name">
+                      <div className="rename-field">
+                        <input
+                          className="rename-field-input"
+                          defaultValue={selectedDay.name}
+                          id="builder-day-name"
+                          key={selectedDay.id}
+                          onBlur={(event) =>
+                            saveDayName(selectedDay.id, event.target.value)
+                          }
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.currentTarget.blur()
+                            }
+                          }}
+                        />
+                        <Edit2
+                          aria-hidden="true"
+                          className="rename-field-icon"
+                          size={16}
+                        />
+                      </div>
+                      <small className="rename-field-hint">Tap to rename</small>
+                    </FormField>
                     {selectedDay.notes ? (
                       <small>{selectedDay.notes}</small>
                     ) : null}
                   </div>
                   <div className="button-row">
-                    <SecondaryButton
-                      type="button"
-                      onClick={() => {
-                        const name = window.prompt(
-                          'Workout day name',
-                          selectedDay.name,
-                        )
-                        if (name?.trim()) {
-                          run(
-                            mode === 'template'
-                              ? programRepository.updateTemplateDay(
-                                  selectedDay.id,
-                                  {
-                                    name: name.trim(),
-                                  },
-                                )
-                              : programRepository.updateActiveCycleDay(
-                                  selectedDay.id,
-                                  {
-                                    name: name.trim(),
-                                  },
-                                ),
-                          )
-                        }
-                      }}
-                    >
-                      Rename
-                    </SecondaryButton>
                     <SecondaryButton
                       disabled={selectedDayIndex === 0}
                       type="button"

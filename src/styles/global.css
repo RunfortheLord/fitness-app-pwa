@@ -242,6 +242,36 @@ textarea:focus-visible {
   font-size: 22px;
 }
 
+.home-bw-metric {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.home-bw-stat {
+  display: grid;
+  gap: 2px;
+}
+
+.home-bw-value {
+  font-size: 22px;
+  font-weight: 850;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.home-bw-value-secondary {
+  font-size: 17px;
+  font-weight: 750;
+  color: var(--color-muted);
+}
+
+.home-bw-caption {
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .muted,
 .field-help {
   margin: var(--space-2) 0 0;
@@ -405,6 +435,50 @@ textarea:focus-visible {
 
 .program-browse-button {
   margin-top: var(--space-3);
+}
+
+/* Inline "tap to rename" field: a shaded, oversized box with a dashed outline
+   and an edit glyph so it reads as directly editable (replaces a Rename button). */
+.rename-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.rename-field-input {
+  width: 100%;
+  padding: var(--space-3) var(--space-8) var(--space-3) var(--space-3);
+  font-size: 18px;
+  font-weight: 750;
+  color: var(--color-text);
+  background: var(--color-surface-strong);
+  border: 1.5px dashed var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.rename-field-input:focus {
+  outline: none;
+  border-style: solid;
+  border-color: var(--color-accent);
+  background: var(--color-input);
+}
+
+.rename-field-icon {
+  position: absolute;
+  right: var(--space-3);
+  color: var(--color-muted);
+  pointer-events: none;
+}
+
+.rename-field-hint {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--color-dim);
+}
+
+.program-builder-day-head {
+  display: grid;
+  gap: var(--space-1);
 }
 
 .live-create-exercise-button {

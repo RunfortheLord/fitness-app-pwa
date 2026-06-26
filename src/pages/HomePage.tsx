@@ -24,6 +24,8 @@ import {
   formatWeight,
   type BodyweightTrendSummary,
 } from '@domain/bodyweightProgress'
+import { currentTrendWeight } from '@domain/bodyweightTrend'
+import type { BodyweightEntry } from '@shared-types/app'
 import { useDashboardContext } from '@hooks/useDashboardContext'
 import {
   dashboardService,
@@ -97,6 +99,9 @@ export function HomePage() {
   const caloriesRemaining = Math.round(
     dashboard?.nutrition.remainingCalories ?? 0,
   )
+  const trendWeight = dashboard
+    ? currentTrendWeight(dashboard.bodyweightEntries)
+    : null
 
   return (
     <PageContainer>
@@ -173,16 +178,17 @@ export function HomePage() {
       </section>
 
       <section className="metric-grid" aria-label="Daily summary">
-        <MetricCard
-          label="Calories consumed"
-          value={`${caloriesConsumed}`}
-          detail={`${calorieTarget} kcal target`}
+        <HomeBodyweightMetric
+          trendWeight={trendWeight}
+          lastRecorded={dashboard?.currentBodyweight}
         />
         <MetricCard
           label="Calories remaining"
           value={`${caloriesRemaining}`}
           detail={
-            calorieTarget > 0 ? 'Based on current target' : 'Target not set'
+            calorieTarget > 0
+              ? `${calorieTarget} kcal target`
+              : 'Target not set'
           }
         />
       </section>
@@ -307,6 +313,39 @@ export function HomePage() {
         </div>
       ) : null}
     </PageContainer>
+  )
+}
+
+function HomeBodyweightMetric({
+  trendWeight,
+  lastRecorded,
+}: {
+  trendWeight: number | null
+  lastRecorded: BodyweightEntry | undefined
+}) {
+  const unit = lastRecorded?.unit ?? 'lb'
+  return (
+    <Card className="metric-card">
+      <p className="metric-label">Bodyweight</p>
+      <div className="home-bw-metric">
+        <div className="home-bw-stat">
+          <span className="home-bw-value">
+            {trendWeight !== null
+              ? `${formatWeight(trendWeight)} ${unit}`
+              : '—'}
+          </span>
+          <span className="home-bw-caption">Trend weight</span>
+        </div>
+        <div className="home-bw-stat">
+          <span className="home-bw-value home-bw-value-secondary">
+            {lastRecorded
+              ? `${formatWeight(lastRecorded.weight)} ${unit}`
+              : '—'}
+          </span>
+          <span className="home-bw-caption">Last recorded</span>
+        </div>
+      </div>
+    </Card>
   )
 }
 

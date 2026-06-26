@@ -47,7 +47,8 @@ describe('HomePage', () => {
     expect(
       screen.getByRole('button', { name: 'Return to today' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('Calories consumed')).toBeInTheDocument()
+    expect(screen.getByText('Trend weight')).toBeInTheDocument()
+    expect(screen.getByText('Last recorded')).toBeInTheDocument()
     expect(screen.getByText('Calories remaining')).toBeInTheDocument()
     expect(screen.getByText('No entry')).toBeInTheDocument()
     expect(screen.getByText('No active program')).toBeInTheDocument()
