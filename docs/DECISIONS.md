@@ -1,5 +1,19 @@
 # Decisions
 
+## 2026-06-26: Alpha Feedback Relay
+
+- Added an in-app "Send feedback" form (Settings) for alpha testers to send typed
+  feedback to the developer.
+- This required extending the serverless layer beyond the food-provider proxy: a
+  new `api/feedback` function (logic in `src/server/feedbackApi.ts`) relays the
+  message to a chat webhook (`FEEDBACK_WEBHOOK_URL`, a Discord or Slack incoming
+  webhook). The payload sends both `content` and `text` so either service works.
+- No user feedback is persisted anywhere (no backend database, no accounts) — the
+  function only forwards to the webhook, keeping the app local-first. The webhook
+  URL is a server-only env var and is never bundled into the client.
+- When the env var is unset the endpoint returns `not_configured` and the UI shows
+  a clear message; the build still succeeds.
+
 ## 2026-06-25: Nutrition Logging Upgrades (Meal Grouping, Favorites, Saved Meals)
 
 - The daily food log groups entries by meal (Breakfast/Lunch/Dinner/Snacks) via a

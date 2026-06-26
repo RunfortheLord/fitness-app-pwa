@@ -33,6 +33,7 @@ import {
   FoodProviderClientError,
   testUsdaApiKey,
 } from '@services/foodProviderClient'
+import { FeedbackClientError, sendFeedback } from '@services/feedbackClient'
 import type { IntegrationConnectionStatus } from '@shared-types/app'
 
 type BuildInfo = {
@@ -87,6 +88,10 @@ export function SettingsPage() {
     null,
   )
   const [buildInfo, setBuildInfo] = useState<BuildInfo | null>(null)
+  const [feedbackText, setFeedbackText] = useState('')
+  const [feedbackSending, setFeedbackSending] = useState(false)
+  const [feedbackError, setFeedbackError] = useState<string | null>(null)
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null)
   const { refreshDashboard } = useDashboardContext()
   const parsedTargets = parseTargetForm(targetForm)
 
@@ -360,6 +365,40 @@ export function SettingsPage() {
     }
   }
 
+  async function submitFeedback() {
+    const text = feedbackText.trim()
+    if (!text) {
+      setFeedbackError('Enter some feedback first.')
+      return
+    }
+    setFeedbackSending(true)
+    setFeedbackError(null)
+    setFeedbackMessage(null)
+    // Context helps triage which build/device the feedback came from. The server
+    // caps and stores none of it — it only relays it to the chat webhook.
+    const context = [
+      `v${APPLICATION_VERSION}`,
+      buildInfo ? buildInfo.gitHash : 'dev',
+      buildInfo?.environment ?? 'development',
+      typeof navigator !== 'undefined' ? navigator.userAgent : '',
+    ]
+      .filter(Boolean)
+      .join(' · ')
+    try {
+      await sendFeedback(text, context)
+      setFeedbackText('')
+      setFeedbackMessage('Thanks! Your feedback was sent.')
+    } catch (caught) {
+      setFeedbackError(
+        caught instanceof FeedbackClientError
+          ? caught.message
+          : 'Feedback could not be sent. Please try again later.',
+      )
+    } finally {
+      setFeedbackSending(false)
+    }
+  }
+
   return (
     <PageContainer>
       {operationMessage ? (
@@ -613,6 +652,36 @@ export function SettingsPage() {
         >
           Clear all data
         </SecondaryButton>
+      </Card>
+
+      <SectionHeader title="Send feedback" />
+      <Card>
+        <p className="muted">
+          Found a bug or have an idea? Send it straight to the developer. Your
+          app version and device are included to help with debugging.
+        </p>
+        <FormField id="feedback-message" label="Your feedback">
+          <textarea
+            id="feedback-message"
+            className="feedback-textarea"
+            maxLength={1800}
+            onChange={(event) => setFeedbackText(event.target.value)}
+            placeholder="What's working, what's not, or what you'd like to see…"
+            rows={4}
+            value={feedbackText}
+          />
+        </FormField>
+        {feedbackError ? <ValidationMessage message={feedbackError} /> : null}
+        {feedbackMessage ? (
+          <StatusMessage tone="success">{feedbackMessage}</StatusMessage>
+        ) : null}
+        <PrimaryButton
+          type="button"
+          disabled={feedbackSending || !feedbackText.trim()}
+          onClick={() => void submitFeedback()}
+        >
+          {feedbackSending ? 'Sending…' : 'Send feedback'}
+        </PrimaryButton>
       </Card>
 
       <SectionHeader title="What's new" />

@@ -1667,6 +1667,11 @@ textarea {
   resize: vertical;
 }
 
+.feedback-textarea {
+  min-height: 112px;
+  line-height: 1.4;
+}
+
 input::placeholder {
   color: var(--color-dim);
 }
