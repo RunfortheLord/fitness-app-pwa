@@ -92,7 +92,7 @@ history when source records change — do not bypass them.
 
 ## DB schema & migrations (db/database.ts)
 
-`DATABASE_SCHEMA_VERSION = 11`, `DATABASE_NAME = 'training-log'`. Each `this.version(n)`
+`DATABASE_SCHEMA_VERSION = 12`, `DATABASE_NAME = 'training-log'`. Each `this.version(n)`
 block lists stores + an `.upgrade()`. To change schema: add a new `version(N+1)` block,
 bump `DATABASE_SCHEMA_VERSION`, write the upgrade. Tests: `db/database.test.ts`,
 repo `*.test.ts`, use `fake-indexeddb`.
