@@ -37,6 +37,11 @@ import { useSubpageBackGesture } from '@hooks/useSubpageBackGesture'
 import { TRACKING_METHODS, getTrackingMethod } from '@domain/trackingMethods'
 import { formatLocalDate } from '@domain/dates'
 import {
+  clampProgramDurationWeeks,
+  DEFAULT_PROGRAM_DURATION_WEEKS,
+  formatProgramWeek,
+} from '@domain/programWeeks'
+import {
   defaultExerciseResults,
   filterExerciseLibrary,
   hasSearchableQuery,
@@ -117,6 +122,7 @@ type LoadState = {
 
 type ProgramFormState = {
   name: string
+  durationWeeks: string
 }
 
 type PrescriptionFormState = {
@@ -143,6 +149,7 @@ const emptyExerciseForm: ExerciseFormState = {
 
 const emptyProgramForm: ProgramFormState = {
   name: '',
+  durationWeeks: String(DEFAULT_PROGRAM_DURATION_WEEKS),
 }
 
 const emptyPrescriptionForm: PrescriptionFormState = {
@@ -703,6 +710,9 @@ function ProgramOverview({
               Deactivate
             </SecondaryButton>
           </div>
+          <p className="program-week-indicator">
+            {formatProgramWeek(currentCycle.cycle.activatedAt)}
+          </p>
           {currentCycle.days.length ? (
             <div className="program-day-grid" aria-label="Workout days">
               {currentCycle.days.map((day) => (
@@ -1193,6 +1203,7 @@ function ProgramCreateSheet({
     return programRepository
       .createProgramTemplate({
         name,
+        durationWeeks: parseDurationWeeks(form.durationWeeks),
         days: [],
       })
       .then((created) => onCreated(created.template.id))
@@ -1214,12 +1225,47 @@ function ProgramCreateSheet({
           value={form.name}
         />
       </FormField>
+      <FormField id="program-weeks" label="Program length (weeks)">
+        <input
+          id="program-weeks"
+          inputMode="numeric"
+          type="number"
+          min={1}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              durationWeeks: event.target.value,
+            }))
+          }
+          value={form.durationWeeks}
+        />
+      </FormField>
       {error ? <ValidationMessage message={error} /> : null}
       <PrimaryButton disabled={!name} type="button" onClick={saveProgram}>
         Save program
       </PrimaryButton>
     </BottomSheet>
   )
+}
+
+// Forms keep the week count as a string; coerce to a clamped number (falling
+// back to the default when blank/invalid) before persisting.
+function parseDurationWeeks(value: string): number {
+  const parsed = Number.parseInt(value, 10)
+  return clampProgramDurationWeeks(
+    Number.isFinite(parsed) ? parsed : DEFAULT_PROGRAM_DURATION_WEEKS,
+  )
+}
+
+function programFormFromRecord(
+  record: ProgramTemplate | ActiveProgramCycle,
+): ProgramFormState {
+  return {
+    name: record.name,
+    durationWeeks: String(
+      record.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
+    ),
+  }
 }
 
 function ProgramBuilderSheet({
@@ -1278,9 +1324,7 @@ function ProgramBuilderSheet({
             exercisesByDay: loaded.exercisesByDay,
           })
           setSelectedDayId((current) => current || loaded.days[0]?.id || '')
-          setNameForm({
-            name: loaded.template.name,
-          })
+          setNameForm(programFormFromRecord(loaded.template))
         })
         .catch((caught: unknown) => {
           setError(
@@ -1302,7 +1346,7 @@ function ProgramBuilderSheet({
             exercisesByDay: loaded.exercisesByDay,
           })
           setSelectedDayId((current) => current || loaded.days[0]?.id || '')
-          setNameForm({ name: loaded.cycle.name })
+          setNameForm(programFormFromRecord(loaded.cycle))
         })
         .catch((caught: unknown) => {
           setError(
@@ -1347,7 +1391,7 @@ function ProgramBuilderSheet({
               ? current
               : loaded.days[0]?.id || '',
           )
-          setNameForm({ name: record.name })
+          setNameForm(programFormFromRecord(record))
           onChanged()
         })
     } else {
@@ -1365,7 +1409,7 @@ function ProgramBuilderSheet({
               ? current
               : loaded.days[0]?.id || '',
           )
-          setNameForm({ name: record.name })
+          setNameForm(programFormFromRecord(record))
           onChanged()
         })
     }
@@ -1413,6 +1457,25 @@ function ProgramBuilderSheet({
           caught instanceof Error ? caught.message : 'Program change failed.',
         )
       })
+  }
+
+  function saveDuration() {
+    if (!structure) {
+      return
+    }
+    const nextWeeks = parseDurationWeeks(nameForm.durationWeeks)
+    if (nextWeeks === (structure.record.durationWeeks ?? null)) {
+      return
+    }
+    run(
+      mode === 'template'
+        ? programRepository.updateProgramTemplate(structure.record.id, {
+            durationWeeks: nextWeeks,
+          })
+        : programRepository.updateActiveCycle(structure.record.id, {
+            durationWeeks: nextWeeks,
+          }),
+    )
   }
 
   function saveDayName(dayId: string, nextName: string) {
@@ -1614,6 +1677,31 @@ function ProgramBuilderSheet({
                 />
               </div>
               <small className="rename-field-hint">Tap to rename</small>
+            </FormField>
+
+            <FormField
+              id="builder-program-weeks"
+              label="Program length (weeks)"
+            >
+              <input
+                id="builder-program-weeks"
+                inputMode="numeric"
+                type="number"
+                min={1}
+                onBlur={() => saveDuration()}
+                onChange={(event) =>
+                  setNameForm((current) => ({
+                    ...current,
+                    durationWeeks: event.target.value,
+                  }))
+                }
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.currentTarget.blur()
+                  }
+                }}
+                value={nameForm.durationWeeks}
+              />
             </FormField>
 
             <div className="program-builder-add">

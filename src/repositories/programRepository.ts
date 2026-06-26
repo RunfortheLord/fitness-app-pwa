@@ -5,6 +5,10 @@ import {
   BUILT_IN_PROGRAM_SEED_VERSION,
 } from '@domain/programLibrarySeed'
 import { snapshotExercise } from '@domain/snapshots'
+import {
+  clampProgramDurationWeeks,
+  DEFAULT_PROGRAM_DURATION_WEEKS,
+} from '@domain/programWeeks'
 import type { ExerciseUsageSummary } from '@domain/exerciseSearch'
 import type {
   ActiveCycleWorkoutDay,
@@ -37,6 +41,7 @@ export type CreateTemplateDayInput = {
 export type CreateProgramTemplateInput = {
   name: string
   notes?: string
+  durationWeeks?: number | null
   days: CreateTemplateDayInput[]
 }
 
@@ -153,6 +158,8 @@ export function createProgramRepository(
               isBuiltIn: true,
               level: program.level,
               goal: program.goal,
+              durationWeeks:
+                program.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
               builtInSeedVersion: BUILT_IN_PROGRAM_SEED_VERSION,
               createdAt: existing?.createdAt ?? BUILT_IN_PROGRAM_CREATED_AT,
               updatedAt: BUILT_IN_PROGRAM_CREATED_AT,
@@ -217,6 +224,9 @@ export function createProgramRepository(
         notes: '',
         status: 'active',
         lastActiveAt: null,
+        durationWeeks: clampProgramDurationWeeks(
+          input.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
+        ),
         createdAt: now,
         updatedAt: now,
       }
@@ -325,6 +335,8 @@ export function createProgramRepository(
             notes: '',
             status: 'active',
             activatedAt: now,
+            durationWeeks:
+              template.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
             createdAt: now,
             updatedAt: now,
           }
@@ -418,7 +430,7 @@ export function createProgramRepository(
 
     async updateProgramTemplate(
       id: string,
-      input: Partial<Pick<ProgramTemplate, 'name'>>,
+      input: Partial<Pick<ProgramTemplate, 'name' | 'durationWeeks'>>,
     ) {
       const template = await database.programTemplates.get(id)
       if (!template) {
@@ -430,9 +442,14 @@ export function createProgramRepository(
         )
       }
 
+      const durationWeeks =
+        input.durationWeeks != null
+          ? clampProgramDurationWeeks(input.durationWeeks)
+          : (template.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS)
       const updated: ProgramTemplate = {
         ...template,
         ...input,
+        durationWeeks,
         notes: '',
         updatedAt: new Date().toISOString(),
       }
@@ -496,6 +513,7 @@ export function createProgramRepository(
       return this.createProgramTemplate({
         name: `${source.template.name} copy`,
         notes: '',
+        durationWeeks: source.template.durationWeeks ?? null,
         days: source.days.map((day) => ({
           name: day.name,
           notes: '',
@@ -980,15 +998,20 @@ export function createProgramRepository(
 
     async updateActiveCycle(
       id: string,
-      input: Partial<Pick<ActiveProgramCycle, 'name'>>,
+      input: Partial<Pick<ActiveProgramCycle, 'name' | 'durationWeeks'>>,
     ) {
       const cycle = await database.activeProgramCycles.get(id)
       if (!cycle) {
         throw new Error(`Active program cycle ${id} was not found.`)
       }
+      const durationWeeks =
+        input.durationWeeks != null
+          ? clampProgramDurationWeeks(input.durationWeeks)
+          : (cycle.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS)
       const updated = {
         ...cycle,
         ...input,
+        durationWeeks,
         notes: '',
         updatedAt: new Date().toISOString(),
       }

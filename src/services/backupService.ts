@@ -1113,6 +1113,10 @@ function clearableDataTables(database: TrainingLogDatabase) {
   return [
     ...tableNames.map((name) => database[name]),
     database.apiKeyIntegrationSettings,
+    // Weekly day check-offs are ephemeral state (not part of the backup
+    // payload), but must still be wiped on reset/restore so a fresh import
+    // does not inherit stale checkmarks.
+    database.activeCycleDayChecks,
   ]
 }
 

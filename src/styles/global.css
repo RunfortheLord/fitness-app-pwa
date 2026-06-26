@@ -706,6 +706,13 @@ textarea:focus-visible {
   margin-top: var(--space-3);
 }
 
+.program-week-indicator {
+  margin: var(--space-3) 0 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--color-muted);
+}
+
 .program-day-tabs {
   display: flex;
   gap: var(--space-2);

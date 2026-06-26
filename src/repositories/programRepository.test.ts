@@ -40,6 +40,32 @@ describe('programRepository', () => {
     expect(activeExercise?.sourceTemplateExerciseId).toBe(sourceExercise.id)
   })
 
+  it('defaults program length to 10 weeks, accepts a custom length, and snapshots it on activation', async () => {
+    const repository = createProgramRepository(database)
+
+    const defaulted = await repository.createProgramTemplate({
+      name: 'Default length',
+      days: [],
+    })
+    expect(defaulted.template.durationWeeks).toBe(10)
+
+    const custom = await repository.createProgramTemplate({
+      name: 'Six weeks',
+      durationWeeks: 6,
+      days: [],
+    })
+    expect(custom.template.durationWeeks).toBe(6)
+
+    // Out-of-range values are clamped.
+    const updated = await repository.updateProgramTemplate(custom.template.id, {
+      durationWeeks: 999,
+    })
+    expect(updated.durationWeeks).toBe(104)
+
+    const active = await repository.activateTemplate(custom.template.id)
+    expect(active.cycle.durationWeeks).toBe(104)
+  })
+
   it('marks only the latest activated cycle current', async () => {
     const first = await seedProgram(database)
     const second = await seedProgram(database)

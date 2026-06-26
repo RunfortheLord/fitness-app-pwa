@@ -20,6 +20,8 @@ export type BuiltInProgramSeed = {
   name: string
   level: string
   goal: string
+  /** Planned length in weeks; defaults to 10 when omitted. */
+  durationWeeks?: number
   days: BuiltInProgramDaySeed[]
 }
 

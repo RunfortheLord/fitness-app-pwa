@@ -429,6 +429,8 @@ export type ProgramTemplate = {
   level?: string | null
   /** Goal/category shown for built-in programs. */
   goal?: string | null
+  /** Planned length of the program in weeks (built-ins default to 10). */
+  durationWeeks?: number | null
   /** Seed version of a built-in template, for idempotent re-seeding. */
   builtInSeedVersion?: number | null
   createdAt: IsoTimestamp
@@ -472,6 +474,25 @@ export type ActiveProgramCycle = {
   notes: string
   status: 'active' | 'inactive' | 'archived'
   activatedAt: IsoTimestamp
+  /** Planned length in weeks, snapshotted from the template at activation. */
+  durationWeeks?: number | null
+  createdAt: IsoTimestamp
+  updatedAt: IsoTimestamp
+}
+
+/**
+ * A per-week check-off for a day in an active cycle. Records reset each week
+ * (they are keyed by weekNumber), so the active-cycle card can show which day is
+ * next in the current week. Written automatically when a workout for the day is
+ * completed and toggled manually from the dashboard.
+ */
+export type ActiveCycleDayCheck = {
+  id: string
+  activeCycleId: string
+  dayId: string
+  /** 1-based week of the cycle, counted from the cycle's activation date. */
+  weekNumber: number
+  checked: boolean
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }

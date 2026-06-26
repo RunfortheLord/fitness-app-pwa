@@ -470,6 +470,15 @@ describe('TrainingPage', () => {
     ).toBeTruthy()
   })
 
+  it('shows the current program week on the active cycle card', async () => {
+    const program = await seedProgram(db)
+    await createProgramRepository(db).activateTemplate(program.template.id)
+    renderTraining()
+
+    // A freshly activated cycle is in its first week.
+    expect(await screen.findByText('Week 1')).toBeInTheDocument()
+  })
+
   it('shows one live exercise workspace and keeps the active exercise stable after edits, swipes, and reload', async () => {
     const user = userEvent.setup()
     const exerciseRepository = createExerciseRepository(db)
