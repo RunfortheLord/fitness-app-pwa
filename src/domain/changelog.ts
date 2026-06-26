@@ -10,6 +10,19 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-06-26-training-and-bodyweight',
+    date: '2026-06-26',
+    title: 'Trend weight, recipes, and live-workout upgrades',
+    items: [
+      'Home now shows your bodyweight trend and last recorded weight, and trend weight also appears on the bodyweight graph.',
+      'Build a recipe with the same food search you use for logging — search, pick a serving, and add it to the recipe.',
+      'Add a brand-new custom exercise without leaving a live workout, and the same exercise can no longer be added twice.',
+      'Rename a program or workout day by tapping its name inline (no more separate Rename button).',
+      'The rest-timer sound now plays over background music like Spotify instead of pausing it.',
+      'Graph points and date labels no longer overlap the axes. New exercises: Leg Extension (Single Leg) and Dragon Flag; Back Extension now records weight and reps.',
+    ],
+  },
+  {
     id: '2026-06-25-nutrition-logging',
     date: '2026-06-25',
     title: 'Faster, smarter food logging',
