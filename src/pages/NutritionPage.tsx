@@ -321,6 +321,15 @@ export function NutritionPage() {
     setRecipeError(null)
   }, [])
 
+  // The food search is a focused full-screen mode. Hide the bottom nav while it
+  // is open so the keyboard never floats it up over the results (iOS Safari).
+  useEffect(() => {
+    document.body.classList.toggle('food-search-open', searchOpen)
+    return () => {
+      document.body.classList.remove('food-search-open')
+    }
+  }, [searchOpen])
+
   const addRecipeComponent = useCallback(
     (food: Food, servingMultiplier: number) => {
       setRecipeDraft((current) => {

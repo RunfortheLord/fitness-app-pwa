@@ -312,6 +312,9 @@ textarea:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+  /* Button rows sit at the bottom of cards/sections after content; keep a
+     consistent gap above them so the buttons never crowd the text above. */
+  margin-top: var(--space-3);
 }
 
 /* The destructive "Clear all data" action sits on its own row below the export
@@ -1775,20 +1778,25 @@ input::placeholder {
   gap: 3px;
 }
 
-.food-result-main strong,
 .food-result-main small {
   overflow-wrap: anywhere;
 }
 
 /* Let food names use up to two lines (instead of a single ellipsis-clipped row)
-   and slim the secondary serving/calorie text so more of the name is visible. */
+   and slim the secondary serving/calorie text so more of the name is visible.
+   The clamp box must fill its grid column (width:100%) — otherwise -webkit-box
+   shrinks to content width and forces gratuitous mid-word breaks. */
 .food-result-main strong {
+  width: 100%;
+  min-width: 0;
   white-space: normal;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   line-clamp: 2;
   overflow: hidden;
+  overflow-wrap: break-word;
+  word-break: normal;
   font-size: 14px;
   line-height: 1.25;
 }
@@ -1807,6 +1815,11 @@ input::placeholder {
   background: rgb(255 255 255 / 7%);
   font-size: 12px;
   font-weight: 800;
+  /* Keep the brand on one line; a long brand wrapping inside the pill radius
+     turns it into an oval blob. Truncate instead. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .food-result-calories {
@@ -2058,6 +2071,12 @@ input::placeholder {
      above it. Translate the nav back down by the keyboard overlap so it stays
      pinned to the bottom of the screen instead of jumping up. */
   transform: translateY(var(--keyboard-inset, 0px));
+}
+
+/* The full-screen food search hides the bottom nav so the on-screen keyboard
+   cannot float it up over the results when the list is scrolled. */
+body.food-search-open .bottom-nav {
+  display: none;
 }
 
 .bottom-nav-link {
