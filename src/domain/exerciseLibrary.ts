@@ -6,8 +6,9 @@ import type {
   TrackingMethodId,
 } from '@shared-types/app'
 
-export const BUILT_IN_EXERCISE_SEED_VERSION = 7
+export const BUILT_IN_EXERCISE_SEED_VERSION = 8
 export const BUILT_IN_EXERCISE_CREATED_AT = '2026-06-19T00:00:00.000Z'
+const EXPANDED_EXERCISE_CREATED_AT = '2026-06-26T00:00:00.000Z'
 
 export type BuiltInExerciseSeed = Pick<
   Exercise,
@@ -86,7 +87,7 @@ function exercise(
   }
 }
 
-export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
+export const CORE_BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
   exercise('barbell-bench-press', 'Barbell Bench Press', 'barbell', ['chest'], {
     rest: largeCompound,
     secondary: ['triceps', 'shoulders'],
@@ -2138,6 +2139,107 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
     rest: isolation,
     secondary: ['traps'],
   }),
+]
+
+type ExerciseVariant = {
+  idPrefix: string
+  namePrefix: string
+  include: (seed: BuiltInExerciseSeed) => boolean
+}
+
+const nonVariantMovementPattern =
+  /\b(?:battle|bike|broad|burpee|carry|clean|climber|cycling|dead bug|depth|elliptical|erg|grip|gripper|hang|hill|hold|isometric|jump|medicine ball|mountain climber|outdoor|pogo|rope|run|shuttle|slam|sled|snatch|sprint|stationary|throw|towel|turkish|vertical|walk)\b/iu
+const existingVariantPattern =
+  /^(?:1\.5-rep|3-second eccentric|paused|tempo)\b/iu
+const PAUSED_VARIANT_BASE_IDS = new Set([
+  'builtin:barbell-overhead-press',
+  'builtin:barbell-row',
+  'builtin:chin-up',
+  'builtin:conventional-deadlift',
+  'builtin:dumbbell-bench-press',
+  'builtin:dumbbell-shoulder-press',
+  'builtin:front-squat',
+  'builtin:hack-squat',
+  'builtin:leg-press',
+  'builtin:pendlay-row',
+  'builtin:pull-up',
+  'builtin:sumo-deadlift',
+])
+
+function supportsControlledRepVariant(seed: BuiltInExerciseSeed) {
+  return (
+    [
+      'weight_reps',
+      'reps_only',
+      'assisted_weight_reps',
+      'added_weight_reps',
+    ].includes(seed.trackingMethodId) &&
+    !nonVariantMovementPattern.test(seed.name) &&
+    !existingVariantPattern.test(seed.name)
+  )
+}
+
+const EXERCISE_VARIANTS: ExerciseVariant[] = [
+  {
+    idPrefix: 'tempo',
+    namePrefix: 'Tempo',
+    include: supportsControlledRepVariant,
+  },
+  {
+    idPrefix: 'three-second-eccentric',
+    namePrefix: '3-Second Eccentric',
+    include: supportsControlledRepVariant,
+  },
+  {
+    idPrefix: 'paused',
+    namePrefix: 'Paused',
+    include: (seed) => PAUSED_VARIANT_BASE_IDS.has(seed.id),
+  },
+  {
+    idPrefix: 'one-and-a-half-rep',
+    namePrefix: '1.5-Rep',
+    include: (seed) =>
+      supportsControlledRepVariant(seed) &&
+      seed.defaultRestSeconds <= moderateCompound,
+  },
+]
+
+function buildExerciseVariants(
+  exercises: BuiltInExerciseSeed[],
+): BuiltInExerciseSeed[] {
+  const names = new Set(
+    exercises.map((seed) => normalizeBuiltInExerciseName(seed.name)),
+  )
+  const variants: BuiltInExerciseSeed[] = []
+
+  for (const variant of EXERCISE_VARIANTS) {
+    for (const seed of exercises) {
+      if (!variant.include(seed)) {
+        continue
+      }
+      const name = `${variant.namePrefix} ${seed.name}`
+      const normalizedName = normalizeBuiltInExerciseName(name)
+      if (names.has(normalizedName)) {
+        continue
+      }
+      names.add(normalizedName)
+      variants.push({
+        ...seed,
+        id: `builtin:${variant.idPrefix}-${seed.id.slice('builtin:'.length)}`,
+        name,
+        seedDataVersion: BUILT_IN_EXERCISE_SEED_VERSION,
+        createdAt: EXPANDED_EXERCISE_CREATED_AT,
+        updatedAt: EXPANDED_EXERCISE_CREATED_AT,
+      })
+    }
+  }
+
+  return variants
+}
+
+export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
+  ...CORE_BUILT_IN_EXERCISES,
+  ...buildExerciseVariants(CORE_BUILT_IN_EXERCISES),
 ]
 
 export function validateBuiltInExercises(

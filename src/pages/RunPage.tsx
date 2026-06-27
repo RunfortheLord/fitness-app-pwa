@@ -13,6 +13,7 @@ import {
   StatusMessage,
   ValidationMessage,
 } from '@components/ui'
+import { useLanguage } from '@components/languageContextValue'
 import {
   formatDistance,
   formatDuration,
@@ -29,6 +30,7 @@ type RunPageState =
   | { status: 'error'; message: string }
 
 export function RunPage() {
+  const { language, t } = useLanguage()
   const [state, setState] = useState<RunPageState>({ status: 'loading' })
   const [geoError, setGeoError] = useState<string | null>(null)
   const [finishRequested, setFinishRequested] = useState(false)
@@ -214,7 +216,7 @@ export function RunPage() {
             action={
               <PrimaryButton type="button" onClick={startRun}>
                 <Play aria-hidden="true" size={18} />
-                Start Run
+                {t('Start Run')}
               </PrimaryButton>
             }
           />
@@ -230,15 +232,16 @@ export function RunPage() {
           title="Workout in progress"
         >
           <p>
-            An active workout is in progress. Resume it, discard it before
-            starting this run, or cancel.
+            {t(
+              'An active workout is in progress. Resume it, discard it before starting this run, or cancel.',
+            )}
           </p>
           <SecondaryButton
             className="button-danger"
             type="button"
             onClick={() => void discardWorkoutAndStartRun()}
           >
-            Discard Active Workout
+            {t('Discard Active Workout')}
           </SecondaryButton>
         </ModalConfirmationDialog>
       </PageContainer>
@@ -257,11 +260,12 @@ export function RunPage() {
           type="button"
           onClick={() => setDiscardRequested(true)}
         >
-          Discard Run
+          {t('Discard Run')}
         </SecondaryButton>
       ) : null}
       <p className="visually-hidden" aria-live="polite">
-        Run status {run.status}. Distance {formatDistance(run.distanceMeters)}.
+        {t('Run status')} {t(run.status)}. {t('Distance')}{' '}
+        {formatDistance(run.distanceMeters)}.
       </p>
       {geoError ? <ValidationMessage message={geoError} /> : null}
       {run.hasGpsGap ? (
@@ -274,7 +278,7 @@ export function RunPage() {
         <div className="run-status-row">
           <span>
             <Footprints aria-hidden="true" size={18} />
-            {run.status}
+            {t(run.status)}
           </span>
           <span>
             <Timer aria-hidden="true" size={18} />
@@ -284,19 +288,19 @@ export function RunPage() {
         <div className="run-metrics">
           <span>
             <strong>{formatDistance(run.distanceMeters)}</strong>
-            <small>Distance</small>
+            <small>{t('Distance')}</small>
           </span>
           <span>
             <strong>{formatDuration(run.movingSeconds)}</strong>
-            <small>Moving time</small>
+            <small>{t('Moving time')}</small>
           </span>
           <span>
             <strong>{formatPace(run.currentPaceSecondsPerMile)}</strong>
-            <small>Current pace</small>
+            <small>{t('Current pace')}</small>
           </span>
           <span>
             <strong>{formatPace(run.averageMovingPaceSecondsPerMile)}</strong>
-            <small>Average moving pace</small>
+            <small>{t('Average moving pace')}</small>
           </span>
         </div>
       </Card>
@@ -307,12 +311,12 @@ export function RunPage() {
             {run.status === 'active' ? (
               <SecondaryButton type="button" onClick={() => pauseRun(run)}>
                 <Pause aria-hidden="true" size={18} />
-                Pause
+                {t('Pause')}
               </SecondaryButton>
             ) : (
               <PrimaryButton type="button" onClick={() => resumeRun(run)}>
                 <Play aria-hidden="true" size={18} />
-                Resume
+                {t('Resume')}
               </PrimaryButton>
             )}
             <SecondaryButton
@@ -321,7 +325,7 @@ export function RunPage() {
               onClick={() => setFinishRequested(true)}
             >
               <Square aria-hidden="true" size={18} />
-              Finish
+              {t('Finish')}
             </SecondaryButton>
           </div>
         </Card>
@@ -332,11 +336,13 @@ export function RunPage() {
           <div className="run-split-list">
             {splits.map((split) => (
               <div key={split.id}>
-                <strong>Mile {split.mileNumber}</strong>
+                <strong>
+                  {t('Mile')} {split.mileNumber}
+                </strong>
                 <span>{formatPace(split.paceSecondsPerMile)}</span>
                 <small>
-                  {formatDuration(split.movingSeconds)} moving -{' '}
-                  {formatDuration(split.elapsedSeconds)} elapsed
+                  {formatDuration(split.movingSeconds)} {t('moving')} -{' '}
+                  {formatDuration(split.elapsedSeconds)} {t('elapsed')}
                 </small>
               </div>
             ))}
@@ -354,13 +360,17 @@ export function RunPage() {
           <ul className="compact-list">
             {classifications.map((classification) => (
               <li key={classification.id}>
-                <span>{classification.type}</span>
-                <strong>{formatTimestamp(classification.startedAt)}</strong>
+                <span>{t(classification.type)}</span>
+                <strong>
+                  {formatTimestamp(classification.startedAt, language)}
+                </strong>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="muted">No walking or rest classifications recorded.</p>
+          <p className="muted">
+            {t('No walking or rest classifications recorded.')}
+          </p>
         )}
       </Card>
       <RunLimitations />
@@ -373,8 +383,9 @@ export function RunPage() {
         title="Finish run?"
       >
         <p>
-          Save this run to History with its elapsed time, moving time, samples,
-          splits, classifications, and GPS-gap markers.
+          {t(
+            'Save this run to History with its elapsed time, moving time, samples, splits, classifications, and GPS-gap markers.',
+          )}
         </p>
       </ModalConfirmationDialog>
 
@@ -386,8 +397,9 @@ export function RunPage() {
         title="Discard run?"
       >
         <p>
-          This permanently discards the active run and all recorded GPS data. It
-          will not appear in history, graphs, or statistics.
+          {t(
+            'This permanently discards the active run and all recorded GPS data. It will not appear in history, graphs, or statistics.',
+          )}
         </p>
       </ModalConfirmationDialog>
 
@@ -399,8 +411,9 @@ export function RunPage() {
         title="Still running?"
       >
         <p>
-          Your recent pace has stayed low. Classify it without changing stored
-          GPS samples.
+          {t(
+            'Your recent pace has stayed low. Classify it without changing stored GPS samples.',
+          )}
         </p>
         <div className="button-row">
           <SecondaryButton
@@ -518,17 +531,18 @@ function formatGeoError(
 }
 
 function RunLimitations() {
+  const { t } = useLanguage()
   return (
     <StatusMessage>
-      Foreground browser tracking is supported when location permission exists.
-      iOS and other browsers may suspend geolocation when the browser or
-      installed PWA is backgrounded.
+      {t(
+        'Foreground browser tracking is supported when location permission exists. iOS and other browsers may suspend geolocation when the browser or installed PWA is backgrounded.',
+      )}
     </StatusMessage>
   )
 }
 
-function formatTimestamp(timestamp: string) {
-  return new Intl.DateTimeFormat(undefined, {
+function formatTimestamp(timestamp: string, language: 'en' | 'es') {
+  return new Intl.DateTimeFormat(language === 'es' ? 'es' : 'en', {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(timestamp))

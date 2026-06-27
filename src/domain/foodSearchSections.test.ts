@@ -5,7 +5,7 @@ import {
   normalizeFoodText,
   type GroupedFoodResult,
 } from '@domain/foodProviderModels'
-import type { Food } from '@shared-types/app'
+import type { Food, SavedMeal } from '@shared-types/app'
 
 function makeProvider(
   id: string,
@@ -87,6 +87,37 @@ function makeRecentFood(id: string, name: string): Food {
   }
 }
 
+function makeSavedMeal(id: string, name: string): SavedMeal {
+  return {
+    id,
+    name,
+    components: [
+      {
+        foodId: null,
+        servingMultiplier: 1,
+        foodSnapshot: {
+          snapshotId: 'snapshot-1',
+          foodName: 'Chicken',
+          brandName: null,
+          servingQuantity: 1,
+          servingUnit: 'serving',
+          servingDescription: '',
+          caloriesPerServing: 200,
+          proteinGramsPerServing: 20,
+          carbohydrateGramsPerServing: 10,
+          fatGramsPerServing: 5,
+          sourceType: 'local',
+          notes: '',
+        },
+      },
+    ],
+    notes: '',
+    status: 'active',
+    createdAt: '2026-06-19T00:00:00.000Z',
+    updatedAt: '2026-06-19T00:00:00.000Z',
+  }
+}
+
 function section(
   sections: ReturnType<typeof createSearchSections>,
   title: string,
@@ -110,7 +141,7 @@ describe('createSearchSections', () => {
 
     const common = section(sections, 'Common')!
     const names = common.items.map((item) =>
-      item.type === 'external' ? item.food.name : item.food.name,
+      item.type === 'savedMeal' ? item.meal.name : item.food.name,
     )
     expect(names).toEqual(['Infant formula, organic', 'Greek yogurt'])
   })
@@ -133,7 +164,7 @@ describe('createSearchSections', () => {
     expect(other.items).toHaveLength(4)
     // Other continues in relevance order after the common cap.
     const otherNames = other.items.map((item) =>
-      item.type === 'external' ? item.food.name : item.food.name,
+      item.type === 'savedMeal' ? item.meal.name : item.food.name,
     )
     expect(otherNames[0]).toBe('Chicken 5')
   })
@@ -155,7 +186,9 @@ describe('createSearchSections', () => {
 
     const recent = section(sections, 'Recently added')!
     expect(recent.items).toHaveLength(3)
-    const names = recent.items.map((item) => item.food.name)
+    const names = recent.items
+      .filter((item) => item.type !== 'savedMeal')
+      .map((item) => item.food.name)
     expect(names).not.toContain('Banana')
   })
 
@@ -186,7 +219,7 @@ describe('createSearchSections', () => {
 
     const common = section(sections, 'Common')!
     const names = common.items.map((item) =>
-      item.type === 'external' ? item.food.name : item.food.name,
+      item.type === 'savedMeal' ? item.meal.name : item.food.name,
     )
     expect(names).toContain('Greek Yogurt Plain')
     expect(names).not.toContain('Sloppy Joe Sandwich')
@@ -205,8 +238,42 @@ describe('createSearchSections', () => {
     })
 
     const recent = section(sections, 'Recently added')!
-    const recentNames = recent.items.map((item) => item.food.name)
+    const recentNames = recent.items
+      .filter((item) => item.type !== 'savedMeal')
+      .map((item) => item.food.name)
     expect(recentNames).toContain('Chicken Thigh')
     expect(recentNames).not.toContain('Oatmeal')
+  })
+
+  it('shows one strict matching saved recipe before food sections', () => {
+    const sections = createSearchSections({
+      includeRecentFoods: true,
+      localFoods: [],
+      providerResults: [],
+      query: 'chicken rice',
+      recentFoods: [makeRecentFood('r1', 'Chicken breast')],
+      savedMeals: [
+        makeSavedMeal('meal-1', 'Chicken and Rice'),
+        makeSavedMeal('meal-2', 'Chicken Soup'),
+      ],
+    })
+
+    expect(sections[0]).toMatchObject({
+      title: 'Recipes',
+      items: [{ type: 'savedMeal', meal: { name: 'Chicken and Rice' } }],
+    })
+  })
+
+  it('does not show a recipe section for typo-only recipe matches', () => {
+    const sections = createSearchSections({
+      includeRecentFoods: true,
+      localFoods: [],
+      providerResults: [],
+      query: 'chicken ric',
+      recentFoods: [makeRecentFood('r1', 'Chicken breast')],
+      savedMeals: [makeSavedMeal('meal-1', 'Chicken and Rice')],
+    })
+
+    expect(section(sections, 'Recipes')).toBeUndefined()
   })
 })

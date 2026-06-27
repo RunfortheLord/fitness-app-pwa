@@ -8,6 +8,7 @@ import { createExerciseRepository } from '@repositories/exerciseRepository'
 import { createFoodRepository } from '@repositories/foodRepository'
 import { createProgramRepository } from '@repositories/programRepository'
 import { createRunRepository } from '@repositories/runRepository'
+import { settingsRepository } from '@repositories/settingsRepository'
 import { createWorkoutRepository } from '@repositories/workoutRepository'
 import { initializeAppData } from '@services/appInitializationService'
 import { seedProgram, testLocalDate } from '@test/seedFactories'
@@ -55,6 +56,15 @@ describe('HistoryPage', () => {
     expect(await screen.findByLabelText('Graph summary')).toHaveTextContent(
       '188.4 lb',
     )
+    expect(screen.getByLabelText('Graph summary')).toHaveTextContent(
+      'Last recorded',
+    )
+    expect(screen.getByLabelText('Graph summary')).not.toHaveTextContent(
+      'First',
+    )
+    expect(screen.getByLabelText('Graph summary')).not.toHaveTextContent(
+      'Range',
+    )
     expect(
       screen.getAllByText(/Add another entry to show a trend/).length,
     ).toBeGreaterThan(0)
@@ -64,6 +74,31 @@ describe('HistoryPage', () => {
     )
     expect(screen.getByText('Selected')).toBeInTheDocument()
     expect(screen.getByText(/Jun 19, 2026/)).toBeInTheDocument()
+  })
+
+  it('shows the bodyweight graph converted to kilograms when preferred', async () => {
+    await settingsRepository.saveWeightUnit('kg')
+    await db.bodyweightEntries.add({
+      id: 'weight-kg',
+      localDate: '2026-06-19',
+      weight: 200,
+      unit: 'lb',
+      notes: '',
+      createdAt: '2026-06-19T12:00:00.000Z',
+      updatedAt: '2026-06-19T12:00:00.000Z',
+    })
+
+    renderHistory('/history?view=bodyweight')
+
+    // 200 lb -> 90.7 kg shown to one decimal, with a kg axis label. The unit
+    // resolves from a live query, so wait for the converted render.
+    expect(await screen.findByText('Bodyweight (kg)')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByLabelText('Graph summary')).toHaveTextContent(
+        '90.7 kg',
+      ),
+    )
+    expect(screen.getByLabelText('Graph summary')).not.toHaveTextContent('lb')
   })
 
   it('supports range changes, multiple same-day entries, and long history without dropping records', async () => {
@@ -105,13 +140,32 @@ describe('HistoryPage', () => {
     renderHistory('/history?view=bodyweight')
 
     expect(await screen.findByText('Bodyweight progress')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'All' })).toBeInTheDocument()
+    expect(screen.queryByText('View everything')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Dashboard filter')).not.toBeInTheDocument()
+    expect(
+      screen
+        .getByLabelText('Bodyweight range')
+        .style.getPropertyValue('--segment-count'),
+    ).toBe('4')
     expect(screen.getByRole('button', { name: '3M' })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
 
-    await user.click(screen.getAllByRole('button', { name: 'All' })[1])
-    expect(screen.getByLabelText('Graph summary')).toHaveTextContent('200 lb')
+    await user.click(screen.getByRole('button', { name: 'All' }))
+    expect(screen.getByLabelText('Graph summary')).toHaveTextContent(
+      'Trend weight',
+    )
+    expect(screen.getByLabelText('Graph summary')).toHaveTextContent(
+      'Last recorded - 2026-05-28',
+    )
+    expect(screen.getByLabelText('Graph summary')).not.toHaveTextContent(
+      'First',
+    )
+    expect(screen.getByLabelText('Graph summary')).not.toHaveTextContent(
+      'Range',
+    )
 
     await user.click(screen.getByRole('button', { name: '2026-05-28 215 lb' }))
     expect(screen.getAllByText('215 lb').length).toBeGreaterThan(0)
@@ -138,7 +192,9 @@ describe('HistoryPage', () => {
 
     renderHistory('/history?view=graphs')
 
-    expect(await screen.findByText('Strength graphs')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: 'Graphs' }),
+    ).toBeInTheDocument()
     expect(await screen.findByText('Estimated 1 Rep Max')).toBeInTheDocument()
     expect(
       (await screen.findAllByText(/latest estimated 1 rep max: 120 lb/i))
@@ -151,6 +207,91 @@ describe('HistoryPage', () => {
     )
     expect(screen.getAllByText('Estimated 1RM').length).toBeGreaterThan(0)
     expect(screen.getAllByText('120 lb').length).toBeGreaterThan(0)
+  })
+
+  it('defaults strength graphs to the exercise completed most recently', async () => {
+    const repository = createWorkoutRepository(db)
+    const exerciseRepository = createExerciseRepository(db)
+    const programRepository = createProgramRepository(db)
+    const bench = await exerciseRepository.createExercise({
+      name: 'Bench press',
+      defaultRestSeconds: 120,
+      trackingMethodId: 'weight_reps',
+      notes: '',
+    })
+    const row = await exerciseRepository.createExercise({
+      name: 'Cable row',
+      defaultRestSeconds: 120,
+      trackingMethodId: 'weight_reps',
+      notes: '',
+    })
+    const program = await programRepository.createProgramTemplate({
+      name: 'Graph program',
+      days: [
+        {
+          name: 'Upper',
+          exercises: [
+            { exerciseId: bench.id, targetSetCount: 1 },
+            { exerciseId: row.id, targetSetCount: 1 },
+          ],
+        },
+      ],
+    })
+    const active = await programRepository.activateTemplate(program.template.id)
+
+    await completeExerciseWorkout(
+      repository,
+      active.cycle.id,
+      active.days[0].id,
+      bench.id,
+      { localDate: '2026-06-17', weight: 100 },
+    )
+    await completeExerciseWorkout(
+      repository,
+      active.cycle.id,
+      active.days[0].id,
+      row.id,
+      { localDate: '2026-06-20', weight: 120 },
+    )
+
+    renderHistory('/history?view=graphs')
+
+    expect(
+      await screen.findByRole('heading', { name: 'Graphs' }),
+    ).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: 'Select exercise: Cable row' }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows calorie history with one-week, one-month, and three-month ranges', async () => {
+    const user = userEvent.setup()
+    renderHistory('/history?view=graphs')
+
+    await user.click(await screen.findByRole('button', { name: 'Calories' }))
+
+    expect(
+      await screen.findByRole('img', {
+        name: 'Daily calories logged and target graph',
+      }),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Calorie graph range')).toHaveStyle({
+      '--segment-count': '3',
+    })
+    expect(screen.getByRole('button', { name: '1W' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    await user.click(screen.getByRole('button', { name: '3M' }))
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('img', {
+            name: 'Daily calories logged and target graph',
+          })
+          .querySelectorAll('rect.calorie-bar'),
+      ).toHaveLength(90),
+    )
   })
 
   it('orders completed workouts by local workout date', async () => {
@@ -513,6 +654,47 @@ async function completeSeedWorkout(
       reps: options.reps ?? 8,
     },
     rir: options.rir ?? 2,
+    completed: true,
+  })
+  return repository.completeWorkout({
+    workoutId: started.workout.id,
+    completedAt: new Date(
+      Date.parse(started.workout.startedAt) + 25 * 60 * 1000,
+    ).toISOString(),
+  })
+}
+
+async function completeExerciseWorkout(
+  repository: ReturnType<typeof createWorkoutRepository>,
+  activeCycleId: string,
+  dayId: string,
+  exerciseId: string,
+  options: {
+    localDate: BodyweightEntry['localDate']
+    weight: number
+    reps?: number
+  },
+) {
+  const started = await repository.startWorkout({
+    activeCycleId,
+    dayId,
+    localDate: options.localDate,
+  })
+  const exercise = started.exercises.find(
+    (candidate) => candidate.exerciseId === exerciseId,
+  )
+  const set = started.sets.find(
+    (candidate) => candidate.workoutExerciseId === exercise?.id,
+  )
+  if (!exercise || !set) {
+    throw new Error('Seed workout exercise was not found.')
+  }
+  await repository.updateWorkoutSet(set.id, {
+    metricValues: {
+      weight: options.weight,
+      reps: options.reps ?? 8,
+    },
+    rir: 2,
     completed: true,
   })
   return repository.completeWorkout({

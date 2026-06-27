@@ -34,12 +34,14 @@ describe('backupService', () => {
   it('creates deterministic full-fidelity JSON backup metadata and table coverage', async () => {
     const food = await seedFood(database)
     await seedProgram(database)
-    await createSettingsRepository(database).saveNutritionTargets({
+    const settings = createSettingsRepository(database)
+    await settings.saveNutritionTargets({
       calories: 2400,
       proteinGrams: 180,
       carbohydrateGrams: 250,
       fatGrams: 70,
     })
+    await settings.saveLanguage('es')
     await database.foodLogEntries.add({
       id: 'food-log-1',
       localDate: testLocalDate,
@@ -175,6 +177,7 @@ describe('backupService', () => {
       'runClassifications',
     ])
     expect(result.backup.data.foods[0]?.id).toBe(food.id)
+    expect(result.backup.data.userSettings[0]?.language).toBe('es')
     expect(result.backup.data.foodLogEntries[0]).toMatchObject({
       id: 'food-log-1',
       foodId: food.id,

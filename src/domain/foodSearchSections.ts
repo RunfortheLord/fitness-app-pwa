@@ -1,14 +1,19 @@
 import {
   matchesQuery,
+  normalizeFoodText,
   normalizeProviderQuery,
   queryRelevanceScore,
   type GroupedFoodResult,
 } from '@domain/foodProviderModels'
-import type { Food } from '@shared-types/app'
+import type { Food, SavedMeal } from '@shared-types/app'
 
-export type FoodSearchResult =
+export type FoodResult =
   | { type: 'local'; food: Food; section: 'recent' | 'custom' | 'used' }
   | { type: 'external'; food: GroupedFoodResult }
+
+export type FoodSearchResult =
+  | FoodResult
+  | { type: 'savedMeal'; meal: SavedMeal }
 
 // Provider results arrive already ranked and diversified from the server, so
 // showing all of them made the lists overwhelmingly long. Cap each section to a
@@ -35,12 +40,14 @@ export function createSearchSections({
   providerResults,
   query,
   recentFoods,
+  savedMeals = [],
 }: {
   includeRecentFoods: boolean
   localFoods: Food[]
   providerResults: GroupedFoodResult[]
   query: string
   recentFoods: Food[]
+  savedMeals?: SavedMeal[]
 }): Array<{ title: string; items: FoodSearchResult[] }> {
   const normalizedQuery = normalizeProviderQuery(query)
   if (!normalizedQuery) {
@@ -112,8 +119,17 @@ export function createSearchSections({
   // branded section so the list still surfaces additional close matches sorted
   // by relevance.
   const otherItems = takeProvider(() => true, OTHER_SECTION_CAP)
+  const matchingRecipe = closestMatchingRecipe(savedMeals, normalizedQuery)
 
   return [
+    ...(matchingRecipe
+      ? [
+          {
+            title: 'Recipes',
+            items: [{ type: 'savedMeal' as const, meal: matchingRecipe }],
+          },
+        ]
+      : []),
     ...(includeRecentFoods
       ? [
           {
@@ -158,4 +174,45 @@ export function createSearchSections({
       items: otherItems,
     },
   ]
+}
+
+function closestMatchingRecipe(
+  savedMeals: SavedMeal[],
+  normalizedQuery: string,
+) {
+  const normalizedRecipeQuery = normalizeFoodText(normalizedQuery)
+  const queryTokens = recipeTokens(normalizedRecipeQuery)
+  if (!queryTokens.length) {
+    return null
+  }
+
+  return (
+    savedMeals
+      .map((meal) => {
+        const normalizedName = normalizeFoodText(meal.name)
+        const mealTokens = recipeTokens(normalizedName)
+        const tokenMatch =
+          queryTokens.length > 0 &&
+          queryTokens.every((token) => mealTokens.includes(token))
+        const score =
+          normalizedName === normalizedRecipeQuery
+            ? 100
+            : tokenMatch
+              ? 50 +
+                queryTokens.length -
+                Math.abs(mealTokens.length - queryTokens.length)
+              : 0
+        return { meal, score }
+      })
+      .filter((candidate) => candidate.score > 0)
+      .sort(
+        (left, right) =>
+          right.score - left.score ||
+          left.meal.name.localeCompare(right.meal.name),
+      )[0]?.meal ?? null
+  )
+}
+
+function recipeTokens(value: string) {
+  return value.split(/\s+/).filter((token) => token && token !== 'and')
 }

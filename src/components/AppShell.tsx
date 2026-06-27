@@ -26,6 +26,8 @@ import {
 import { BodyweightEntrySheet } from '@components/BodyweightEntrySheet'
 import { BottomNavigation } from '@components/BottomNavigation'
 import { DashboardProvider } from '@components/DashboardContext'
+import { useLanguage } from '@components/languageContextValue'
+import { RestTimerMonitor } from '@components/RestTimerMonitor'
 import {
   AppHeader,
   BottomSheet,
@@ -57,6 +59,7 @@ export function AppShell({ children }: AppShellProps) {
 }
 
 function AppShellContent({ children }: AppShellProps) {
+  const { t } = useLanguage()
   const [pendingUpdate, setPendingUpdate] =
     useState<ServiceWorkerUpdate | null>(null)
   const [isApplyingUpdate, setIsApplyingUpdate] = useState(false)
@@ -171,10 +174,11 @@ function AppShellContent({ children }: AppShellProps) {
 
   return (
     <div className="app-shell">
+      <RestTimerMonitor />
       <AppHeader
         title={routeTitle}
         action={
-          <Link className="icon-link" aria-label="Settings" to="/settings">
+          <Link className="icon-link" aria-label={t('Settings')} to="/settings">
             <Settings aria-hidden="true" size={22} />
           </Link>
         }
@@ -186,15 +190,16 @@ function AppShellContent({ children }: AppShellProps) {
         <StatusMessage tone="warning">
           <div className="status-message-content">
             <span>
-              Update available. Finish any active logging first; updating will
-              reopen the app shell.
+              {t(
+                'Update available. Finish any active logging first; updating will reopen the app shell.',
+              )}
             </span>
             <PrimaryButton
               disabled={isApplyingUpdate}
               type="button"
               onClick={applyUpdate}
             >
-              {isApplyingUpdate ? 'Updating' : 'Update now'}
+              {isApplyingUpdate ? t('Updating') : t('Update now')}
             </PrimaryButton>
           </div>
           {updateInstruction ? <p>{updateInstruction}</p> : null}
@@ -205,17 +210,17 @@ function AppShellContent({ children }: AppShellProps) {
         <div className="whats-new-banner">
           <Sparkles aria-hidden="true" size={18} />
           <span className="whats-new-banner-text">
-            New: {LATEST_CHANGELOG_ENTRY.title}
+            {t('New')}: {LATEST_CHANGELOG_ENTRY.title}
           </span>
           <Link
             className="whats-new-banner-link"
             to="/settings?section=whats-new"
             onClick={dismissWhatsNew}
           >
-            See what&rsquo;s new
+            {t("See what's new")}
           </Link>
           <IconButton
-            aria-label="Dismiss what's new"
+            aria-label={t("Dismiss what's new")}
             className="whats-new-banner-dismiss"
             onClick={dismissWhatsNew}
           >
@@ -234,8 +239,9 @@ function AppShellContent({ children }: AppShellProps) {
             )
           }
         >
-          Active {activeActivity.type === 'workout' ? 'Workout' : 'Run'} - Tap
-          to Resume
+          {t('Active')}{' '}
+          {t(activeActivity.type === 'workout' ? 'Workout' : 'Run')} -{' '}
+          {t('Tap to Resume')}
         </button>
       ) : null}
 
@@ -244,7 +250,7 @@ function AppShellContent({ children }: AppShellProps) {
       <BottomSheet
         isOpen={isQuickActionOpen}
         onClose={() => setIsQuickActionOpen(false)}
-        title="Quick actions"
+        title={t('Quick actions')}
       >
         <div className="quick-action-list">
           <button
@@ -258,8 +264,8 @@ function AppShellContent({ children }: AppShellProps) {
               <Utensils aria-hidden="true" size={20} />
             </span>
             <span>
-              <strong>Log food</strong>
-              <small>Search recent foods or create a food</small>
+              <strong>{t('Log food')}</strong>
+              <small>{t('Search recent foods or create a food')}</small>
             </span>
           </button>
           <button
@@ -273,8 +279,8 @@ function AppShellContent({ children }: AppShellProps) {
               <Scale aria-hidden="true" size={20} />
             </span>
             <span>
-              <strong>Log bodyweight</strong>
-              <small>Save pounds for the selected date</small>
+              <strong>{t('Log bodyweight')}</strong>
+              <small>{t('Save pounds for the selected date')}</small>
             </span>
           </button>
           <button
@@ -288,8 +294,10 @@ function AppShellContent({ children }: AppShellProps) {
               <Dumbbell aria-hidden="true" size={20} />
             </span>
             <span>
-              <strong>Start or resume workout</strong>
-              <small>Open active workout or choose a day from Training</small>
+              <strong>{t('Start or resume workout')}</strong>
+              <small>
+                {t('Open active workout or choose a day from Training')}
+              </small>
             </span>
           </button>
           <button
@@ -303,8 +311,8 @@ function AppShellContent({ children }: AppShellProps) {
               <Footprints aria-hidden="true" size={20} />
             </span>
             <span>
-              <strong>Start or resume run</strong>
-              <small>Track GPS distance, time, and mile splits</small>
+              <strong>{t('Start or resume run')}</strong>
+              <small>{t('Track GPS distance, time, and mile splits')}</small>
             </span>
           </button>
           <button
@@ -318,8 +326,8 @@ function AppShellContent({ children }: AppShellProps) {
               <NotebookPen aria-hidden="true" size={20} />
             </span>
             <span>
-              <strong>Create exercise</strong>
-              <small>Add a custom exercise to the library</small>
+              <strong>{t('Create exercise')}</strong>
+              <small>{t('Add a custom exercise to the library')}</small>
             </span>
           </button>
           <button
@@ -333,12 +341,12 @@ function AppShellContent({ children }: AppShellProps) {
               <SquarePen aria-hidden="true" size={20} />
             </span>
             <span>
-              <strong>Create program</strong>
-              <small>Build reusable workout days</small>
+              <strong>{t('Create program')}</strong>
+              <small>{t('Build reusable workout days')}</small>
             </span>
           </button>
           <IconButton
-            aria-label="Close quick actions"
+            aria-label={t('Close quick actions')}
             className="quick-action-add"
             onClick={() => setIsQuickActionOpen(false)}
           >

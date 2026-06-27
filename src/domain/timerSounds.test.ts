@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
-  configureAmbientAudioSession,
+  configureTimerAudioSession,
   DEFAULT_TIMER_SOUND_ID,
   getTimerSound,
   playTimerSoundOnce,
+  preloadTimerSound,
   previewTimerSoundOnce,
   primeTimerSound,
   resetTimerSoundsForTests,
@@ -18,6 +19,7 @@ class FakeAudio {
   muted = false
   readonly pause = vi.fn()
   readonly play = vi.fn(async () => undefined)
+  readonly load = vi.fn()
   readonly listeners = new Map<string, Set<EventListener>>()
   src: string
 
@@ -58,6 +60,18 @@ describe('getTimerSound', () => {
 })
 
 describe('rest timer completion audio', () => {
+  it('preloads and reuses the selected sound for the first preview tap', async () => {
+    preloadTimerSound('gentle-ping')
+
+    expect(audioInstances).toHaveLength(1)
+    expect(audioInstances[0]?.load).toHaveBeenCalledTimes(1)
+
+    await previewTimerSoundOnce('gentle-ping')
+
+    expect(audioInstances).toHaveLength(1)
+    expect(audioInstances[0]?.play).toHaveBeenCalledTimes(1)
+  })
+
   it('primes the selected sound muted so it can be unlocked by a gesture', async () => {
     primeTimerSound('bright-bell')
     await Promise.resolve()
@@ -97,7 +111,7 @@ describe('rest timer completion audio', () => {
     expect(audioInstances[0]?.src).toBe('/sounds/clear-ding.mp3')
   })
 
-  it('switches the iOS audio session to ambient so background music keeps playing', async () => {
+  it('uses a transient session for completion so other audio is not stopped', async () => {
     const audioSession = { type: 'auto' }
     Object.defineProperty(navigator, 'audioSession', {
       configurable: true,
@@ -105,17 +119,16 @@ describe('rest timer completion audio', () => {
     })
 
     try {
-      configureAmbientAudioSession()
-      expect(audioSession.type).toBe('ambient')
+      configureTimerAudioSession()
+      expect(audioSession.type).toBe('playback')
 
       audioSession.type = 'auto'
       primeTimerSound('bright-bell')
       await Promise.resolve()
-      expect(audioSession.type).toBe('ambient')
+      expect(audioSession.type).toBe('transient')
 
-      audioSession.type = 'auto'
       await playTimerSoundOnce('bright-bell')
-      expect(audioSession.type).toBe('ambient')
+      expect(audioSession.type).toBe('transient')
     } finally {
       delete (navigator as Navigator & { audioSession?: unknown }).audioSession
     }
@@ -123,7 +136,24 @@ describe('rest timer completion audio', () => {
 
   it('does not throw when the audio session API is unavailable', () => {
     expect('audioSession' in navigator).toBe(false)
-    expect(() => configureAmbientAudioSession()).not.toThrow()
+    expect(() => configureTimerAudioSession()).not.toThrow()
+  })
+
+  it('uses playback for preview so iPhone Silent Mode does not suppress it', async () => {
+    const audioSession = { type: 'auto' }
+    Object.defineProperty(navigator, 'audioSession', {
+      configurable: true,
+      value: audioSession,
+    })
+
+    try {
+      await previewTimerSoundOnce('gentle-ping')
+
+      expect(audioInstances[0]?.play).toHaveBeenCalledTimes(1)
+      expect(audioSession.type).toBe('playback')
+    } finally {
+      delete (navigator as Navigator & { audioSession?: unknown }).audioSession
+    }
   })
 
   it('stops completion playback before a preview begins', async () => {
@@ -135,6 +165,7 @@ describe('rest timer completion audio', () => {
     await previewTimerSoundOnce('gentle-ping')
 
     expect(completion?.pause).toHaveBeenCalled()
-    expect(audioInstances[1]?.src).toBe('/sounds/gentle-ping.mp3')
+    expect(audioInstances).toHaveLength(1)
+    expect(audioInstances[0]?.src).toBe('/sounds/gentle-ping.mp3')
   })
 })

@@ -1,5 +1,52 @@
 # Decisions
 
+## 2026-06-27: Optional Web Push Rest-Timer Alerts
+
+- The product owner explicitly approved a free Web Push dependency for the
+  installed iPhone Home Screen PWA so timer completion can alert while another
+  app or the Home Screen is active.
+- Timer jobs use the existing persisted completion timestamp. The client sends
+  only the push subscription and timer identifier to a Vercel endpoint, which
+  uses QStash to delay delivery and cancels or replaces the prior job after
+  pause, resume, adjustment, dismissal, workout completion, or discard.
+- The QStash callback verifies its signature before sending Web Push, and the
+  subscription-bearing payload is redacted from QStash logs.
+- Primary fitness data remains local-first and usable offline. Outside-app
+  alerts are optional and require internet access, notification permission,
+  configured free-tier services, and an installed Home Screen app on iPhone.
+- Web Push uses the standard iOS notification sound and cannot override Silent
+  Mode, Focus, notification settings, output routing, or system volume. It does
+  not provide a live Lock Screen countdown or timer adjustment controls.
+- Each timer mutation cancels every pending QStash message labeled for the
+  device subscription before scheduling a replacement. Delivery retries are
+  disabled and repeated pushes use a non-renotifying notification tag so one
+  timer completion produces one alert.
+- Starting a timer does not play muted media to prime browser audio because that
+  interrupts Spotify on iPhone. Foreground completion uses a transient audio
+  session so iOS may mix or briefly duck other audio instead of taking over the
+  media session.
+
+## 2026-06-27: Native iOS Wrapper And Rest-Timer Notifications
+
+- The product owner explicitly expanded the PWA-only direction to include a
+  Capacitor iOS wrapper because iOS suspends Home Screen web apps outside the
+  foreground and cannot reliably execute their JavaScript timer callbacks.
+- The wrapper reuses the React/Vite build and IndexedDB data model. It does not
+  introduce a required account, server, push service, or cloud dependency.
+- Rest timers schedule one device-local notification with a stable numeric ID.
+  Start, pause, resume, time adjustment, dismissal, workout discard, workout
+  completion, and app startup cancel or replace that notification from the
+  persisted timestamp.
+- Timer sounds are bundled as mono PCM WAV files for iOS notification playback.
+  Notifications are time-sensitive but not critical. They remain subject to the
+  user's notification permissions, Focus configuration, output route, and system
+  volume.
+- The bundle identifier defaults to `com.adamshugart.fitnesslog`. The native app
+  and Home Screen PWA use separate storage containers, so existing data moves by
+  JSON export and restore.
+- Xcode signing and physical-device installation require macOS and cannot be
+  completed or verified from the Windows development environment.
+
 ## 2026-06-26: Alpha Feedback Relay
 
 - Added an in-app "Send feedback" form (Settings) for alpha testers to send typed
@@ -108,11 +155,17 @@
   branded foods and Open Food Facts; USDA wins conflicts when both are complete.
 - Timer completion audio is best effort and plays once after timer completion
   when browser autoplay policy allows it. iOS PWA locked-screen audio is not
-  guaranteed.
+  guaranteed, and calls or browser suspension may still suppress playback.
+- WebKit maps transient audio to an iOS category that the hardware Silent switch
+  suppresses even when `play()` succeeds. Muted priming remains transient, but
+  actual previews and completion chimes use the playback category so they remain
+  audible in Silent Mode. The chime may briefly pause other audio.
 - Rest timers remain timestamp based so elapsed time stays accurate after the
-  app is backgrounded, suspended, or reopened. True iOS Live Activities and
-  lock-screen countdown surfaces are not exposed to installed web PWAs, so this
-  app cannot show a native lock-screen timer without a native iOS wrapper.
+  app is backgrounded, suspended, or reopened. Timer expiry is monitored by the
+  persistent app shell rather than the live-workout route so completion feedback
+  still fires after in-app navigation. True iOS Live Activities and lock-screen
+  countdown surfaces are not exposed to installed web PWAs, so this app cannot
+  show a native lock-screen timer without a native iOS wrapper.
 
 ## 2026-06-19 Food Provider Sources
 
@@ -120,8 +173,11 @@
   official API, data type documentation, and CC0/public-domain licensing support
   server-side use for this app.
 - Open Food Facts is accepted only as a controlled branded-product fallback. It
-  is not used for search-as-you-type, the app does not write records, and images
-  and nutrition scores are ignored.
+  is also the explicit-search provider when the interface language is Spanish,
+  because USDA does not supply localized food names. Spanish search requests
+  ask for Spanish product/category fields and fall back to the provider's base
+  fields when a translation is absent. It is not used for search-as-you-type,
+  the app does not write records, and images and nutrition scores are ignored.
 - No additional free provider was added in this prompt. Restaurant and fast-food
   coverage is limited to records supplied by USDA or the controlled fallback;
   the app will not scrape menus or fabricate restaurant coverage.
@@ -148,6 +204,18 @@
 
 ## Architecture and Scope Decisions
 
+## 2026-06-27: Daily Calorie History Graph
+
+- Home replaces its macro-oriented Nutrition card with a compact seven-day
+  calorie bar graph. Logged calories use separated bars and the applicable
+  calorie target is overlaid as a contrasting line.
+- History Graphs includes one-week, one-month, and three-month calorie ranges.
+- Graph rows are derived from immutable local food-log calories and timestamped
+  target history. IndexedDB remains the offline source of truth.
+- When Supabase is configured and the user is signed in, the graph's exact
+  daily logged and target calorie rows are upserted to `daily_nutrition` under
+  row-level security. Graph rendering does not depend on network availability.
+
 - The app is a single-user, local-first Progressive Web App.
 - Primary target is iPhone installed through Safari using Add to Home Screen.
 - IndexedDB is the source of truth for all primary user records.
@@ -171,6 +239,13 @@
 
 ## Product Behavior Decisions
 
+- Interface language is a local `UserSettings` preference (`en` or `es`) with
+  English as the backward-compatible default. It changes presentation only;
+  user-entered names, notes, measurements, and historical snapshots remain
+  stored unchanged. Adding this non-indexed field does not change the Dexie
+  store schema, so no IndexedDB version bump is required. Provider-owned search
+  results are the exception to presentation-only localization: Spanish mode
+  queries Open Food Facts and prefers provider-supplied Spanish display fields.
 - Nutrition is manual and simple.
 - Food log entries snapshot nutrition values at logging time.
 - Bodyweight supports multiple timestamped entries per local calendar date,
@@ -179,6 +254,10 @@
 - The built-in offline exercise library is an original curated seed list. No
   third-party exercise database, third-party application code, images, videos,
   instructions, or descriptions are imported.
+- "Similar size to MacroFactor" is implemented as at least 1,000 original
+  offline exercise seeds. Controlled-tempo, paused, eccentric, and 1.5-rep
+  variants inherit the base movement's tracking and muscle metadata while using
+  their own stable IDs.
 - Built-in exercise IDs use stable `builtin:` identifiers and seed metadata so
   future library updates can add or correct built-in records idempotently.
 - Basic neck exercise seeds use the existing `traps` muscle category because
@@ -208,6 +287,13 @@
   impossible-speed, and long-gap intervals do not add moving time.
 - Detected structural changes are reviewed individually and are never applied automatically.
 - Applying detected changes to active cycle/template/both is transactional.
+- Weights are stored canonically in pounds; the `weightUnit` preference (lb/kg)
+  only changes display and how freshly entered values are interpreted, so
+  switching units re-renders existing history with no data migration and never
+  mutates frozen workout history. Conversion uses 1 lb = 0.45359237 kg. Display
+  rounding: kilogram lifting weights snap to the nearest 0.5 kg, kilogram
+  bodyweight shows one decimal, and pounds are shown as stored (trimmed of
+  float noise) to preserve any micro-plate precision.
 
 ## First-Release Exclusions
 

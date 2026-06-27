@@ -36,12 +36,9 @@ import {
   StatusMessage,
   ValidationMessage,
 } from '@components/ui'
+import { useLanguage } from '@components/languageContextValue'
 import { getRestTimerRemainingSeconds } from '@domain/restTimer'
-import {
-  DEFAULT_TIMER_SOUND_ID,
-  playTimerSoundOnce,
-  primeTimerSound,
-} from '@domain/timerSounds'
+import { DEFAULT_TIMER_SOUND_ID, preloadTimerSound } from '@domain/timerSounds'
 import {
   defaultExerciseResults,
   hasSearchableQuery,
@@ -50,8 +47,22 @@ import {
 } from '@domain/exerciseSearch'
 import { canSkipWorkoutExercise } from '@domain/workoutSkip'
 import { TRACKING_METHODS } from '@domain/trackingMethods'
+import {
+  formatWeight as formatWeightWithUnit,
+  weightInputToLb,
+  weightInputValue,
+} from '@domain/weightUnits'
+import { useWeightUnit } from '@hooks/useWeightUnit'
 import { exerciseRepository } from '@repositories/exerciseRepository'
 import { settingsRepository } from '@repositories/settingsRepository'
+import {
+  nativeRestTimerNotificationService,
+  type NativeRestTimerNotificationStatus,
+} from '@services/nativeRestTimerNotificationService'
+import {
+  webPushRestTimerNotificationService,
+  type WebPushRestTimerNotificationStatus,
+} from '@services/webPushRestTimerNotificationService'
 import {
   workoutRepository,
   type WorkoutSetMetricValue,
@@ -61,6 +72,8 @@ import type {
   ActiveCycleWorkoutExercise,
   TrackingMetric,
   TrackingMethodId,
+  WeightUnit,
+  RestTimerState,
   Workout,
   WorkoutExercise,
   WorkoutSet,
@@ -90,11 +103,15 @@ declare global {
 }
 
 export function LiveWorkoutPage() {
+  const { t } = useLanguage()
   const navigate = useNavigate()
   const [state, setState] = useState<LiveWorkoutState>({ status: 'loading' })
   const [revision, setRevision] = useState(0)
   const [now, setNow] = useState(() => new Date())
   const [error, setError] = useState<string | null>(null)
+  const [nativeTimerMessage, setNativeTimerMessage] = useState<string | null>(
+    null,
+  )
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const [confirmFinish, setConfirmFinish] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
@@ -107,7 +124,6 @@ export function LiveWorkoutPage() {
     null,
   )
   const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null)
-  const alertedTimerIds = useRef(new Set<string>())
 
   useEffect(() => {
     let isCurrent = true
@@ -170,6 +186,11 @@ export function LiveWorkoutPage() {
         enabled: settings.timerSoundEnabled ?? true,
         soundId: settings.selectedTimerSoundId ?? DEFAULT_TIMER_SOUND_ID,
       })
+      if (settings.timerSoundEnabled ?? true) {
+        preloadTimerSound(
+          settings.selectedTimerSoundId ?? DEFAULT_TIMER_SOUND_ID,
+        )
+      }
       setDefaultRestSeconds(settings.defaultRestSeconds ?? null)
     })
     return () => {
@@ -195,6 +216,55 @@ export function LiveWorkoutPage() {
       .catch((caught: unknown) => {
         setError(caught instanceof Error ? caught.message : failure)
       })
+  }
+
+  async function syncNativeRestTimer(
+    timer: RestTimerState,
+    requestPermission = false,
+  ) {
+    try {
+      const nativeStatus = await nativeRestTimerNotificationService.sync(
+        timer,
+        timerSound.soundId,
+        { requestPermission, soundEnabled: timerSound.enabled },
+      )
+      const webPushStatus =
+        nativeStatus === 'unavailable'
+          ? await webPushRestTimerNotificationService.sync(timer)
+          : 'unavailable'
+      setNativeTimerMessage(
+        nativeTimerStatusMessage(nativeStatus) ??
+          webPushTimerStatusMessage(webPushStatus),
+      )
+    } catch {
+      setNativeTimerMessage(
+        'The outside-app timer alert could not be scheduled.',
+      )
+    }
+  }
+
+  function runRestTimerMutation(
+    action: Promise<RestTimerState>,
+    requestPermission = false,
+  ) {
+    run(
+      action.then((timer) => syncNativeRestTimer(timer, requestPermission)),
+      'Rest timer could not be updated.',
+    )
+  }
+
+  async function cancelNativeRestTimer() {
+    try {
+      const nativeStatus = await nativeRestTimerNotificationService.cancel()
+      if (nativeStatus === 'unavailable') {
+        await webPushRestTimerNotificationService.cancel()
+      }
+      setNativeTimerMessage(null)
+    } catch {
+      setNativeTimerMessage(
+        'The pending outside-app timer alert could not be canceled.',
+      )
+    }
   }
 
   const readyState = state.status === 'ready' ? state : null
@@ -252,29 +322,32 @@ export function LiveWorkoutPage() {
   }, [activeExercise, readyState])
 
   useEffect(() => {
-    const timer = readyState?.workout.activeRestTimer
-    if (
-      !readyState ||
-      !timer ||
-      timer.status !== 'running' ||
-      restRemaining > 0 ||
-      alertedTimerIds.current.has(timer.id)
-    ) {
-      return
+    function reloadCompletedTimer(event: Event) {
+      if (!(event instanceof CustomEvent) || !readyState) {
+        return
+      }
+      const detail: unknown = event.detail
+      if (
+        detail &&
+        typeof detail === 'object' &&
+        'workoutId' in detail &&
+        detail.workoutId === readyState.workout.id
+      ) {
+        setRevision((current) => current + 1)
+      }
     }
-    alertedTimerIds.current.add(timer.id)
-    announceRestComplete(timerSound)
-    void workoutRepository
-      .completeRestTimer(readyState.workout.id)
-      .then(() => setRevision((current) => current + 1))
-      .catch((caught: unknown) => {
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : 'Rest timer could not be completed.',
-        )
-      })
-  }, [readyState, restRemaining, timerSound])
+
+    window.addEventListener(
+      'fitness-log:rest-timer-completed',
+      reloadCompletedTimer,
+    )
+    return () => {
+      window.removeEventListener(
+        'fitness-log:rest-timer-completed',
+        reloadCompletedTimer,
+      )
+    }
+  }, [readyState])
 
   if (state.status === 'loading') {
     return (
@@ -323,7 +396,7 @@ export function LiveWorkoutPage() {
           <div>
             <h2>{state.workout.name}</h2>
             <p className="muted">
-              {state.workout.workoutSnapshot.activeCycleName ?? 'Program'}
+              {state.workout.workoutSnapshot.activeCycleName ?? t('Program')}
             </p>
           </div>
           <SecondaryButton
@@ -331,7 +404,7 @@ export function LiveWorkoutPage() {
             type="button"
             onClick={() => setConfirmDiscard(true)}
           >
-            Discard Workout
+            {t('Discard Workout')}
           </SecondaryButton>
         </div>
         <div className="live-workout-stats">
@@ -344,20 +417,35 @@ export function LiveWorkoutPage() {
       </Card>
 
       {error ? <ValidationMessage message={error} /> : null}
+      {nativeTimerMessage ? (
+        <StatusMessage tone="warning">{nativeTimerMessage}</StatusMessage>
+      ) : null}
 
       <RestTimerCard
         onAddTime={() =>
-          run(workoutRepository.addRestTimerSeconds(state.workout.id, 30))
+          runRestTimerMutation(
+            workoutRepository.addRestTimerSeconds(state.workout.id, 30),
+          )
         }
         onSubtractTime={() =>
-          run(workoutRepository.addRestTimerSeconds(state.workout.id, -30))
+          runRestTimerMutation(
+            workoutRepository.addRestTimerSeconds(state.workout.id, -30),
+          )
         }
         onDismiss={() =>
-          run(workoutRepository.dismissRestTimer(state.workout.id))
+          runRestTimerMutation(
+            workoutRepository.dismissRestTimer(state.workout.id),
+          )
         }
-        onPause={() => run(workoutRepository.pauseRestTimer(state.workout.id))}
+        onPause={() =>
+          runRestTimerMutation(
+            workoutRepository.pauseRestTimer(state.workout.id),
+          )
+        }
         onResume={() =>
-          run(workoutRepository.resumeRestTimer(state.workout.id))
+          runRestTimerMutation(
+            workoutRepository.resumeRestTimer(state.workout.id),
+          )
         }
         remainingSeconds={restRemaining}
         timer={state.workout.activeRestTimer}
@@ -403,14 +491,6 @@ export function LiveWorkoutPage() {
             const hasMoreSetsInExercise = activeSets.some(
               (candidate) => candidate.id !== set.id && !candidate.completed,
             )
-            // Unlock the selected completion sound synchronously within this
-            // tap gesture when a rest timer is about to start, so it can play
-            // when the timer later fires without its own user interaction.
-            if (completed && hasMoreSetsInExercise && restSeconds > 0) {
-              if (timerSound.enabled) {
-                primeTimerSound(timerSound.soundId)
-              }
-            }
             const nextIncompleteExercise = state.exercises.find(
               (exercise) =>
                 exercise.id !== activeExercise.id &&
@@ -423,17 +503,24 @@ export function LiveWorkoutPage() {
                 .updateWorkoutSet(set.id, { completed })
                 .then(async () => {
                   if (!completed) {
-                    await workoutRepository.dismissRestTimer(state.workout.id)
+                    const timer = await workoutRepository.dismissRestTimer(
+                      state.workout.id,
+                    )
+                    await syncNativeRestTimer(timer)
                     return
                   }
                   if (hasMoreSetsInExercise && restSeconds > 0) {
-                    await workoutRepository.setRestTimer(
+                    const timer = await workoutRepository.setRestTimer(
                       state.workout.id,
                       restSeconds,
                     )
+                    await syncNativeRestTimer(timer, true)
                     return
                   }
-                  await workoutRepository.dismissRestTimer(state.workout.id)
+                  const timer = await workoutRepository.dismissRestTimer(
+                    state.workout.id,
+                  )
+                  await syncNativeRestTimer(timer)
                   if (nextIncompleteExercise) {
                     setActiveExerciseId(nextIncompleteExercise.id)
                   }
@@ -483,7 +570,7 @@ export function LiveWorkoutPage() {
           onClick={() => setPicker({ mode: 'add' })}
         >
           <Plus aria-hidden="true" size={18} />
-          Add Exercise
+          {t('Add Exercise')}
         </SecondaryButton>
         <PrimaryButton type="button" onClick={() => setConfirmFinish(true)}>
           Finish Workout
@@ -510,17 +597,21 @@ export function LiveWorkoutPage() {
         onCancel={() => setConfirmDiscard(false)}
         onConfirm={() => {
           run(
-            workoutRepository.discardWorkout(state.workout.id).then(() => {
-              setConfirmDiscard(false)
-              navigate('/training')
-            }),
+            workoutRepository
+              .discardWorkout(state.workout.id)
+              .then(() => cancelNativeRestTimer())
+              .then(() => {
+                setConfirmDiscard(false)
+                navigate('/training')
+              }),
             'Workout could not be discarded.',
           )
         }}
         title="Discard workout?"
       >
-        This permanently discards the active workout and all recorded set data.
-        It will not appear in history, graphs, or statistics.
+        {t(
+          'This permanently discards the active workout and all recorded set data. It will not appear in history, graphs, or statistics.',
+        )}
       </ModalConfirmationDialog>
 
       <ModalConfirmationDialog
@@ -533,16 +624,18 @@ export function LiveWorkoutPage() {
           run(
             workoutRepository
               .completeWorkout({ workoutId: state.workout.id })
-              .then((completed) =>
-                navigate(`/history?workout=${completed.history.id}`),
-              ),
+              .then(async (completed) => {
+                await cancelNativeRestTimer()
+                navigate(`/history?workout=${completed.history.id}`)
+              }),
             'Workout could not finish.',
           )
         }}
         title="Finish workout?"
       >
-        This saves the completed workout to your history and ends the active
-        session.
+        {t(
+          'This saves the completed workout to your history and ends the active session.',
+        )}
       </ModalConfirmationDialog>
 
       <ModalConfirmationDialog
@@ -562,12 +655,49 @@ export function LiveWorkoutPage() {
         }}
         title="Remove exercise?"
       >
-        Remove{' '}
-        {activeExercise?.exerciseSnapshot.exerciseName ?? 'this exercise'} and
-        its entered sets from this active workout?
+        {t('Remove {name} and its entered sets from this active workout?', {
+          name:
+            activeExercise?.exerciseSnapshot.exerciseName ?? t('this exercise'),
+        })}
       </ModalConfirmationDialog>
     </PageContainer>
   )
+}
+
+function nativeTimerStatusMessage(status: NativeRestTimerNotificationStatus) {
+  switch (status) {
+    case 'denied':
+      return 'Outside-app timer alerts are disabled. Allow notifications for this app in iPhone Settings.'
+    case 'permission-required':
+      return 'Allow notifications to receive rest-timer alerts outside the app.'
+    case 'unavailable':
+    case 'granted':
+    case 'scheduled':
+    case 'canceled':
+    case 'expired':
+      return null
+  }
+}
+
+function webPushTimerStatusMessage(status: WebPushRestTimerNotificationStatus) {
+  switch (status) {
+    case 'denied':
+      return 'Outside-app timer alerts are disabled. Allow notifications for this app in iPhone Settings.'
+    case 'install-required':
+      return 'Install this app on the Home Screen before enabling outside-app timer alerts.'
+    case 'permission-required':
+      return 'Enable outside-app timer alerts in Settings before leaving the app.'
+    case 'not-configured':
+      return 'Outside-app timer alerts are not configured on this deployment.'
+    case 'failed':
+      return 'The outside-app timer alert could not be scheduled. Check your internet connection.'
+    case 'unavailable':
+    case 'granted':
+    case 'scheduled':
+    case 'canceled':
+    case 'expired':
+      return null
+  }
 }
 
 function ExerciseWorkspace({
@@ -610,8 +740,10 @@ function ExerciseWorkspace({
   prescription: ActiveCycleWorkoutExercise | undefined
   sets: WorkoutSet[]
 }) {
+  const { t } = useLanguage()
   const metrics = exercise.exerciseSnapshot.trackingMetrics
   const swipe = useSwipeNavigation({ onNext, onPrevious })
+  const weightUnit = useWeightUnit()
   const finalProgrammedSetId = getFinalProgrammedSetId(sets)
 
   return (
@@ -638,45 +770,50 @@ function ExerciseWorkspace({
       <div className="exercise-card-header">
         <div>
           <p className="eyebrow">
-            Exercise {exerciseIndex + 1} of {exerciseCount}
+            {t('Exercise {current} of {total}', {
+              current: exerciseIndex + 1,
+              total: exerciseCount,
+            })}
           </p>
           <h2>{exercise.exerciseSnapshot.exerciseName}</h2>
-          {exercise.skipped ? <p className="muted">Skipped</p> : null}
-          <p className="muted">{formatPrescriptionSummary(prescription)}</p>
+          {exercise.skipped ? <p className="muted">{t('Skipped')}</p> : null}
+          <p className="muted">
+            {formatPrescriptionSummary(prescription, weightUnit)}
+          </p>
         </div>
         <div className="row-actions">
           <SecondaryButton type="button" onClick={onReplaceExercise}>
             <RefreshCcw aria-hidden="true" size={16} />
-            Replace Exercise
+            {t('Replace Exercise')}
           </SecondaryButton>
           <SecondaryButton
             className="button-danger"
             type="button"
             onClick={onRemoveExercise}
           >
-            Remove Exercise
+            {t('Remove Exercise')}
           </SecondaryButton>
           <SecondaryButton
             type="button"
             disabled={!exercise.skipped && !canSkipWorkoutExercise(sets)}
             onClick={() => onSkip(!exercise.skipped)}
           >
-            {exercise.skipped ? 'Unskip' : 'Skip Exercise'}
+            {t(exercise.skipped ? 'Unskip' : 'Skip Exercise')}
           </SecondaryButton>
         </div>
       </div>
 
-      <div className="exercise-stepper" aria-label="Exercise navigation">
+      <div className="exercise-stepper" aria-label={t('Exercise navigation')}>
         <SecondaryButton
           disabled={!canGoPrevious}
           type="button"
           onClick={onPrevious}
         >
           <ChevronLeft aria-hidden="true" size={18} />
-          Previous
+          {t('Previous')}
         </SecondaryButton>
         <SecondaryButton disabled={!canGoNext} type="button" onClick={onNext}>
-          Next
+          {t('Next')}
           <ChevronRight aria-hidden="true" size={18} />
         </SecondaryButton>
       </div>
@@ -700,7 +837,7 @@ function ExerciseWorkspace({
 
       <SecondaryButton type="button" onClick={onAddSet}>
         <Plus aria-hidden="true" size={18} />
-        Add Set
+        {t('Add Set')}
       </SecondaryButton>
     </Card>
   )
@@ -727,45 +864,68 @@ function SetRow({
   prescription: ActiveCycleWorkoutExercise | undefined
   set: WorkoutSet
 }) {
+  const { t } = useLanguage()
   const showRir = supportsRir(metrics) && set.id === finalProgrammedSetId
   const repsPerSide = exerciseRecordsRepsPerSide(exercise)
   const invalidMetricKeys = invalidRequiredMetricKeys(set, metrics)
+  const weightUnit = useWeightUnit()
   return (
     <div className={set.completed ? 'set-row completed' : 'set-row'}>
       <div className="set-number">
         <strong>{set.setNumber}</strong>
       </div>
-      {metrics.map((metric) => (
-        <label key={metric.key}>
-          <span>{formatMetricLabel(metric, repsPerSide)}</span>
-          <MetricNumericInput
-            aria-label={`Set ${set.setNumber} ${formatMetricLabel(
-              metric,
-              repsPerSide,
-            )}`}
-            disabled={set.completed}
-            invalid={invalidMetricKeys.has(metric.key)}
-            onValueChange={(value) => onMetricChange(metric.key, value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                event.currentTarget.blur()
+      {metrics.map((metric) => {
+        // Weight metrics (unit "lb") persist in canonical pounds; show and read
+        // them in the user's display unit while leaving reps/duration untouched.
+        const isWeightMetric = metric.unit === 'lb'
+        const storedValue = set.metricValues[metric.key]
+        return (
+          <label key={metric.key}>
+            <span>{formatMetricLabel(metric, repsPerSide)}</span>
+            <MetricNumericInput
+              aria-label={`Set ${set.setNumber} ${formatMetricLabel(
+                metric,
+                repsPerSide,
+              )}`}
+              disabled={set.completed}
+              invalid={invalidMetricKeys.has(metric.key)}
+              onValueChange={(value) =>
+                onMetricChange(
+                  metric.key,
+                  isWeightMetric && typeof value === 'number'
+                    ? weightInputToLb(value, weightUnit)
+                    : value,
+                )
               }
-            }}
-            placeholder={
-              metric.key === 'reps'
-                ? (formatRepTargetPlaceholder(prescription) ?? undefined)
-                : undefined
-            }
-            metricKey={metric.key}
-            value={formatMetricInput(set.metricValues[metric.key], metric.key)}
-            valueType={metric.valueType}
-          />
-        </label>
-      ))}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  event.currentTarget.blur()
+                }
+              }}
+              placeholder={
+                metric.key === 'reps'
+                  ? (formatRepTargetPlaceholder(prescription) ?? undefined)
+                  : undefined
+              }
+              metricKey={metric.key}
+              value={
+                isWeightMetric
+                  ? weightInputValue(
+                      typeof storedValue === 'number' ? storedValue : null,
+                      weightUnit,
+                      'lifting',
+                    )
+                  : formatMetricInput(storedValue, metric.key)
+              }
+              valueType={metric.valueType}
+            />
+          </label>
+        )
+      })}
       {showRir ? (
         <label>
-          <span>Final RIR</span>
+          <span>{t('Final RIR')}</span>
           <NumericInput
             aria-label={`Set ${set.setNumber} final RIR`}
             disabled={set.completed}
@@ -900,6 +1060,7 @@ function RestTimerCard({
   remainingSeconds: number
   timer: Workout['activeRestTimer']
 }) {
+  const { t } = useLanguage()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [draftRest, setDraftRest] = useState('')
 
@@ -951,8 +1112,9 @@ function RestTimerCard({
             />
           </FormField>
           <p className="muted">
-            Applies to rest timers that start after a set. Leave blank to use
-            each exercise&rsquo;s own default.
+            {t(
+              "Applies to rest timers that start after a set. Leave blank to use each exercise's own default.",
+            )}
           </p>
           <div className="button-row">
             <SecondaryButton
@@ -972,24 +1134,24 @@ function RestTimerCard({
       </p>
       <p className="muted">
         {timer.status === 'completed'
-          ? 'Rest complete'
+          ? t('Rest complete')
           : timer.status === 'paused'
-            ? 'Timer paused'
-            : 'Timer running'}
+            ? t('Timer paused')
+            : t('Timer running')}
       </p>
       <div className="button-row">
         {timer.status === 'completed' ? null : timer.status === 'paused' ? (
           <SecondaryButton type="button" onClick={onResume}>
             <Play aria-hidden="true" size={18} />
-            Resume
+            {t('Resume')}
           </SecondaryButton>
         ) : (
           <SecondaryButton type="button" onClick={onPause}>
             <Pause aria-hidden="true" size={18} />
-            Pause
+            {t('Pause')}
           </SecondaryButton>
         )}
-        <div className="timer-adjust-row" aria-label="Timer adjustment">
+        <div className="timer-adjust-row" aria-label={t('Timer adjustment')}>
           <SecondaryButton
             aria-label="Subtract 30 seconds"
             disabled={remainingSeconds === 0}
@@ -1267,6 +1429,7 @@ function getActiveExerciseIndex(
 
 function formatPrescriptionSummary(
   prescription: ActiveCycleWorkoutExercise | undefined,
+  unit: WeightUnit = 'lb',
 ) {
   if (!prescription) {
     return 'Added during workout'
@@ -1280,7 +1443,7 @@ function formatPrescriptionSummary(
     prescription.targetWeight !== null &&
     prescription.targetWeight !== undefined
   ) {
-    parts.push(`${prescription.targetWeight} lb`)
+    parts.push(formatWeightWithUnit(prescription.targetWeight, unit, 'lifting'))
   }
   if (
     prescription.targetDurationSeconds !== null &&
@@ -1519,21 +1682,4 @@ function isInteractiveElement(target: EventTarget | null) {
       'button, input, select, textarea, a, [contenteditable="true"], [role="slider"]',
     ),
   )
-}
-
-function announceRestComplete(timerSound: {
-  enabled: boolean
-  soundId: string
-}) {
-  if ('vibrate' in navigator) {
-    navigator.vibrate?.(180)
-  }
-  if (timerSound.enabled) {
-    void playTimerSoundOnce(timerSound.soundId).catch(() => {
-      // Browser autoplay policies can reject timer audio; the visual completion state remains authoritative.
-    })
-  }
-  if ('Notification' in window && Notification.permission === 'granted') {
-    new Notification('Rest timer complete')
-  }
 }

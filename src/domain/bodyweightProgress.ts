@@ -5,7 +5,12 @@ import {
   parseLocalDate,
   type LocalDateString,
 } from '@domain/dates'
-import type { BodyweightEntry } from '@shared-types/app'
+import {
+  formatWeight as formatWeightWithUnit,
+  weightDisplayNumber,
+  weightUnitSuffix,
+} from '@domain/weightUnits'
+import type { BodyweightEntry, WeightUnit } from '@shared-types/app'
 
 export type BodyweightRange = '1m' | '3m' | '6m' | 'all'
 
@@ -95,6 +100,7 @@ export function filterBodyweightEntriesForRange({
 
 export function summarizeBodyweightTrend(
   entries: BodyweightEntry[],
+  unit: WeightUnit = 'lb',
 ): BodyweightTrendSummary {
   const sorted = sortBodyweightEntries(entries)
   const latest = sorted.at(-1)
@@ -107,17 +113,19 @@ export function summarizeBodyweightTrend(
     return {
       status: 'single',
       latest,
-      text: `Current bodyweight is ${formatWeight(latest.weight)} ${latest.unit}. Add another entry to show a trend.`,
+      text: `Current bodyweight is ${formatWeightWithUnit(latest.weight, unit, 'bodyweight')}. Add another entry to show a trend.`,
     }
   }
 
+  // Stored weights are canonical pounds; the change is a pounds delta that we
+  // convert into the display unit for the human-readable summary text.
   const change = latest.weight - first.weight
   const direction =
     Math.abs(change) < 0.05 ? 'flat' : change > 0 ? 'up' : 'down'
   const directionText =
     direction === 'flat'
       ? 'no meaningful change'
-      : `${change > 0 ? 'up' : 'down'} ${formatWeight(Math.abs(change))} ${latest.unit}`
+      : `${change > 0 ? 'up' : 'down'} ${weightDisplayNumber(Math.abs(change), unit, 'bodyweight')} ${weightUnitSuffix(unit)}`
 
   return {
     status: 'ready',
@@ -125,15 +133,16 @@ export function summarizeBodyweightTrend(
     latest,
     change,
     direction,
-    text: `From ${first.localDate} to ${latest.localDate}, bodyweight is ${directionText}, from ${formatWeight(first.weight)} to ${formatWeight(latest.weight)} ${latest.unit}.`,
+    text: `From ${first.localDate} to ${latest.localDate}, bodyweight is ${directionText}, from ${weightDisplayNumber(first.weight, unit, 'bodyweight')} to ${formatWeightWithUnit(latest.weight, unit, 'bodyweight')}.`,
   }
 }
 
 export function createBodyweightChartModel(
   entries: BodyweightEntry[],
+  unit: WeightUnit = 'lb',
 ): BodyweightChartModel {
   const sorted = sortBodyweightEntries(entries)
-  const summary = summarizeBodyweightTrend(sorted)
+  const summary = summarizeBodyweightTrend(sorted, unit)
   if (!sorted.length) {
     return { status: 'empty', entries: [], summary }
   }
@@ -158,7 +167,9 @@ export function createBodyweightChartModel(
     entries: sorted,
     points: sorted.map((entry) => ({
       entry,
-      x: isSingleEntry ? 50 : ((chartTime(entry) - firstTime) / timeSpread) * 100,
+      x: isSingleEntry
+        ? 50
+        : ((chartTime(entry) - firstTime) / timeSpread) * 100,
       y: 100 - ((entry.weight - chartMin) / chartSpread) * 100,
     })),
     minWeight,
@@ -173,11 +184,20 @@ export function formatWeight(weight: number) {
   return Number.isInteger(weight) ? String(weight) : weight.toFixed(1)
 }
 
-export function formatBodyweightChange(change: number) {
+export function formatBodyweightChange(
+  change: number,
+  unit: WeightUnit = 'lb',
+) {
+  const suffix = weightUnitSuffix(unit)
   if (Math.abs(change) < 0.05) {
-    return '0 lb'
+    return `0 ${suffix}`
   }
-  return `${change > 0 ? '+' : '-'}${formatWeight(Math.abs(change))} lb`
+  const sign = change > 0 ? '+' : '-'
+  const displayChange =
+    unit === 'lb'
+      ? formatWeight(Math.abs(change))
+      : weightDisplayNumber(Math.abs(change), unit, 'bodyweight')
+  return `${sign}${displayChange} ${suffix}`
 }
 
 function chartTime(entry: BodyweightEntry) {

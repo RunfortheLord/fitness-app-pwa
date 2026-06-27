@@ -15,6 +15,30 @@ afterEach(async () => {
 })
 
 describe('settingsRepository', () => {
+  it('defaults, persists, and backfills the app language', async () => {
+    const repository = createSettingsRepository(database)
+
+    await expect(repository.ensureSettings()).resolves.toMatchObject({
+      language: 'en',
+    })
+
+    await repository.saveLanguage('es')
+    await expect(database.userSettings.get('settings')).resolves.toMatchObject({
+      language: 'es',
+    })
+
+    const stored = await database.userSettings.get('settings')
+    expect(stored).toBeDefined()
+    await database.userSettings.put({
+      ...stored!,
+      language: undefined,
+    })
+
+    await expect(repository.ensureSettings()).resolves.toMatchObject({
+      language: 'en',
+    })
+  })
+
   it('rolls back nutrition target saves when the transaction fails', async () => {
     const repository = createSettingsRepository(database, {
       afterNutritionTargetAdded: () => {

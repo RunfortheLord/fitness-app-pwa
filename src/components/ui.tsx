@@ -1,5 +1,6 @@
 import type {
   ButtonHTMLAttributes,
+  CSSProperties,
   InputHTMLAttributes,
   HTMLAttributes,
   MouseEvent,
@@ -9,6 +10,8 @@ import type {
 import { useEffect, useId, useRef, useState } from 'react'
 import { ArrowLeft, Check, ChevronLeft, ChevronRight, X } from 'lucide-react'
 
+import { useLanguage } from '@components/languageContextValue'
+
 type AppHeaderProps = {
   title: string
   eyebrow?: string
@@ -16,11 +19,12 @@ type AppHeaderProps = {
 }
 
 export function AppHeader({ title, eyebrow, action }: AppHeaderProps) {
+  const { t } = useLanguage()
   return (
     <header className="app-header">
       <div className="app-header-copy">
-        {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
-        <h1>{title}</h1>
+        {eyebrow ? <p className="eyebrow">{t(eyebrow)}</p> : null}
+        <h1>{t(title)}</h1>
       </div>
       {action ? <div className="app-header-action">{action}</div> : null}
     </header>
@@ -47,6 +51,7 @@ type CardProps = HTMLAttributes<HTMLElement> & {
 }
 
 export function Card({ children, className = '', title, ...props }: CardProps) {
+  const { t } = useLanguage()
   const titleId = title
     ? `${title.toLowerCase().replaceAll(' ', '-')}-title`
     : undefined
@@ -57,7 +62,7 @@ export function Card({ children, className = '', title, ...props }: CardProps) {
       aria-labelledby={titleId}
       {...props}
     >
-      {title ? <h2 id={titleId}>{title}</h2> : null}
+      {title ? <h2 id={titleId}>{t(title)}</h2> : null}
       {children}
     </section>
   )
@@ -70,11 +75,12 @@ type MetricCardProps = {
 }
 
 export function MetricCard({ label, value, detail }: MetricCardProps) {
+  const { t } = useLanguage()
   return (
     <Card className="metric-card">
-      <p className="metric-label">{label}</p>
+      <p className="metric-label">{t(label)}</p>
       <p className="metric-value">{value}</p>
-      {detail ? <p className="muted">{detail}</p> : null}
+      {detail ? <p className="muted">{t(detail)}</p> : null}
     </Card>
   )
 }
@@ -85,9 +91,10 @@ type SectionHeaderProps = {
 }
 
 export function SectionHeader({ title, action }: SectionHeaderProps) {
+  const { t } = useLanguage()
   return (
     <div className="section-header">
-      <h2>{title}</h2>
+      <h2>{t(title)}</h2>
       {action ? <div>{action}</div> : null}
     </div>
   )
@@ -113,6 +120,7 @@ export function BottomSheet({
   title,
   variant = 'sheet',
 }: BottomSheetProps) {
+  const { language, t } = useLanguage()
   const titleId = useId()
   const sheetRef = useRef<HTMLElement>(null)
 
@@ -146,20 +154,28 @@ export function BottomSheet({
         {isPage ? (
           <div className="sheet-header sheet-header--page">
             <IconButton
-              aria-label={`Back from ${title.toLowerCase()}`}
+              aria-label={
+                language === 'en'
+                  ? `Back from ${title.toLowerCase()}`
+                  : `${t('Back')}: ${t(title)}`
+              }
               onClick={onClose}
             >
               <ArrowLeft aria-hidden="true" size={20} />
             </IconButton>
-            <h2 id={titleId}>{title}</h2>
+            <h2 id={titleId}>{t(title)}</h2>
           </div>
         ) : (
           <>
             <div className="sheet-handle" aria-hidden="true" />
             <div className="sheet-header">
-              <h2 id={titleId}>{title}</h2>
+              <h2 id={titleId}>{t(title)}</h2>
               <IconButton
-                aria-label={`Close ${title.toLowerCase()}`}
+                aria-label={
+                  language === 'en'
+                    ? `Close ${title.toLowerCase()}`
+                    : `${t('Close')}: ${t(title)}`
+                }
                 onClick={onClose}
               >
                 <X aria-hidden="true" size={20} />
@@ -192,6 +208,7 @@ export function ModalConfirmationDialog({
   onConfirm,
   title,
 }: ModalConfirmationDialogProps) {
+  const { t } = useLanguage()
   const titleId = useId()
   const dialogRef = useRef<HTMLElement>(null)
 
@@ -215,14 +232,14 @@ export function ModalConfirmationDialog({
         role="dialog"
         tabIndex={-1}
       >
-        <h2 id={titleId}>{title}</h2>
+        <h2 id={titleId}>{t(title)}</h2>
         <div className="dialog-body">{children}</div>
         <div className="dialog-actions">
           <SecondaryButton type="button" onClick={onCancel}>
-            {cancelLabel}
+            {t(cancelLabel)}
           </SecondaryButton>
           <PrimaryButton type="button" onClick={onConfirm}>
-            {confirmLabel}
+            {t(confirmLabel)}
           </PrimaryButton>
         </div>
       </section>
@@ -243,8 +260,18 @@ export function SegmentedControl({
   options,
   value,
 }: SegmentedControlProps) {
+  const { t } = useLanguage()
+  const segmentStyle = {
+    '--segment-count': options.length,
+  } as CSSProperties
+
   return (
-    <div className="segmented-control" aria-label={label} role="group">
+    <div
+      className="segmented-control"
+      aria-label={t(label)}
+      role="group"
+      style={segmentStyle}
+    >
       {options.map((option) => (
         <button
           aria-pressed={option.value === value}
@@ -252,7 +279,7 @@ export function SegmentedControl({
           onClick={() => onChange(option.value)}
           type="button"
         >
-          {option.label}
+          {t(option.label)}
         </button>
       ))}
     </div>
@@ -272,21 +299,22 @@ export function DateSelector({
   onPrevious,
   onToday,
 }: DateSelectorProps) {
+  const { t } = useLanguage()
   return (
-    <section className="date-selector" aria-label="Selected date">
-      <IconButton aria-label="Previous day" onClick={onPrevious}>
+    <section className="date-selector" aria-label={t('Selected date')}>
+      <IconButton aria-label={t('Previous day')} onClick={onPrevious}>
         <ChevronLeft aria-hidden="true" size={20} />
       </IconButton>
       <button
-        aria-label="Return to today"
+        aria-label={t('Return to today')}
         className="date-selector-current"
         onClick={onToday}
         type="button"
       >
         <span>{dateLabel}</span>
-        <small>Today</small>
+        <small>{t('Today')}</small>
       </button>
-      <IconButton aria-label="Next day" onClick={onNext}>
+      <IconButton aria-label={t('Next day')} onClick={onNext}>
         <ChevronRight aria-hidden="true" size={20} />
       </IconButton>
     </section>
@@ -343,14 +371,19 @@ export function PrimaryButton({
   onClick,
   ...props
 }: AsyncButtonProps) {
+  const { t } = useLanguage()
   const { pending, handleClick } = useAsyncClick(onClick)
+  const children =
+    typeof props.children === 'string' ? t(props.children) : props.children
   return (
     <button
       className={`button button-primary ${className}`.trim()}
       disabled={disabled || pending}
       onClick={handleClick}
       {...props}
-    />
+    >
+      {children}
+    </button>
   )
 }
 
@@ -360,14 +393,19 @@ export function SecondaryButton({
   onClick,
   ...props
 }: AsyncButtonProps) {
+  const { t } = useLanguage()
   const { pending, handleClick } = useAsyncClick(onClick)
+  const children =
+    typeof props.children === 'string' ? t(props.children) : props.children
   return (
     <button
       className={`button button-secondary ${className}`.trim()}
       disabled={disabled || pending}
       onClick={handleClick}
       {...props}
-    />
+    >
+      {children}
+    </button>
   )
 }
 
@@ -375,11 +413,17 @@ export function IconButton({
   className = '',
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  const { t } = useLanguage()
+  const ariaLabel =
+    typeof props['aria-label'] === 'string'
+      ? t(props['aria-label'])
+      : props['aria-label']
   return (
     <button
       className={`icon-button ${className}`.trim()}
       type="button"
       {...props}
+      aria-label={ariaLabel}
     />
   )
 }
@@ -399,19 +443,20 @@ export function FormField({
   id,
   label,
 }: FormFieldProps) {
+  const { t } = useLanguage()
   const helpId = helpText ? `${id}-help` : undefined
   const errorId = error ? `${id}-error` : undefined
 
   return (
     <div className="form-field">
-      <label htmlFor={id}>{label}</label>
+      <label htmlFor={id}>{t(label)}</label>
       {children}
       {helpText ? (
         <p className="field-help" id={helpId}>
-          {helpText}
+          {t(helpText)}
         </p>
       ) : null}
-      {error ? <ValidationMessage id={errorId} message={error} /> : null}
+      {error ? <ValidationMessage id={errorId} message={t(error)} /> : null}
     </div>
   )
 }
@@ -422,7 +467,19 @@ type NumericInputProps = Omit<
 >
 
 export function NumericInput(props: NumericInputProps) {
-  return <input inputMode="decimal" type="text" {...props} />
+  const { t } = useLanguage()
+  const placeholder =
+    typeof props.placeholder === 'string'
+      ? t(props.placeholder)
+      : props.placeholder
+  return (
+    <input
+      inputMode="decimal"
+      type="text"
+      {...props}
+      placeholder={placeholder}
+    />
+  )
 }
 
 type EmptyStateProps = {
@@ -432,13 +489,14 @@ type EmptyStateProps = {
 }
 
 export function EmptyState({ action, message, title }: EmptyStateProps) {
+  const { t } = useLanguage()
   return (
     <div className="empty-state">
       <div className="empty-state-icon" aria-hidden="true">
         <Check size={22} />
       </div>
-      <h3>{title}</h3>
-      <p>{message}</p>
+      <h3>{t(title)}</h3>
+      <p>{t(message)}</p>
       {action ? <div>{action}</div> : null}
     </div>
   )
@@ -451,30 +509,33 @@ export function ValidationMessage({
   id?: string
   message: string
 }) {
+  const { t } = useLanguage()
   return (
     <p className="validation-message" id={id} role="alert">
-      {message}
+      {t(message)}
     </p>
   )
 }
 
 export function OfflineIndicator({ isOffline }: { isOffline: boolean }) {
+  const { t } = useLanguage()
   if (!isOffline) {
     return null
   }
 
   return (
     <aside className="offline-indicator" role="status">
-      Offline. Changes stay on this device.
+      {t('Offline. Changes stay on this device.')}
     </aside>
   )
 }
 
 export function LoadingState({ label = 'Loading' }: { label?: string }) {
+  const { t } = useLanguage()
   return (
     <div className="loading-state" role="status">
       <span aria-hidden="true" />
-      <p>{label}</p>
+      <p>{t(label)}</p>
     </div>
   )
 }
@@ -486,9 +547,11 @@ export function StatusMessage({
   children: ReactNode
   tone?: 'neutral' | 'success' | 'warning'
 }) {
+  const { t } = useLanguage()
+  const content = typeof children === 'string' ? t(children) : children
   return (
     <aside className={`status-message status-message-${tone}`} role="status">
-      {children}
+      {content}
     </aside>
   )
 }
@@ -508,6 +571,7 @@ export function Toast({
   tone?: 'neutral' | 'success' | 'warning'
   durationMs?: number
 }) {
+  const { t } = useLanguage()
   const onDismissRef = useRef(onDismiss)
   useEffect(() => {
     onDismissRef.current = onDismiss
@@ -531,8 +595,8 @@ export function Toast({
   return (
     <div className="toast-region" aria-live="polite">
       <div className={`toast toast-${tone}`} role="status">
-        <span>{message}</span>
-        <IconButton aria-label="Dismiss notification" onClick={onDismiss}>
+        <span>{t(message)}</span>
+        <IconButton aria-label={t('Dismiss notification')} onClick={onDismiss}>
           <X aria-hidden="true" size={16} />
         </IconButton>
       </div>

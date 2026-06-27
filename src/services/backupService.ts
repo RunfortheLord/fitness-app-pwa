@@ -174,7 +174,8 @@ const muscleGroupSchema = z.enum([
   'hip abductors',
   'hip adductors',
 ])
-const weightUnitSchema = z.literal('lb')
+const weightUnitSchema = z.enum(['lb', 'kg'])
+const appLanguageSchema = z.enum(['en', 'es'])
 const energyUnitSchema = z.literal('kcal')
 const foodSourceTypeSchema = z.enum(['local', 'provider'])
 const foodProviderSchema = z.enum(['usda', 'open_food_facts'])
@@ -241,6 +242,7 @@ const nutritionGoalSchema = z.object({
 })
 const userSettingsSchema = z.object({
   id: z.literal('settings'),
+  language: appLanguageSchema.optional().default('en'),
   weightUnit: weightUnitSchema,
   energyUnit: energyUnitSchema,
   nutritionTargets: nutritionTargetValuesSchema,

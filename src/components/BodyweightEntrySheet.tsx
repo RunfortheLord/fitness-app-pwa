@@ -11,8 +11,15 @@ import {
   PrimaryButton,
   SecondaryButton,
 } from '@components/ui'
+import { useLanguage } from '@components/languageContextValue'
 import { type LocalDateString } from '@domain/dates'
+import {
+  weightInputToLb,
+  weightInputValue,
+  weightUnitSuffix,
+} from '@domain/weightUnits'
 import { useDashboardContext } from '@hooks/useDashboardContext'
+import { useWeightUnit } from '@hooks/useWeightUnit'
 import { bodyweightRepository } from '@repositories/bodyweightRepository'
 
 type BodyweightEntrySheetProps = {
@@ -28,10 +35,12 @@ export function BodyweightEntrySheet({
   localDate,
   onClose,
 }: BodyweightEntrySheetProps) {
+  const { t } = useLanguage()
   const inputId = useId()
   const [error, setError] = useState('')
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
   const { refreshDashboard } = useDashboardContext()
+  const weightUnit = useWeightUnit()
   const existingEntry = useLiveQuery(async () => {
     if (!localDate) {
       return undefined
@@ -59,7 +68,10 @@ export function BodyweightEntrySheet({
       setError('Enter a positive bodyweight.')
       return
     }
-    if (parsed > 1500) {
+    // Weights persist in canonical pounds; convert from the displayed unit
+    // before validating against the realistic-weight ceiling and saving.
+    const weightLb = weightInputToLb(parsed, weightUnit)
+    if (weightLb > 1500) {
       setError('Enter a realistic bodyweight.')
       return
     }
@@ -69,12 +81,12 @@ export function BodyweightEntrySheet({
       if (existingEntry) {
         await bodyweightRepository.updateBodyweight({
           id: existingEntry.id,
-          weight: parsed,
+          weight: weightLb,
         })
       } else {
         await bodyweightRepository.saveBodyweight({
           localDate,
-          weight: parsed,
+          weight: weightLb,
         })
       }
       refreshDashboard()
@@ -119,7 +131,11 @@ export function BodyweightEntrySheet({
           <p className="muted sheet-context">{localDate}</p>
           <FormField
             error={error}
-            helpText="Pounds are the default unit."
+            helpText={
+              weightUnit === 'kg'
+                ? 'Entered in kilograms.'
+                : 'Entered in pounds.'
+            }
             id={inputId}
             label="Bodyweight"
           >
@@ -129,14 +145,22 @@ export function BodyweightEntrySheet({
                   error ? `${inputId}-error` : `${inputId}-help`
                 }
                 autoComplete="off"
-                defaultValue={existingEntry ? String(existingEntry.weight) : ''}
+                defaultValue={
+                  existingEntry
+                    ? weightInputValue(
+                        existingEntry.weight,
+                        weightUnit,
+                        'bodyweight',
+                      )
+                    : ''
+                }
                 id={inputId}
-                key={existingEntry?.id ?? `${localDate}-new`}
+                key={`${existingEntry?.id ?? `${localDate}-new`}-${weightUnit}`}
                 name="weight"
                 onChange={() => setError('')}
-                placeholder="185"
+                placeholder={weightUnit === 'kg' ? '84' : '185'}
               />
-              <span>lb</span>
+              <span>{weightUnitSuffix(weightUnit)}</span>
             </div>
           </FormField>
           <div className="dialog-actions">
@@ -147,7 +171,7 @@ export function BodyweightEntrySheet({
                 onClick={() => setIsConfirmingDelete(true)}
               >
                 <Trash2 aria-hidden="true" size={18} />
-                Delete
+                {t('Delete')}
               </SecondaryButton>
             ) : null}
             <SecondaryButton type="button" onClick={onClose}>
@@ -165,7 +189,9 @@ export function BodyweightEntrySheet({
         onConfirm={() => void deleteBodyweight()}
         title="Delete bodyweight?"
       >
-        This removes the selected bodyweight entry for {localDate}.
+        {t('This removes the selected bodyweight entry for {date}.', {
+          date: localDate,
+        })}
       </ModalConfirmationDialog>
     </>
   )

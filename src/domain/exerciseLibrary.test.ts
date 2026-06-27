@@ -7,10 +7,10 @@ import {
 } from '@domain/exerciseLibrary'
 
 describe('built-in exercise library', () => {
-  it('contains a validated seed set in the intended size range', () => {
+  it('contains a validated seed set comparable to a large commercial library', () => {
     expect(() => validateBuiltInExercises()).not.toThrow()
-    expect(BUILT_IN_EXERCISES.length).toBeGreaterThanOrEqual(250)
-    expect(BUILT_IN_EXERCISES.length).toBeLessThanOrEqual(350)
+    expect(BUILT_IN_EXERCISES.length).toBeGreaterThanOrEqual(1_000)
+    expect(BUILT_IN_EXERCISES.length).toBeLessThanOrEqual(1_200)
   })
 
   it('uses stable built-in IDs and covers required equipment categories', () => {
@@ -104,6 +104,19 @@ describe('built-in exercise library', () => {
     })
     expect(byName.get('40 yd Sprints')).toMatchObject({
       trackingMethodId: 'duration',
+    })
+    expect(byName.get('Tempo Barbell Bench Press')).toMatchObject({
+      id: 'builtin:tempo-barbell-bench-press',
+      primaryMuscleGroups: ['chest'],
+      trackingMethodId: 'weight_reps',
+    })
+    expect(byName.get('3-Second Eccentric Pull-Up')).toMatchObject({
+      id: 'builtin:three-second-eccentric-pull-up',
+      trackingMethodId: 'reps_only',
+    })
+    expect(byName.get('1.5-Rep Dumbbell Lateral Raise')).toMatchObject({
+      id: 'builtin:one-and-a-half-rep-dumbbell-lateral-raise',
+      primaryMuscleGroups: ['shoulders'],
     })
   })
 

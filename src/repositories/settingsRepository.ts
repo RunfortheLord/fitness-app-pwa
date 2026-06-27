@@ -5,8 +5,10 @@ import type {
   NutritionTarget,
   NutritionTargetValues,
   ApiKeyIntegrationSettings,
+  AppLanguage,
   IntegrationConnectionStatus,
   UserSettings,
+  WeightUnit,
 } from '@shared-types/app'
 
 export type NutritionGoalInput = Omit<NutritionGoal, 'createdAt' | 'updatedAt'>
@@ -38,6 +40,8 @@ export type SettingsRepository = {
     selectedTimerSoundId: string
   }): Promise<UserSettings>
   saveDefaultRestSeconds(seconds: number | null): Promise<UserSettings>
+  saveWeightUnit(unit: WeightUnit): Promise<UserSettings>
+  saveLanguage(language: AppLanguage): Promise<UserSettings>
 }
 
 export type SettingsRepositoryTestHooks = {
@@ -53,13 +57,15 @@ export function createSettingsRepository(
     if (existing) {
       if (
         existing.timerSoundEnabled !== undefined &&
-        existing.selectedTimerSoundId
+        existing.selectedTimerSoundId &&
+        existing.language
       ) {
         return existing
       }
       const now = new Date().toISOString()
       const upgraded: UserSettings = {
         ...existing,
+        language: existing.language ?? 'en',
         timerSoundEnabled: existing.timerSoundEnabled ?? true,
         selectedTimerSoundId:
           existing.selectedTimerSoundId ?? 'rest-complete-chime',
@@ -72,6 +78,7 @@ export function createSettingsRepository(
     const now = new Date().toISOString()
     const settings: UserSettings = {
       id: 'settings',
+      language: 'en',
       weightUnit: 'lb',
       energyUnit: 'kcal',
       nutritionTargets: defaultNutritionTargets,
@@ -213,6 +220,30 @@ export function createSettingsRepository(
       const updated: UserSettings = {
         ...settings,
         defaultRestSeconds: normalized,
+        updatedAt: now,
+      }
+      await database.userSettings.put(updated)
+      return updated
+    },
+
+    async saveWeightUnit(unit) {
+      const settings = await ensureSettings()
+      const now = new Date().toISOString()
+      const updated: UserSettings = {
+        ...settings,
+        weightUnit: unit,
+        updatedAt: now,
+      }
+      await database.userSettings.put(updated)
+      return updated
+    },
+
+    async saveLanguage(language) {
+      const settings = await ensureSettings()
+      const now = new Date().toISOString()
+      const updated: UserSettings = {
+        ...settings,
+        language,
         updatedAt: now,
       }
       await database.userSettings.put(updated)

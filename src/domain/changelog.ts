@@ -10,6 +10,16 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-06-26-kg-units',
+    date: '2026-06-26',
+    title: 'Pounds or kilograms',
+    items: [
+      'Switch between pounds and kilograms in Settings — every weight in the app, including your whole history, updates to match.',
+      'Bodyweight, lifting weights, targets, graphs, and the macro goal calculator all respect your chosen unit.',
+      'Removed the duplicate timer-sound readouts in Settings so the sound picker stands on its own.',
+    ],
+  },
+  {
     id: '2026-06-26-recipes-and-feedback',
     date: '2026-06-26',
     title: 'Edit recipes and send feedback',
@@ -28,7 +38,9 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Build a recipe with the same food search you use for logging — search, pick a serving, and add it to the recipe.',
       'Add a brand-new custom exercise without leaving a live workout, and the same exercise can no longer be added twice.',
       'Rename a program or workout day by tapping its name inline (no more separate Rename button).',
-      'The rest-timer sound now plays over background music like Spotify instead of pausing it.',
+      'Rest-timer sounds now prioritize audible playback, including when iPhone Silent Mode is on; the chime may briefly pause other audio.',
+      'Rest-timer completion sound now fires even after navigating away from the live workout screen.',
+      'The optional native iPhone build schedules rest-timer alerts that can fire while the app is closed, backgrounded, or the phone is locked.',
       'Graph points and date labels no longer overlap the axes. New exercises: Leg Extension (Single Leg) and Dragon Flag; Back Extension now records weight and reps.',
     ],
   },

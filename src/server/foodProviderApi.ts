@@ -27,6 +27,7 @@ export type FoodSearchRequest = {
   page?: number
   pageSize?: number
   allowFallback?: boolean
+  language?: 'en' | 'es'
 }
 
 export type FoodResolveRequest = {
@@ -66,6 +67,7 @@ export async function handleFoodSearch(
       input.page,
       input.pageSize,
       input.allowFallback,
+      input.language,
     ].join('|')
 
     const data =
@@ -183,7 +185,18 @@ export function validateSearchRequest(request: FoodSearchRequest) {
     page,
     pageSize,
     allowFallback: request.allowFallback ?? false,
+    language: validateSearchLanguage(request.language),
   }
+}
+
+function validateSearchLanguage(language: FoodSearchRequest['language']) {
+  if (language === undefined || language === 'en') {
+    return 'en' as const
+  }
+  if (language === 'es') {
+    return 'es' as const
+  }
+  throw new ProviderError('invalid_request', 'Unsupported search language.')
 }
 
 function containsControlCharacter(value: string) {
@@ -281,6 +294,7 @@ async function searchOpenFoodFacts(
     input.query.toLocaleLowerCase(),
     input.page,
     input.pageSize,
+    input.language,
   ].join('|')
   const results = await offCache.getOrCreate(cacheKey, () =>
     adapter.search({ ...input, signal }),

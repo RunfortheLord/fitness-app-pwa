@@ -5,6 +5,7 @@ import {
   createStrengthGraphPoints,
   estimateOneRepMax,
   filterStrengthPointsForRange,
+  formatEstimatedWeight,
   listStrengthExerciseOptions,
 } from './strengthProgress'
 import type {
@@ -88,6 +89,33 @@ describe('strength progress calculations', () => {
     // A lone point is centered horizontally so it clears the y-axis labels.
     expect(singleModel.points[0]?.x).toBe(50)
     expect(createStrengthGraphModel(points).status).toBe('ready')
+  })
+
+  it('formats estimates and the graph summary in the chosen unit', () => {
+    // 225 lb -> 102.0 kg (snapped to 0.5), pounds stay integer.
+    expect(formatEstimatedWeight(225, 'lb')).toBe('225 lb')
+    expect(formatEstimatedWeight(225, 'kg')).toBe('102 kg')
+
+    const points = createStrengthGraphPoints([
+      structure({
+        workoutId: 'a',
+        completedAt: '2026-06-01T12:00:00.000Z',
+        localDate: '2026-06-01',
+        sets: [set({ id: 's1', weight: 100, reps: 1 })],
+      }),
+      structure({
+        workoutId: 'b',
+        completedAt: '2026-06-08T12:00:00.000Z',
+        localDate: '2026-06-08',
+        sets: [set({ id: 's2', weight: 110, reps: 1 })],
+      }),
+    ])
+    const kgModel = createStrengthGraphModel(points, 'kg')
+    // 110 lb -> 49.895 kg -> 50 (0.5 snap); summary carries the kg suffix.
+    expect(kgModel.status !== 'empty' ? kgModel.summary : '').toContain('50 kg')
+    expect(kgModel.status !== 'empty' ? kgModel.summary : '').not.toContain(
+      ' lb',
+    )
   })
 })
 

@@ -39,6 +39,7 @@ import {
   Toast,
   ValidationMessage,
 } from '@components/ui'
+import { useLanguage } from '@components/languageContextValue'
 import { useSubpageBackGesture } from '@hooks/useSubpageBackGesture'
 import { FoodIcon } from '@components/FoodIcon'
 import {
@@ -88,7 +89,13 @@ import {
   mealTypeForDate,
 } from '@domain/meals'
 import { snapshotFood } from '@domain/snapshots'
+import {
+  weightInputToLb,
+  weightInputValue,
+  weightUnitSuffix,
+} from '@domain/weightUnits'
 import { useDashboardContext } from '@hooks/useDashboardContext'
+import { useWeightUnit } from '@hooks/useWeightUnit'
 import {
   foodRepository,
   type CreateFoodInput,
@@ -118,6 +125,7 @@ import type {
   NutritionGoal,
   NutritionTargetValues,
   SavedMeal,
+  WeightUnit,
 } from '@shared-types/app'
 
 type NutritionMode = 'day' | 'foods' | 'targets'
@@ -228,6 +236,7 @@ const emptyQuickAddForm = {
 }
 
 export function NutritionPage() {
+  const { language, t } = useLanguage()
   const { refreshDashboard, selectedDate, setSelectedDate } =
     useDashboardContext()
   const today = formatLocalDate(new Date())
@@ -241,6 +250,7 @@ export function NutritionPage() {
     query: '',
   })
   const [providerSearchNonce, setProviderSearchNonce] = useState(0)
+  const [submittedProviderQuery, setSubmittedProviderQuery] = useState('')
   const [usdaKey, setUsdaKey] = useState<UsdaKeyState>({
     configured: false,
     apiKey: null,
@@ -259,6 +269,7 @@ export function NutritionPage() {
     null,
   )
   const [revision, setRevision] = useState(0)
+  const [libraryRevision, setLibraryRevision] = useState(0)
   const [message, setMessage] = useState<string | null>(null)
   const [targetsView, setTargetsView] = useState<'main' | 'setGoal'>('main')
   const [searchOpen, setSearchOpen] = useState(false)
@@ -281,6 +292,7 @@ export function NutritionPage() {
 
   const openSearch = useCallback(() => {
     setQuery('')
+    setSubmittedProviderQuery('')
     setAddedItems([])
     setRecipeDraft(null)
     setSearchOpen(true)
@@ -291,6 +303,7 @@ export function NutritionPage() {
   // recipe mode) rather than the day's log.
   const startRecipe = useCallback(() => {
     setQuery('')
+    setSubmittedProviderQuery('')
     setAddedItems([])
     setRecipeError(null)
     setRecipeDraft({ editingId: null, name: '', components: [] })
@@ -301,6 +314,7 @@ export function NutritionPage() {
   // and components.
   const startEditRecipe = useCallback((meal: SavedMeal) => {
     setQuery('')
+    setSubmittedProviderQuery('')
     setAddedItems([])
     setRecipeError(null)
     setRecipeDraft({
@@ -319,6 +333,9 @@ export function NutritionPage() {
     setSearchOpen(false)
     setRecipeDraft(null)
     setRecipeError(null)
+    // Food logging intentionally keeps the open result set stable. Refresh the
+    // recent-food ranking only after the user leaves the search flow.
+    setLibraryRevision((value) => value + 1)
   }, [])
 
   // The food search is a focused full-screen mode. Hide the bottom nav while it
@@ -400,30 +417,21 @@ export function NutritionPage() {
     let isCurrent = true
 
     void Promise.all([
-      foodRepository.searchFoods(query),
       foodRepository.listFoodLogsByDate(selectedDate),
-      foodRepository.listRecentFoods(50),
-      foodRepository.listFavoriteFoods(),
-      foodRepository.listSavedMeals(),
       nutritionSummaryService.getDailySummary(selectedDate),
     ])
-      .then(
-        ([foods, logs, recentFoods, favoriteFoods, savedMeals, summary]) => {
-          if (!isCurrent) {
-            return
-          }
+      .then(([logs, summary]) => {
+        if (!isCurrent) {
+          return
+        }
 
-          setLoadState({
-            foods,
-            logs,
-            recentFoods,
-            favoriteFoods,
-            savedMeals,
-            summary,
-            status: 'ready',
-          })
-        },
-      )
+        setLoadState((current) => ({
+          ...current,
+          logs,
+          summary,
+          status: 'ready',
+        }))
+      })
       .catch(() => {
         if (!isCurrent) {
           return
@@ -435,7 +443,58 @@ export function NutritionPage() {
     return () => {
       isCurrent = false
     }
-  }, [query, revision, selectedDate])
+  }, [revision, selectedDate])
+
+  useEffect(() => {
+    let isCurrent = true
+
+    void foodRepository
+      .searchFoods(query)
+      .then((foods) => {
+        if (isCurrent) {
+          setLoadState((current) => ({ ...current, foods }))
+        }
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setLoadState((current) => ({ ...current, status: 'error' }))
+        }
+      })
+
+    return () => {
+      isCurrent = false
+    }
+  }, [libraryRevision, query])
+
+  useEffect(() => {
+    let isCurrent = true
+
+    void Promise.all([
+      foodRepository.listRecentFoods(50),
+      foodRepository.listFavoriteFoods(),
+      foodRepository.listSavedMeals(),
+    ])
+      .then(([recentFoods, favoriteFoods, savedMeals]) => {
+        if (!isCurrent) {
+          return
+        }
+        setLoadState((current) => ({
+          ...current,
+          recentFoods,
+          favoriteFoods,
+          savedMeals,
+        }))
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setLoadState((current) => ({ ...current, status: 'error' }))
+        }
+      })
+
+    return () => {
+      isCurrent = false
+    }
+  }, [libraryRevision])
 
   useEffect(() => {
     let isCurrent = true
@@ -475,8 +534,10 @@ export function NutritionPage() {
     }
   }, [revision])
 
+  const remoteProviderQuery = language === 'es' ? submittedProviderQuery : query
+
   useEffect(() => {
-    const normalizedQuery = normalizeProviderQuery(query)
+    const normalizedQuery = normalizeProviderQuery(remoteProviderQuery)
     if (!normalizedQuery) {
       const timeoutId = window.setTimeout(() => {
         setProviderSearch({ status: 'idle', results: [], query: '' })
@@ -518,8 +579,9 @@ export function NutritionPage() {
       void searchProviderFoods({
         query: normalizedQuery,
         apiKey,
-        provider: 'usda',
+        provider: language === 'es' ? 'open_food_facts' : 'usda',
         allowFallback: false,
+        language,
         pageSize: 20,
         signal: controller.signal,
       })
@@ -550,7 +612,7 @@ export function NutritionPage() {
       window.clearTimeout(timeoutId)
       controller.abort()
     }
-  }, [providerSearchNonce, query, usdaKey])
+  }, [language, providerSearchNonce, remoteProviderQuery, usdaKey])
 
   const daySearchResults = createSearchSections({
     localFoods: loadState.foods,
@@ -561,15 +623,22 @@ export function NutritionPage() {
     savedMeals: loadState.savedMeals,
   })
   const summary = loadState.summary
-  const reload = () => {
+  const reload = (options: { refreshLibrary?: boolean } = {}) => {
     setRevision((value) => value + 1)
+    if (options.refreshLibrary) {
+      setLibraryRevision((value) => value + 1)
+    }
     refreshDashboard()
+  }
+
+  const reloadAfterFoodLog = () => {
+    reload({ refreshLibrary: !searchOpen })
   }
 
   const toggleFavorite = (food: Food) => {
     void foodRepository.setFoodFavorite(food.id, !food.isFavorite).then(() => {
       setMessage(food.isFavorite ? 'Removed favorite.' : 'Added favorite.')
-      reload()
+      reload({ refreshLibrary: true })
     })
   }
 
@@ -595,7 +664,7 @@ export function NutritionPage() {
       })
       .then(() => {
         setMessage('Logged again.')
-        reload()
+        reloadAfterFoodLog()
       })
       .catch(() => setMessage('Could not log that food.'))
   }
@@ -635,7 +704,7 @@ export function NutritionPage() {
           appendAddedItem(result)
         }
         setMessage('Food logged.')
-        reload()
+        reloadAfterFoodLog()
       })
       .catch(() => setMessage('Could not log that food.'))
   }
@@ -645,7 +714,7 @@ export function NutritionPage() {
       .logSavedMeal({ savedMealId: meal.id, localDate: selectedDate })
       .then((entries) => {
         setMessage(`Logged ${meal.name} (${entries.length} items).`)
-        reload()
+        reloadAfterFoodLog()
       })
       .catch(() => setMessage('Could not log that meal.'))
   }
@@ -685,7 +754,7 @@ export function NutritionPage() {
         setRecipeDraft(null)
         setRecipeError(null)
         setMessage(editingId ? 'Recipe updated.' : 'Recipe saved.')
-        reload()
+        reload({ refreshLibrary: true })
       })
       .catch((caught: unknown) => {
         setRecipeSaving(false)
@@ -726,14 +795,19 @@ export function NutritionPage() {
             setSheet({ type: 'select', result })
           }}
           onAddResult={quickAddResult}
-          onSearch={() => setProviderSearchNonce((current) => current + 1)}
+          onSearch={() => {
+            if (language === 'es') {
+              setSubmittedProviderQuery(normalizeProviderQuery(query))
+            }
+            setProviderSearchNonce((current) => current + 1)
+          }}
           query={query}
           setQuery={setQuery}
         />
       ) : (
         <>
           <DateSelector
-            dateLabel={formatSelectedDateLabel(selectedDate)}
+            dateLabel={formatSelectedDateLabel(selectedDate, language)}
             onNext={() => setSelectedDate(addLocalDays(selectedDate, 1))}
             onPrevious={() => setSelectedDate(addLocalDays(selectedDate, -1))}
             onToday={() => setSelectedDate(today)}
@@ -878,8 +952,9 @@ export function NutritionPage() {
                 ) : null}
                 <Card title="Custom goal">
                   <p className="muted">
-                    Build calorie and macro targets from your bodyweight,
-                    height, activity, and goal weight.
+                    {t(
+                      'Build calorie and macro targets from your bodyweight, height, activity, and goal weight.',
+                    )}
                   </p>
                   <PrimaryButton
                     type="button"
@@ -903,7 +978,7 @@ export function NutritionPage() {
           onSaved={() => {
             setMessage(sheet.food ? 'Food updated.' : 'Food created.')
             setSheet(null)
-            reload()
+            reload({ refreshLibrary: true })
           }}
         />
       ) : null}
@@ -947,7 +1022,7 @@ export function NutritionPage() {
             }
             setMessage('Food logged.')
             setSheet(null)
-            reload()
+            reloadAfterFoodLog()
           }}
         />
       ) : null}
@@ -1008,14 +1083,14 @@ export function NutritionPage() {
             .then(() => {
               setSavedMealToDelete(null)
               setMessage('Saved meal deleted.')
-              reload()
+              reload({ refreshLibrary: true })
             })
         }}
         title="Delete saved meal?"
       >
         <p>
-          &ldquo;{savedMealToDelete?.name ?? ''}&rdquo; will be removed. Entries
-          you already logged from it stay.
+          {t('The saved meal will be removed. Entries already logged stay.')}{' '}
+          &ldquo;{savedMealToDelete?.name ?? ''}&rdquo;
         </p>
       </ModalConfirmationDialog>
 
@@ -1035,7 +1110,11 @@ export function NutritionPage() {
         }}
         title="Delete food log?"
       >
-        <p>This removes the logged food from {selectedDate}.</p>
+        <p>
+          {t('This removes the logged food from {date}.', {
+            date: selectedDate,
+          })}
+        </p>
       </ModalConfirmationDialog>
     </PageContainer>
   )
@@ -1046,6 +1125,7 @@ function DailyTotalsCard({
 }: {
   summary: DailyNutritionSummary | null
 }) {
+  const { t } = useLanguage()
   const totals = summary?.totals
   const targets = summary?.targets
 
@@ -1053,23 +1133,26 @@ function DailyTotalsCard({
     <Card title="Daily nutrition totals">
       <p className="metric-value">{Math.round(totals?.calories ?? 0)} kcal</p>
       <p className="muted">
-        {Math.round(summary?.remainingCalories ?? 0)} kcal remaining
+        {t('{calories} kcal remaining', {
+          calories: Math.round(summary?.remainingCalories ?? 0),
+        })}
       </p>
       <div className="macro-row nutrition-row">
         <span>
-          Protein {roundMacro(totals?.proteinGrams)} /{' '}
+          {t('Protein')} {roundMacro(totals?.proteinGrams)} /{' '}
           {roundMacro(targets?.proteinGrams)} g
         </span>
         <span>
-          Carbs {roundMacro(totals?.carbohydrateGrams)} /{' '}
+          {t('Carbs')} {roundMacro(totals?.carbohydrateGrams)} /{' '}
           {roundMacro(targets?.carbohydrateGrams)} g
         </span>
         <span>
-          Fat {roundMacro(totals?.fatGrams)} / {roundMacro(targets?.fatGrams)} g
+          {t('Fat')} {roundMacro(totals?.fatGrams)} /{' '}
+          {roundMacro(targets?.fatGrams)} g
         </span>
       </div>
       {!targets?.calories ? (
-        <p className="muted">Set manual targets when you are ready.</p>
+        <p className="muted">{t('Set manual targets when you are ready.')}</p>
       ) : null}
     </Card>
   )
@@ -1088,10 +1171,11 @@ function FoodSearchTrigger({
   onOpenScanner: () => void
   onOpenRecipe: () => void
 }) {
+  const { t } = useLanguage()
   return (
     <Card>
       <div className="food-search-heading">
-        <h2>Food search</h2>
+        <h2>{t('Food search')}</h2>
         <div className="row-actions">
           <IconButton aria-label="Quick add nutrition" onClick={onOpenQuickAdd}>
             <Flame aria-hidden="true" size={20} />
@@ -1106,7 +1190,7 @@ function FoodSearchTrigger({
       </div>
       <button className="food-search-trigger" type="button" onClick={onOpen}>
         <Search aria-hidden="true" size={18} />
-        <span>Search foods</span>
+        <span>{t('Search foods')}</span>
       </button>
     </Card>
   )
@@ -1153,12 +1237,13 @@ function FoodSearchSubpage({
   query: string
   setQuery: (query: string) => void
 }) {
+  const { language, t } = useLanguage()
   const hasResults = results.some((section) => section.items.length > 0)
   const normalizedQuery = normalizeProviderQuery(query)
   const recipeMode = recipeDraft !== null
 
   return (
-    <div className="food-search-subpage">
+    <div className="food-search-subpage subpage-enter">
       <div className="food-search-sticky">
         <div className="food-search-subpage-bar">
           <IconButton aria-label="Back to nutrition" onClick={onBack}>
@@ -1167,7 +1252,7 @@ function FoodSearchSubpage({
           <div className="food-search-subpage-input">
             <Search aria-hidden="true" size={18} />
             <input
-              aria-label="Search foods"
+              aria-label={t('Search foods')}
               autoFocus
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
@@ -1176,16 +1261,21 @@ function FoodSearchSubpage({
                   onSearch()
                 }
               }}
-              placeholder="Search foods"
+              placeholder={t('Search foods')}
               type="search"
               value={query}
             />
           </div>
+          {language === 'es' ? (
+            <IconButton aria-label="Search Spanish foods" onClick={onSearch}>
+              <Search aria-hidden="true" size={20} />
+            </IconButton>
+          ) : null}
           <div className="row-actions">
             {recipeMode ? (
               <span
                 className="recipe-mode-badge"
-                aria-label="Building a recipe"
+                aria-label={t('Building a recipe')}
               >
                 <BookmarkPlus aria-hidden="true" size={20} />
               </span>
@@ -1208,13 +1298,13 @@ function FoodSearchSubpage({
           </div>
         </div>
         {recipeMode && recipeDraft ? (
-          <div className="recipe-build-bar" aria-label="Recipe builder">
+          <div className="recipe-build-bar" aria-label={t('Recipe builder')}>
             <div className="food-search-subpage-input">
               <BookmarkPlus aria-hidden="true" size={18} />
               <input
-                aria-label="Recipe name"
+                aria-label={t('Recipe name')}
                 onChange={(event) => onRecipeNameChange(event.target.value)}
-                placeholder="Recipe name"
+                placeholder={t('Recipe name')}
                 type="text"
                 value={recipeDraft.name}
               />
@@ -1246,12 +1336,12 @@ function FoodSearchSubpage({
               </div>
             ) : (
               <p className="muted recipe-build-hint">
-                Search foods below and add them to this recipe.
+                {t('Search foods below and add them to this recipe.')}
               </p>
             )}
             {recipeDraft.components.length ? (
               <p className="muted recipe-build-total">
-                Total:{' '}
+                {t('Total')}:{' '}
                 {roundMacro(
                   recipeDraft.components.reduce(
                     (total, component) =>
@@ -1280,7 +1370,7 @@ function FoodSearchSubpage({
             </PrimaryButton>
           </div>
         ) : addedItems.length ? (
-          <div className="added-items-tray" aria-label="Items added">
+          <div className="added-items-tray" aria-label={t('Items added')}>
             <div className="added-items-row">
               {addedItems.map((item) => (
                 <span
@@ -1297,7 +1387,7 @@ function FoodSearchSubpage({
               ))}
             </div>
             <button className="added-items-done" type="button" onClick={onBack}>
-              {addedItems.length} added · Done
+              {t('{count} added · Done', { count: addedItems.length })}
             </button>
           </div>
         ) : null}
@@ -1309,17 +1399,24 @@ function FoodSearchSubpage({
           query={normalizedQuery}
           onRetry={onSearch}
         />
+        {language === 'es' &&
+        normalizedQuery.length >= 3 &&
+        providerSearch.query !== normalizedQuery ? (
+          <p className="muted" role="status">
+            {t('Tap the search button to search Spanish food products.')}
+          </p>
+        ) : null}
 
         {hasResults ? (
           <div className="nutrition-search-sections">
             {results.map((section) =>
               section.items.length ? (
                 <section
-                  aria-label={section.title}
+                  aria-label={t(section.title)}
                   className="nutrition-result-section"
                   key={section.title}
                 >
-                  <h3>{section.title}</h3>
+                  <h3>{t(section.title)}</h3>
                   <div className="nutrition-list">
                     {section.items.map((result) => (
                       <FoodLibraryRow
@@ -1346,7 +1443,9 @@ function FoodSearchSubpage({
             message={
               normalizedQuery
                 ? 'No local or provider foods with calories, protein, total carbohydrates, and fat matched.'
-                : 'Search local foods and USDA provider foods by name, brand, or restaurant.'
+                : language === 'es'
+                  ? 'Search local foods and Spanish Open Food Facts products by name or brand.'
+                  : 'Search local foods and USDA provider foods by name, brand, or restaurant.'
             }
           />
         )}
@@ -1356,6 +1455,7 @@ function FoodSearchSubpage({
 }
 
 function NutritionActionCard({ onCreateFood }: { onCreateFood: () => void }) {
+  const { t } = useLanguage()
   return (
     <Card>
       <button
@@ -1367,8 +1467,8 @@ function NutritionActionCard({ onCreateFood }: { onCreateFood: () => void }) {
           <ReceiptText aria-hidden="true" size={18} />
         </span>
         <span>
-          <strong>Create custom food</strong>
-          <small>Save a reusable food with calories and macros.</small>
+          <strong>{t('Create custom food')}</strong>
+          <small>{t('Save a reusable food with calories and macros.')}</small>
         </span>
       </button>
     </Card>
@@ -2010,9 +2110,10 @@ function MealTypeField({
   value: MealType
   onChange: (value: MealType) => void
 }) {
+  const { t } = useLanguage()
   return (
     <div className="form-field meal-field">
-      <span className="meal-field-label">Meal</span>
+      <span className="meal-field-label">{t('Meal')}</span>
       <SegmentedControl
         label="Meal"
         options={MEAL_TYPES.map((meal) => ({
@@ -2035,6 +2136,7 @@ function LoggedFoodsCard({
   onDelete: (entry: FoodLogEntry) => void
   onEdit: (entry: FoodLogEntry) => void
 }) {
+  const { t } = useLanguage()
   const mealGroups = groupEntriesByMeal(entries)
   return (
     <Card title="Logged foods">
@@ -2043,7 +2145,7 @@ function LoggedFoodsCard({
           {mealGroups.map((group) => (
             <section className="meal-group" key={group.mealType}>
               <header className="meal-group-header">
-                <h3>{group.label}</h3>
+                <h3>{t(group.label)}</h3>
                 <span className="muted">
                   {roundMacro(group.calories)} kcal - P{' '}
                   {roundMacro(group.proteinGrams)} C{' '}
@@ -2832,26 +2934,32 @@ function SetGoalSubpage({
   onBack: () => void
   onCalculated: () => void
 }) {
+  const weightUnit = useWeightUnit()
+  const unitSuffix = weightUnitSuffix(weightUnit)
   const [form, setForm] = useState<GoalFormState>(() => {
     const prefillWeight = goalCurrentWeight(entries)
     return {
       bodyweight: existingGoal
-        ? String(existingGoal.calculationWeightLb)
-        : prefillWeight !== null
-          ? String(prefillWeight)
-          : '',
+        ? weightInputValue(
+            existingGoal.calculationWeightLb,
+            weightUnit,
+            'bodyweight',
+          )
+        : weightInputValue(prefillWeight, weightUnit, 'bodyweight'),
       heightFeet: existingGoal
         ? String(Math.floor(existingGoal.heightInches / 12))
         : '',
       heightInches: existingGoal ? String(existingGoal.heightInches % 12) : '',
       activityLevel: existingGoal?.activityLevel ?? 'moderately_active',
-      goalWeight: existingGoal ? String(existingGoal.goalWeightLb) : '',
+      goalWeight: existingGoal
+        ? weightInputValue(existingGoal.goalWeightLb, weightUnit, 'bodyweight')
+        : '',
       age: existingGoal ? String(existingGoal.ageYears) : '',
       sex: existingGoal?.sex ?? 'male',
     }
   })
   const [error, setError] = useState<string | null>(null)
-  const parsed = parseGoalForm(form)
+  const parsed = parseGoalForm(form, weightUnit)
 
   function update<Field extends keyof GoalFormState>(
     field: Field,
@@ -2914,7 +3022,10 @@ function SetGoalSubpage({
         Calculate Macros
       </PrimaryButton>
       {error ? <ValidationMessage message={error} /> : null}
-      <FormField id="goal-bodyweight" label="Current body weight (lb)">
+      <FormField
+        id="goal-bodyweight"
+        label={`Current body weight (${unitSuffix})`}
+      >
         <NumericInput
           id="goal-bodyweight"
           onChange={(event) => update('bodyweight', event.target.value)}
@@ -2951,7 +3062,7 @@ function SetGoalSubpage({
           ))}
         </select>
       </FormField>
-      <FormField id="goal-target-weight" label="Goal weight (lb)">
+      <FormField id="goal-target-weight" label={`Goal weight (${unitSuffix})`}>
         <NumericInput
           id="goal-target-weight"
           onChange={(event) => update('goalWeight', event.target.value)}
@@ -3372,11 +3483,18 @@ function goalCurrentWeight(entries: BodyweightEntry[]): number | null {
 
 function parseGoalForm(
   form: GoalFormState,
+  unit: WeightUnit = 'lb',
 ): { ok: true; value: GoalPlanInput } | { ok: false; error: string } {
-  const bodyweightLb = parsePositiveNumber(form.bodyweight)
+  // Bodyweight and goal weight are entered in the display unit; the macro math
+  // works in canonical pounds, so convert before validating and computing.
+  const bodyweightInput = parsePositiveNumber(form.bodyweight)
+  const goalWeightInput = parsePositiveNumber(form.goalWeight)
+  const bodyweightLb =
+    bodyweightInput === null ? null : weightInputToLb(bodyweightInput, unit)
   const heightFeet = parseNonNegativeNumber(form.heightFeet)
   const heightInches = parseNonNegativeNumber(form.heightInches)
-  const goalWeightLb = parsePositiveNumber(form.goalWeight)
+  const goalWeightLb =
+    goalWeightInput === null ? null : weightInputToLb(goalWeightInput, unit)
   const ageYears = parsePositiveNumber(form.age)
 
   if (bodyweightLb === null || bodyweightLb > 1500) {

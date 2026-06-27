@@ -43,3 +43,16 @@ export function isRestTimerExpired(
     getRestTimerRemainingSeconds(timer, nowIso) === 0,
   )
 }
+
+export function getRestTimerCompletionDate(timer: RestTimerState | null) {
+  if (!timer || timer.status !== 'running') {
+    return null
+  }
+  const startedAt = Date.parse(timer.startedAt)
+  if (!Number.isFinite(startedAt)) {
+    return null
+  }
+  return new Date(
+    startedAt + (timer.durationSeconds + timer.accumulatedPausedSeconds) * 1000,
+  )
+}

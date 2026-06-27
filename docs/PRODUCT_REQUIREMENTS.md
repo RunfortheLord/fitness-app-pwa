@@ -5,6 +5,11 @@
 - Build a single-user, local-first, mobile-first fitness tracking Progressive Web App.
 - Support manual nutrition logging, bodyweight logging, custom exercise management, program creation, active workout logging, GPS run tracking, and workout history.
 - Target iPhone users who install the app through Safari using Add to Home Screen.
+- Provide an optional native iOS wrapper for device-scheduled rest-timer
+  notifications when the app is backgrounded, closed, or the phone is locked.
+- Provide optional Web Push rest-timer completion alerts for an installed
+  iPhone Home Screen PWA when the native wrapper is unavailable. This alert path
+  may require internet access and separately configured free-tier services.
 - Work after installation without a user account, cloud sync, subscription, internet connection, bundled external food database, or push-notification dependency.
 - Store all primary user data locally in IndexedDB with exportable, restorable records.
 - Use a dark, dense, card-based interface inspired by the reference recording without copying branding, names, proprietary assets, or exact iconography.
@@ -21,8 +26,8 @@
 
 - Tracks calories and macros using personally entered foods.
 - Needs recent foods, decimal serving multipliers, editable logs, and daily totals.
-- Wants manual food entry first, with optional user-configured USDA FoodData
-  Central lookup when they provide their own API key.
+- Wants manual food entry first, with optional USDA FoodData Central lookup
+  through the configured provider route.
 
 ### Privacy-First User
 
@@ -35,10 +40,17 @@
 ### Core Platform
 
 - The app must be installable as a PWA from Safari on iPhone.
+- The native iOS wrapper must reuse the same React application and local-first
+  data model without introducing a required backend or account.
 - The app must use standalone display mode when installed.
 - The app must cache the application shell for offline use.
 - User records must be stored in IndexedDB, not in the service-worker cache.
 - The app must provide deliberate service-worker update handling and notify the user when a new app version is ready.
+- Settings must allow the interface language to switch between English and
+  Spanish. The preference must persist locally across reloads and installed-PWA
+  restarts; user-entered names and notes must not be modified. Spanish-language
+  Nutrition searches must use Open Food Facts multilingual data and prefer
+  Spanish product names and categories when supplied by the provider.
 
 ### Navigation
 
@@ -57,7 +69,9 @@
 
 - Home must include selected-date control, previous-day button, next-day button, and return-to-today action.
 - Home must show calories consumed, calorie target, and calories remaining.
-- Home must show protein, carbohydrate, and fat consumed and target values.
+- Home must replace the prior Nutrition card with a similarly sized seven-day
+  calorie graph: separated bars show calories logged per day and a contrasting
+  line shows the target applicable to each day.
 - Home must include quick bodyweight entry, the latest current bodyweight,
   selected-date bodyweight status, and a compact bodyweight trend summary when
   enough data exists.
@@ -70,17 +84,24 @@
 - Users must be able to set calorie and macro targets manually.
 - Users must be able to create, search, edit, and archive or delete custom foods.
 - A custom food must include name, serving quantity, serving unit, calories per
-  serving, and optional protein, carbohydrate, fat, brand, and notes. Blank
-  optional macros are stored as zero; invalid or negative nutrition values are
-  rejected.
+  serving, and optional protein, carbohydrate, and fat. Blank optional macros
+  are stored as zero; invalid or negative nutrition values are rejected. The
+  current custom-food form does not collect brand or notes.
 - Users must be able to log foods by local calendar date with decimal serving multipliers.
 - A food log entry must snapshot food nutrition values at the time of logging.
 - Users must be able to edit and delete logged foods.
 - The app must show daily nutrition totals and recent foods.
-- External food data must use USDA FoodData Central as the primary provider and
-  Open Food Facts only as a controlled branded-product fallback.
+- History Graphs must include calorie views for one week, one month, and three
+  months. Each calendar day retains its logged calorie total and the target
+  applicable on that day.
+- English external-food search must use USDA FoodData Central as the primary
+  provider. Spanish external-food search must use Open Food Facts multilingual
+  data and prefer its Spanish product names and categories.
 - Users must be able to search recent, custom, previously used, and eligible
   provider foods from the Nutrition screen.
+- A strong saved-recipe match must appear in its own Recipes section before
+  food results. Typo-only recipe matches must not create a separate recipe
+  section.
 - External provider foods are eligible only when calories, protein, total
   carbohydrates, and fat are all present and usable. Numeric zero is valid.
 - Logging an external provider food must store an immutable nutrition snapshot
@@ -90,7 +111,8 @@
   USDA branded foods and Open Food Facts fallback. It must exclude barcode
   submission, AI food-photo analysis, automatic calorie adjustments, bundled bulk food
   databases, micronutrients, search-as-you-type Open Food Facts calls, and meal
-  recommendations.
+  recommendations. Spanish Open Food Facts search must require an explicit
+  keyboard or on-screen Search action and remain server-cached.
 
 ### Bodyweight
 
@@ -141,6 +163,11 @@
   where practical, change session rest time, and discard the active workout
   with confirmation.
 - The rest timer must be timestamp-based so remaining time is correct after backgrounding or resuming.
+- In the installed Home Screen PWA, every rest-timer mutation must cancel or
+  reschedule the optional server-delayed Web Push completion alert from the
+  persisted timer timestamp.
+- In the native iOS wrapper, every rest-timer mutation must cancel or reschedule
+  the device-local completion notification from the persisted timer timestamp.
 - The first release excludes coaching, automatic program advancement, and opaque
   recommendation services. Deterministic local progression recommendations may
   suggest future targets, but they must remain explainable, editable, and
@@ -239,7 +266,7 @@
 
 ## Out of Scope
 
-- Account creation, login, persistent backend server, cloud sync, social features, friends, followers, public profiles, subscriptions, advertisements, wearable integrations, Apple Health integration, AI coaching, AI food-photo analysis, bundled external food database, barcode submission, micronutrients, automatic calorie adjustment, automated training progression, automatic program advancement, trend-weight calculations, weekly adherence percentage, non-history graphs, route maps or external map tiles, reliable fully backgrounded GPS tracking, public App Store distribution, and push-notification dependency.
+- Account creation, login, persistent database server, required cloud sync, social features, friends, followers, public profiles, subscriptions, advertisements, wearable integrations, Apple Health integration, AI coaching, AI food-photo analysis, bundled external food database, barcode submission, micronutrients, automatic calorie adjustment, automated training progression, automatic program advancement, trend-weight calculations, weekly adherence percentage, non-history graphs, route maps or external map tiles, reliable fully backgrounded GPS tracking, public App Store distribution, and required push notifications for core app use. Optional outside-app rest-timer Web Push alerts and development-signed personal-device installation of the native iOS wrapper are supported.
 
 ## Acceptance Criteria
 

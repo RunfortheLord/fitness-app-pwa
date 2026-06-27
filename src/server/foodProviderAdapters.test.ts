@@ -199,6 +199,34 @@ describe('food provider adapters', () => {
     })
   })
 
+  it('prefers Spanish Open Food Facts names and categories for Spanish search', () => {
+    const food = normalizeOpenFoodFactsFood(
+      {
+        code: '8410000000001',
+        product_name: 'Tomato Soup',
+        product_name_es: 'Sopa de tomate',
+        generic_name: 'Prepared soup',
+        generic_name_es: 'Sopa preparada',
+        categories: 'Soups',
+        categories_es: 'Sopas',
+        nutriments: {
+          'energy-kcal_100g': 45,
+          proteins_100g: 1.2,
+          carbohydrates_100g: 7.5,
+          fat_100g: 1.1,
+        },
+      },
+      now,
+      'es',
+    )
+
+    expect(food).toMatchObject({
+      name: 'Sopa de tomate',
+      foodCategory: 'Sopas',
+      normalizedSearchName: 'sopa de tomate',
+    })
+  })
+
   it('rejects incomplete and malformed Open Food Facts records', () => {
     expect(
       normalizeOpenFoodFactsFood(

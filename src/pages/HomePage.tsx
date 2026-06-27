@@ -5,7 +5,6 @@ import { useNavigate } from 'react-router-dom'
 import {
   Card,
   DateSelector,
-  EmptyState,
   LoadingState,
   MetricCard,
   PageContainer,
@@ -13,6 +12,8 @@ import {
   SecondaryButton,
   StatusMessage,
 } from '@components/ui'
+import { CalorieHistoryChart } from '@components/CalorieHistoryChart'
+import { useLanguage } from '@components/languageContextValue'
 import {
   addLocalDays,
   formatLocalDate,
@@ -21,12 +22,13 @@ import {
 } from '@domain/dates'
 import {
   formatBodyweightChange,
-  formatWeight,
   type BodyweightTrendSummary,
 } from '@domain/bodyweightProgress'
 import { currentTrendWeight } from '@domain/bodyweightTrend'
+import { formatWeight as formatWeightWithUnit } from '@domain/weightUnits'
 import type { BodyweightEntry } from '@shared-types/app'
 import { useDashboardContext } from '@hooks/useDashboardContext'
+import { useWeightUnit } from '@hooks/useWeightUnit'
 import {
   dashboardService,
   type DashboardData,
@@ -42,6 +44,7 @@ type DashboardLoadState =
     }
 
 export function HomePage() {
+  const { language, t } = useLanguage()
   const {
     dashboardRevision,
     openBodyweightSheet,
@@ -49,6 +52,7 @@ export function HomePage() {
     setSelectedDate,
   } = useDashboardContext()
   const navigate = useNavigate()
+  const weightUnit = useWeightUnit()
   const today = formatLocalDate(new Date())
   const [dashboardState, setDashboardState] = useState<DashboardLoadState>({
     status: 'loading',
@@ -106,7 +110,7 @@ export function HomePage() {
   return (
     <PageContainer>
       <DateSelector
-        dateLabel={formatSelectedDateLabel(selectedDate)}
+        dateLabel={formatSelectedDateLabel(selectedDate, language)}
         onNext={() => setSelectedDate(addLocalDays(selectedDate, 1))}
         onPrevious={() => setSelectedDate(addLocalDays(selectedDate, -1))}
         onToday={() => setSelectedDate(today)}
@@ -119,7 +123,7 @@ export function HomePage() {
           className="visually-hidden"
           role="status"
         >
-          Dashboard ready
+          {t('Dashboard ready')}
         </div>
       ) : null}
       {dashboardState.status === 'error' ? (
@@ -142,14 +146,14 @@ export function HomePage() {
               onClick={() => void navigate('/history?view=graphs')}
             >
               <LineChart aria-hidden="true" size={18} />
-              Graphs
+              {t('Graphs')}
             </SecondaryButton>
             <SecondaryButton
               type="button"
               onClick={() => void navigate('/history?view=bodyweight')}
             >
               <Scale aria-hidden="true" size={18} />
-              Bodyweight
+              {t('Bodyweight')}
             </SecondaryButton>
           </div>
         </Card>
@@ -168,7 +172,7 @@ export function HomePage() {
             </PrimaryButton>
             {dashboard?.activeProgram?.days.length ? (
               <SecondaryButton type="button">
-                {`Next: ${
+                {`${t('Next')}: ${
                   dashboard.activeProgram.nextDay?.name ??
                   dashboard.activeProgram.days[0]?.name
                 }`}
@@ -184,6 +188,7 @@ export function HomePage() {
         <HomeBodyweightMetric
           trendWeight={trendWeight}
           lastRecorded={dashboard?.currentBodyweight}
+          onOpen={() => openBodyweightSheet(selectedDate)}
         />
         <MetricCard
           label="Calories remaining"
@@ -196,37 +201,20 @@ export function HomePage() {
         />
       </section>
 
-      <Card title="Nutrition">
-        <div className="macro-progress-list">
-          <MacroProgress
-            label="Protein"
-            value={dashboard?.nutrition.totals.proteinGrams ?? 0}
-            target={dashboard?.nutrition.targets.proteinGrams ?? 0}
-          />
-          <MacroProgress
-            label="Carbohydrates"
-            value={dashboard?.nutrition.totals.carbohydrateGrams ?? 0}
-            target={dashboard?.nutrition.targets.carbohydrateGrams ?? 0}
-          />
-          <MacroProgress
-            label="Fat"
-            value={dashboard?.nutrition.totals.fatGrams ?? 0}
-            target={dashboard?.nutrition.targets.fatGrams ?? 0}
-          />
-        </div>
+      <Card title="Calories">
+        <CalorieHistoryChart
+          compact
+          history={dashboard?.calorieHistory ?? []}
+        />
         {caloriesConsumed === 0 ? (
-          <EmptyState
-            title="No foods logged"
-            message="Daily totals are ready for manual nutrition logs."
-            action={
-              <SecondaryButton
-                type="button"
-                onClick={() => void navigate('/nutrition?logFood=1')}
-              >
-                Log food
-              </SecondaryButton>
-            }
-          />
+          <div className="button-row">
+            <SecondaryButton
+              type="button"
+              onClick={() => void navigate('/nutrition?logFood=1')}
+            >
+              Log food
+            </SecondaryButton>
+          </div>
         ) : null}
       </Card>
 
@@ -239,28 +227,39 @@ export function HomePage() {
             {dashboard?.currentBodyweight ? (
               <>
                 <p className="metric-value metric-value-small">
-                  {formatWeight(dashboard.currentBodyweight.weight)}{' '}
-                  {dashboard.currentBodyweight.unit}
+                  {formatWeightWithUnit(
+                    dashboard.currentBodyweight.weight,
+                    weightUnit,
+                    'bodyweight',
+                  )}
                 </p>
                 <p className="muted">
-                  Current from {dashboard.currentBodyweight.localDate}
+                  {t('Current from {date}', {
+                    date: dashboard.currentBodyweight.localDate,
+                  })}
                 </p>
               </>
             ) : (
               <>
-                <p className="metric-value metric-value-small">No entry</p>
-                <p className="muted">Log bodyweight to start a trend.</p>
+                <p className="metric-value metric-value-small">
+                  {t('No entry')}
+                </p>
+                <p className="muted">{t('Log bodyweight to start a trend.')}</p>
               </>
             )}
           </div>
         </div>
         {dashboard?.bodyweight ? (
           <p className="muted">
-            Selected date: {formatWeight(dashboard.bodyweight.weight)}{' '}
-            {dashboard.bodyweight.unit}
+            Selected date:{' '}
+            {formatWeightWithUnit(
+              dashboard.bodyweight.weight,
+              weightUnit,
+              'bodyweight',
+            )}
           </p>
         ) : (
-          <p className="muted">Selected date: no bodyweight entry</p>
+          <p className="muted">{t('Selected date: no bodyweight entry')}</p>
         )}
         <HomeBodyweightTrend trend={dashboard?.bodyweightTrend} />
         <div className="button-row">
@@ -297,7 +296,11 @@ export function HomePage() {
           <p className="metric-value metric-value-small">
             {dashboard.activeWorkout.name}
           </p>
-          <p className="muted">Started {dashboard.activeWorkout.localDate}</p>
+          <p className="muted">
+            {t('Started {date}', {
+              date: dashboard.activeWorkout.localDate,
+            })}
+          </p>
           <div className="button-row">
             <PrimaryButton
               type="button"
@@ -322,33 +325,45 @@ export function HomePage() {
 function HomeBodyweightMetric({
   trendWeight,
   lastRecorded,
+  onOpen,
 }: {
   trendWeight: number | null
   lastRecorded: BodyweightEntry | undefined
+  onOpen: () => void
 }) {
-  const unit = lastRecorded?.unit ?? 'lb'
+  const { t } = useLanguage()
+  const weightUnit = useWeightUnit()
   return (
-    <Card className="metric-card">
-      <p className="metric-label">Bodyweight</p>
+    <button
+      aria-label={t('Open bodyweight log')}
+      className="card metric-card home-bodyweight-metric-card"
+      onClick={onOpen}
+      type="button"
+    >
+      <p className="metric-label">{t('Bodyweight')}</p>
       <div className="home-bw-metric">
         <div className="home-bw-stat">
           <span className="home-bw-value">
             {trendWeight !== null
-              ? `${formatWeight(trendWeight)} ${unit}`
+              ? formatWeightWithUnit(trendWeight, weightUnit, 'bodyweight')
               : '—'}
           </span>
-          <span className="home-bw-caption">Trend weight</span>
+          <span className="home-bw-caption">{t('Trend weight')}</span>
         </div>
         <div className="home-bw-stat">
           <span className="home-bw-value home-bw-value-secondary">
             {lastRecorded
-              ? `${formatWeight(lastRecorded.weight)} ${unit}`
+              ? formatWeightWithUnit(
+                  lastRecorded.weight,
+                  weightUnit,
+                  'bodyweight',
+                )
               : '—'}
           </span>
-          <span className="home-bw-caption">Last recorded</span>
+          <span className="home-bw-caption">{t('Last recorded')}</span>
         </div>
       </div>
-    </Card>
+    </button>
   )
 }
 
@@ -357,57 +372,30 @@ function HomeBodyweightTrend({
 }: {
   trend: BodyweightTrendSummary | undefined
 }) {
+  const { t } = useLanguage()
+  const weightUnit = useWeightUnit()
   if (!trend || trend.status === 'empty') {
     return (
-      <div className="home-trend" aria-label="Bodyweight trend">
-        <span>No trend yet</span>
-        <small>Add at least two entries to show change.</small>
+      <div className="home-trend" aria-label={t('Bodyweight trend')}>
+        <span>{t('No trend yet')}</span>
+        <small>{t('Add at least two entries to show change.')}</small>
       </div>
     )
   }
 
   if (trend.status === 'single') {
     return (
-      <div className="home-trend" aria-label="Bodyweight trend">
-        <span>One entry</span>
-        <small>{trend.text}</small>
+      <div className="home-trend" aria-label={t('Bodyweight trend')}>
+        <span>{t('One entry')}</span>
+        <small>{t(trend.text)}</small>
       </div>
     )
   }
 
   return (
-    <div className="home-trend" aria-label="Bodyweight trend">
-      <span>{formatBodyweightChange(trend.change)}</span>
-      <small>{trend.text}</small>
-    </div>
-  )
-}
-
-function MacroProgress({
-  label,
-  target,
-  value,
-}: {
-  label: string
-  target: number
-  value: number
-}) {
-  const roundedValue = Math.round(value)
-  const roundedTarget = Math.round(target)
-  const percentage =
-    roundedTarget > 0 ? Math.min(100, (roundedValue / roundedTarget) * 100) : 0
-
-  return (
-    <div className="macro-progress">
-      <div>
-        <span>{label}</span>
-        <strong>
-          {roundedValue} g / {roundedTarget} g
-        </strong>
-      </div>
-      <div className="progress-track" aria-hidden="true">
-        <span style={{ width: `${percentage}%` }} />
-      </div>
+    <div className="home-trend" aria-label={t('Bodyweight trend')}>
+      <span>{formatBodyweightChange(trend.change, weightUnit)}</span>
+      <small>{t(trend.text)}</small>
     </div>
   )
 }

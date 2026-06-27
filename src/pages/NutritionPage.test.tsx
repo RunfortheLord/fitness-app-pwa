@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -56,6 +62,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  cleanup()
   await db.delete()
 })
 
@@ -184,6 +191,51 @@ describe('NutritionPage', () => {
     expect(await screen.findByText('150 kcal')).toBeInTheDocument()
   })
 
+  it('keeps the active food result sections stable while several foods are logged', async () => {
+    const user = userEvent.setup()
+    const repository = createFoodRepository(db)
+    for (const name of ['Oats', 'Oat cereal']) {
+      await repository.createFood({
+        name,
+        servingQuantity: 1,
+        servingUnit: 'serving',
+        servingDescription: '',
+        caloriesPerServing: 150,
+        proteinGramsPerServing: 5,
+        carbohydrateGramsPerServing: 27,
+        fatGramsPerServing: 3,
+        notes: '',
+      })
+    }
+    renderNutrition()
+
+    const search = await openFoodSearch(user)
+    expect(search.closest('.subpage-enter')).not.toBeNull()
+    await user.type(search, 'oat')
+    const customFoods = await screen.findByRole('region', {
+      name: 'Custom foods',
+    })
+    expect(within(customFoods).getByText('Oats')).toBeInTheDocument()
+    expect(within(customFoods).getByText('Oat cereal')).toBeInTheDocument()
+
+    await user.click(
+      within(customFoods).getByRole('button', { name: 'Add Oats' }),
+    )
+
+    expect(await screen.findByText('1 added · Done')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('region', { name: 'Recently added' }),
+    ).not.toBeInTheDocument()
+    expect(within(customFoods).getByText('Oats')).toBeInTheDocument()
+    expect(within(customFoods).getByText('Oat cereal')).toBeInTheDocument()
+
+    await closeFoodSearch(user)
+    await user.type(await openFoodSearch(user), 'oat')
+    expect(
+      await screen.findByRole('region', { name: 'Recently added' }),
+    ).toBeInTheDocument()
+  })
+
   it('saves manual targets and updates the home dashboard', async () => {
     const user = userEvent.setup()
     renderNutrition()
@@ -219,7 +271,12 @@ describe('NutritionPage', () => {
     await user.click(screen.getByRole('link', { name: 'Home' }))
 
     expect(await screen.findByText('1800 kcal target')).toBeInTheDocument()
-    expect(await screen.findByText('0 g / 160 g')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('img', {
+        name: 'Daily calories logged and target graph',
+      }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/calories logged, 1800 target/)).toBeInTheDocument()
   })
 
   it('calculates a custom goal, returns to Targets, and offers manual updates', async () => {
@@ -383,6 +440,41 @@ describe('NutritionPage', () => {
         provider: 'usda',
         allowFallback: false,
       }),
+    )
+  })
+
+  it('uses Spanish Open Food Facts search when the app language is Spanish', async () => {
+    const user = userEvent.setup()
+    await settingsRepository.saveLanguage('es')
+    mockSearchProviderFoods.mockResolvedValue({
+      provider: 'open_food_facts',
+      query: 'arroz',
+      results: [],
+      fallbackUsed: false,
+    })
+    renderNutrition()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Buscar alimentos' }),
+    )
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Buscar alimentos' }),
+      'arroz',
+    )
+    expect(mockSearchProviderFoods).not.toHaveBeenCalled()
+    await user.click(
+      screen.getByRole('button', { name: 'Buscar alimentos en español' }),
+    )
+
+    await waitFor(() =>
+      expect(mockSearchProviderFoods).toHaveBeenCalledWith(
+        expect.objectContaining({
+          query: 'arroz',
+          provider: 'open_food_facts',
+          language: 'es',
+          allowFallback: false,
+        }),
+      ),
     )
   })
 

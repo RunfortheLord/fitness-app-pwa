@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -20,6 +26,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  cleanup()
   await db.delete()
 })
 
@@ -50,6 +57,14 @@ describe('HomePage', () => {
     expect(screen.getByText('Trend weight')).toBeInTheDocument()
     expect(screen.getByText('Last recorded')).toBeInTheDocument()
     expect(screen.getByText('Calories remaining')).toBeInTheDocument()
+    expect(
+      screen.getByRole('img', {
+        name: 'Daily calories logged and target graph',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Nutrition' }),
+    ).not.toBeInTheDocument()
     expect(screen.getByText('No entry')).toBeInTheDocument()
     expect(screen.getByText('No active program')).toBeInTheDocument()
     expect(
@@ -60,6 +75,19 @@ describe('HomePage', () => {
     ).toBeInTheDocument()
     expect(screen.queryByText('Workout history')).not.toBeInTheDocument()
     expect(screen.queryByText('Recent activity')).not.toBeInTheDocument()
+  })
+
+  it('shows separated daily calorie bars and the historical target line', async () => {
+    renderHome()
+    await waitForDashboardReady()
+
+    const chart = screen.getByRole('img', {
+      name: 'Daily calories logged and target graph',
+    })
+    const bars = chart.querySelectorAll('rect.calorie-bar')
+    expect(bars).toHaveLength(7)
+    expect(Number(bars[0].getAttribute('width'))).toBeLessThan(100 / 7)
+    expect(chart.querySelector('polyline.calorie-target-line')).not.toBeNull()
   })
 
   it('waits for initial dashboard initialization before stable empty-state assertions', async () => {

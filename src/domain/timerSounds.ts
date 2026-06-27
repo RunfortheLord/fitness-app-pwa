@@ -50,11 +50,10 @@ function audioSupported() {
   return typeof Audio !== 'undefined'
 }
 
-// iOS audio session categories. By default a page that plays an <audio> element
-// uses the "playback" category, which interrupts other apps' audio — so the rest
-// chime (and even the muted priming play on set completion) stops Spotify. The
-// "ambient" category mixes our short chime over background music without pausing
-// it. The API is only available on iOS 16.4+; elsewhere this is a no-op.
+// WebKit maps "transient" to iOS's ambient category, which is silenced by the
+// hardware Silent switch even though HTMLMediaElement.play() resolves. Use it
+// only for the muted priming play. Actual previews and timer completions use
+// "playback" so an enabled timer is audible in Silent Mode.
 type AudioSessionType =
   | 'auto'
   | 'playback'
@@ -76,19 +75,28 @@ function getAudioSession(): AudioSession | null {
   return candidate ?? null
 }
 
-/**
- * Ask iOS to mix our timer sounds with any background audio (e.g. Spotify)
- * instead of interrupting it. Safe and cheap to call before every playback.
- */
-export function configureAmbientAudioSession() {
+function setTimerAudioSession(type: AudioSessionType) {
   const session = getAudioSession()
-  if (session && session.type !== 'ambient') {
+  if (session && session.type !== type) {
     try {
-      session.type = 'ambient'
+      session.type = type
     } catch {
       // Some engines expose the property read-only; ignore.
     }
   }
+}
+
+/** Configure actual timer playback to remain audible in iPhone Silent Mode. */
+export function configureTimerAudioSession() {
+  setTimerAudioSession('playback')
+}
+
+async function playWithTimerAudioSession(
+  audio: HTMLAudioElement,
+  sessionType: AudioSessionType,
+) {
+  setTimerAudioSession(sessionType)
+  await audio.play()
 }
 
 function ensureCompletionAudio(src: string) {
@@ -100,6 +108,23 @@ function ensureCompletionAudio(src: string) {
   }
   completionAudioSrc = src
   return completionAudio
+}
+
+/**
+ * Start loading the selected timer sound before it is needed. This is
+ * especially important in an installed PWA, where constructing a cold audio
+ * element during the tap can make the first preview only warm the media cache.
+ */
+export function preloadTimerSound(id: string | null | undefined) {
+  if (!audioSupported()) {
+    return
+  }
+  const audio = ensureCompletionAudio(getTimerSound(id).src)
+  try {
+    audio.load()
+  } catch {
+    // Some test and browser media implementations do not expose load().
+  }
 }
 
 function stopAudio(audio: HTMLAudioElement | null) {
@@ -124,7 +149,7 @@ export function primeTimerSound(id: string | null | undefined) {
   if (!audioSupported()) {
     return
   }
-  configureAmbientAudioSession()
+  setTimerAudioSession('transient')
   const sound = getTimerSound(id)
   const audio = ensureCompletionAudio(sound.src)
   const wasMuted = audio.muted
@@ -146,9 +171,8 @@ export function primeTimerSound(id: string | null | undefined) {
 }
 
 /**
- * Play the selected completion sound exactly once. Reuses the element primed by
- * {@link primeTimerSound} so it can play without its own gesture. Any in-flight
- * preview is stopped first so the two never overlap.
+ * Play the selected completion sound exactly once. A transient session lets
+ * iOS mix or briefly duck other audio instead of taking over playback.
  */
 export async function playTimerSoundOnce(id: string | null | undefined) {
   if (!audioSupported()) {
@@ -157,7 +181,6 @@ export async function playTimerSoundOnce(id: string | null | undefined) {
   stopAudio(activePreviewAudio)
   activePreviewAudio = null
 
-  configureAmbientAudioSession()
   const sound = getTimerSound(id)
   const audio = ensureCompletionAudio(sound.src)
   audio.muted = false
@@ -166,7 +189,7 @@ export async function playTimerSoundOnce(id: string | null | undefined) {
   } catch {
     // ignore
   }
-  await audio.play()
+  await playWithTimerAudioSession(audio, 'transient')
 }
 
 /**
@@ -181,9 +204,8 @@ export async function previewTimerSoundOnce(id: string | null | undefined) {
   activePreviewAudio = null
   stopAudio(completionAudio)
 
-  configureAmbientAudioSession()
   const sound = getTimerSound(id)
-  const audio = new Audio(sound.src)
+  const audio = ensureCompletionAudio(sound.src)
   activePreviewAudio = audio
   audio.preload = 'auto'
   audio.currentTime = 0
@@ -196,7 +218,7 @@ export async function previewTimerSoundOnce(id: string | null | undefined) {
     },
     { once: true },
   )
-  await audio.play()
+  await playWithTimerAudioSession(audio, 'playback')
 }
 
 /** Stop any preview or completion playback. */

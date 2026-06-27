@@ -35,6 +35,7 @@ import {
   Toast,
   ValidationMessage,
 } from '@components/ui'
+import { useLanguage } from '@components/languageContextValue'
 import { useSubpageBackGesture } from '@hooks/useSubpageBackGesture'
 import { TRACKING_METHODS, getTrackingMethod } from '@domain/trackingMethods'
 import { formatLocalDate } from '@domain/dates'
@@ -53,6 +54,13 @@ import {
   type ExerciseTrackingCategory,
   type ExerciseUsageSummary,
 } from '@domain/exerciseSearch'
+import {
+  formatWeight as formatWeightWithUnit,
+  weightInputToLb,
+  weightInputValue,
+  weightUnitSuffix,
+} from '@domain/weightUnits'
+import { useWeightUnit } from '@hooks/useWeightUnit'
 import {
   exerciseRepository,
   type CreateExerciseInput,
@@ -74,6 +82,7 @@ import type {
   TemplateWorkoutExercise,
   TrackingMethodId,
   MuscleGroup,
+  WeightUnit,
 } from '@shared-types/app'
 
 type ExerciseView = 'active' | 'hidden'
@@ -168,6 +177,7 @@ const emptyPrescriptionForm: PrescriptionFormState = {
 }
 
 export function TrainingPage() {
+  const { t } = useLanguage()
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
@@ -207,16 +217,39 @@ export function TrainingPage() {
       : searchParams.get('createProgram') === '1'
         ? ({ type: 'createProgram' } satisfies SheetState)
         : sheet
+  const shouldDeferExerciseSeed =
+    activeSheet?.type === 'exercise' && !activeSheet.exercise
 
   useEffect(() => {
     let isCurrent = true
+    const seedController = new AbortController()
+    const abortSeed = () => seedController.abort()
+    window.addEventListener('pagehide', abortSeed)
+
+    // A quick-action custom-exercise form must remain immediately writable.
+    // Start the large first-run seed after that sheet closes.
+    if (shouldDeferExerciseSeed) {
+      return () => {
+        isCurrent = false
+        seedController.abort()
+        window.removeEventListener('pagehide', abortSeed)
+      }
+    }
 
     // Seed the exercise library, then the built-in program library (which
     // references it). Seeding lazily here keeps the larger program write off the
     // app's initial load path.
     void exerciseRepository
-      .seedBuiltInExercises()
-      .then(() => programRepository.seedBuiltInPrograms())
+      .seedBuiltInExercises({
+        deferExpanded: true,
+        signal: seedController.signal,
+      })
+      .then(() => {
+        if (isCurrent) {
+          reload()
+        }
+        return programRepository.seedBuiltInPrograms()
+      })
       .catch(() => {
         // Seeding is idempotent and retried on the next mount, so a failure here
         // (for example a database closed/reset while this background seed was
@@ -231,8 +264,10 @@ export function TrainingPage() {
 
     return () => {
       isCurrent = false
+      seedController.abort()
+      window.removeEventListener('pagehide', abortSeed)
     }
-  }, [])
+  }, [shouldDeferExerciseSeed])
 
   useEffect(() => {
     let isCurrent = true
@@ -672,12 +707,26 @@ export function TrainingPage() {
       >
         <p>
           {programConfirmation?.type === 'delete-first'
-            ? `Remove ${programConfirmation.template.name} from the Program Library?`
+            ? t('Remove {name} from the Program Library?', {
+                name: programConfirmation.template.name,
+              })
             : programConfirmation?.type === 'delete-final'
-              ? `${programConfirmation.template.name} will be permanently deleted. Completed workout history, historical program names, and historical day names are preserved.`
+              ? t(
+                  '{name} will be permanently deleted. Completed workout history and historical names are preserved.',
+                  { name: programConfirmation.template.name },
+                )
               : programConfirmation?.type === 'deactivate'
-                ? `${programConfirmation.cycle.name} will move back to the Program Library. Completed workout history is preserved.`
-                : `Activate ${programConfirmation?.template.name ?? 'this program'} as the active program. The current active program will become inactive and return to the Program Library.`}
+                ? t(
+                    '{name} will move back to the Program Library. Completed workout history is preserved.',
+                    { name: programConfirmation.cycle.name },
+                  )
+                : t(
+                    'Activate {name} as the active program. The current active program will return to the Program Library.',
+                    {
+                      name:
+                        programConfirmation?.template.name ?? t('this program'),
+                    },
+                  )}
         </p>
       </ModalConfirmationDialog>
     </PageContainer>
@@ -727,6 +776,7 @@ function ProgramOverview({
   ) => void
   onStartDay: (cycle: ActiveProgramCycle, day: ActiveCycleWorkoutDay) => void
 }) {
+  const { t } = useLanguage()
   const checkedSet = new Set(checkedDayIds)
   return (
     <Card title="Current active cycle">
@@ -770,7 +820,7 @@ function ProgramOverview({
             {formatProgramWeek(currentCycle.cycle.activatedAt)}
           </p>
           {currentCycle.days.length ? (
-            <div className="program-day-grid" aria-label="Workout days">
+            <div className="program-day-grid" aria-label={t('Workout days')}>
               {currentCycle.days.map((day) => {
                 const isChecked = checkedSet.has(day.id)
                 return (
@@ -815,7 +865,7 @@ function ProgramOverview({
                         <strong>{day.name}</strong>
                         <small>
                           {(currentCycle.exercisesByDay[day.id] ?? []).length}{' '}
-                          exercises
+                          {t('exercises')}
                         </small>
                       </button>
                     </div>
@@ -1007,7 +1057,7 @@ function FullProgramLibraryPage({
     : templates
 
   return (
-    <Card>
+    <Card className="subpage-enter">
       <div className="set-goal-header">
         <IconButton aria-label="Back to training" onClick={onBack}>
           <ArrowLeft aria-hidden="true" size={20} />
@@ -1090,7 +1140,7 @@ function BrowseProgramsPage({
     : templates
 
   return (
-    <Card>
+    <Card className="subpage-enter">
       <div className="set-goal-header">
         <IconButton aria-label="Back to training" onClick={onBack}>
           <ArrowLeft aria-hidden="true" size={20} />
@@ -1931,7 +1981,11 @@ function ProgramBuilderSheet({
                             <strong>
                               {prescribed.exerciseSnapshot.exerciseName}
                             </strong>
-                            <small>{prescriptionSummary(prescribed)}</small>
+                            <small>
+                              <PrescriptionSummaryText
+                                prescribed={prescribed}
+                              />
+                            </small>
                             {prescribed.notes ? (
                               <small>{prescribed.notes}</small>
                             ) : null}
@@ -2039,6 +2093,7 @@ function PrescriptionEditor({
     exercise: TemplateWorkoutExercise | ActiveCycleWorkoutExercise | null
   }
 }) {
+  const weightUnit = useWeightUnit()
   const [availableExercises, setAvailableExercises] = useState(exercises)
   const [step, setStep] = useState<'search' | 'edit' | 'create'>(
     target.exercise ? 'edit' : 'search',
@@ -2049,7 +2104,11 @@ function PrescriptionEditor({
       ? {
           exerciseId: target.exercise.exerciseId,
           targetSetCount: String(target.exercise.targetSetCount),
-          targetWeight: target.exercise.targetWeight?.toString() ?? '',
+          targetWeight: weightInputValue(
+            target.exercise.targetWeight,
+            weightUnit,
+            'lifting',
+          ),
           targetDurationSeconds:
             target.exercise.targetDurationSeconds?.toString() ?? '',
           targetDistance: target.exercise.targetDistance?.toString() ?? '',
@@ -2067,7 +2126,7 @@ function PrescriptionEditor({
   const selectedExercise =
     availableExercises.find((exercise) => exercise.id === form.exerciseId) ??
     null
-  const parsed = parsePrescriptionForm(form, selectedExercise)
+  const parsed = parsePrescriptionForm(form, selectedExercise, weightUnit)
   const searchable = hasSearchableQuery(searchQuery)
   const results = searchable
     ? searchExercises(availableExercises, searchQuery, exerciseUsage)
@@ -2076,7 +2135,8 @@ function PrescriptionEditor({
     availableExercises,
     exerciseUsage,
   )
-  const isDirty = formIsDirty(form, target.exercise) || step === 'create'
+  const isDirty =
+    formIsDirty(form, target.exercise, weightUnit) || step === 'create'
 
   function update(field: keyof PrescriptionFormState, value: string) {
     setForm((current) => ({ ...current, [field]: value }))
@@ -2312,7 +2372,11 @@ function PrescriptionEditor({
               <small>
                 {selectedExercise.defaultRestSeconds}s rest
                 {selectedExercise.defaultWeightIncrement !== null
-                  ? ` - ${selectedExercise.defaultWeightIncrement} lb increment`
+                  ? ` - ${formatWeightWithUnit(
+                      selectedExercise.defaultWeightIncrement,
+                      weightUnit,
+                      'lifting',
+                    )} increment`
                   : ''}
               </small>
             </div>
@@ -2330,14 +2394,14 @@ function PrescriptionEditor({
               {showsWeightTarget(selectedExercise) ? (
                 <FormField
                   id="target-weight"
-                  label={
+                  label={`${
                     selectedExercise.trackingMethodId === 'assisted_weight_reps'
                       ? 'Assistance target'
                       : selectedExercise.trackingMethodId ===
                           'added_weight_reps'
                         ? 'Added-weight target'
                         : 'Weight target'
-                  }
+                  } (${weightUnitSuffix(weightUnit)})`}
                 >
                   <NumericInput
                     id="target-weight"
@@ -2534,7 +2598,9 @@ function WorkoutDayDetailSheet({
               <div className="program-prescription-row" key={exercise.id}>
                 <div>
                   <strong>{exercise.exerciseSnapshot.exerciseName}</strong>
-                  <small>{prescriptionSummary(exercise)}</small>
+                  <small>
+                    <PrescriptionSummaryText prescribed={exercise} />
+                  </small>
                   {exercise.notes ? <small>{exercise.notes}</small> : null}
                 </div>
               </div>
@@ -2635,11 +2701,28 @@ function ExerciseLibraryCard({
   trackingCategory: ExerciseTrackingCategory
   view: ExerciseView
 }) {
+  const { t } = useLanguage()
+  const [displayLimit, setDisplayLimit] = useState(80)
   const visibleExercises = filterExerciseLibrary(exercises, {
     primaryMuscle,
     query,
     trackingCategory,
   })
+  const prioritizedExercises = [...visibleExercises].sort((left, right) => {
+    const customOrder =
+      Number(right.origin === 'custom') - Number(left.origin === 'custom')
+    if (customOrder !== 0) {
+      return customOrder
+    }
+    const leftIsVariant = isGeneratedExerciseVariant(left)
+    const rightIsVariant = isGeneratedExerciseVariant(right)
+    return (
+      Number(leftIsVariant) - Number(rightIsVariant) ||
+      left.name.localeCompare(right.name)
+    )
+  })
+  const displayedExercises = prioritizedExercises.slice(0, displayLimit)
+
   const primaryMuscles = Array.from(
     new Set(
       exercises
@@ -2667,7 +2750,7 @@ function ExerciseLibraryCard({
         onClick={onToggleExpanded}
         type="button"
       >
-        <strong>Exercise Library</strong>
+        <strong>{t('Exercise Library')}</strong>
         <ChevronDown aria-hidden="true" className="accordion-chevron" />
       </button>
       {isExpanded ? (
@@ -2695,7 +2778,7 @@ function ExerciseLibraryCard({
               <input
                 id="exercise-search"
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search your exercises"
+                placeholder={t('Search your exercises')}
                 type="search"
                 value={query}
               />
@@ -2711,7 +2794,10 @@ function ExerciseLibraryCard({
 
           {isFilterPanelOpen ? (
             <div className="exercise-filter-panel">
-              <div className="segmented-control" aria-label="Tracking Method">
+              <div
+                className="segmented-control"
+                aria-label={t('Tracking Method')}
+              >
                 {(['all', 'strength', 'cardio', 'distance'] as const).map(
                   (category) => (
                     <button
@@ -2720,9 +2806,11 @@ function ExerciseLibraryCard({
                       onClick={() => setTrackingCategory(category)}
                       type="button"
                     >
-                      {category === 'all'
-                        ? 'All'
-                        : category[0].toUpperCase() + category.slice(1)}
+                      {t(
+                        category === 'all'
+                          ? 'All'
+                          : category[0].toUpperCase() + category.slice(1),
+                      )}
                     </button>
                   ),
                 )}
@@ -2736,7 +2824,7 @@ function ExerciseLibraryCard({
                     }
                     value={primaryMuscle}
                   >
-                    <option value="all">All</option>
+                    <option value="all">{t('All')}</option>
                     {primaryMuscles.map((muscle) => (
                       <option key={muscle} value={muscle}>
                         {primaryMuscleLabel(muscle)}
@@ -2757,9 +2845,9 @@ function ExerciseLibraryCard({
             </StatusMessage>
           ) : null}
 
-          {loadStatus === 'ready' && visibleExercises.length ? (
+          {loadStatus === 'ready' && displayedExercises.length ? (
             <div className="exercise-list">
-              {visibleExercises.map((exercise) => (
+              {displayedExercises.map((exercise) => (
                 <ExerciseLibraryRow
                   exercise={exercise}
                   key={exercise.id}
@@ -2768,6 +2856,14 @@ function ExerciseLibraryCard({
                   onRestore={() => onRestoreExercise(exercise)}
                 />
               ))}
+              {displayedExercises.length < prioritizedExercises.length ? (
+                <SecondaryButton
+                  type="button"
+                  onClick={() => setDisplayLimit((current) => current + 80)}
+                >
+                  Show more exercises
+                </SecondaryButton>
+              ) : null}
             </div>
           ) : null}
 
@@ -2800,6 +2896,12 @@ function ExerciseLibraryCard({
         </div>
       ) : null}
     </Card>
+  )
+}
+
+function isGeneratedExerciseVariant(exercise: Exercise) {
+  return /^builtin:(?:one-and-a-half-rep|paused|tempo|three-second-eccentric)-/u.test(
+    exercise.id,
   )
 }
 
@@ -2890,6 +2992,7 @@ function ExerciseFormSheet({
   const [duplicates, setDuplicates] = useState<Exercise[]>([])
   const parsed = useMemo(() => parseExerciseForm(form), [form])
   const selectedTrackingMethod = getTrackingMethod(form.trackingMethodId)
+  const weightUnit = useWeightUnit()
 
   useEffect(() => {
     let isCurrent = true
@@ -3052,7 +3155,11 @@ function ExerciseFormSheet({
             {selectedTrackingMethod.metrics.map((metric) => (
               <span key={metric.key}>
                 {metric.label}
-                {metric.unit ? ` (${metric.unit})` : ''}
+                {metric.unit === 'lb'
+                  ? ` (${weightUnitSuffix(weightUnit)})`
+                  : metric.unit
+                    ? ` (${metric.unit})`
+                    : ''}
               </span>
             ))}
             <span>RIR</span>
@@ -3137,6 +3244,7 @@ function parseExerciseForm(
 function parsePrescriptionForm(
   form: PrescriptionFormState,
   exercise: Exercise | null,
+  unit: WeightUnit = 'lb',
 ):
   | { ok: true; value: CreateTemplateExerciseInput }
   | { ok: false; error: string } {
@@ -3210,7 +3318,11 @@ function parsePrescriptionForm(
     value: {
       exerciseId: form.exerciseId,
       targetSetCount,
-      targetWeight: targetWeightValue,
+      // The form edits weight in the display unit; persist canonical pounds.
+      targetWeight:
+        targetWeightValue === null
+          ? null
+          : weightInputToLb(targetWeightValue, unit),
       targetDurationSeconds: targetDurationSecondsValue,
       targetDistance: targetDistanceValue,
       targetRepsMin: targetRepsMin.value,
@@ -3254,15 +3366,25 @@ function parseOptionalNumber(
   return { ok: true, value: parsed } as const
 }
 
+function PrescriptionSummaryText({
+  prescribed,
+}: {
+  prescribed: TemplateWorkoutExercise | ActiveCycleWorkoutExercise
+}) {
+  const weightUnit = useWeightUnit()
+  return <>{prescriptionSummary(prescribed, weightUnit)}</>
+}
+
 function prescriptionSummary(
   prescribed: TemplateWorkoutExercise | ActiveCycleWorkoutExercise,
+  unit: WeightUnit = 'lb',
 ) {
   const parts = [`${prescribed.targetSetCount} sets`]
   if (
     prescribed.targetWeight !== null &&
     prescribed.targetWeight !== undefined
   ) {
-    parts.push(`${prescribed.targetWeight} lb`)
+    parts.push(formatWeightWithUnit(prescribed.targetWeight, unit, 'lifting'))
   }
   if (
     prescribed.targetDurationSeconds !== null &&
@@ -3342,6 +3464,7 @@ function formatEquipment(equipment: Exercise['equipmentType']) {
 function formIsDirty(
   form: PrescriptionFormState,
   exercise: TemplateWorkoutExercise | ActiveCycleWorkoutExercise | null,
+  unit: WeightUnit = 'lb',
 ) {
   if (!exercise) {
     return (
@@ -3360,7 +3483,8 @@ function formIsDirty(
   return (
     form.exerciseId !== exercise.exerciseId ||
     form.targetSetCount !== String(exercise.targetSetCount) ||
-    form.targetWeight !== (exercise.targetWeight?.toString() ?? '') ||
+    form.targetWeight !==
+      weightInputValue(exercise.targetWeight, unit, 'lifting') ||
     form.targetDurationSeconds !==
       (exercise.targetDurationSeconds?.toString() ?? '') ||
     form.targetDistance !== (exercise.targetDistance?.toString() ?? '') ||

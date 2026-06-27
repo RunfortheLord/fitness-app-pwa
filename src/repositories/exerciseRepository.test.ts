@@ -40,6 +40,21 @@ describe('exerciseRepository', () => {
       defaultRestSeconds: 180,
       defaultWeightIncrement: 5,
     })
+    await expect(
+      repository.getExercise('builtin:tempo-barbell-bench-press'),
+    ).resolves.toMatchObject({
+      name: 'Tempo Barbell Bench Press',
+      origin: 'built_in',
+      equipmentType: 'barbell',
+      primaryMuscleGroups: ['chest'],
+    })
+
+    const custom = await repository.createExercise({
+      name: 'Visible custom exercise',
+      defaultRestSeconds: 90,
+      trackingMethodId: 'weight_reps',
+    })
+    await expect(repository.searchExercises()).resolves.toContainEqual(custom)
   })
 
   it('creates every configured tracking preset with its supported metrics', async () => {

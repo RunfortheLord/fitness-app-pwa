@@ -33,6 +33,13 @@ describe('food provider API core', () => {
     expect(() =>
       validateSearchRequest({ query: 'rice\u0000', provider: 'usda' }),
     ).toThrow('control characters')
+    expect(() =>
+      validateSearchRequest({
+        query: 'arroz',
+        provider: 'open_food_facts',
+        language: 'de' as never,
+      }),
+    ).toThrow('Unsupported search language')
   })
 
   it('returns a server configuration error when the USDA key is missing', async () => {
@@ -93,6 +100,50 @@ describe('food provider API core', () => {
       String(url).includes('openfoodfacts'),
     )
     expect(offCalls).toHaveLength(1)
+  })
+
+  it('searches Open Food Facts with Spanish fields and returns Spanish names', async () => {
+    const fetcher = vi.fn(async (url: URL | RequestInfo) => {
+      void url
+      return jsonResponse({
+        products: [
+          {
+            code: '8410000000001',
+            product_name: 'Tomato Soup',
+            product_name_es: 'Sopa de tomate',
+            categories: 'Soups',
+            categories_es: 'Sopas',
+            nutriments: {
+              'energy-kcal_100g': 45,
+              proteins_100g: 1.2,
+              carbohydrates_100g: 7.5,
+              fat_100g: 1.1,
+            },
+          },
+        ],
+      })
+    })
+
+    const response = await handleFoodSearch(
+      {
+        query: 'sopa de tomate',
+        provider: 'open_food_facts',
+        language: 'es',
+      },
+      { fetcher },
+    )
+
+    expect(response).toMatchObject({
+      ok: true,
+      data: {
+        provider: 'open_food_facts',
+        results: [{ name: 'Sopa de tomate', foodCategory: 'Sopas' }],
+      },
+    })
+    const requestedUrl = new URL(String(fetcher.mock.calls[0]?.[0]))
+    expect(requestedUrl.searchParams.get('lc')).toBe('es')
+    expect(requestedUrl.searchParams.get('fields')).toContain('product_name_es')
+    expect(requestedUrl.searchParams.get('fields')).toContain('categories_es')
   })
 
   it('retries a misspelled query with a corrected spelling and merges canonical results', async () => {

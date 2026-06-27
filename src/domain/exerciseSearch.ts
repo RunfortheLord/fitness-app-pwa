@@ -101,7 +101,10 @@ export function searchExercises(
     .sort(
       (left, right) =>
         left.score - right.score ||
-        right.exercise.origin.localeCompare(left.exercise.origin) ||
+        // Keep a user's own equally relevant match visible when the expanded
+        // built-in library contains many named variations.
+        Number(right.exercise.origin === 'custom') -
+          Number(left.exercise.origin === 'custom') ||
         left.exercise.name.localeCompare(right.exercise.name),
     )
     .slice(0, limit)

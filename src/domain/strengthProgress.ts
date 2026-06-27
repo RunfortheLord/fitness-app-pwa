@@ -5,8 +5,10 @@ import {
   parseLocalDate,
   type LocalDateString,
 } from '@domain/dates'
+import { weightDisplayNumber, weightUnitSuffix } from '@domain/weightUnits'
 import type {
   TrackingMethodId,
+  WeightUnit,
   WorkoutHistoryEntry,
   WorkoutHistoryExercise,
   WorkoutHistorySet,
@@ -161,6 +163,7 @@ export function filterStrengthPointsForRange({
 
 export function createStrengthGraphModel(
   points: StrengthGraphPoint[],
+  unit: WeightUnit = 'lb',
 ): StrengthGraphModel {
   const sorted = sortStrengthPoints(points)
   if (!sorted.length) {
@@ -201,8 +204,21 @@ export function createStrengthGraphModel(
     latest: plotted.find((point) => point.id === latest.id) ?? plotted[0],
     allTimeBest:
       plotted.find((point) => point.id === allTimeBest.id) ?? plotted[0],
-    summary: `${latest.exerciseName} — latest estimated 1 rep max: ${formatEstimatedMax(latest.estimatedOneRepMax)} lb. Best: ${formatEstimatedMax(allTimeBest.estimatedOneRepMax)} lb on ${formatLongLocalDate(allTimeBest.localDate)}, based on ${formatEstimatedMax(allTimeBest.weight)} lb × ${allTimeBest.repetitions} reps.`,
+    summary: `${latest.exerciseName} — latest estimated 1 rep max: ${formatEstimatedWeight(latest.estimatedOneRepMax, unit)}. Best: ${formatEstimatedWeight(allTimeBest.estimatedOneRepMax, unit)} on ${formatLongLocalDate(allTimeBest.localDate)}, based on ${formatEstimatedWeight(allTimeBest.weight, unit)} × ${allTimeBest.repetitions} reps.`,
   }
+}
+
+/**
+ * Formats a canonical-pounds estimate (1RM or set weight) in the display unit,
+ * suffix included. Kilograms snap to gym-friendly 0.5 kg; pounds keep the Epley
+ * estimate's integer-or-one-decimal style.
+ */
+export function formatEstimatedWeight(valueLb: number, unit: WeightUnit) {
+  const number =
+    unit === 'kg'
+      ? weightDisplayNumber(valueLb, 'kg', 'lifting')
+      : formatEstimatedMax(valueLb)
+  return `${number} ${weightUnitSuffix(unit)}`
 }
 
 /** Formats a `YYYY-MM-DD` local date as e.g. `June 21, 2026` without UTC drift. */

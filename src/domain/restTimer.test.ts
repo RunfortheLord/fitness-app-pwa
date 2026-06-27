@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { getRestTimerRemainingSeconds } from '@domain/restTimer'
+import {
+  getRestTimerCompletionDate,
+  getRestTimerRemainingSeconds,
+} from '@domain/restTimer'
 import type { RestTimerState } from '@shared-types/app'
 
 describe('restTimer', () => {
@@ -32,5 +35,40 @@ describe('restTimer', () => {
     expect(
       getRestTimerRemainingSeconds(timer, '2026-06-19T10:05:00.000Z'),
     ).toBe(70)
+  })
+
+  it('derives the exact native notification time after resumed pauses', () => {
+    const timer: RestTimerState = {
+      id: 'timer-1',
+      startedAt: '2026-06-19T10:00:00.000Z',
+      durationSeconds: 90,
+      pausedAt: null,
+      accumulatedPausedSeconds: 30,
+      status: 'running',
+    }
+
+    expect(getRestTimerCompletionDate(timer)?.toISOString()).toBe(
+      '2026-06-19T10:02:00.000Z',
+    )
+  })
+
+  it('does not schedule paused, completed, or malformed timers', () => {
+    const timer: RestTimerState = {
+      id: 'timer-1',
+      startedAt: 'invalid',
+      durationSeconds: 90,
+      pausedAt: null,
+      accumulatedPausedSeconds: 0,
+      status: 'running',
+    }
+
+    expect(getRestTimerCompletionDate(timer)).toBeNull()
+    expect(
+      getRestTimerCompletionDate({
+        ...timer,
+        startedAt: '2026-06-19T10:00:00.000Z',
+        status: 'paused',
+      }),
+    ).toBeNull()
   })
 })

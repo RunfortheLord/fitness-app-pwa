@@ -41,13 +41,10 @@
 ### Cards and Controls
 
 - Header: selected date, previous-day button, next-day button, return-to-today action, Settings access.
-- Nutrition summary card:
-  - calories consumed
-  - calorie target
-  - calories remaining
-  - protein consumed/target
-  - carbohydrates consumed/target
-  - fat consumed/target
+- Calorie history card:
+  - compact seven-day bar graph for logged calories
+  - contrasting daily target line
+  - visible spacing between daily bars
 - Bodyweight card:
   - current value from the latest timestamped entry or empty state
   - selected-date latest value when available
@@ -81,13 +78,16 @@
 
 - Date selector at top.
 - Daily total card with calories and macros.
-- Prominent barcode scanner entry near the top of Nutrition. USDA key
-  management remains available from Settings -> Integrations.
+- Prominent barcode scanner entry near the top of Nutrition.
 - Search input for recent, custom, previously used, and provider foods.
-- Remote provider search waits for at least three normalized characters, a saved
-  USDA FoodData Central API key, and debounces requests.
-- Results are sectioned in priority order: recent and previously used foods,
-  private custom foods, previously used provider foods, then provider results.
+- English remote provider search waits for at least three normalized
+  characters, debounces requests, and uses USDA. Spanish remote search requires
+  an explicit keyboard or on-screen Search action, uses Open Food Facts, and
+  prefers provider-supplied Spanish product and category fields.
+- Results are sectioned in priority order: strict saved recipe match, recent
+  and previously used foods, private custom foods, previously used provider
+  foods, then provider results. Typo-only recipe queries do not create the
+  recipe section.
 - Provider loading, offline, timeout, unavailable, rate-limit, server
   configuration, and unexpected-error states are distinct from no acceptable
   results.
@@ -108,8 +108,9 @@
 
 ### Create/Edit Food Form
 
-- Fields: name, optional brand, serving quantity, serving unit, calories,
-  protein, carbohydrates, fat, notes.
+- The form opens as a full-height subpage.
+- Fields: name, serving quantity, serving unit, calories, protein,
+  carbohydrates, and fat. The current form does not collect brand or notes.
 - Required fields are marked without excessive copy.
 - Numeric fields reject invalid, negative, or nonnumeric values. Calories are
   required; blank optional macros save as zero.
@@ -254,11 +255,28 @@
 - On resume from background, recalculates remaining time instead of trusting an interval count.
 - Timer state is stored on the active workout and continues while navigating
   between exercises or returning to the workout route.
+- The app shell monitors timer expiry across all routes, so completion feedback
+  fires while the user is viewing Home, Nutrition, Training, Run, or Settings.
 - Completion feedback uses UI status, vibration when supported, a short audible
   tone when browser autoplay policy allows it, and browser notifications only
   when permission has already been granted. The app does not repeatedly request
   notification permission and does not claim alerts work while the browser or
-  installed PWA is fully suspended.
+  installed PWA is fully suspended. Muted priming receives a transient
+  audio-session hint, while actual previews and completion tones use media
+  playback so iPhone Silent Mode does not suppress them. Calls and browser
+  suspension may still suppress playback, and the tone may briefly interrupt
+  other audio.
+- In the native iOS wrapper, starting a rest timer requests notification
+  permission in context when needed and schedules a time-sensitive local
+  notification. Pause, resume, adjustment, dismissal, discard, and finish
+  replace or cancel the pending notification.
+- In an installed iPhone Home Screen PWA, Settings exposes **Enable outside-app
+  timer alerts** when Web Push is supported. The copy states that internet
+  access and iPhone notification sounds are required. Timer changes replace or
+  cancel the pending server-delayed notification.
+- Checking a completed set must not start or pause media merely to prime the
+  later timer sound. Foreground completion uses transient audio; outside-app
+  completion uses one standard iPhone notification.
 
 ## Completion and Change Review
 
@@ -296,6 +314,9 @@
 - Additional graph categories are reachable from History and Graphs. Strength
   graph placeholders may be deferred when no eligible implementation data is
   available.
+- Calories is available from History Graphs with 1W, 1M, and 3M controls.
+  Logged calories use separated bars and the daily target uses a contrasting
+  line.
 - Strength graph range controls are 1M, 3M, 6M, 1Y, and All.
 - The chart plots one point per completed workout per exercise, selected from
   the highest eligible Epley estimate in that workout.
@@ -322,13 +343,20 @@
 
 ## Settings Screen
 
-- Nutrition targets.
-- Timer completion sound on/off, sound selection, selected-state display, and
-  one-shot preview.
+- Preferences include English/Spanish interface language, timer completion
+  sound on/off, sound selection, selected-state display, and one-shot preview.
+- The native iOS wrapper also exposes an **Enable outside-app timer alerts**
+  action and explains that delivery remains controlled by iPhone notification
+  and volume settings.
+- Nutrition targets are managed from the Nutrition dashboard, not Settings.
 - Backup export.
 - CSV export.
 - Restore backup.
 - Clear all data.
+- Cloud backup uses larger vertical spacing between account status, backup
+  status, and actions.
+- What's new shows the latest update by default. A Show all action opens a
+  What's New subpage with all logged updates.
 - App version and update status.
 - Data schema version.
 

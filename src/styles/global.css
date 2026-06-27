@@ -189,6 +189,12 @@ textarea:focus-visible {
   padding: var(--space-3);
 }
 
+.home-bodyweight-metric-card {
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+}
+
 .home-action-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2008,7 +2014,7 @@ input::placeholder {
 
 .segmented-control {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--segment-count, 3), minmax(0, 1fr));
   gap: var(--space-1);
   padding: var(--space-1);
   border-radius: var(--radius-md);
@@ -2021,6 +2027,7 @@ input::placeholder {
   color: var(--color-muted);
   font-size: 14px;
   font-weight: 800;
+  white-space: nowrap;
 }
 
 .segmented-control button[aria-pressed='true'] {
@@ -2471,6 +2478,83 @@ body.food-search-open .bottom-nav {
   display: grid;
   gap: var(--space-3);
   margin-top: var(--space-4);
+}
+
+.calorie-history {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.calorie-chart-legend {
+  display: flex;
+  gap: var(--space-4);
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.calorie-chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.calorie-chart-legend span::before {
+  width: 14px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--color-accent);
+  content: '';
+}
+
+.calorie-chart-legend .calorie-legend-target::before {
+  height: 2px;
+  background: #f2b84b;
+}
+
+.calorie-history-chart {
+  width: 100%;
+  height: 220px;
+  overflow: visible;
+  border-bottom: 1px solid var(--color-border);
+  background: linear-gradient(
+    to bottom,
+    transparent 49.5%,
+    var(--color-border-soft) 50%,
+    transparent 50.5%
+  );
+}
+
+.calorie-history-compact .calorie-history-chart {
+  height: 132px;
+}
+
+.calorie-bar {
+  fill: var(--color-accent);
+  opacity: 0.82;
+}
+
+.calorie-target-line {
+  fill: none;
+  stroke: #f2b84b;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.calorie-grid-line {
+  stroke: var(--color-border-soft);
+  stroke-width: 0.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.calorie-chart-dates {
+  display: flex;
+  justify-content: space-between;
+  color: var(--color-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .bodyweight-chart-summary {
@@ -2940,6 +3024,35 @@ body.food-search-open .bottom-nav {
   .confirmation-dialog {
     animation: surface-enter 0.16s ease-out;
   }
+
+  .bottom-sheet--page,
+  .subpage-enter {
+    animation: subpage-enter 0.24s cubic-bezier(0.22, 0.8, 0.32, 1);
+  }
+
+  .button,
+  .icon-button,
+  .icon-link,
+  .bottom-nav-add,
+  .bottom-nav-link,
+  .segmented-control button,
+  .date-selector-current {
+    transition:
+      transform 120ms ease,
+      background-color 160ms ease,
+      color 160ms ease,
+      border-color 160ms ease;
+  }
+
+  .button:active:not(:disabled),
+  .icon-button:active:not(:disabled),
+  .icon-link:active,
+  .bottom-nav-add:active,
+  .bottom-nav-link:active,
+  .segmented-control button:active,
+  .date-selector-current:active {
+    transform: scale(0.97);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2962,5 +3075,17 @@ body.food-search-open .bottom-nav {
 @keyframes surface-enter {
   from {
     opacity: 0;
+  }
+}
+
+@keyframes subpage-enter {
+  from {
+    opacity: 0.72;
+    transform: translateX(100%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
   }
 }

@@ -10,11 +10,16 @@ import {
 import { createBodyweightRepository } from '@repositories/bodyweightRepository'
 import { createFoodRepository } from '@repositories/foodRepository'
 import { createProgramRepository } from '@repositories/programRepository'
+import { createSettingsRepository } from '@repositories/settingsRepository'
 import { createWorkoutRepository } from '@repositories/workoutRepository'
 import {
   createNutritionSummaryService,
   type DailyNutritionSummary,
 } from '@services/nutritionSummaryService'
+import {
+  createCalorieHistoryService,
+  type DailyCalorieHistory,
+} from '@services/calorieHistoryService'
 import type {
   ActiveCycleWorkoutDay,
   ActiveCycleWorkoutExercise,
@@ -30,6 +35,7 @@ export type DashboardData = {
   selectedDate: LocalDateString
   metadata: AppMetadata | undefined
   nutrition: DailyNutritionSummary
+  calorieHistory: DailyCalorieHistory[]
   bodyweight: BodyweightEntry | undefined
   currentBodyweight: BodyweightEntry | undefined
   bodyweightEntries: BodyweightEntry[]
@@ -80,8 +86,10 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
   const bodyweightRepository = createBodyweightRepository(database)
   const foodRepository = createFoodRepository(database)
   const programRepository = createProgramRepository(database)
+  const settingsRepository = createSettingsRepository(database)
   const workoutRepository = createWorkoutRepository(database)
   const nutritionSummaryService = createNutritionSummaryService(database)
+  const calorieHistoryService = createCalorieHistoryService(database)
 
   return {
     async getDashboardData(
@@ -97,6 +105,8 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
         bodyweightEntries,
         foodLogs,
         completedWorkouts,
+        settings,
+        calorieHistory,
       ] = await Promise.all([
         nutritionSummaryService.getDailySummary(selectedDate),
         bodyweightRepository.listBodyweightEntriesForDate(selectedDate),
@@ -107,8 +117,11 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
         bodyweightRepository.listBodyweightEntries(),
         foodRepository.listRecentFoodLogs(5),
         workoutRepository.listRecentCompletedWorkouts(5),
+        settingsRepository.getSettings(),
+        calorieHistoryService.getHistory(selectedDate, '1w'),
       ])
 
+      const weightUnit = settings?.weightUnit ?? 'lb'
       const selectedDateBodyweight = latestBodyweight(bodyweight)
       const currentBodyweight = latestBodyweight(bodyweightEntries)
       const bodyweightTrend = summarizeBodyweightTrend(
@@ -117,6 +130,7 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
           range: '1m',
           today: selectedDate,
         }),
+        weightUnit,
       )
       const mostRecentCompletedWorkoutSummary = mostRecentCompletedWorkout
         ? await getWorkoutSummary(database, mostRecentCompletedWorkout.id)
@@ -154,6 +168,7 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
         selectedDate,
         metadata,
         nutrition,
+        calorieHistory,
         bodyweight: selectedDateBodyweight,
         currentBodyweight,
         bodyweightEntries,

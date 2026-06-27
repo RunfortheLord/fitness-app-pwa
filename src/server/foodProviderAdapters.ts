@@ -19,6 +19,7 @@ export type ProviderSearchInput = {
   query: string
   page: number
   pageSize: number
+  language?: 'en' | 'es'
   signal?: AbortSignal
   now?: Date
 }
@@ -132,15 +133,20 @@ export function createOpenFoodFactsAdapter(
       url.searchParams.set('json', '1')
       url.searchParams.set('page', String(input.page))
       url.searchParams.set('page_size', String(input.pageSize))
+      const language = input.language ?? 'en'
+      url.searchParams.set('lc', language)
       url.searchParams.set(
         'fields',
         [
           'code',
           'product_name',
+          'product_name_es',
           'generic_name',
+          'generic_name_es',
           'brands',
           'brands_tags',
           'categories',
+          'categories_es',
           'serving_size',
           'serving_quantity',
           'nutriments',
@@ -167,7 +173,7 @@ export function createOpenFoodFactsAdapter(
           : []
       const foods = records
         .map((record) =>
-          normalizeOpenFoodFactsFood(record, input.now ?? new Date()),
+          normalizeOpenFoodFactsFood(record, input.now ?? new Date(), language),
         )
         .filter((food): food is NormalizedFoodResult => food !== null)
       return groupDuplicateFoods(rankFoods(foods, input.query))
@@ -220,6 +226,7 @@ export async function lookupUsdaBarcode(
     query: barcode,
     page: 1,
     pageSize: 10,
+    language: 'en',
     signal,
   })
   return (
@@ -360,6 +367,7 @@ export function normalizeUsdaFood(
 export function normalizeOpenFoodFactsFood(
   record: unknown,
   now: Date,
+  language: 'en' | 'es' = 'en',
 ): NormalizedFoodResult | null {
   if (!isRecord(record)) {
     return null
@@ -388,9 +396,13 @@ export function normalizeOpenFoodFactsFood(
     return null
   }
   const name =
+    (language === 'es' ? readString(record.product_name_es) : null) ??
+    (language === 'es' ? readString(record.generic_name_es) : null) ??
     readString(record.product_name) ??
     readString(record.generic_name) ??
-    'Open Food Facts product'
+    (language === 'es'
+      ? 'Producto de Open Food Facts'
+      : 'Open Food Facts product')
   const gramsPerServing = readNumber(record.serving_quantity)
   const serving = createServing({
     quantity: 1,
@@ -430,7 +442,9 @@ export function normalizeOpenFoodFactsFood(
     },
     name,
     brandName,
-    foodCategory: readString(record.categories),
+    foodCategory:
+      (language === 'es' ? readString(record.categories_es) : null) ??
+      readString(record.categories),
     descriptionQualifiers: [],
     rawCookedStatus: rawCooked.rawCookedStatus,
     rawCookedBasis: rawCooked.rawCookedBasis,

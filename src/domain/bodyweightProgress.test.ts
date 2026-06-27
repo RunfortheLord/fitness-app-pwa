@@ -89,6 +89,21 @@ describe('bodyweightProgress', () => {
     expect(formatBodyweightChange(-1)).toBe('-1 lb')
     expect(formatBodyweightChange(0.01)).toBe('0 lb')
   })
+
+  it('renders the trend summary and change in the chosen unit', () => {
+    const entries = [
+      entry('a', '2026-06-01', 200, '2026-06-01T12:00:00.000Z'),
+      entry('b', '2026-06-19', 190, '2026-06-19T12:00:00.000Z'),
+    ]
+
+    // 200 lb -> 90.7 kg, 190 lb -> 86.2 kg, change -10 lb -> 4.5 kg.
+    const summary = summarizeBodyweightTrend(entries, 'kg')
+    expect(summary.status === 'ready' ? summary.text : '').toContain(
+      'from 90.7 to 86.2 kg',
+    )
+    expect(formatBodyweightChange(-10, 'kg')).toBe('-4.5 kg')
+    expect(formatBodyweightChange(0.01, 'kg')).toBe('0 kg')
+  })
 })
 
 function entry(

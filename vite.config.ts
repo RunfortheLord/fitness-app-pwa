@@ -48,7 +48,8 @@ export default defineConfig({
       workbox: {
         cleanupOutdatedCaches: true,
         clientsClaim: false,
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,mp3,webmanifest}'],
+        importScripts: ['/push-handler.js'],
         navigateFallbackDenylist: [/^\/api\//],
       },
     }),

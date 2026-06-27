@@ -3,7 +3,8 @@ import type { LocalDateString } from '@domain/dates'
 export type IsoTimestamp = string
 export type EntityStatus = 'active' | 'archived'
 export type ExerciseStatus = EntityStatus | 'hidden'
-export type WeightUnit = 'lb'
+export type WeightUnit = 'lb' | 'kg'
+export type AppLanguage = 'en' | 'es'
 export type EnergyUnit = 'kcal'
 export type FoodSourceType = 'local' | 'provider'
 export type FoodProviderId = 'usda' | 'open_food_facts'
@@ -71,6 +72,7 @@ export type NutritionTarget = {
 
 export type UserSettings = {
   id: 'settings'
+  language?: AppLanguage
   weightUnit: WeightUnit
   energyUnit: EnergyUnit
   nutritionTargets: NutritionTargetValues

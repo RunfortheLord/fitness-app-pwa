@@ -6,7 +6,7 @@
 2. App loads the application shell.
 3. App initializes IndexedDB if no local database exists.
 4. App shows Home with empty dashboard cards and no account prompt.
-5. User can open Settings to set calorie and macro targets.
+5. User can open Nutrition to set calorie and macro targets.
 6. User can use Add, Nutrition, Training, and History without signing in.
 7. If offline after installation, app still opens and shows local data.
 
@@ -14,10 +14,9 @@
 
 1. User opens Nutrition or taps Add.
 2. User chooses Create Food.
-3. App opens a bottom sheet or full form.
-4. User enters name, optional brand, serving quantity, serving unit, calories,
-   optional protein, optional total carbohydrates, optional fat, and optional
-   notes.
+3. App opens a custom-food subpage.
+4. User enters name, serving quantity, serving unit, calories, optional protein,
+   optional total carbohydrates, and optional fat.
 5. App validates required fields and nonnegative nutrition values. Blank
    optional macros save as zero.
 6. User saves.
@@ -27,11 +26,10 @@
 ## Logging Food
 
 1. User opens Nutrition for the selected local date.
-2. User searches recent foods, custom foods, previously used foods, or remote
-   providers.
-3. App searches remote providers only after a USDA FoodData Central API key is
-   saved, at least three normalized characters are entered, and the request
-   debounce elapses.
+2. User searches strict saved-recipe matches, recent foods, custom foods,
+   previously used foods, or remote providers.
+3. App searches remote providers only after at least three normalized
+   characters are entered and the request debounce elapses.
 4. User selects a food.
 5. App opens a detail sheet with calories, protein, total carbohydrates, fat,
    serving amount, and available serving units.
@@ -144,8 +142,10 @@
 4. App persists changes immediately or near-immediately.
 5. When a set is marked complete, app starts or offers the rest timer using the configured rest duration.
 6. User may pause, skip, extend, or dismiss the rest timer.
-7. User may edit completed sets.
-8. User may add or delete sets.
+7. If the installed Home Screen PWA has outside-app alerts enabled, each timer
+   change cancels or reschedules its pending Web Push notification.
+8. User may edit completed sets.
+9. User may add or delete sets.
 
 ## Replacing an Exercise
 
