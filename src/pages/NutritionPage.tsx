@@ -52,11 +52,15 @@ import { latestBodyweight } from '@domain/bodyweightProgress'
 import { currentTrendWeight } from '@domain/bodyweightTrend'
 import {
   GOAL_FORMULA_VERSION,
+  GOAL_RATE_RANGES,
   computeGoalPlan,
   estimateGoalDate,
+  goalDirection,
   type GoalActivityLevel,
+  type GoalDirection,
   type GoalPlanInput,
   type GoalSex,
+  weeklyRateFromPercent,
 } from '@domain/goalMacros'
 import { evaluateCalorieUpdate } from '@domain/calorieAdjustment'
 import {
@@ -90,6 +94,7 @@ import {
 } from '@domain/meals'
 import { snapshotFood } from '@domain/snapshots'
 import {
+  formatWeight,
   weightInputToLb,
   weightInputValue,
   weightUnitSuffix,
@@ -135,6 +140,7 @@ type NutritionMode = 'day' | 'foods' | 'targets'
 // returning to the day view.
 type AddedItem = {
   id: number
+  entryId: string
   name: string
   iconName: string
   iconCategory: string | null
@@ -233,6 +239,10 @@ const emptyQuickAddForm = {
   proteinGrams: '',
   carbohydrateGrams: '',
   fatGrams: '',
+}
+
+function isNutritionMode(value: string | null): value is NutritionMode {
+  return value === 'day' || value === 'foods' || value === 'targets'
 }
 
 export function NutritionPage() {
@@ -383,20 +393,24 @@ export function NutritionPage() {
     )
   }, [])
 
-  const appendAddedItem = useCallback((result: FoodResult) => {
-    const display = resultDisplay(result)
-    const iconCategory =
-      result.type === 'external' ? result.food.foodCategory : null
-    setAddedItems((current) => [
-      ...current,
-      {
-        id: ++addedItemIdRef.current,
-        name: display.name,
-        iconName: result.food.name,
-        iconCategory,
-      },
-    ])
-  }, [])
+  const appendAddedItem = useCallback(
+    (result: FoodResult, entry: FoodLogEntry) => {
+      const display = resultDisplay(result)
+      const iconCategory =
+        result.type === 'external' ? result.food.foodCategory : null
+      setAddedItems((current) => [
+        ...current,
+        {
+          id: ++addedItemIdRef.current,
+          entryId: entry.id,
+          name: display.name,
+          iconName: result.food.name,
+          iconCategory,
+        },
+      ])
+    },
+    [],
+  )
 
   // The quick-action "Log food" entry point navigates here with ?logFood=1;
   // open the search subpage and drop the param so a refresh does not reopen it.
@@ -412,6 +426,21 @@ export function NutritionPage() {
     }, 0)
     return () => window.clearTimeout(timeoutId)
   }, [openSearch, searchParams, setSearchParams])
+
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    if (!isNutritionMode(tab)) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setMode(tab)
+      const next = new URLSearchParams(searchParams)
+      next.delete('tab')
+      setSearchParams(next, { replace: true })
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [searchParams, setSearchParams])
 
   useEffect(() => {
     let isCurrent = true
@@ -697,11 +726,11 @@ export function NutritionPage() {
             mealType,
           })
     void action
-      .then(() => {
+      .then((entry) => {
         // Mirror the sheet's behaviour: keep the search subpage open and record
         // the item in the "added" tray so several foods can be added in a pass.
         if (searchOpen) {
-          appendAddedItem(result)
+          appendAddedItem(result, entry)
         }
         setMessage('Food logged.')
         reloadAfterFoodLog()
@@ -785,6 +814,16 @@ export function NutritionPage() {
           onBack={closeSearch}
           onEditFood={(food) => setSheet({ type: 'food', food })}
           onOpenRecipe={startRecipe}
+          onOpenAddedItem={(entryId) => {
+            void foodRepository
+              .getFoodLogEntry(entryId)
+              .then((entry) => {
+                if (entry) {
+                  setSheet({ type: 'entry', entry })
+                }
+              })
+              .catch(() => setMessage('Could not open that food log.'))
+          }}
           onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
           onOpenScanner={() => setSheet({ type: 'scanner' })}
           onSelectResult={(result) => {
@@ -1014,11 +1053,11 @@ export function NutritionPage() {
                 }
               : undefined
           }
-          onSaved={() => {
+          onSaved={(entry) => {
             // Logging from the search subpage keeps the subpage open so several
             // foods can be added in one pass; record the item in the tray.
             if (searchOpen && sheet.type === 'select') {
-              appendAddedItem(sheet.result)
+              appendAddedItem(sheet.result, entry)
             }
             setMessage('Food logged.')
             setSheet(null)
@@ -1211,6 +1250,7 @@ function FoodSearchSubpage({
   onOpenQuickAdd,
   onOpenScanner,
   onOpenRecipe,
+  onOpenAddedItem,
   onSelectResult,
   onAddResult,
   onSearch,
@@ -1231,6 +1271,7 @@ function FoodSearchSubpage({
   onOpenQuickAdd: () => void
   onOpenScanner: () => void
   onOpenRecipe: () => void
+  onOpenAddedItem: (entryId: string) => void
   onSelectResult: (result: FoodSearchResult) => void
   onAddResult: (result: FoodSearchResult) => void
   onSearch: () => void
@@ -1373,17 +1414,20 @@ function FoodSearchSubpage({
           <div className="added-items-tray" aria-label={t('Items added')}>
             <div className="added-items-row">
               {addedItems.map((item) => (
-                <span
+                <button
+                  aria-label={t('Edit {name} serving', { name: item.name })}
                   className="added-item-chip"
                   key={item.id}
+                  onClick={() => onOpenAddedItem(item.entryId)}
                   title={item.name}
+                  type="button"
                 >
                   <FoodIcon
                     name={item.iconName}
                     category={item.iconCategory}
                     size={18}
                   />
-                </span>
+                </button>
               ))}
             </div>
             <button className="added-items-done" type="button" onClick={onBack}>
@@ -1722,7 +1766,7 @@ function QuickAddSheet({
   isOpen: boolean
   localDate: LocalDateString
   onClose: () => void
-  onSaved: () => void
+  onSaved: (entry: FoodLogEntry) => void
 }) {
   const [form, setForm] = useState(emptyQuickAddForm)
   const [mealType, setMealType] = useState<MealType>(() =>
@@ -2471,7 +2515,7 @@ function SelectedFoodSheet({
   onCreateCopy: (initialForm: FoodFormState) => void
   onSelectAlternate: (food: NormalizedFoodResult) => void
   onClose: () => void
-  onSaved: () => void
+  onSaved: (entry: FoodLogEntry) => void
   // When present the sheet adds the chosen food (at the chosen serving) to a
   // recipe instead of logging it to the day.
   onAddToRecipe?: (food: Food, servingMultiplier: number) => void
@@ -2604,7 +2648,7 @@ function SelectedFoodSheet({
           unitKey: selectedOption.key,
           amount: parsedAmount,
         })
-        onSaved()
+        onSaved(entry)
       })
       .catch((caught: unknown) => {
         setError(
@@ -2936,6 +2980,7 @@ function SetGoalSubpage({
 }) {
   const weightUnit = useWeightUnit()
   const unitSuffix = weightUnitSuffix(weightUnit)
+  const [step, setStep] = useState<'basics' | 'rate'>('basics')
   const [form, setForm] = useState<GoalFormState>(() => {
     const prefillWeight = goalCurrentWeight(entries)
     return {
@@ -2958,6 +3003,20 @@ function SetGoalSubpage({
       sex: existingGoal?.sex ?? 'male',
     }
   })
+  const initialDirection = existingGoal?.direction ?? 'maintain'
+  const [direction, setDirection] = useState<GoalDirection>(initialDirection)
+  const [ratePercent, setRatePercent] = useState(() => {
+    if (!existingGoal || existingGoal.direction === 'maintain') {
+      return 0
+    }
+    return Number(
+      (
+        (Math.abs(existingGoal.weeklyRateLb) /
+          existingGoal.calculationWeightLb) *
+        100
+      ).toFixed(2),
+    )
+  })
   const [error, setError] = useState<string | null>(null)
   const parsed = parseGoalForm(form, weightUnit)
 
@@ -2968,13 +3027,42 @@ function SetGoalSubpage({
     setForm((current) => ({ ...current, [field]: value }))
   }
 
-  function calculate() {
+  function continueToRate() {
     if (!parsed.ok) {
       setError(parsed.error)
       return
     }
+    const nextDirection = goalDirection(
+      parsed.value.bodyweightLb,
+      parsed.value.goalWeightLb,
+    )
+    setDirection(nextDirection)
+    setRatePercent(
+      nextDirection === 'maintain'
+        ? 0
+        : GOAL_RATE_RANGES[nextDirection].recommendedPercent,
+    )
+    setError(null)
+    setStep('rate')
+  }
+
+  function calculate() {
+    if (!parsed.ok) {
+      setError(parsed.error)
+      setStep('basics')
+      return
+    }
     const input = parsed.value
-    const plan = computeGoalPlan(input)
+    const selectedRate = weeklyRateFromPercent(
+      direction,
+      input.bodyweightLb,
+      ratePercent,
+    )
+    const plan = computeGoalPlan({
+      ...input,
+      direction,
+      weeklyRateLb: selectedRate,
+    })
     const finish = estimateGoalDate({
       currentWeightLb: input.bodyweightLb,
       goalWeightLb: input.goalWeightLb,
@@ -3010,17 +3098,144 @@ function SetGoalSubpage({
     })()
   }
 
+  if (step === 'rate' && parsed.ok) {
+    const input = parsed.value
+    const selectedRate = weeklyRateFromPercent(
+      direction,
+      input.bodyweightLb,
+      ratePercent,
+    )
+    const previewPlan = computeGoalPlan({
+      ...input,
+      direction,
+      weeklyRateLb: selectedRate,
+    })
+    const finish = estimateGoalDate({
+      currentWeightLb: input.bodyweightLb,
+      goalWeightLb: input.goalWeightLb,
+      weeklyRateLb: selectedRate,
+      from: new Date(),
+    })
+    const rateRange =
+      direction === 'maintain' ? null : GOAL_RATE_RANGES[direction]
+    const markerPosition = rateRange
+      ? ((rateRange.recommendedPercent - rateRange.minPercent) /
+          (rateRange.maxPercent - rateRange.minPercent)) *
+        100
+      : 0
+    const directionLabel = {
+      maintain: 'Maintenance',
+      bulk: 'Bulking',
+      cut: 'Cutting',
+    }[direction]
+
+    return (
+      <Card className="subpage-enter">
+        <div className="set-goal-header">
+          <IconButton
+            aria-label="Back to basic goal information"
+            onClick={() => setStep('basics')}
+          >
+            <ArrowLeft aria-hidden="true" size={20} />
+          </IconButton>
+          <h2 className="set-goal-title">Goal Type: {directionLabel}</h2>
+        </div>
+
+        {rateRange ? (
+          <>
+            <div className="goal-rate-summary" aria-live="polite">
+              <div>
+                <span>Goal end date</span>
+                <strong>
+                  {finish ? format(finish, 'MMM d, yyyy') : 'No estimate'}
+                </strong>
+              </div>
+              <div>
+                <span>Daily calories</span>
+                <strong>{Math.round(previewPlan.targets.calories)} kcal</strong>
+              </div>
+              <div>
+                <span>
+                  {direction === 'cut'
+                    ? 'Weight loss rate'
+                    : 'Weight gain rate'}
+                </span>
+                <strong>
+                  {formatWeight(
+                    Math.abs(selectedRate),
+                    weightUnit,
+                    'bodyweight',
+                  )}
+                  /week ({ratePercent.toFixed(2)}%)
+                </strong>
+              </div>
+            </div>
+            <div className="goal-rate-control">
+              <label htmlFor="goal-weekly-rate">
+                Weekly {direction === 'cut' ? 'loss' : 'gain'} rate
+              </label>
+              <div className="goal-rate-track-labels" aria-hidden="true">
+                <span
+                  className="goal-rate-recommended"
+                  style={{ left: `${markerPosition}%` }}
+                >
+                  Recommended
+                </span>
+              </div>
+              <input
+                aria-describedby="goal-rate-range"
+                id="goal-weekly-rate"
+                max={rateRange.maxPercent}
+                min={rateRange.minPercent}
+                onInput={(event) =>
+                  setRatePercent(Number(event.currentTarget.value))
+                }
+                step={rateRange.stepPercent}
+                type="range"
+                value={ratePercent}
+              />
+              <div className="goal-rate-bounds" id="goal-rate-range">
+                <span>{rateRange.minPercent}% / week</span>
+                <span>{rateRange.maxPercent}% / week</span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="goal-rate-summary" aria-live="polite">
+            <div>
+              <span>Daily calories</span>
+              <strong>{Math.round(previewPlan.targets.calories)} kcal</strong>
+            </div>
+            <div>
+              <span>Goal end date</span>
+              <strong>Ongoing maintenance</strong>
+            </div>
+            <div>
+              <span>Weight change rate</span>
+              <strong>0 {unitSuffix}/week</strong>
+            </div>
+          </div>
+        )}
+
+        {error ? <ValidationMessage message={error} /> : null}
+        <PrimaryButton type="button" onClick={calculate}>
+          Done
+        </PrimaryButton>
+      </Card>
+    )
+  }
+
   return (
-    <Card>
+    <Card className="subpage-enter">
       <div className="set-goal-header">
         <IconButton aria-label="Back to targets" onClick={onBack}>
           <ArrowLeft aria-hidden="true" size={20} />
         </IconButton>
         <h2 className="set-goal-title">Set goal</h2>
       </div>
-      <PrimaryButton disabled={!parsed.ok} type="button" onClick={calculate}>
-        Calculate Macros
-      </PrimaryButton>
+      <p className="muted">
+        Enter your basic information and the weight you want to reach.
+      </p>
       {error ? <ValidationMessage message={error} /> : null}
       <FormField
         id="goal-bodyweight"
@@ -3046,7 +3261,10 @@ function SetGoalSubpage({
           value={form.heightInches}
         />
       </FormField>
-      <FormField id="goal-activity" label="Activity level">
+      <FormField
+        id="goal-activity"
+        label="How active are you outside of exercise?"
+      >
         <select
           className="select-input"
           id="goal-activity"
@@ -3087,6 +3305,13 @@ function SetGoalSubpage({
           <option value="female">Female</option>
         </select>
       </FormField>
+      <PrimaryButton
+        disabled={!parsed.ok}
+        type="button"
+        onClick={continueToRate}
+      >
+        Continue
+      </PrimaryButton>
     </Card>
   )
 }

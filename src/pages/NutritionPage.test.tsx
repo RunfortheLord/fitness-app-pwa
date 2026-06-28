@@ -1,5 +1,6 @@
 import {
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
@@ -179,16 +180,27 @@ describe('NutritionPage', () => {
     ).not.toBeInTheDocument()
     expect(await screen.findByText('1 added · Done')).toBeInTheDocument()
 
+    await user.click(screen.getByRole('button', { name: 'Edit Oats serving' }))
+    const editDialog = await screen.findByRole('dialog', {
+      name: 'Edit food log',
+    })
+    const multiplier = within(editDialog).getByLabelText('Serving multiplier')
+    await user.clear(multiplier)
+    await user.type(multiplier, '2')
+    await user.click(
+      within(editDialog).getByRole('button', { name: 'Save log' }),
+    )
+
     await waitFor(async () => {
       const [entry] = await db.foodLogEntries.toArray()
       expect(entry).toMatchObject({
-        computedCalories: 150,
+        computedCalories: 300,
         foodSnapshot: { foodName: 'Oats', caloriesPerServing: 150 },
       })
     })
 
     await closeFoodSearch(user)
-    expect(await screen.findByText('150 kcal')).toBeInTheDocument()
+    expect(await screen.findByText('300 kcal')).toBeInTheDocument()
   })
 
   it('keeps the active food result sections stable while several foods are logged', async () => {
@@ -233,6 +245,27 @@ describe('NutritionPage', () => {
     await user.type(await openFoodSearch(user), 'oat')
     expect(
       await screen.findByRole('region', { name: 'Recently added' }),
+    ).toBeInTheDocument()
+  })
+
+  it('opens the requested nutrition tab from the route parameter', async () => {
+    renderNutrition('/nutrition?tab=foods')
+
+    expect(await screen.findByText('Food library')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Foods' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+
+    cleanup()
+    renderNutrition('/nutrition?tab=day')
+
+    expect(await screen.findByRole('button', { name: 'Day' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(
+      await screen.findByText('Daily nutrition totals'),
     ).toBeInTheDocument()
   })
 
@@ -287,8 +320,12 @@ describe('NutritionPage', () => {
 
     // Open the Set Goal subpage and confirm the back arrow escapes it.
     await user.click(screen.getByRole('button', { name: 'Set Goal' }))
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: 'Calculate Macros' }),
+      screen.getByRole('button', { name: 'Continue' }).closest('section'),
+    ).toHaveClass('subpage-enter')
+    expect(
+      screen.getByRole('option', { name: 'Heavily active' }),
     ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Back to targets' }))
     expect(
@@ -301,13 +338,46 @@ describe('NutritionPage', () => {
     await user.type(screen.getByLabelText('Height (feet)'), '5')
     await user.type(screen.getByLabelText('Height (inches)'), '10')
     await user.selectOptions(
-      screen.getByLabelText('Activity level'),
+      screen.getByLabelText('How active are you outside of exercise?'),
       'moderately_active',
     )
     await user.type(screen.getByLabelText('Goal weight (lb)'), '170')
     await user.type(screen.getByLabelText('Age'), '30')
     await user.selectOptions(screen.getByLabelText('Sex'), 'male')
-    await user.click(screen.getByRole('button', { name: 'Calculate Macros' }))
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    expect(
+      screen.getByRole('heading', { name: 'Goal Type: Cutting' }),
+    ).toBeInTheDocument()
+    expect(
+      screen
+        .getByRole('heading', { name: 'Goal Type: Cutting' })
+        .closest('section'),
+    ).toHaveClass('subpage-enter')
+    const rateSlider = screen.getByRole('slider', {
+      name: 'Weekly loss rate',
+    })
+    expect(rateSlider).toHaveValue('0.5')
+    expect(screen.getByText('Recommended')).toBeInTheDocument()
+    expect(screen.getByText(/0.9 lb\/week \(0.50%\)/)).toBeInTheDocument()
+    expect(screen.getByText('2313 kcal')).toBeInTheDocument()
+    expect(screen.getByText(/2026$/)).toBeInTheDocument()
+
+    fireEvent.input(rateSlider, { target: { value: '0.75' } })
+    expect(screen.getByText(/1.35 lb\/week \(0.75%\)/)).toBeInTheDocument()
+    expect(screen.getByText('2088 kcal')).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole('button', { name: 'Back to basic goal information' }),
+    )
+    expect(
+      (screen.getByLabelText('Goal weight (lb)') as HTMLInputElement).value,
+    ).toBe('170')
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    fireEvent.input(screen.getByRole('slider', { name: 'Weekly loss rate' }), {
+      target: { value: '0.75' },
+    })
+    await user.click(screen.getByRole('button', { name: 'Done' }))
 
     expect(
       await screen.findByText('Macros calculated and targets saved.'),
@@ -325,7 +395,8 @@ describe('NutritionPage', () => {
       calculationWeightLb: 180,
       formulaVersion: 1,
     })
-    expect(settings?.nutritionTargets.calories).toBe(2313)
+    expect(settings?.nutritionGoal?.weeklyRateLb).toBeCloseTo(-1.35)
+    expect(settings?.nutritionTargets.calories).toBe(2088)
 
     // With no body-weight history a manual update reports insufficient data and
     // does not change calories.
@@ -336,7 +407,7 @@ describe('NutritionPage', () => {
       ),
     ).toBeInTheDocument()
     const after = await db.userSettings.get('settings')
-    expect(after?.nutritionTargets.calories).toBe(2313)
+    expect(after?.nutritionTargets.calories).toBe(2088)
   })
 
   it('closes the Set Goal sub-page with the Escape key', async () => {
@@ -345,15 +416,33 @@ describe('NutritionPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Targets' }))
     await user.click(screen.getByRole('button', { name: 'Set Goal' }))
-    expect(
-      screen.getByRole('button', { name: 'Calculate Macros' }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument()
 
     await user.keyboard('{Escape}')
 
     expect(
       await screen.findByRole('button', { name: 'Save targets' }),
     ).toBeInTheDocument()
+  })
+
+  it('shows maintenance without a rate slider when goal weight matches current weight', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await user.click(screen.getByRole('button', { name: 'Targets' }))
+    await user.click(screen.getByRole('button', { name: 'Set Goal' }))
+    await user.type(screen.getByLabelText('Current body weight (lb)'), '180')
+    await user.type(screen.getByLabelText('Height (feet)'), '5')
+    await user.type(screen.getByLabelText('Height (inches)'), '10')
+    await user.type(screen.getByLabelText('Goal weight (lb)'), '180')
+    await user.type(screen.getByLabelText('Age'), '30')
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    expect(
+      screen.getByRole('heading', { name: 'Goal Type: Maintenance' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('slider')).not.toBeInTheDocument()
+    expect(screen.getByText('Ongoing maintenance')).toBeInTheDocument()
   })
 
   it('shows the calorie equation and keeps Save food at the top of the form', async () => {
@@ -731,7 +820,7 @@ describe('NutritionPage', () => {
   })
 })
 
-function renderNutrition() {
+function renderNutrition(initialEntry = '/nutrition') {
   const router = createMemoryRouter(
     [
       {
@@ -743,7 +832,7 @@ function renderNutrition() {
         ],
       },
     ],
-    { initialEntries: ['/nutrition'] },
+    { initialEntries: [initialEntry] },
   )
 
   render(<RouterProvider router={router} />)

@@ -129,6 +129,11 @@ describe('rest timer completion audio', () => {
 
       await playTimerSoundOnce('bright-bell')
       expect(audioSession.type).toBe('transient')
+
+      for (const listener of audioInstances[0]?.listeners.get('ended') ?? []) {
+        listener(new Event('ended'))
+      }
+      expect(audioSession.type).toBe('auto')
     } finally {
       delete (navigator as Navigator & { audioSession?: unknown }).audioSession
     }

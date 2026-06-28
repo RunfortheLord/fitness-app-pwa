@@ -7,8 +7,13 @@ const mocks = vi.hoisted(() => ({
   completeRestTimer: vi.fn(),
   ensureSettings: vi.fn(),
   getActiveWorkout: vi.fn(),
+  nativeCancel: vi.fn(),
+  nativeSync: vi.fn(),
   playTimerSoundOnce: vi.fn(),
   preloadTimerSound: vi.fn(),
+  usesSystemNotificationTimerSound: vi.fn(),
+  webPushCancel: vi.fn(),
+  webPushSync: vi.fn(),
 }))
 
 vi.mock('@repositories/workoutRepository', () => ({
@@ -30,15 +35,39 @@ vi.mock('@domain/timerSounds', () => ({
   preloadTimerSound: mocks.preloadTimerSound,
 }))
 
+vi.mock('@services/nativeRestTimerNotificationService', () => ({
+  nativeRestTimerNotificationService: {
+    cancel: mocks.nativeCancel,
+    sync: mocks.nativeSync,
+  },
+}))
+
+vi.mock('@services/webPushRestTimerNotificationService', () => ({
+  usesSystemNotificationTimerSound: mocks.usesSystemNotificationTimerSound,
+  webPushRestTimerNotificationService: {
+    cancel: mocks.webPushCancel,
+    sync: mocks.webPushSync,
+  },
+}))
+
 beforeEach(() => {
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-06-27T12:00:00.000Z'))
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    value: 'visible',
+  })
   mocks.ensureSettings.mockResolvedValue({
     timerSoundEnabled: true,
     selectedTimerSoundId: 'bright-bell',
   })
   mocks.completeRestTimer.mockResolvedValue(undefined)
+  mocks.nativeCancel.mockResolvedValue('unavailable')
+  mocks.nativeSync.mockResolvedValue('unavailable')
   mocks.playTimerSoundOnce.mockResolvedValue(undefined)
+  mocks.usesSystemNotificationTimerSound.mockReturnValue(false)
+  mocks.webPushCancel.mockResolvedValue('canceled')
+  mocks.webPushSync.mockResolvedValue('unavailable')
 })
 
 afterEach(() => {
@@ -107,5 +136,85 @@ describe('RestTimerMonitor', () => {
 
     expect(mocks.playTimerSoundOnce).toHaveBeenCalledTimes(1)
     expect(mocks.completeRestTimer).toHaveBeenCalledWith('workout-1')
+  })
+
+  it('does not take over media playback when Web Push owns the audible alert', async () => {
+    mocks.webPushSync.mockResolvedValue('scheduled')
+    mocks.getActiveWorkout.mockResolvedValue({
+      id: 'workout-1',
+      activeRestTimer: {
+        id: 'timer-1',
+        startedAt: '2026-06-27T11:59:00.000Z',
+        durationSeconds: 30,
+        pausedAt: null,
+        accumulatedPausedSeconds: 0,
+        status: 'running',
+      },
+    })
+
+    render(<RestTimerMonitor />)
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(mocks.webPushSync).toHaveBeenCalled()
+    expect(mocks.playTimerSoundOnce).not.toHaveBeenCalled()
+    expect(mocks.completeRestTimer).toHaveBeenCalledWith('workout-1')
+  })
+
+  it('plays bundled timer audio in a visible installed iPhone web app when push is unavailable', async () => {
+    mocks.usesSystemNotificationTimerSound.mockReturnValue(true)
+    mocks.webPushSync.mockResolvedValue('failed')
+    mocks.getActiveWorkout.mockResolvedValue({
+      id: 'workout-1',
+      activeRestTimer: {
+        id: 'timer-1',
+        startedAt: '2026-06-27T11:59:00.000Z',
+        durationSeconds: 30,
+        pausedAt: null,
+        accumulatedPausedSeconds: 0,
+        status: 'running',
+      },
+    })
+
+    render(<RestTimerMonitor />)
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(mocks.playTimerSoundOnce).toHaveBeenCalledWith('bright-bell')
+  })
+
+  it('does not play bundled timer audio in a hidden installed iPhone web app', async () => {
+    mocks.usesSystemNotificationTimerSound.mockReturnValue(true)
+    mocks.webPushSync.mockResolvedValue('failed')
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'hidden',
+    })
+    mocks.getActiveWorkout.mockResolvedValue({
+      id: 'workout-1',
+      activeRestTimer: {
+        id: 'timer-1',
+        startedAt: '2026-06-27T11:59:00.000Z',
+        durationSeconds: 30,
+        pausedAt: null,
+        accumulatedPausedSeconds: 0,
+        status: 'running',
+      },
+    })
+
+    render(<RestTimerMonitor />)
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(mocks.playTimerSoundOnce).not.toHaveBeenCalled()
   })
 })

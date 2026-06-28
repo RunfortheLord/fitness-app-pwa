@@ -10,6 +10,28 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-06-27-guided-goal-setup',
+    date: '2026-06-27',
+    title: 'Guided nutrition goals',
+    items: [
+      'Set Goal now asks for your desired weight and activity first, including a Heavily active option.',
+      'A second step shows Maintenance, Bulking, or Cutting with a recommended weekly-rate marker.',
+      'Adjust the rate to preview your weekly weight change and estimated goal date before saving.',
+    ],
+  },
+  {
+    id: '2026-06-27-history-and-shortcuts',
+    date: '2026-06-27',
+    title: 'Faster logging and clearer history',
+    items: [
+      'Tap the Home bodyweight summary to log weight, and choose any past date with the date picker.',
+      'Tap a recently added food icon while searching to reopen that log and edit its serving.',
+      'Home and History now include daily calorie graphs with historical targets.',
+      'The What’s New back button now returns cleanly to Settings.',
+      'The home-screen app icon has a new fitness-log design.',
+    ],
+  },
+  {
     id: '2026-06-26-kg-units',
     date: '2026-06-26',
     title: 'Pounds or kilograms',

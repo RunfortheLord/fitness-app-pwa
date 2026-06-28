@@ -192,6 +192,7 @@ export function HomePage() {
         />
         <MetricCard
           label="Calories remaining"
+          onClick={() => void navigate('/nutrition?tab=day')}
           value={`${caloriesRemaining}`}
           detail={
             calorieTarget > 0

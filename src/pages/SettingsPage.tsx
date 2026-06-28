@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import {
   Card,
@@ -73,7 +73,8 @@ export function SettingsPage() {
   }, [])
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false)
   const [clearConfirmation, setClearConfirmation] = useState('')
   const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false)
@@ -124,18 +125,27 @@ export function SettingsPage() {
   const { refreshDashboard } = useDashboardContext()
   const visibleCloudBackupInfo =
     authStatus === 'signedIn' && isOnline ? cloudBackupInfo : null
+  const usesWebPushSystemSound =
+    !supportsNativeRestTimerNotifications() &&
+    supportsWebPushRestTimerNotifications()
 
   const requestedSection = searchParams.get('section')
   const isWhatsNewSubpageOpen = whatsNewOpen || requestedSection === 'whats-new'
   const closeWhatsNewSubpage = () => {
+    setWhatsNewOpen(false)
     if (requestedSection === 'whats-new') {
-      setSearchParams({})
+      void navigate('/settings', { replace: true })
       return
     }
-    setWhatsNewOpen(false)
   }
 
-  useSubpageBackGesture(isWhatsNewSubpageOpen, closeWhatsNewSubpage)
+  // The banner deep link already owns a router history entry. Adding the
+  // state-driven subpage entry on top of it makes cleanup navigate back to the
+  // same `section=whats-new` URL and immediately reopen the screen.
+  useSubpageBackGesture(
+    whatsNewOpen && requestedSection !== 'whats-new',
+    closeWhatsNewSubpage,
+  )
 
   useEffect(() => {
     if (requestedSection === 'whats-new') {
@@ -505,7 +515,7 @@ export function SettingsPage() {
             </IconButton>
           }
         />
-        <Card>
+        <Card className="subpage-enter">
           <ChangelogList entries={CHANGELOG} />
         </Card>
       </PageContainer>
@@ -567,52 +577,67 @@ export function SettingsPage() {
         {weightUnitMessage ? (
           <StatusMessage tone="success">{weightUnitMessage}</StatusMessage>
         ) : null}
-        {timerSoundMessage ? (
-          <StatusMessage tone="success">{timerSoundMessage}</StatusMessage>
-        ) : null}
-        <label className="checkbox-row">
-          <input
-            checked={timerSoundEnabled}
-            onChange={(event) =>
-              saveTimerSettings({
-                timerSoundEnabled: event.currentTarget.checked,
-                selectedTimerSoundId,
-              })
-            }
-            type="checkbox"
-          />
-          {t('Timer completion sound')}
-        </label>
-        <FormField
-          id="timer-sound-select"
-          label="Sound selection"
-          helpText="In-app timer sounds briefly mix with other audio. Outside-app alerts use the iPhone notification sound."
-        >
-          <select
-            id="timer-sound-select"
-            onChange={(event) =>
-              saveTimerSettings({
-                timerSoundEnabled,
-                selectedTimerSoundId: event.currentTarget.value,
-              })
-            }
-            value={selectedTimerSoundId}
-          >
-            {TIMER_SOUNDS.map((sound) => (
-              <option key={sound.id} value={sound.id}>
-                {t(sound.name)}
-              </option>
-            ))}
-          </select>
-        </FormField>
-        <div className="button-row">
-          <SecondaryButton
-            type="button"
-            onClick={() => previewTimerSound(selectedTimerSoundId)}
-          >
-            Preview
-          </SecondaryButton>
-        </div>
+        {usesWebPushSystemSound ? (
+          <>
+            <p>
+              <strong>{t('Timer alert sound')}</strong>
+            </p>
+            <p className="muted">
+              {t(
+                'Default iPhone notification sound. Its volume and playback behavior are controlled by iPhone notification settings.',
+              )}
+            </p>
+          </>
+        ) : (
+          <>
+            {timerSoundMessage ? (
+              <StatusMessage tone="success">{timerSoundMessage}</StatusMessage>
+            ) : null}
+            <label className="checkbox-row">
+              <input
+                checked={timerSoundEnabled}
+                onChange={(event) =>
+                  saveTimerSettings({
+                    timerSoundEnabled: event.currentTarget.checked,
+                    selectedTimerSoundId,
+                  })
+                }
+                type="checkbox"
+              />
+              {t('Timer completion sound')}
+            </label>
+            <FormField
+              id="timer-sound-select"
+              label="Sound selection"
+              helpText="In-app timer sounds briefly mix with other audio. Outside-app alerts use the iPhone notification sound."
+            >
+              <select
+                id="timer-sound-select"
+                onChange={(event) =>
+                  saveTimerSettings({
+                    timerSoundEnabled,
+                    selectedTimerSoundId: event.currentTarget.value,
+                  })
+                }
+                value={selectedTimerSoundId}
+              >
+                {TIMER_SOUNDS.map((sound) => (
+                  <option key={sound.id} value={sound.id}>
+                    {t(sound.name)}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+            <div className="button-row">
+              <SecondaryButton
+                type="button"
+                onClick={() => previewTimerSound(selectedTimerSoundId)}
+              >
+                Preview
+              </SecondaryButton>
+            </div>
+          </>
+        )}
         {supportsNativeRestTimerNotifications() ? (
           <>
             <p className="muted">

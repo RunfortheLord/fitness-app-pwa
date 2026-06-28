@@ -15,6 +15,7 @@ export type SaveBodyweightInput = {
 
 export type UpdateBodyweightInput = {
   id: string
+  localDate?: LocalDateString
   weight: number
   notes?: string
 }
@@ -70,6 +71,7 @@ export function createBodyweightRepository(
 
       const entry: BodyweightEntry = {
         ...existing,
+        localDate: input.localDate ?? existing.localDate,
         weight: input.weight,
         notes: input.notes ?? existing.notes,
         updatedAt: new Date().toISOString(),

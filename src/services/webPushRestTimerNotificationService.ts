@@ -52,6 +52,10 @@ export function isInstalledWebApp() {
   )
 }
 
+export function usesSystemNotificationTimerSound() {
+  return isIos() && isInstalledWebApp()
+}
+
 export const webPushRestTimerNotificationService = {
   async requestPermission(): Promise<WebPushRestTimerNotificationStatus> {
     if (!supportsWebPushRestTimerNotifications()) {

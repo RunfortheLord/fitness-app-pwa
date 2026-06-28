@@ -9,7 +9,10 @@ import {
 import { settingsRepository } from '@repositories/settingsRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
 import { nativeRestTimerNotificationService } from '@services/nativeRestTimerNotificationService'
-import { webPushRestTimerNotificationService } from '@services/webPushRestTimerNotificationService'
+import {
+  usesSystemNotificationTimerSound,
+  webPushRestTimerNotificationService,
+} from '@services/webPushRestTimerNotificationService'
 
 const REST_TIMER_POLL_MILLISECONDS = 500
 
@@ -30,6 +33,7 @@ export function RestTimerMonitor() {
   const alertedTimerKeys = useRef(new Set<string>())
   const completingTimerKeys = useRef(new Set<string>())
   const nativeTimerSignature = useRef<string | null>(null)
+  const outsideAlertScheduled = useRef(false)
 
   useEffect(() => {
     let isCurrent = true
@@ -76,7 +80,13 @@ export function RestTimerMonitor() {
             { soundEnabled: timerSound.current.enabled },
           )
           if (nativeStatus === 'unavailable') {
-            await webPushRestTimerNotificationService.sync(timer ?? null)
+            const webPushStatus =
+              await webPushRestTimerNotificationService.sync(timer ?? null)
+            outsideAlertScheduled.current =
+              webPushStatus === 'scheduled' || webPushStatus === 'expired'
+          } else {
+            outsideAlertScheduled.current =
+              nativeStatus === 'scheduled' || nativeStatus === 'expired'
           }
           nativeTimerSignature.current = nextNativeTimerSignature
         } catch {
@@ -90,7 +100,10 @@ export function RestTimerMonitor() {
       const timerKey = `${timer.id}:${timer.startedAt}`
       if (!alertedTimerKeys.current.has(timerKey)) {
         alertedTimerKeys.current.add(timerKey)
-        announceRestComplete(timerSound.current)
+        announceRestComplete(
+          timerSound.current,
+          shouldPlayInAppTimerSound(outsideAlertScheduled.current),
+        )
       }
       if (completingTimerKeys.current.has(timerKey)) {
         return
@@ -137,16 +150,26 @@ export function RestTimerMonitor() {
   return null
 }
 
-function announceRestComplete(timerSound: TimerSoundSettings) {
+function announceRestComplete(
+  timerSound: TimerSoundSettings,
+  playInAppSound: boolean,
+) {
   if ('vibrate' in navigator) {
     navigator.vibrate?.(180)
   }
-  if (timerSound.enabled) {
+  if (timerSound.enabled && playInAppSound) {
     void playTimerSoundOnce(timerSound.soundId).catch(() => {
       // Visual completion remains authoritative when browser audio is blocked.
     })
   }
-  if ('Notification' in window && Notification.permission === 'granted') {
-    new Notification('Rest timer complete')
+}
+
+function shouldPlayInAppTimerSound(outsideAlertScheduled: boolean) {
+  if (outsideAlertScheduled) {
+    return false
   }
+  if (!usesSystemNotificationTimerSound()) {
+    return true
+  }
+  return document.visibilityState === 'visible'
 }

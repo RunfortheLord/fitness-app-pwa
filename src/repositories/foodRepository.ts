@@ -654,6 +654,10 @@ export function createFoodRepository(
       return database.foodLogEntries.where({ localDate }).sortBy('createdAt')
     },
 
+    getFoodLogEntry(id: string) {
+      return database.foodLogEntries.get(id)
+    },
+
     listRecentFoodLogs(limit = 5) {
       return database.foodLogEntries
         .orderBy('createdAt')

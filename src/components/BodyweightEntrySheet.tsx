@@ -12,7 +12,7 @@ import {
   SecondaryButton,
 } from '@components/ui'
 import { useLanguage } from '@components/languageContextValue'
-import { type LocalDateString } from '@domain/dates'
+import { formatLocalDate, type LocalDateString } from '@domain/dates'
 import {
   weightInputToLb,
   weightInputValue,
@@ -37,6 +37,7 @@ export function BodyweightEntrySheet({
 }: BodyweightEntrySheetProps) {
   const { t } = useLanguage()
   const inputId = useId()
+  const dateInputId = useId()
   const [error, setError] = useState('')
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
   const { refreshDashboard } = useDashboardContext()
@@ -63,6 +64,11 @@ export function BodyweightEntrySheet({
 
     const formData = new FormData(event.currentTarget)
     const weight = String(formData.get('weight') ?? '')
+    const selectedDate = String(formData.get('localDate') ?? '')
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) {
+      setError('Choose a valid date.')
+      return
+    }
     const parsed = Number(weight)
     if (!Number.isFinite(parsed) || parsed <= 0) {
       setError('Enter a positive bodyweight.')
@@ -81,11 +87,12 @@ export function BodyweightEntrySheet({
       if (existingEntry) {
         await bodyweightRepository.updateBodyweight({
           id: existingEntry.id,
+          localDate: selectedDate as LocalDateString,
           weight: weightLb,
         })
       } else {
         await bodyweightRepository.saveBodyweight({
-          localDate,
+          localDate: selectedDate as LocalDateString,
           weight: weightLb,
         })
       }
@@ -128,7 +135,18 @@ export function BodyweightEntrySheet({
     <>
       <BottomSheet isOpen={isOpen} onClose={onClose} title="Log bodyweight">
         <form onSubmit={saveBodyweight}>
-          <p className="muted sheet-context">{localDate}</p>
+          <FormField id={dateInputId} label="Date">
+            <input
+              className="bodyweight-date-input"
+              defaultValue={existingEntry?.localDate ?? localDate}
+              id={dateInputId}
+              key={`${existingEntry?.id ?? `${localDate}-new`}-date`}
+              max={formatLocalDate(new Date())}
+              name="localDate"
+              onChange={() => setError('')}
+              type="date"
+            />
+          </FormField>
           <FormField
             error={error}
             helpText={

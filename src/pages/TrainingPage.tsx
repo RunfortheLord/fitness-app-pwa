@@ -1272,7 +1272,7 @@ function ProgramPreviewPage({
   }, [template.id])
 
   return (
-    <Card>
+    <Card className="subpage-enter">
       <div className="set-goal-header">
         <IconButton aria-label="Back to browse programs" onClick={onBack}>
           <ArrowLeft aria-hidden="true" size={20} />

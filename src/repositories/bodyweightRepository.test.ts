@@ -53,6 +53,7 @@ describe('bodyweightRepository', () => {
 
     await repository.updateBodyweight({
       id: first.id,
+      localDate: '2026-06-17',
       weight: 189.5,
       notes: 'corrected',
     })
@@ -61,6 +62,7 @@ describe('bodyweightRepository', () => {
     await expect(
       repository.getBodyweightEntry(first.id),
     ).resolves.toMatchObject({
+      localDate: '2026-06-17',
       weight: 189.5,
       notes: 'corrected',
     })

@@ -22,6 +22,31 @@ export const PROTEIN_GRAMS_PER_LB = 0.7
 export const CUT_WEEKLY_RATE_FRACTION = 0.005
 export const BULK_WEEKLY_RATE_FRACTION = 0.0025
 
+export type GoalRateRange = {
+  minPercent: number
+  maxPercent: number
+  recommendedPercent: number
+  stepPercent: number
+}
+
+export const GOAL_RATE_RANGES: Record<
+  Exclude<GoalDirection, 'maintain'>,
+  GoalRateRange
+> = {
+  cut: {
+    minPercent: 0.25,
+    maxPercent: 1,
+    recommendedPercent: CUT_WEEKLY_RATE_FRACTION * 100,
+    stepPercent: 0.05,
+  },
+  bulk: {
+    minPercent: 0.1,
+    maxPercent: 0.5,
+    recommendedPercent: BULK_WEEKLY_RATE_FRACTION * 100,
+    stepPercent: 0.05,
+  },
+}
+
 // Share of goal calories allocated to fat; carbohydrates take the remainder.
 export const FAT_CALORIE_SHARE = 0.25
 
@@ -85,6 +110,18 @@ export function weeklyRateLb(
   return 0
 }
 
+export function weeklyRateFromPercent(
+  direction: GoalDirection,
+  bodyweightLb: number,
+  percentPerWeek: number,
+): number {
+  if (direction === 'maintain') {
+    return 0
+  }
+  const magnitude = bodyweightLb * (percentPerWeek / 100)
+  return direction === 'cut' ? -magnitude : magnitude
+}
+
 /**
  * Allocates calories into macro grams: protein from bodyweight, fat from a fixed
  * share of calories (protected against pushing carbs negative), and carbs as the
@@ -126,6 +163,8 @@ export type GoalPlanInput = {
   ageYears: number
   activityLevel: GoalActivityLevel
   goalWeightLb: number
+  direction?: GoalDirection
+  weeklyRateLb?: number
 }
 
 export type GoalPlan = {
@@ -151,8 +190,10 @@ export function computeGoalPlan(input: GoalPlanInput): GoalPlan {
     ageYears: input.ageYears,
   })
   const maintenanceCalories = bmr * activityMultiplier(input.activityLevel)
-  const direction = goalDirection(input.bodyweightLb, input.goalWeightLb)
-  const rateLb = weeklyRateLb(direction, input.bodyweightLb)
+  const direction =
+    input.direction ?? goalDirection(input.bodyweightLb, input.goalWeightLb)
+  const rateLb =
+    input.weeklyRateLb ?? weeklyRateLb(direction, input.bodyweightLb)
   const dailyDelta = (rateLb * CALORIES_PER_POUND) / 7
   const goalCalories = Math.max(
     MIN_GOAL_CALORIES,

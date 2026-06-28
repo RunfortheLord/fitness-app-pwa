@@ -82,6 +82,12 @@
 ### Nutrition
 
 - Users must be able to set calorie and macro targets manually.
+- Set Goal must collect current bodyweight, desired weight, height, age, sex,
+  and activity level (including a heavily active option) before showing a
+  second step. The desired weight determines Maintenance, Bulking, or Cutting.
+  Bulking and Cutting show an adjustable weekly-rate slider, initialized at a
+  visibly marked recommended rate, with live rate and estimated end-date
+  feedback. Done saves the calculated targets and returns to Targets.
 - Users must be able to create, search, edit, and archive or delete custom foods.
 - A custom food must include name, serving quantity, serving unit, calories per
   serving, and optional protein, carbohydrate, and fat. Blank optional macros

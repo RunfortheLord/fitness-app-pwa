@@ -69,14 +69,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     },
     async cancelForSubscription(subscription) {
       const label = subscriptionLabel(subscription.endpoint)
-      let canceled: number
-      do {
-        const result = await qstash.messages.cancel({
-          filter: { label },
-          count: 100,
-        })
-        canceled = result.cancelled
-      } while (canceled > 0)
+      await qstash.messages.cancel({
+        filter: { label },
+        count: 100,
+      })
     },
     async publish({ body, delaySeconds }) {
       const label = subscriptionLabel(body.subscription.endpoint)

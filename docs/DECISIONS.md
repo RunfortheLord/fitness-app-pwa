@@ -21,10 +21,24 @@
   device subscription before scheduling a replacement. Delivery retries are
   disabled and repeated pushes use a non-renotifying notification tag so one
   timer completion produces one alert.
+- QStash cancellation is requested once per mutation. Cancellation completion
+  is asynchronous, so repeatedly canceling until the API reports zero can keep
+  a Vercel request open, cause the client to retry synchronization, and cancel
+  the newly scheduled replacement.
 - Starting a timer does not play muted media to prime browser audio because that
   interrupts Spotify on iPhone. Foreground completion uses a transient audio
   session so iOS may mix or briefly duck other audio instead of taking over the
   media session.
+- When a native or Web Push alert is scheduled, timer completion never starts
+  HTML media. The system notification is the sole audible alert, and any
+  manually previewed media session is reset to `auto` when playback ends or
+  fails. This avoids retaining ownership of Spotify's audio session; web code
+  cannot directly restart another app.
+- Installed iPhone web apps may use bundled HTML timer audio only as a visible
+  foreground fallback when no outside-app alert is scheduled. This lets a timer
+  started on the live workout page still alert after the user navigates to
+  another in-app screen. It remains subject to iOS Silent Mode and browser audio
+  policy.
 
 ## 2026-06-27: Native iOS Wrapper And Rest-Timer Notifications
 
@@ -86,14 +100,26 @@
 - New implementations are surfaced in-app via a versioned changelog ("What's new"),
   shown once after an update and listed on the Settings page.
 
+## 2026-06-27: Two-Step Nutrition Goal Setup
+
+- Set Goal uses two steps. Basic information and desired weight come first;
+  desired weight then determines Maintenance, Bulking, or Cutting on the rate
+  step so users cannot create a goal type that conflicts with their target.
+- Cutting supports 0.25%–1% of current bodyweight per week and defaults to the
+  fixed 0.5% recommendation. Bulking supports 0.1%–0.5% and defaults to the
+  fixed 0.25% recommendation. Maintenance has no rate slider.
+- The recommended label is a fixed track marker, not a moving label attached to
+  the selected value. Rate and estimated finish date update live, and the
+  selected canonical pounds-per-week rate is stored with the nutrition goal.
+
 ## 2026-06-23: Custom Nutrition Goal Workflow
 
 - The Set Goal subpage collects current bodyweight, height (feet + inches),
   activity level, goal weight, age, and sex. Maintenance calories use the
   Mifflin–St Jeor BMR times an activity multiplier; the goal direction is derived
   from goal weight minus current weight.
-- Weekly rate is 0.5% of bodyweight per week for a cut and 0.25% for a bulk,
-  converted to a daily calorie delta at 3500 kcal per pound. Protein is 0.7 g per
+- The default weekly rate is 0.5% of bodyweight per week for a cut and 0.25% for
+  a bulk, converted to a daily calorie delta at 3500 kcal per pound. Protein is 0.7 g per
   pound of calculation weight, fat is ~25% of goal calories (protected so carbs
   never go negative), and carbs take the reconciled remainder. A
   `GOAL_FORMULA_VERSION` is stored with the goal for reproducibility.
@@ -203,6 +229,17 @@
   estimates can be misleading for this app's first strength-progress view.
 
 ## Architecture and Scope Decisions
+
+## 2026-06-27: Logging Shortcuts and App Icon
+
+- The Home bodyweight metric is a native button that opens the existing
+  bodyweight sheet. The sheet uses the platform date input so iPhone presents
+  its native scrolling date control; existing entries may also be moved to a
+  corrected local date.
+- Added-food search chips retain the created food-log ID and reopen the normal
+  edit-log sheet rather than creating a second log.
+- What’s New close actions clear both URL query state and local subpage state.
+- PWA and native iOS icon assets share the new purple fitness-log mark.
 
 ## 2026-06-27: Daily Calorie History Graph
 

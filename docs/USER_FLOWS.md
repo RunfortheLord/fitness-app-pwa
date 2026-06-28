@@ -23,6 +23,18 @@
 7. App stores the reusable food with created and updated timestamps.
 8. Food appears in search and recent foods after use.
 
+## Setting a Nutrition Goal
+
+1. User opens Nutrition, chooses Targets, then Set Goal.
+2. User enters current and desired weight, height, age, sex, and activity level.
+3. User continues to a second step showing the goal type derived from the
+   desired weight.
+4. For Cutting or Bulking, the app starts the weekly-rate slider at its fixed
+   Recommended marker and updates the displayed rate and end date as it moves.
+5. User chooses Done.
+6. App saves the goal and calculated calorie/macro targets and returns to
+   Targets.
+
 ## Logging Food
 
 1. User opens Nutrition for the selected local date.

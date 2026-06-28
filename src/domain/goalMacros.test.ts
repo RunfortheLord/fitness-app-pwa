@@ -4,9 +4,11 @@ import {
   computeGoalPlan,
   computeMacroTargets,
   estimateGoalDate,
+  GOAL_RATE_RANGES,
   goalDirection,
   mifflinStJeorBmr,
   weeklyRateLb,
+  weeklyRateFromPercent,
 } from './goalMacros'
 
 describe('goalMacros', () => {
@@ -63,6 +65,38 @@ describe('goalMacros', () => {
     expect(bulk.direction).toBe('bulk')
     expect(bulk.weeklyRateLb).toBeCloseTo(0.35, 5)
     expect(bulk.dailyCalorieDelta).toBe(175)
+  })
+
+  it('exposes safe adjustable ranges and computes a selected weekly rate', () => {
+    expect(GOAL_RATE_RANGES.cut).toEqual({
+      minPercent: 0.25,
+      maxPercent: 1,
+      recommendedPercent: 0.5,
+      stepPercent: 0.05,
+    })
+    expect(GOAL_RATE_RANGES.bulk.recommendedPercent).toBe(0.25)
+    expect(weeklyRateFromPercent('cut', 180, 0.75)).toBeCloseTo(-1.35, 5)
+    expect(weeklyRateFromPercent('bulk', 180, 0.4)).toBeCloseTo(0.72, 5)
+    expect(weeklyRateFromPercent('maintain', 180, 0.5)).toBe(0)
+  })
+
+  it('uses an explicitly selected direction and weekly rate', () => {
+    const plan = computeGoalPlan({
+      sex: 'male',
+      bodyweightLb: 180,
+      heightFeet: 5,
+      heightInches: 10,
+      ageYears: 30,
+      activityLevel: 'moderately_active',
+      goalWeightLb: 170,
+      direction: 'cut',
+      weeklyRateLb: -1.35,
+    })
+
+    expect(plan.direction).toBe('cut')
+    expect(plan.weeklyRateLb).toBe(-1.35)
+    expect(plan.dailyCalorieDelta).toBe(-675)
+    expect(plan.goalCalories).toBe(2088)
   })
 
   it('never produces negative macros or sub-floor calories', () => {

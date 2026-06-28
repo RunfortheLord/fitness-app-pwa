@@ -1,5 +1,6 @@
 import {
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
@@ -12,8 +13,10 @@ import { vi } from 'vitest'
 
 import { App } from '@app/App'
 import { db } from '@db/database'
+import { formatLocalDate } from '@domain/dates'
 import { bodyweightRepository } from '@repositories/bodyweightRepository'
 import { HomePage } from '@pages/HomePage'
+import { NutritionPage } from '@pages/NutritionPage'
 import { createProgramRepository } from '@repositories/programRepository'
 import { createWorkoutRepository } from '@repositories/workoutRepository'
 import { initializeAppData } from '@services/appInitializationService'
@@ -37,6 +40,24 @@ function renderHome() {
         path: '/',
         element: <App />,
         children: [{ index: true, element: <HomePage /> }],
+      },
+    ],
+    { initialEntries: ['/'] },
+  )
+
+  render(<RouterProvider router={router} />)
+}
+
+function renderHomeWithNutritionRoute() {
+  const router = createMemoryRouter(
+    [
+      {
+        path: '/',
+        element: <App />,
+        children: [
+          { index: true, element: <HomePage /> },
+          { path: 'nutrition', element: <NutritionPage /> },
+        ],
       },
     ],
     { initialEntries: ['/'] },
@@ -88,6 +109,24 @@ describe('HomePage', () => {
     expect(bars).toHaveLength(7)
     expect(Number(bars[0].getAttribute('width'))).toBeLessThan(100 / 7)
     expect(chart.querySelector('polyline.calorie-target-line')).not.toBeNull()
+  })
+
+  it('opens the nutrition day tab from the calories remaining card', async () => {
+    const user = userEvent.setup()
+    renderHomeWithNutritionRoute()
+    await waitForDashboardReady()
+
+    await user.click(
+      screen.getByRole('button', { name: 'Open calories remaining' }),
+    )
+
+    expect(await screen.findByRole('button', { name: 'Day' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(
+      await screen.findByText('Daily nutrition totals'),
+    ).toBeInTheDocument()
   })
 
   it('waits for initial dashboard initialization before stable empty-state assertions', async () => {
@@ -242,6 +281,32 @@ describe('HomePage', () => {
     expect(
       await screen.findByRole('dialog', { name: 'Log bodyweight' }),
     ).toBeInTheDocument()
+  })
+
+  it('opens the bodyweight card and logs a weight for a past date', async () => {
+    const user = userEvent.setup()
+    renderHome()
+    await waitForDashboardReady()
+
+    await user.click(
+      screen.getByRole('button', { name: 'Open bodyweight log' }),
+    )
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Log bodyweight',
+    })
+    const dateInput = within(dialog).getByLabelText('Date')
+    expect(dateInput).toHaveClass('bodyweight-date-input')
+    expect(dateInput).toHaveValue(formatLocalDate(new Date()))
+    fireEvent.change(dateInput, { target: { value: '2026-01-15' } })
+    await user.type(within(dialog).getByLabelText('Bodyweight'), '180')
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+    await expect(db.bodyweightEntries.toArray()).resolves.toEqual([
+      expect.objectContaining({
+        localDate: '2026-01-15',
+        weight: 180,
+      }),
+    ])
   })
 
   it('keeps entries scoped to the selected local date', async () => {

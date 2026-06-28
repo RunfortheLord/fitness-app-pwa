@@ -51,6 +51,9 @@ const spanishTranslations: Record<string, string> = {
   'Switches every weight in the app, including past history.':
     'Cambia todos los pesos de la aplicación, incluido el historial.',
   'Timer completion sound': 'Sonido al terminar el temporizador',
+  'Timer alert sound': 'Sonido de alerta del temporizador',
+  'Default iPhone notification sound. Its volume and playback behavior are controlled by iPhone notification settings.':
+    'Sonido de notificación predeterminado del iPhone. El volumen y la reproducción se controlan desde los ajustes de notificaciones del iPhone.',
   'Sound selection': 'Selección de sonido',
   'In-app timer sounds briefly mix with other audio. Outside-app alerts use the iPhone notification sound.':
     'Los sonidos del temporizador dentro de la aplicación se mezclan brevemente con otro audio. Las alertas fuera de la aplicación usan el sonido de notificación del iPhone.',
@@ -156,6 +159,8 @@ const spanishTranslations: Record<string, string> = {
   New: 'Nuevo',
   "See what's new": 'Ver novedades',
   "Dismiss what's new": 'Descartar novedades',
+  'Open bodyweight log': 'Abrir registro de peso corporal',
+  'Edit {name} serving': 'Editar porción de {name}',
   Active: 'Activo',
   Workout: 'Entrenamiento',
   'Tap to Resume': 'Toca para reanudar',

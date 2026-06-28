@@ -9,14 +9,6 @@ self.addEventListener('notificationclick', (event) => {
 })
 
 async function handleTimerPush(event) {
-  const windows = await self.clients.matchAll({
-    includeUncontrolled: true,
-    type: 'window',
-  })
-  if (windows.some((client) => client.visibilityState === 'visible')) {
-    return
-  }
-
   let payload = {}
   try {
     payload = event.data?.json() || {}

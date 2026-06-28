@@ -70,19 +70,35 @@ export function Card({ children, className = '', title, ...props }: CardProps) {
 
 type MetricCardProps = {
   label: string
+  onClick?: () => void
   value: string
   detail?: string
 }
 
-export function MetricCard({ label, value, detail }: MetricCardProps) {
+export function MetricCard({ label, onClick, value, detail }: MetricCardProps) {
   const { t } = useLanguage()
-  return (
-    <Card className="metric-card">
+  const content = (
+    <>
       <p className="metric-label">{t(label)}</p>
       <p className="metric-value">{value}</p>
       {detail ? <p className="muted">{t(detail)}</p> : null}
-    </Card>
+    </>
   )
+
+  if (onClick) {
+    return (
+      <button
+        aria-label={t(`Open ${label.toLowerCase()}`)}
+        className="card metric-card metric-card-button"
+        onClick={onClick}
+        type="button"
+      >
+        {content}
+      </button>
+    )
+  }
+
+  return <Card className="metric-card">{content}</Card>
 }
 
 type SectionHeaderProps = {

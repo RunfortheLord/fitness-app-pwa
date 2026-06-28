@@ -671,6 +671,11 @@ describe('TrainingPage', () => {
       }),
     ).toBeInTheDocument()
     expect(await screen.findByText('Day A')).toBeInTheDocument()
+    expect(
+      screen
+        .getByRole('button', { name: 'Back to browse programs' })
+        .closest('section'),
+    ).toHaveClass('subpage-enter')
     expect(screen.getByText('Barbell Back Squat')).toBeInTheDocument()
 
     await user.click(

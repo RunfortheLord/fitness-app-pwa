@@ -86,6 +86,42 @@ test('bottom navigation has exactly five controls and no History tab', async ({
   await expect(nav.locator('a,button')).toHaveCount(5)
 })
 
+test('sets a weight goal through the recommended-rate step', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/nutrition')
+
+  await page.getByRole('button', { name: 'Targets' }).click()
+  await page.getByRole('button', { name: 'Set Goal' }).click()
+  await page.getByLabel('Current body weight (lb)').fill('180')
+  await page.getByLabel('Height (feet)').fill('5')
+  await page.getByLabel('Height (inches)').fill('10')
+  await page
+    .getByLabel('How active are you outside of exercise?')
+    .selectOption('heavily_active')
+  await page.getByLabel('Goal weight (lb)').fill('170')
+  await page.getByLabel('Age').fill('30')
+  await page.getByRole('button', { name: 'Continue' }).click()
+
+  await expect(
+    page.getByRole('heading', { name: 'Goal Type: Cutting' }),
+  ).toBeVisible()
+  await expect(page.getByText('Recommended')).toBeVisible()
+  await expect(
+    page.getByRole('slider', { name: 'Weekly loss rate' }),
+  ).toHaveValue('0.5')
+  await expect(page.getByText(/0.9 lb\/week \(0.50%\)/)).toBeVisible()
+
+  await page.getByRole('button', { name: 'Done' }).click()
+  await expect(
+    page.getByText('Macros calculated and targets saved.'),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Update Calories' }),
+  ).toBeVisible()
+})
+
 test('quick action sheet traps focus and closes with Escape', async ({
   browserName,
   page,
@@ -290,10 +326,11 @@ test('creates, logs, edits, deletes, and persists nutrition entries', async ({
 
   await page.getByRole('button', { name: 'Search foods' }).click()
   await page.getByRole('searchbox', { name: 'Search foods' }).fill('e2e')
-  await page.getByRole('button', { name: 'Select E2E Rice' }).click()
-  await page.getByRole('textbox', { name: 'Serving amount' }).fill('1.5')
+  await page.getByRole('button', { name: 'Add E2E Rice' }).click()
+  await page.getByRole('button', { name: 'Edit E2E Rice serving' }).click()
+  await page.getByRole('textbox', { name: 'Serving multiplier' }).fill('1.5')
   await expect(page.getByText(/Preview: 300 kcal/)).toBeVisible()
-  await page.getByRole('button', { name: 'Log food', exact: true }).click()
+  await page.getByRole('button', { name: 'Save log' }).click()
   // The food logs into the day view behind the search subpage; return to it.
   await page.getByRole('button', { name: 'Back to nutrition' }).click()
   await expect(
@@ -394,6 +431,37 @@ test('logs, edits, deletes, switches dates, and persists bodyweight after reload
   await expect(
     bodyweightCard.locator('.metric-value-small', { hasText: 'No entry' }),
   ).toBeVisible()
+})
+
+test('opens bodyweight logging from its Home card and accepts a past date', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+
+  await page.getByRole('button', { name: 'Open bodyweight log' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Log bodyweight' })
+  await dialog.getByLabel('Date').fill('2026-01-15')
+  await dialog.getByRole('textbox', { name: 'Bodyweight' }).fill('180')
+  await dialog.getByRole('button', { name: 'Save' }).click()
+
+  await expect(page.getByText('Current from 2026-01-15')).toBeVisible()
+})
+
+test('exits the What’s New deep link back to usable Settings', async ({
+  page,
+}) => {
+  await page.goto('/')
+
+  await page.getByRole('link', { name: "See what's new" }).click()
+  await expect(page).toHaveURL(/\/settings\?section=whats-new/)
+  await page.getByRole('button', { name: 'Back to settings' }).click()
+
+  await expect(page).toHaveURL(/\/settings$/)
+  await expect(page.getByRole('heading', { name: 'Preferences' })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Back to settings' }),
+  ).toHaveCount(0)
 })
 
 test('shows bodyweight progress graph with range controls and tap details', async ({

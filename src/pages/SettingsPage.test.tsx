@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -11,6 +17,7 @@ import { initializeAppData } from '@services/appInitializationService'
 import { backupService } from '@services/backupService'
 import { cloudSyncService } from '@services/cloudSyncService'
 import * as nativeTimerNotifications from '@services/nativeRestTimerNotificationService'
+import * as webPushTimerNotifications from '@services/webPushRestTimerNotificationService'
 import { seedFood } from '@test/seedFactories'
 
 const authHookMocks = vi.hoisted(() => ({
@@ -67,6 +74,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  cleanup()
   vi.restoreAllMocks()
   await db.delete()
 })
@@ -88,6 +96,7 @@ function renderSettings(initialEntry = '/settings') {
 
 describe('SettingsPage', () => {
   it('scrolls to the What’s new section when deep-linked from the banner', async () => {
+    const user = userEvent.setup()
     renderSettings('/settings?section=whats-new')
 
     expect(
@@ -96,7 +105,21 @@ describe('SettingsPage', () => {
     expect(
       screen.getByRole('button', { name: 'Back to settings' }),
     ).toBeInTheDocument()
+    expect(
+      screen
+        .getByText('Faster, smarter food logging')
+        .closest('.subpage-enter'),
+    ).not.toBeNull()
     expect(screen.getByText('Faster, smarter food logging')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Back to settings' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Preferences' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Back to settings' }),
+    ).not.toBeInTheDocument()
   })
 
   it('shows settings metadata, local-only explanation, and data actions', async () => {
@@ -135,6 +158,33 @@ describe('SettingsPage', () => {
     expect(screen.queryByText('Nutrition targets')).not.toBeInTheDocument()
     expect(screen.queryByText('Integrations')).not.toBeInTheDocument()
     expect(screen.queryByText(/USDA FoodData Central/)).not.toBeInTheDocument()
+  })
+
+  it('uses the default iPhone alert instead of bundled sounds for Web Push', async () => {
+    vi.spyOn(
+      nativeTimerNotifications,
+      'supportsNativeRestTimerNotifications',
+    ).mockReturnValue(false)
+    vi.spyOn(
+      webPushTimerNotifications,
+      'supportsWebPushRestTimerNotifications',
+    ).mockReturnValue(true)
+    vi.spyOn(webPushTimerNotifications, 'isInstalledWebApp').mockReturnValue(
+      true,
+    )
+
+    renderSettings()
+
+    expect(await screen.findByText('Timer alert sound')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Default iPhone notification sound. Its volume and playback behavior are controlled by iPhone notification settings.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Sound selection')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Preview' }),
+    ).not.toBeInTheDocument()
   })
 
   it('explains iPhone audio controls when a preview cannot play', async () => {
@@ -219,10 +269,10 @@ describe('SettingsPage', () => {
     const user = userEvent.setup()
     renderSettings()
 
-    expect(await screen.findByText('Pounds or kilograms')).toBeInTheDocument()
     expect(
-      screen.queryByText('Faster, smarter food logging'),
-    ).not.toBeInTheDocument()
+      await screen.findByText('Guided nutrition goals'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Pounds or kilograms')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Show all' }))
 

@@ -69,6 +69,9 @@
 - No foods logged: show Log Food quick action.
 - No bodyweight: show Log Bodyweight action and explain that a second entry is
   needed before trend change is shown.
+- Tapping the compact Home bodyweight summary opens bodyweight logging.
+- Bodyweight logging includes a native date picker, defaults to the selected
+  date (today on normal entry), and supports past dates.
 - No active program: show Create Program and Activate Program actions.
 - No workout history: show Start Workout after program setup or Empty Workout if supported later.
 
@@ -94,6 +97,20 @@
 - Recent foods list in the Foods tab when no search is active.
 - Logged foods grouped for the selected date.
 - Create Food action reachable from header, empty state, and Add sheet.
+
+### Set Goal
+
+- Step one collects current and desired weight, height, age, sex, and activity
+  outside exercise. Activity choices include Sedentary, Lightly active,
+  Moderately active, and Heavily active.
+- Step two is headed `Goal Type:` and derives Maintenance, Bulking, or Cutting
+  from desired weight compared with current weight.
+- Cutting uses a 0.25% to 1% bodyweight-per-week slider starting at the marked
+  0.5% recommendation. Bulking uses 0.1% to 0.5%, starting at the marked 0.25%
+  recommendation. The recommendation marker stays fixed while the thumb moves.
+- The selected weekly rate and estimated goal date update live. Maintenance
+  shows an ongoing goal with zero weekly change and no slider.
+- Done saves the goal and calorie/macro targets, then returns to Targets.
 
 ### Food Rows
 
@@ -130,6 +147,8 @@
   ounces are not treated as mass ounces.
 - Preview displays computed calories and macros.
 - Save logs the snapshot to the selected date.
+- Icons in the current-search added-items tray are 44-pixel buttons. Selecting
+  one reopens that exact food log in the serving editor.
 
 ### Barcode Scanner
 
@@ -261,11 +280,10 @@
   tone when browser autoplay policy allows it, and browser notifications only
   when permission has already been granted. The app does not repeatedly request
   notification permission and does not claim alerts work while the browser or
-  installed PWA is fully suspended. Muted priming receives a transient
-  audio-session hint, while actual previews and completion tones use media
-  playback so iPhone Silent Mode does not suppress them. Calls and browser
-  suspension may still suppress playback, and the tone may briefly interrupt
-  other audio.
+  installed PWA is fully suspended. Foreground completion uses a transient
+  audio-session hint so other audio may keep playing or briefly duck; previews
+  use media playback so users can hear the selected sound. Calls, Silent Mode,
+  and browser suspension may still suppress playback.
 - In the native iOS wrapper, starting a rest timer requests notification
   permission in context when needed and schedules a time-sensitive local
   notification. Pause, resume, adjustment, dismissal, discard, and finish
@@ -277,6 +295,15 @@
 - Checking a completed set must not start or pause media merely to prime the
   later timer sound. Foreground completion uses transient audio; outside-app
   completion uses one standard iPhone notification.
+- When outside-app alerts are scheduled, the same system notification is also
+  used while the PWA is visible and the app does not play a second HTML-media
+  chime.
+- When outside-app alerts are not scheduled and the installed iPhone PWA is
+  visibly open, the app shell may play the bundled foreground chime after
+  navigation away from the live workout screen.
+- On Web Push-capable installed iPhone PWAs, Settings identifies the alert as
+  the default iPhone notification sound and does not present bundled sound
+  selection or preview controls.
 
 ## Completion and Change Review
 

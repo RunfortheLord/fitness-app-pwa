@@ -86,6 +86,10 @@ function setTimerAudioSession(type: AudioSessionType) {
   }
 }
 
+function releaseTimerAudioSession() {
+  setTimerAudioSession('auto')
+}
+
 /** Configure actual timer playback to remain audible in iPhone Silent Mode. */
 export function configureTimerAudioSession() {
   setTimerAudioSession('playback')
@@ -189,7 +193,13 @@ export async function playTimerSoundOnce(id: string | null | undefined) {
   } catch {
     // ignore
   }
-  await playWithTimerAudioSession(audio, 'transient')
+  releaseAudioSessionWhenFinished(audio)
+  try {
+    await playWithTimerAudioSession(audio, 'transient')
+  } catch (caught) {
+    releaseTimerAudioSession()
+    throw caught
+  }
 }
 
 /**
@@ -215,10 +225,17 @@ export async function previewTimerSoundOnce(id: string | null | undefined) {
       if (activePreviewAudio === audio) {
         activePreviewAudio = null
       }
+      releaseTimerAudioSession()
     },
     { once: true },
   )
-  await playWithTimerAudioSession(audio, 'playback')
+  audio.addEventListener('error', releaseTimerAudioSession, { once: true })
+  try {
+    await playWithTimerAudioSession(audio, 'playback')
+  } catch (caught) {
+    releaseTimerAudioSession()
+    throw caught
+  }
 }
 
 /** Stop any preview or completion playback. */
@@ -226,6 +243,7 @@ export function stopTimerSounds() {
   stopAudio(activePreviewAudio)
   stopAudio(completionAudio)
   activePreviewAudio = null
+  releaseTimerAudioSession()
 }
 
 /** Test-only reset of the module audio singletons. */
@@ -233,4 +251,9 @@ export function resetTimerSoundsForTests() {
   stopTimerSounds()
   completionAudio = null
   completionAudioSrc = null
+}
+
+function releaseAudioSessionWhenFinished(audio: HTMLAudioElement) {
+  audio.addEventListener('ended', releaseTimerAudioSession, { once: true })
+  audio.addEventListener('error', releaseTimerAudioSession, { once: true })
 }
