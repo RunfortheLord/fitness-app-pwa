@@ -833,6 +833,9 @@ function ExerciseWorkspace({
           <p className="muted">
             {formatPrescriptionSummary(prescription, weightUnit)}
           </p>
+          {prescription?.notes ? (
+            <p className="muted">{prescription.notes}</p>
+          ) : null}
         </div>
         {restTimerPanel}
       </div>

@@ -1,5 +1,5 @@
-// AUTO-GENERATED from docs source-of-truth (28 seed programs). Do not hand-edit
-// individual prescriptions; regenerate from the program specification instead.
+// Seeded from the original 28-program source-of-truth. Targeted program
+// revisions are maintained here with exact regression coverage.
 
 export type BuiltInProgramExerciseSeed = {
   exerciseId: string
@@ -8,10 +8,12 @@ export type BuiltInProgramExerciseSeed = {
   targetRepsMax: number
   targetRir: number
   perSide?: boolean
+  notes?: string
 }
 
 export type BuiltInProgramDaySeed = {
   name: string
+  notes?: string
   exercises: BuiltInProgramExerciseSeed[]
 }
 
@@ -22,10 +24,11 @@ export type BuiltInProgramSeed = {
   goal: string
   /** Planned length in weeks; defaults to 10 when omitted. */
   durationWeeks?: number
+  notes?: string
   days: BuiltInProgramDaySeed[]
 }
 
-export const BUILT_IN_PROGRAM_SEED_VERSION = 1
+export const BUILT_IN_PROGRAM_SEED_VERSION = 2
 
 export const BUILT_IN_PROGRAMS: BuiltInProgramSeed[] = [
   {
@@ -4162,26 +4165,31 @@ export const BUILT_IN_PROGRAMS: BuiltInProgramSeed[] = [
   },
   {
     slug: 'full-body-four-days-per-week',
-    name: 'Full Body Four Days per Week',
+    name: 'Powerlifting-Focused Full Body - Four Days per Week',
     level: 'Intermediate',
-    goal: 'Train every major muscle group four times weekly',
+    goal: 'Improve squat, bench press, and deadlift strength while retaining sufficient hypertrophy work',
+    notes:
+      'Suggested personal schedule: Monday, Tuesday, Thursday, Saturday. Competition-lift frequency: squat 2 exposures, bench press 4 exposures, deadlift 2 exposures. Accessory squat and hinge movements are not counted as competition-lift exposures.',
     days: [
       {
-        name: 'Full Body A',
+        name: 'Monday - Squat + Bench',
         exercises: [
           {
             exerciseId: 'builtin:barbell-back-squat',
             targetSetCount: 3,
-            targetRepsMin: 5,
-            targetRepsMax: 8,
+            targetRepsMin: 3,
+            targetRepsMax: 3,
             targetRir: 1,
+            notes:
+              'Heavy strength: 1 top set of 3, then 2 back-off sets of 3 approximately 8-10% lighter. Finish around 1 RIR. Use the four-week block progression defined for this program.',
           },
           {
             exerciseId: 'builtin:barbell-bench-press',
-            targetSetCount: 3,
-            targetRepsMin: 5,
-            targetRepsMax: 8,
+            targetSetCount: 4,
+            targetRepsMin: 4,
+            targetRepsMax: 7,
             targetRir: 1,
+            notes: 'Volume work at approximately 70% 1RM. Finish at 1-2 RIR.',
           },
           {
             exerciseId: 'builtin:pull-up',
@@ -4189,13 +4197,14 @@ export const BUILT_IN_PROGRAMS: BuiltInProgramSeed[] = [
             targetRepsMin: 5,
             targetRepsMax: 10,
             targetRir: 1,
+            notes: 'Finish at 1-2 RIR.',
           },
           {
-            exerciseId: 'builtin:romanian-deadlift',
+            exerciseId: 'builtin:barbell-hip-thrust',
             targetSetCount: 3,
             targetRepsMin: 6,
             targetRepsMax: 10,
-            targetRir: 1,
+            targetRir: 2,
           },
           {
             exerciseId: 'builtin:cable-lateral-raise',
@@ -4203,6 +4212,7 @@ export const BUILT_IN_PROGRAMS: BuiltInProgramSeed[] = [
             targetRepsMin: 12,
             targetRepsMax: 20,
             targetRir: 1,
+            notes: 'Finish at 1-2 RIR.',
           },
           {
             exerciseId: 'builtin:rope-triceps-pressdown',
@@ -4210,32 +4220,38 @@ export const BUILT_IN_PROGRAMS: BuiltInProgramSeed[] = [
             targetRepsMin: 10,
             targetRepsMax: 15,
             targetRir: 1,
+            notes: 'Finish at 1-2 RIR.',
           },
           {
-            exerciseId: 'builtin:roman-chair-sit-up',
+            exerciseId: 'builtin:dragon-flag',
             targetSetCount: 3,
             targetRepsMin: 8,
             targetRepsMax: 15,
             targetRir: 1,
+            notes: 'Finish at 1-2 RIR.',
           },
         ],
       },
       {
-        name: 'Full Body B',
+        name: 'Tuesday - Bench + Deadlift',
         exercises: [
           {
-            exerciseId: 'builtin:trap-bar-deadlift',
+            exerciseId: 'builtin:conventional-deadlift',
             targetSetCount: 3,
+            targetRepsMin: 3,
+            targetRepsMax: 3,
+            targetRir: 1,
+            notes:
+              'Heavy strength: 1 top set of 3, then 2 back-off sets of 3 approximately 8-10% lighter. Finish around 1 RIR. Use the four-week block progression defined for this program.',
+          },
+          {
+            exerciseId: 'builtin:low-incline-barbell-bench-press',
+            targetSetCount: 2,
             targetRepsMin: 4,
             targetRepsMax: 6,
             targetRir: 1,
-          },
-          {
-            exerciseId: 'builtin:low-incline-dumbbell-bench-press',
-            targetSetCount: 3,
-            targetRepsMin: 8,
-            targetRepsMax: 12,
-            targetRir: 1,
+            notes:
+              'Use a modest incline and maintain a bench-press-style bar path. Keep volume to two challenging sets because weekly bench frequency is already high. Finish at 1-2 RIR.',
           },
           {
             exerciseId: 'builtin:chest-supported-row',
@@ -4243,6 +4259,7 @@ export const BUILT_IN_PROGRAMS: BuiltInProgramSeed[] = [
             targetRepsMin: 6,
             targetRepsMax: 10,
             targetRir: 1,
+            notes: 'Finish at 1-2 RIR.',
           },
           {
             exerciseId: 'builtin:bulgarian-split-squat',
@@ -4251,13 +4268,16 @@ export const BUILT_IN_PROGRAMS: BuiltInProgramSeed[] = [
             targetRepsMax: 12,
             targetRir: 1,
             perSide: true,
+            notes: 'Perform 8-12 reps per leg and finish at 1-2 RIR.',
           },
           {
             exerciseId: 'builtin:machine-shoulder-press',
             targetSetCount: 2,
             targetRepsMin: 8,
             targetRepsMax: 12,
-            targetRir: 1,
+            targetRir: 3,
+            notes:
+              'Keep this farther from failure because it follows two consecutive days of pressing.',
           },
           {
             exerciseId: 'builtin:hammer-curl',
@@ -4265,6 +4285,7 @@ export const BUILT_IN_PROGRAMS: BuiltInProgramSeed[] = [
             targetRepsMin: 10,
             targetRepsMax: 15,
             targetRir: 1,
+            notes: 'Finish at 1-2 RIR.',
           },
           {
             exerciseId: 'builtin:standing-calf-raise',
@@ -4272,25 +4293,38 @@ export const BUILT_IN_PROGRAMS: BuiltInProgramSeed[] = [
             targetRepsMin: 8,
             targetRepsMax: 15,
             targetRir: 1,
+            notes: 'Finish at 1-2 RIR.',
           },
         ],
       },
       {
-        name: 'Full Body C',
+        name: 'Thursday - Squat + Bench',
         exercises: [
           {
             exerciseId: 'builtin:barbell-front-squat',
-            targetSetCount: 3,
-            targetRepsMin: 5,
-            targetRepsMax: 8,
+            targetSetCount: 4,
+            targetRepsMin: 4,
+            targetRepsMax: 7,
             targetRir: 1,
+            notes:
+              'Hypertrophy/volume work at approximately 70% 1RM. Use a controlled descent and maintain an upright torso. Finish at 1-2 RIR.',
+          },
+          {
+            exerciseId: 'builtin:barbell-bench-press',
+            targetSetCount: 3,
+            targetRepsMin: 4,
+            targetRepsMax: 8,
+            targetRir: 4,
+            notes:
+              'Practice lift at 40-60% 1RM and at least 4 RIR. Pause every repetition and make each rep technically identical. Rehearse setup, leg drive, bar path, pause control, and touch point without substantial fatigue.',
           },
           {
             exerciseId: 'builtin:barbell-overhead-press',
             targetSetCount: 3,
             targetRepsMin: 5,
             targetRepsMax: 8,
-            targetRir: 1,
+            targetRir: 2,
+            notes: 'Finish at 2-3 RIR.',
           },
           {
             exerciseId: 'builtin:neutral-grip-lat-pulldown',
@@ -4298,20 +4332,16 @@ export const BUILT_IN_PROGRAMS: BuiltInProgramSeed[] = [
             targetRepsMin: 8,
             targetRepsMax: 12,
             targetRir: 1,
+            notes: 'Finish at 1-2 RIR.',
           },
           {
-            exerciseId: 'builtin:barbell-hip-thrust',
+            exerciseId: 'builtin:romanian-deadlift',
             targetSetCount: 3,
             targetRepsMin: 6,
-            targetRepsMax: 10,
-            targetRir: 1,
-          },
-          {
-            exerciseId: 'builtin:machine-chest-press',
-            targetSetCount: 2,
-            targetRepsMin: 8,
-            targetRepsMax: 12,
-            targetRir: 1,
+            targetRepsMax: 8,
+            targetRir: 2,
+            notes:
+              'Keep this controlled at 2-3 RIR because another deadlift exposure occurs Saturday.',
           },
           {
             exerciseId: 'builtin:seated-leg-curl',
@@ -4319,32 +4349,39 @@ export const BUILT_IN_PROGRAMS: BuiltInProgramSeed[] = [
             targetRepsMin: 10,
             targetRepsMax: 15,
             targetRir: 1,
+            notes: 'Finish at 1-2 RIR.',
           },
           {
-            exerciseId: 'builtin:cable-crunch',
+            exerciseId: 'builtin:ghd-sit-up',
             targetSetCount: 3,
-            targetRepsMin: 10,
+            targetRepsMin: 8,
             targetRepsMax: 15,
             targetRir: 1,
+            notes:
+              'Use bodyweight until all three sets use a consistent range without excessive lumbar extension, then add load gradually. Finish at 1-2 RIR.',
           },
         ],
       },
       {
-        name: 'Full Body D',
+        name: 'Saturday - Bench + Deadlift',
         exercises: [
-          {
-            exerciseId: 'builtin:hack-squat',
-            targetSetCount: 3,
-            targetRepsMin: 8,
-            targetRepsMax: 12,
-            targetRir: 1,
-          },
           {
             exerciseId: 'builtin:paused-barbell-bench-press',
             targetSetCount: 3,
-            targetRepsMin: 5,
-            targetRepsMax: 8,
+            targetRepsMin: 3,
+            targetRepsMax: 3,
             targetRir: 1,
+            notes:
+              'Heavy strength: 1 top set of 3, then 2 back-off sets of 3 approximately 8-10% lighter. Finish around 1 RIR. Use the four-week block progression defined for this program.',
+          },
+          {
+            exerciseId: 'builtin:conventional-deadlift',
+            targetSetCount: 3,
+            targetRepsMin: 4,
+            targetRepsMax: 6,
+            targetRir: 4,
+            notes:
+              'Practice lift at 40-60% 1RM and at least 4 RIR. Reset completely between repetitions. Use an identical stance, wedge, brace, slack pull, and bar position on every rep. This should not feel like another heavy deadlift workout.',
           },
           {
             exerciseId: 'builtin:seated-cable-row',
@@ -4352,14 +4389,16 @@ export const BUILT_IN_PROGRAMS: BuiltInProgramSeed[] = [
             targetRepsMin: 8,
             targetRepsMax: 12,
             targetRir: 1,
+            notes: 'Finish at 1-2 RIR.',
           },
           {
-            exerciseId: 'builtin:single-leg-dumbbell-romanian-deadlift',
+            exerciseId: 'builtin:belt-squat',
             targetSetCount: 3,
-            targetRepsMin: 8,
-            targetRepsMax: 12,
+            targetRepsMin: 6,
+            targetRepsMax: 10,
             targetRir: 1,
-            perSide: true,
+            notes:
+              'Use your hands only for balance; do not pull upward with the handles. This adds leg volume while limiting axial and lower-back fatigue. Finish at 1-2 RIR.',
           },
           {
             exerciseId: 'builtin:reverse-pec-deck',
@@ -4367,6 +4406,7 @@ export const BUILT_IN_PROGRAMS: BuiltInProgramSeed[] = [
             targetRepsMin: 12,
             targetRepsMax: 20,
             targetRir: 1,
+            notes: 'Finish at 1-2 RIR.',
           },
           {
             exerciseId: 'builtin:overhead-cable-triceps-extension',
@@ -4374,6 +4414,7 @@ export const BUILT_IN_PROGRAMS: BuiltInProgramSeed[] = [
             targetRepsMin: 10,
             targetRepsMax: 15,
             targetRir: 1,
+            notes: 'Finish at 1-2 RIR.',
           },
           {
             exerciseId: 'builtin:machine-preacher-curl',
@@ -4381,6 +4422,7 @@ export const BUILT_IN_PROGRAMS: BuiltInProgramSeed[] = [
             targetRepsMin: 10,
             targetRepsMax: 15,
             targetRir: 1,
+            notes: 'Finish at 1-2 RIR.',
           },
         ],
       },

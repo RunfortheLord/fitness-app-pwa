@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { TrainingLogDatabase } from '@db/database'
-import { BUILT_IN_PROGRAMS } from '@domain/programLibrarySeed'
+import {
+  BUILT_IN_PROGRAMS,
+  BUILT_IN_PROGRAM_SEED_VERSION,
+} from '@domain/programLibrarySeed'
 import { createExerciseRepository } from '@repositories/exerciseRepository'
 import {
   builtInProgramTemplateId,
@@ -57,6 +60,36 @@ describe('seedBuiltInPrograms', () => {
     expect(await database.programTemplates.count()).toBe(28)
     expect(await database.templateWorkoutDays.count()).toBe(firstDays)
     expect(await database.templateWorkoutExercises.count()).toBe(firstExercises)
+  })
+
+  it('replaces an older built-in seed while preserving the stable template id', async () => {
+    const repository = createProgramRepository(database)
+    await repository.seedBuiltInPrograms()
+    const templateId = builtInProgramTemplateId('full-body-four-days-per-week')
+    await database.programTemplates.update(templateId, {
+      name: 'Full Body Four Days per Week',
+      notes: '',
+      builtInSeedVersion: 1,
+    })
+
+    await repository.seedBuiltInPrograms()
+
+    const structure = await repository.getTemplateStructure(templateId)
+    expect(structure.template).toMatchObject({
+      id: templateId,
+      name: 'Powerlifting-Focused Full Body - Four Days per Week',
+      builtInSeedVersion: BUILT_IN_PROGRAM_SEED_VERSION,
+      notes: expect.stringContaining('Monday, Tuesday, Thursday, Saturday'),
+    })
+    expect(structure.days.map((day) => day.name)).toEqual([
+      'Monday - Squat + Bench',
+      'Tuesday - Bench + Deadlift',
+      'Thursday - Squat + Bench',
+      'Saturday - Bench + Deadlift',
+    ])
+    expect(structure.exercisesByDay[structure.days[0].id][0].notes).toContain(
+      'back-off sets',
+    )
   })
 
   it('refuses to mutate a built-in template', async () => {

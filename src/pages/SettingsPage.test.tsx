@@ -354,7 +354,7 @@ describe('SettingsPage', () => {
 
     expect(
       await screen.findByRole('heading', {
-        name: 'Run tracking upgrades',
+        name: 'Powerlifting-focused full body program',
       }),
     ).toBeInTheDocument()
     expect(screen.queryByText('Pounds or kilograms')).not.toBeInTheDocument()
@@ -366,6 +366,9 @@ describe('SettingsPage', () => {
     ).toBeInTheDocument()
     expect(
       screen.getByRole('heading', { name: 'Timer is finally fixed!' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Run tracking upgrades' }),
     ).toBeInTheDocument()
     expect(screen.getByText('Faster, smarter food logging')).toBeInTheDocument()
   })

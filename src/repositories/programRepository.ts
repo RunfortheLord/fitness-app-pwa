@@ -153,7 +153,7 @@ export function createProgramRepository(
             templatesToSeed.push({
               id: templateId,
               name: program.name,
-              notes: '',
+              notes: program.notes ?? '',
               status: 'active',
               lastActiveAt: existing?.lastActiveAt ?? null,
               isBuiltIn: true,
@@ -172,7 +172,7 @@ export function createProgramRepository(
                 id: dayId,
                 templateId,
                 name: day.name,
-                notes: '',
+                notes: day.notes ?? '',
                 orderIndex: dayIndex,
                 createdAt: BUILT_IN_PROGRAM_CREATED_AT,
                 updatedAt: BUILT_IN_PROGRAM_CREATED_AT,
@@ -200,7 +200,7 @@ export function createProgramRepository(
                   targetRepsMax: ex.targetRepsMax,
                   targetRir: ex.targetRir,
                   restSecondsOverride: null,
-                  notes: '',
+                  notes: ex.notes ?? '',
                   createdAt: BUILT_IN_PROGRAM_CREATED_AT,
                   updatedAt: BUILT_IN_PROGRAM_CREATED_AT,
                 })

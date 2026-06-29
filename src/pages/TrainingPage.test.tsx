@@ -848,7 +848,7 @@ describe('TrainingPage', () => {
     await user.click(screen.getByRole('button', { name: 'Browse programs' }))
     await user.click(
       await screen.findByRole('button', {
-        name: 'Preview Beginner Full Body A/B',
+        name: 'Preview Powerlifting-Focused Full Body - Four Days per Week',
       }),
     )
 
@@ -858,13 +858,26 @@ describe('TrainingPage', () => {
         name: 'Back to browse programs',
       }),
     ).toBeInTheDocument()
-    expect(await screen.findByText('Day A')).toBeInTheDocument()
+    expect(
+      await screen.findByText('Monday - Squat + Bench'),
+    ).toBeInTheDocument()
     expect(
       screen
         .getByRole('button', { name: 'Back to browse programs' })
         .closest('section'),
     ).toHaveClass('subpage-enter')
     expect(screen.getByText('Barbell Back Squat')).toBeInTheDocument()
+    const mondayPreview = screen
+      .getByText('Monday - Squat + Bench')
+      .closest('section')
+    if (!mondayPreview) {
+      throw new Error('Monday program preview was not found.')
+    }
+    expect(
+      within(mondayPreview).getByText(
+        /1 top set of 3, then 2 back-off sets of 3/,
+      ),
+    ).toBeInTheDocument()
 
     await user.click(
       screen.getByRole('button', { name: 'Back to browse programs' }),
@@ -872,7 +885,7 @@ describe('TrainingPage', () => {
     // Back on the Browse list.
     expect(
       await screen.findByRole('button', {
-        name: 'Add Beginner Full Body A/B to library',
+        name: 'Add Powerlifting-Focused Full Body - Four Days per Week to library',
       }),
     ).toBeInTheDocument()
   })

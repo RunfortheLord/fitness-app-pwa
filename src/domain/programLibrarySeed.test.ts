@@ -23,7 +23,7 @@ const EXPECTED_NAMES = [
   'Push/Pull/Legs A/B',
   'Full Body Two Days per Week',
   'Full Body Three Days per Week',
-  'Full Body Four Days per Week',
+  'Powerlifting-Focused Full Body - Four Days per Week',
   'Full Body Five Days per Week',
   'Full Body Six Days per Week',
   'Classic Upper/Lower Four Days per Week',
@@ -72,7 +72,7 @@ describe('BUILT_IN_PROGRAMS', () => {
     const cases: Array<[string, number]> = [
       ['Full Body Two Days per Week', 10],
       ['Full Body Three Days per Week', 8],
-      ['Full Body Four Days per Week', 7],
+      ['Powerlifting-Focused Full Body - Four Days per Week', 7],
       ['Full Body Five Days per Week', 6],
       ['Full Body Six Days per Week', 6],
     ]
@@ -83,11 +83,98 @@ describe('BUILT_IN_PROGRAMS', () => {
     }
   })
 
+  it('defines the powerlifting-focused four-day full-body revision exactly', () => {
+    const program = programByName(
+      'Powerlifting-Focused Full Body - Four Days per Week',
+    )
+    expect(program.goal).toBe(
+      'Improve squat, bench press, and deadlift strength while retaining sufficient hypertrophy work',
+    )
+    expect(program.notes).toContain('Monday, Tuesday, Thursday, Saturday')
+    expect(program.days.map((day) => day.name)).toEqual([
+      'Monday - Squat + Bench',
+      'Tuesday - Bench + Deadlift',
+      'Thursday - Squat + Bench',
+      'Saturday - Bench + Deadlift',
+    ])
+    expect(
+      program.days.map((day) =>
+        day.exercises.map((exercise) => exercise.exerciseId),
+      ),
+    ).toEqual([
+      [
+        'builtin:barbell-back-squat',
+        'builtin:barbell-bench-press',
+        'builtin:pull-up',
+        'builtin:barbell-hip-thrust',
+        'builtin:cable-lateral-raise',
+        'builtin:rope-triceps-pressdown',
+        'builtin:dragon-flag',
+      ],
+      [
+        'builtin:conventional-deadlift',
+        'builtin:low-incline-barbell-bench-press',
+        'builtin:chest-supported-row',
+        'builtin:bulgarian-split-squat',
+        'builtin:machine-shoulder-press',
+        'builtin:hammer-curl',
+        'builtin:standing-calf-raise',
+      ],
+      [
+        'builtin:barbell-front-squat',
+        'builtin:barbell-bench-press',
+        'builtin:barbell-overhead-press',
+        'builtin:neutral-grip-lat-pulldown',
+        'builtin:romanian-deadlift',
+        'builtin:seated-leg-curl',
+        'builtin:ghd-sit-up',
+      ],
+      [
+        'builtin:paused-barbell-bench-press',
+        'builtin:conventional-deadlift',
+        'builtin:seated-cable-row',
+        'builtin:belt-squat',
+        'builtin:reverse-pec-deck',
+        'builtin:overhead-cable-triceps-extension',
+        'builtin:machine-preacher-curl',
+      ],
+    ])
+
+    expect(program.days[0].exercises[0]).toMatchObject({
+      targetSetCount: 3,
+      targetRepsMin: 3,
+      targetRepsMax: 3,
+      targetRir: 1,
+      notes: expect.stringContaining('back-off sets'),
+    })
+    expect(program.days[0].exercises[1]).toMatchObject({
+      targetSetCount: 4,
+      targetRepsMin: 4,
+      targetRepsMax: 7,
+      targetRir: 1,
+      notes: expect.stringContaining('70% 1RM'),
+    })
+    expect(program.days[2].exercises[1]).toMatchObject({
+      targetSetCount: 3,
+      targetRepsMin: 4,
+      targetRepsMax: 8,
+      targetRir: 4,
+      notes: expect.stringContaining('40-60% 1RM'),
+    })
+    expect(program.days[3].exercises[1]).toMatchObject({
+      targetSetCount: 3,
+      targetRepsMin: 4,
+      targetRepsMax: 6,
+      targetRir: 4,
+      notes: expect.stringContaining('Reset completely'),
+    })
+  })
+
   it('never repeats an exercise on consecutive days in the full-body programs', () => {
     const fullBody = [
       'Full Body Two Days per Week',
       'Full Body Three Days per Week',
-      'Full Body Four Days per Week',
+      'Powerlifting-Focused Full Body - Four Days per Week',
       'Full Body Five Days per Week',
       'Full Body Six Days per Week',
     ]

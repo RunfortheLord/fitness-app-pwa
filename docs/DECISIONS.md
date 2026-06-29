@@ -174,6 +174,25 @@
   a separate Browse programs sub-page where "Add to library" clones one into the
   user's editable library; both sub-pages keep activate/edit/clone/delete.
 
+## 2026-06-28: Powerlifting-Focused Four-Day Full Body Revision
+
+- The stable `full-body-four-days-per-week` built-in was revised in place and
+  renamed to Powerlifting-Focused Full Body - Four Days per Week. Seed version
+  2 refreshes the immutable Browse Programs source but never rewrites user
+  copies, active cycles, or completed history.
+- The user's Monday/Tuesday/Thursday/Saturday schedule is retained as program
+  guidance only; weekday scheduling remains outside the current product model.
+- Heavy squat, deadlift, and paused-bench prescriptions store three sets of
+  three plus notes identifying one top set and two 8-10%-lighter back-off sets.
+  The schema intentionally does not fabricate separate per-set loads.
+- The supplied edit says the Romanian deadlift and hip thrust were moved between
+  days, while one Thursday line says "Belt Deadlift" and does not include that
+  in the stated six substitutions. The implemented Thursday movement is
+  Romanian Deadlift; Saturday uses the explicitly requested Belt Squat.
+- Percent-of-1RM guidance, technique cues, fatigue constraints, and the
+  four-week-block reminder are stored as prescription notes. No automatic load
+  or progression behavior was added.
+
 ## 2026-06-23: Food Category Icons Instead Of Provider Or Bundled Images
 
 - Food search results and food lists show a representative category icon on the

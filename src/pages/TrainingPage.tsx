@@ -1284,6 +1284,7 @@ function ProgramPreviewPage({
         <h2 className="set-goal-title">{template.name}</h2>
       </div>
       {subtitle ? <p className="muted">{subtitle}</p> : null}
+      {template.notes ? <p className="muted">{template.notes}</p> : null}
       <div className="row-actions">
         <SecondaryButton type="button" onClick={() => onActivate(template)}>
           Activate
@@ -1311,6 +1312,7 @@ function ProgramPreviewPage({
                   <li key={exercise.id}>
                     <span>{exercise.exerciseSnapshot.exerciseName}</span>
                     <small>{formatPreviewPrescription(exercise)}</small>
+                    {exercise.notes ? <small>{exercise.notes}</small> : null}
                   </li>
                 ))}
               </ul>

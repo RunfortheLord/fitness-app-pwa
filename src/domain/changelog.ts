@@ -10,6 +10,16 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-06-28-powerlifting-full-body',
+    date: '2026-06-28',
+    title: 'Powerlifting-focused full body program',
+    items: [
+      'Full Body Four Days per Week is now a powerlifting-focused squat, bench, and deadlift program.',
+      'The four training days include heavy top-set/back-off work, low-fatigue practice lifts, hypertrophy accessories, and detailed technique notes.',
+      'The Browse Programs source updates without changing your existing copies, active program, or workout history.',
+    ],
+  },
+  {
     id: '2026-06-28-run-tracking',
     date: '2026-06-28',
     title: 'Run tracking upgrades',
