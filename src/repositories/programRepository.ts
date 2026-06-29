@@ -388,7 +388,7 @@ export function createProgramRepository(
                 targetRepsMax: sourceExercise.targetRepsMax,
                 targetRir: sourceExercise.targetRir,
                 restSecondsOverride: sourceExercise.restSecondsOverride,
-                notes: '',
+                notes: sourceExercise.notes,
                 createdAt: now,
                 updatedAt: now,
               }

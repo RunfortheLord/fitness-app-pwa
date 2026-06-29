@@ -687,6 +687,152 @@ describe('database', () => {
 
     await destroyTestDatabase(migratedDatabase)
   })
+
+  it('backfills blank active-cycle exercise notes from source template exercises when migrating to v14', async () => {
+    const name = `training-log-v14-active-exercise-notes-${crypto.randomUUID()}`
+    const oldDatabase = new Dexie(name)
+    oldDatabase.version(13).stores({
+      appMetadata: '&id',
+      templateWorkoutExercises:
+        '&id, templateId, dayId, exerciseId, [dayId+orderIndex]',
+      activeCycleWorkoutExercises:
+        '&id, activeCycleId, dayId, exerciseId, sourceTemplateExerciseId, [dayId+orderIndex]',
+      runs: '&id, status, localDate, startedAt, completedAt',
+    })
+    await oldDatabase.table('appMetadata').put({
+      id: 'app',
+      databaseSchemaVersion: 13,
+      backupSchemaVersion: 1,
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('templateWorkoutExercises').bulkPut([
+      {
+        id: 'template-exercise-with-notes',
+        templateId: 'template-1',
+        dayId: 'template-day-1',
+        exerciseId: 'exercise-1',
+        exerciseSnapshot: {},
+        orderIndex: 0,
+        targetSetCount: 2,
+        targetWeight: null,
+        targetDurationSeconds: null,
+        targetDistance: null,
+        targetRepsMin: 5,
+        targetRepsMax: 8,
+        targetRir: 2,
+        restSecondsOverride: null,
+        notes: 'Use a full pause.',
+        createdAt: '2026-06-18T12:00:00.000Z',
+        updatedAt: '2026-06-18T12:00:00.000Z',
+      },
+      {
+        id: 'template-exercise-without-notes',
+        templateId: 'template-1',
+        dayId: 'template-day-1',
+        exerciseId: 'exercise-2',
+        exerciseSnapshot: {},
+        orderIndex: 1,
+        targetSetCount: 2,
+        targetWeight: null,
+        targetDurationSeconds: null,
+        targetDistance: null,
+        targetRepsMin: 5,
+        targetRepsMax: 8,
+        targetRir: 2,
+        restSecondsOverride: null,
+        notes: '',
+        createdAt: '2026-06-18T12:00:00.000Z',
+        updatedAt: '2026-06-18T12:00:00.000Z',
+      },
+    ])
+    await oldDatabase.table('activeCycleWorkoutExercises').bulkPut([
+      {
+        id: 'active-exercise-blank',
+        activeCycleId: 'cycle-1',
+        dayId: 'active-day-1',
+        sourceTemplateExerciseId: 'template-exercise-with-notes',
+        exerciseId: 'exercise-1',
+        exerciseSnapshot: {},
+        orderIndex: 0,
+        targetSetCount: 2,
+        targetWeight: null,
+        targetDurationSeconds: null,
+        targetDistance: null,
+        targetRepsMin: 5,
+        targetRepsMax: 8,
+        targetRir: 2,
+        restSecondsOverride: null,
+        notes: '',
+        createdAt: '2026-06-18T12:00:00.000Z',
+        updatedAt: '2026-06-18T12:00:00.000Z',
+      },
+      {
+        id: 'active-exercise-existing',
+        activeCycleId: 'cycle-1',
+        dayId: 'active-day-1',
+        sourceTemplateExerciseId: 'template-exercise-with-notes',
+        exerciseId: 'exercise-1',
+        exerciseSnapshot: {},
+        orderIndex: 1,
+        targetSetCount: 2,
+        targetWeight: null,
+        targetDurationSeconds: null,
+        targetDistance: null,
+        targetRepsMin: 5,
+        targetRepsMax: 8,
+        targetRir: 2,
+        restSecondsOverride: null,
+        notes: 'Keep this active-cycle note.',
+        createdAt: '2026-06-18T12:00:00.000Z',
+        updatedAt: '2026-06-18T12:00:00.000Z',
+      },
+      {
+        id: 'active-exercise-no-source-notes',
+        activeCycleId: 'cycle-1',
+        dayId: 'active-day-1',
+        sourceTemplateExerciseId: 'template-exercise-without-notes',
+        exerciseId: 'exercise-2',
+        exerciseSnapshot: {},
+        orderIndex: 2,
+        targetSetCount: 2,
+        targetWeight: null,
+        targetDurationSeconds: null,
+        targetDistance: null,
+        targetRepsMin: 5,
+        targetRepsMax: 8,
+        targetRir: 2,
+        restSecondsOverride: null,
+        notes: '',
+        createdAt: '2026-06-18T12:00:00.000Z',
+        updatedAt: '2026-06-18T12:00:00.000Z',
+      },
+    ])
+    oldDatabase.close()
+
+    const migratedDatabase = new TrainingLogDatabase(name)
+
+    await expect(
+      migratedDatabase.activeCycleWorkoutExercises.get('active-exercise-blank'),
+    ).resolves.toMatchObject({ notes: 'Use a full pause.' })
+    await expect(
+      migratedDatabase.activeCycleWorkoutExercises.get(
+        'active-exercise-existing',
+      ),
+    ).resolves.toMatchObject({ notes: 'Keep this active-cycle note.' })
+    await expect(
+      migratedDatabase.activeCycleWorkoutExercises.get(
+        'active-exercise-no-source-notes',
+      ),
+    ).resolves.toMatchObject({ notes: '' })
+    await expect(
+      migratedDatabase.appMetadata.get('app'),
+    ).resolves.toMatchObject({
+      databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+    })
+
+    await destroyTestDatabase(migratedDatabase)
+  })
 })
 
 const v2Stores = {

@@ -22,6 +22,9 @@ describe('programRepository', () => {
     const exerciseRepository = createExerciseRepository(database)
     const program = await seedProgram(database)
     const sourceExercise = program.exercises[0]
+    await database.templateWorkoutExercises.update(sourceExercise.id, {
+      notes: 'Pause the first rep.',
+    })
 
     const active = await programRepository.activateTemplate(program.template.id)
     await exerciseRepository.updateExercise(sourceExercise.exerciseId, {
@@ -38,6 +41,7 @@ describe('programRepository', () => {
     expect(active.exercises[0].id).not.toBe(sourceExercise.id)
     expect(activeExercise?.exerciseSnapshot.exerciseName).toBe('Bench press')
     expect(activeExercise?.sourceTemplateExerciseId).toBe(sourceExercise.id)
+    expect(activeExercise?.notes).toBe('Pause the first rep.')
   })
 
   it('defaults program length to 10 weeks, accepts a custom length, and snapshots it on activation', async () => {

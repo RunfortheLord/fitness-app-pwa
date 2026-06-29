@@ -714,6 +714,7 @@ describe('TrainingPage', () => {
               targetRepsMax: 8,
               targetRir: 1,
               restSecondsOverride: null,
+              notes: 'Brace hard and pause every first rep.',
             },
             {
               exerciseId: row.id,
@@ -722,6 +723,7 @@ describe('TrainingPage', () => {
               targetRepsMax: 12,
               targetRir: 1,
               restSecondsOverride: null,
+              notes: 'Keep the chest tall and reset between reps.',
             },
           ],
         },
@@ -754,6 +756,23 @@ describe('TrainingPage', () => {
     expect(
       screen.queryByRole('textbox', { name: 'Set 1 final RIR' }),
     ).not.toBeInTheDocument()
+    const firstWorkspace = rendered.container.querySelector(
+      '.exercise-workspace',
+    )
+    expect(firstWorkspace).toBeTruthy()
+    const firstActions = within(firstWorkspace as HTMLElement).getByLabelText(
+      'Exercise actions',
+    )
+    const firstNotes = within(firstWorkspace as HTMLElement).getByLabelText(
+      'Exercise notes',
+    )
+    expect(
+      within(firstNotes).getByText('Brace hard and pause every first rep.'),
+    ).toBeInTheDocument()
+    expect(
+      firstActions.compareDocumentPosition(firstNotes) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
 
     await user.click(screen.getByRole('button', { name: 'Next' }))
     expect(await screen.findByText('Exercise 2 of 2')).toBeInTheDocument()
@@ -769,6 +788,12 @@ describe('TrainingPage', () => {
     expect(
       screen.queryByRole('textbox', { name: 'Set 1 final RIR' }),
     ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('Brace hard and pause every first rep.'),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByText('Keep the chest tall and reset between reps.'),
+    ).toBeInTheDocument()
     await user.clear(screen.getByRole('textbox', { name: 'Set 1 Reps' }))
     await user.type(screen.getByRole('textbox', { name: 'Set 1 Reps' }), '12')
     await user.tab()

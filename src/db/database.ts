@@ -39,7 +39,7 @@ import type {
   WorkoutSet,
 } from '@shared-types/app'
 
-export const DATABASE_SCHEMA_VERSION = 13
+export const DATABASE_SCHEMA_VERSION = 14
 export const BACKUP_SCHEMA_VERSION = 1
 export const DATABASE_NAME = 'training-log'
 
@@ -876,6 +876,27 @@ export class TrainingLogDatabase extends Dexie {
             run.trackingMode ??= 'gps'
             run.treadmillStepCount ??= 0
             run.treadmillStrideMeters ??= null
+          })
+        const templateExerciseNotes = new Map(
+          (
+            await tx
+              .table<TemplateWorkoutExercise>('templateWorkoutExercises')
+              .toArray()
+          ).map((exercise) => [exercise.id, exercise.notes]),
+        )
+        await tx
+          .table<ActiveCycleWorkoutExercise>('activeCycleWorkoutExercises')
+          .toCollection()
+          .modify((exercise) => {
+            if ((exercise.notes ?? '').trim() !== '') {
+              return
+            }
+            const sourceNotes = exercise.sourceTemplateExerciseId
+              ? templateExerciseNotes.get(exercise.sourceTemplateExerciseId)
+              : undefined
+            if (sourceNotes?.trim()) {
+              exercise.notes = sourceNotes
+            }
           })
         const metadata = await tx.table<AppMetadata>('appMetadata').get('app')
         if (metadata) {

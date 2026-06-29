@@ -798,6 +798,7 @@ function ExerciseWorkspace({
   const swipe = useSwipeNavigation({ onNext, onPrevious })
   const weightUnit = useWeightUnit()
   const finalProgrammedSetId = getFinalProgrammedSetId(sets)
+  const exerciseNotes = prescription?.notes.trim() ?? ''
 
   return (
     <Card
@@ -833,9 +834,6 @@ function ExerciseWorkspace({
           <p className="muted">
             {formatPrescriptionSummary(prescription, weightUnit)}
           </p>
-          {prescription?.notes ? (
-            <p className="muted">{prescription.notes}</p>
-          ) : null}
         </div>
         {restTimerPanel}
       </div>
@@ -904,6 +902,13 @@ function ExerciseWorkspace({
           {t(exercise.skipped ? 'Unskip' : 'Skip Exercise')}
         </SecondaryButton>
       </div>
+
+      {exerciseNotes ? (
+        <aside aria-label={t('Exercise notes')} className="live-exercise-notes">
+          <p className="eyebrow">{t('Exercise notes')}</p>
+          <p>{exerciseNotes}</p>
+        </aside>
+      ) : null}
     </Card>
   )
 }
