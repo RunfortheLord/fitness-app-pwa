@@ -137,6 +137,43 @@ describe('seedBuiltInPrograms', () => {
     expect(copy.days[0].id).not.toBe(`${templateId}::d0`)
   })
 
+  it('preserves built-in exercise notes when cloning into a user copy', async () => {
+    const repository = createProgramRepository(database)
+    await repository.seedBuiltInPrograms()
+    const templateId = builtInProgramTemplateId('full-body-four-days-per-week')
+
+    const copy = await repository.cloneProgramTemplate(templateId)
+
+    expect(copy.exercises[0].notes).toContain('back-off sets')
+  })
+
+  it('backfills blank notes in existing built-in user copies and active cycles', async () => {
+    const repository = createProgramRepository(database)
+    await repository.seedBuiltInPrograms()
+    const templateId = builtInProgramTemplateId('full-body-four-days-per-week')
+    const copy = await repository.cloneProgramTemplate(templateId)
+    await Promise.all(
+      copy.exercises.map((exercise) =>
+        database.templateWorkoutExercises.update(exercise.id, { notes: '' }),
+      ),
+    )
+    const active = await repository.activateTemplate(copy.template.id)
+    await Promise.all(
+      active.exercises.map((exercise) =>
+        database.activeCycleWorkoutExercises.update(exercise.id, { notes: '' }),
+      ),
+    )
+
+    await repository.seedBuiltInPrograms()
+
+    await expect(
+      database.templateWorkoutExercises.get(copy.exercises[0].id),
+    ).resolves.toMatchObject({ notes: expect.stringContaining('back-off') })
+    await expect(
+      database.activeCycleWorkoutExercises.get(active.exercises[0].id),
+    ).resolves.toMatchObject({ notes: expect.stringContaining('back-off') })
+  })
+
   it('activates a built-in as an isolated snapshot without mutating it', async () => {
     const repository = createProgramRepository(database)
     await repository.seedBuiltInPrograms()

@@ -1310,8 +1310,12 @@ function ProgramPreviewPage({
               <ul className="program-preview-exercises">
                 {(structure.exercisesByDay[day.id] ?? []).map((exercise) => (
                   <li key={exercise.id}>
-                    <span>{exercise.exerciseSnapshot.exerciseName}</span>
-                    <small>{formatPreviewPrescription(exercise)}</small>
+                    <span className="program-preview-exercise-name">
+                      {exercise.exerciseSnapshot.exerciseName}
+                    </span>
+                    <small className="program-preview-exercise-summary">
+                      {formatPreviewPrescription(exercise)}
+                    </small>
                     {exercise.notes ? <small>{exercise.notes}</small> : null}
                   </li>
                 ))}

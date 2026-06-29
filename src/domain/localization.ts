@@ -559,6 +559,7 @@ const spanishTranslations: Record<string, string> = {
   Exercise: 'Ejercicio',
   'Exercise name': 'Nombre del ejercicio',
   'Exercise notes': 'Notas del ejercicio',
+  'No exercise notes.': 'Sin notas del ejercicio.',
   'Exercise library': 'Biblioteca de ejercicios',
   'Search exercise library': 'Buscar en la biblioteca de ejercicios',
   'Tracking method': 'Método de seguimiento',

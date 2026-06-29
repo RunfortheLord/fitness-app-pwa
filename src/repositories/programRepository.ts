@@ -215,6 +215,7 @@ export function createProgramRepository(
           }
         },
       )
+      await backfillBlankBuiltInCopyNotes(database)
     },
 
     async createProgramTemplate(input: CreateProgramTemplateInput) {
@@ -517,7 +518,7 @@ export function createProgramRepository(
         durationWeeks: source.template.durationWeeks ?? null,
         days: source.days.map((day) => ({
           name: day.name,
-          notes: '',
+          notes: day.notes,
           exercises: source.exercisesByDay[day.id].map((exercise) => ({
             exerciseId: exercise.exerciseId,
             targetSetCount: exercise.targetSetCount,
@@ -528,7 +529,7 @@ export function createProgramRepository(
             targetRepsMax: exercise.targetRepsMax,
             targetRir: exercise.targetRir,
             restSecondsOverride: exercise.restSecondsOverride,
-            notes: '',
+            notes: exercise.notes,
           })),
         })),
       })
@@ -735,7 +736,7 @@ export function createProgramRepository(
             targetRepsMax: input.targetRepsMax ?? null,
             targetRir: input.targetRir ?? null,
             restSecondsOverride: input.restSecondsOverride ?? null,
-            notes: '',
+            notes: input.notes ?? '',
             createdAt: now,
             updatedAt: now,
           }
@@ -799,7 +800,9 @@ export function createProgramRepository(
             restSecondsOverride: hasField(input, 'restSecondsOverride')
               ? (input.restSecondsOverride ?? null)
               : prescribed.restSecondsOverride,
-            notes: '',
+            notes: hasField(input, 'notes')
+              ? (input.notes ?? '')
+              : prescribed.notes,
             updatedAt: now,
           }
           await database.templateWorkoutExercises.put(updated)
@@ -1269,7 +1272,7 @@ export function createProgramRepository(
             targetRepsMax: input.targetRepsMax ?? null,
             targetRir: input.targetRir ?? null,
             restSecondsOverride: input.restSecondsOverride ?? null,
-            notes: '',
+            notes: input.notes ?? '',
             createdAt: now,
             updatedAt: now,
           }
@@ -1332,7 +1335,9 @@ export function createProgramRepository(
             restSecondsOverride: hasField(input, 'restSecondsOverride')
               ? (input.restSecondsOverride ?? null)
               : prescribed.restSecondsOverride,
-            notes: '',
+            notes: hasField(input, 'notes')
+              ? (input.notes ?? '')
+              : prescribed.notes,
             updatedAt: now,
           }
           await database.activeCycleWorkoutExercises.put(updated)
@@ -1546,6 +1551,138 @@ async function reindexActiveExercises(
       }),
     ),
   )
+}
+
+async function backfillBlankBuiltInCopyNotes(database: TrainingLogDatabase) {
+  const now = new Date().toISOString()
+  await database.transaction(
+    'rw',
+    database.programTemplates,
+    database.templateWorkoutDays,
+    database.templateWorkoutExercises,
+    database.activeCycleWorkoutExercises,
+    async () => {
+      const [templates, days, exercises] = await Promise.all([
+        database.programTemplates.toArray(),
+        database.templateWorkoutDays.toArray(),
+        database.templateWorkoutExercises.toArray(),
+      ])
+      const daysByTemplate = groupBySorted(days, 'templateId')
+      const exercisesByDay = groupBySorted(exercises, 'dayId')
+      const sourceStructures = templates
+        .filter((template) => template.isBuiltIn)
+        .map((template) => ({
+          template,
+          days: daysByTemplate.get(template.id) ?? [],
+        }))
+      const templateNotesById = new Map(
+        exercises.map((exercise) => [exercise.id, exercise.notes]),
+      )
+
+      for (const candidate of templates.filter(
+        (template) => !template.isBuiltIn,
+      )) {
+        const candidateDays = daysByTemplate.get(candidate.id) ?? []
+        const source = sourceStructures.find((structure) =>
+          programExerciseShapeMatches(
+            candidateDays,
+            structure.days,
+            exercisesByDay,
+          ),
+        )
+        if (!source) {
+          continue
+        }
+
+        for (const [dayIndex, candidateDay] of candidateDays.entries()) {
+          const sourceDay = source.days[dayIndex]
+          const candidateExercises = exercisesByDay.get(candidateDay.id) ?? []
+          const sourceExercises = exercisesByDay.get(sourceDay.id) ?? []
+
+          for (const [
+            exerciseIndex,
+            candidateExercise,
+          ] of candidateExercises.entries()) {
+            const sourceExercise = sourceExercises[exerciseIndex]
+            if (
+              sourceExercise?.notes.trim() &&
+              !candidateExercise.notes.trim()
+            ) {
+              await database.templateWorkoutExercises.update(
+                candidateExercise.id,
+                {
+                  notes: sourceExercise.notes,
+                  updatedAt: now,
+                },
+              )
+              templateNotesById.set(candidateExercise.id, sourceExercise.notes)
+            }
+          }
+        }
+      }
+
+      const activeExercises =
+        await database.activeCycleWorkoutExercises.toArray()
+      await Promise.all(
+        activeExercises.map((exercise) => {
+          if (
+            exercise.notes.trim() ||
+            exercise.sourceTemplateExerciseId === null
+          ) {
+            return undefined
+          }
+          const sourceNotes = templateNotesById.get(
+            exercise.sourceTemplateExerciseId,
+          )
+          if (!sourceNotes?.trim()) {
+            return undefined
+          }
+          return database.activeCycleWorkoutExercises.update(exercise.id, {
+            notes: sourceNotes,
+            updatedAt: now,
+          })
+        }),
+      )
+    },
+  )
+}
+
+function groupBySorted<
+  T extends { orderIndex: number },
+  K extends keyof T & string,
+>(items: T[], key: K) {
+  const grouped = new Map<string, T[]>()
+  for (const item of items) {
+    const groupKey = String(item[key])
+    grouped.set(groupKey, [...(grouped.get(groupKey) ?? []), item])
+  }
+  for (const group of grouped.values()) {
+    group.sort((a, b) => a.orderIndex - b.orderIndex)
+  }
+  return grouped
+}
+
+function programExerciseShapeMatches(
+  candidateDays: ProgramTemplateDay[],
+  sourceDays: ProgramTemplateDay[],
+  exercisesByDay: Map<string, TemplateWorkoutExercise[]>,
+) {
+  if (candidateDays.length !== sourceDays.length) {
+    return false
+  }
+  return candidateDays.every((candidateDay, dayIndex) => {
+    const sourceDay = sourceDays[dayIndex]
+    const candidateExercises = exercisesByDay.get(candidateDay.id) ?? []
+    const sourceExercises = exercisesByDay.get(sourceDay.id) ?? []
+    return (
+      candidateExercises.length === sourceExercises.length &&
+      candidateExercises.every(
+        (candidateExercise, exerciseIndex) =>
+          candidateExercise.exerciseId ===
+          sourceExercises[exerciseIndex]?.exerciseId,
+      )
+    )
+  })
 }
 
 export const programRepository = createProgramRepository()

@@ -538,6 +538,9 @@ describe('TrainingPage', () => {
     expect(
       within(exerciseActions).getByRole('button', { name: 'Skip Exercise' }),
     ).toBeInTheDocument()
+    expect(
+      within(exerciseWorkspace as HTMLElement).getByLabelText('Exercise notes'),
+    ).toHaveTextContent('No exercise notes.')
 
     await user.clear(screen.getByRole('textbox', { name: 'Set 1 Weight' }))
     await user.type(
@@ -903,6 +906,15 @@ describe('TrainingPage', () => {
         /1 top set of 3, then 2 back-off sets of 3/,
       ),
     ).toBeInTheDocument()
+    const squatRow = within(mondayPreview)
+      .getByText('Barbell Back Squat')
+      .closest('li')
+    if (!squatRow) {
+      throw new Error('Squat preview row was not found.')
+    }
+    expect(
+      within(squatRow).getByText(/1 top set of 3, then 2 back-off sets of 3/),
+    ).not.toHaveClass('program-preview-exercise-summary')
 
     await user.click(
       screen.getByRole('button', { name: 'Back to browse programs' }),

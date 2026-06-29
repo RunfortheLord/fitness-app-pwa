@@ -903,12 +903,10 @@ function ExerciseWorkspace({
         </SecondaryButton>
       </div>
 
-      {exerciseNotes ? (
-        <aside aria-label={t('Exercise notes')} className="live-exercise-notes">
-          <p className="eyebrow">{t('Exercise notes')}</p>
-          <p>{exerciseNotes}</p>
-        </aside>
-      ) : null}
+      <aside aria-label={t('Exercise notes')} className="live-exercise-notes">
+        <p className="eyebrow">{t('Exercise notes')}</p>
+        <p>{exerciseNotes || t('No exercise notes.')}</p>
+      </aside>
     </Card>
   )
 }
