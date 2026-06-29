@@ -174,6 +174,23 @@ describe('seedBuiltInPrograms', () => {
     ).resolves.toMatchObject({ notes: expect.stringContaining('back-off') })
   })
 
+  it('keeps the current active cycle active when built-in programs are reseeded', async () => {
+    const repository = createProgramRepository(database)
+    await repository.seedBuiltInPrograms()
+    const templateId = builtInProgramTemplateId('full-body-four-days-per-week')
+    const copy = await repository.cloneProgramTemplate(templateId)
+    const active = await repository.activateTemplate(copy.template.id)
+
+    await repository.seedBuiltInPrograms()
+
+    await expect(
+      database.activeProgramCycles.get(active.cycle.id),
+    ).resolves.toMatchObject({ status: 'active' })
+    await expect(
+      database.activeProgramCycles.where({ status: 'active' }).toArray(),
+    ).resolves.toHaveLength(1)
+  })
+
   it('activates a built-in as an isolated snapshot without mutating it', async () => {
     const repository = createProgramRepository(database)
     await repository.seedBuiltInPrograms()

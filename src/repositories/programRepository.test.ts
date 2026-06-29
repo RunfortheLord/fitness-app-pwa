@@ -97,6 +97,22 @@ describe('programRepository', () => {
     })
   })
 
+  it('does not deactivate or recreate the active cycle when activating the same template again', async () => {
+    const program = await seedProgram(database)
+    const repository = createProgramRepository(database)
+
+    const firstActive = await repository.activateTemplate(program.template.id)
+    const secondActive = await repository.activateTemplate(program.template.id)
+
+    expect(secondActive.cycle.id).toBe(firstActive.cycle.id)
+    await expect(
+      database.activeProgramCycles.where({ status: 'active' }).toArray(),
+    ).resolves.toHaveLength(1)
+    await expect(
+      database.activeProgramCycles.get(firstActive.cycle.id),
+    ).resolves.toMatchObject({ status: 'active' })
+  })
+
   it('adds, renames, reorders, duplicates, and removes template days', async () => {
     const program = await seedProgram(database)
     const repository = createProgramRepository(database)
@@ -194,6 +210,32 @@ describe('programRepository', () => {
       cycle: { name: 'Cycle edited' },
       days: [{ name: 'Cycle day' }],
     })
+  })
+
+  it('keeps the current active cycle active when templates and active cycles are updated', async () => {
+    const program = await seedProgram(database)
+    const repository = createProgramRepository(database)
+    const active = await repository.activateTemplate(program.template.id)
+
+    await repository.updateProgramTemplate(program.template.id, {
+      name: 'Template update',
+    })
+    await repository.updateTemplateDay(program.days[0].id, {
+      name: 'Template day update',
+    })
+    await repository.updateActiveCycle(active.cycle.id, {
+      name: 'Active update',
+    })
+    await repository.updateActiveCycleDay(active.days[0].id, {
+      name: 'Active day update',
+    })
+
+    await expect(
+      database.activeProgramCycles.get(active.cycle.id),
+    ).resolves.toMatchObject({ status: 'active', name: 'Active update' })
+    await expect(
+      database.activeCycleWorkoutDays.get(active.days[0].id),
+    ).resolves.toMatchObject({ name: 'Active day update' })
   })
 
   it('clones a program template as a separate reusable template', async () => {

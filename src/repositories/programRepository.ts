@@ -318,6 +318,19 @@ export function createProgramRepository(
           if (!template) {
             throw new Error(`Program template ${templateId} was not found.`)
           }
+          const alreadyActive = await database.activeProgramCycles
+            .where({ status: 'active' })
+            .filter((cycle) => cycle.sourceTemplateId === templateId)
+            .first()
+          if (alreadyActive) {
+            const days = await database.activeCycleWorkoutDays
+              .where({ activeCycleId: alreadyActive.id })
+              .sortBy('orderIndex')
+            const exercises = await database.activeCycleWorkoutExercises
+              .where({ activeCycleId: alreadyActive.id })
+              .sortBy('orderIndex')
+            return { cycle: alreadyActive, days, exercises }
+          }
           const currentCycles = await database.activeProgramCycles
             .where({ status: 'active' })
             .toArray()
@@ -452,7 +465,7 @@ export function createProgramRepository(
         ...template,
         ...input,
         durationWeeks,
-        notes: '',
+        notes: template.notes,
         updatedAt: new Date().toISOString(),
       }
       await database.programTemplates.put(updated)
@@ -561,7 +574,7 @@ export function createProgramRepository(
             id: createId(),
             templateId,
             name: input.name,
-            notes: '',
+            notes: input.notes ?? '',
             orderIndex: existingDays.length,
             createdAt: now,
             updatedAt: now,
@@ -582,7 +595,7 @@ export function createProgramRepository(
         throw new Error(`Program template day ${dayId} was not found.`)
       }
       const now = new Date().toISOString()
-      const updated = { ...day, ...input, notes: '', updatedAt: now }
+      const updated = { ...day, ...input, notes: day.notes, updatedAt: now }
       await database.transaction(
         'rw',
         database.programTemplates,
@@ -1058,7 +1071,7 @@ export function createProgramRepository(
         ...cycle,
         ...input,
         durationWeeks,
-        notes: '',
+        notes: cycle.notes,
         updatedAt: new Date().toISOString(),
       }
       await database.activeProgramCycles.put(updated)
@@ -1089,7 +1102,7 @@ export function createProgramRepository(
             activeCycleId,
             sourceTemplateDayId: null,
             name: input.name,
-            notes: '',
+            notes: input.notes ?? '',
             orderIndex: days.length,
             createdAt: now,
             updatedAt: now,
@@ -1112,7 +1125,7 @@ export function createProgramRepository(
         throw new Error(`Active cycle day ${dayId} was not found.`)
       }
       const now = new Date().toISOString()
-      const updated = { ...day, ...input, notes: '', updatedAt: now }
+      const updated = { ...day, ...input, notes: day.notes, updatedAt: now }
       await database.transaction(
         'rw',
         database.activeProgramCycles,
