@@ -44,11 +44,32 @@
 
 ## Testing and Completion
 
-- For each behavior change, add or update appropriate unit, component, integration, and end-to-end coverage.
-- Test empty and populated database states, persistence after reload, error behavior, applicable migrations, and Chromium plus WebKit where practical.
-- Once scripts exist, run `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run test`, `npm run test:e2e`, and `npm run build` before declaring completion.
-- Do not declare success when a check was skipped. Explain any check that truly cannot run.
-- When the user asks for an app change or update intended for phone/PWA use, deploy the passing build to the stable Vercel production origin with `npm run deploy:stable` unless the user explicitly says not to deploy. Do not deploy if required checks fail.
+- For each behavior change, add or update appropriate tests in proportion to
+  risk. Prefer focused unit, component, integration, or end-to-end coverage that
+  directly exercises the changed behavior.
+- Use targeted checks during development. Examples:
+  - Pure docs or process-only changes: review the diff; run formatting only if
+    the touched files are covered by a formatter.
+  - CSS-only or copy-only UI changes: run `npm run format:check` plus targeted
+    component/e2e checks when layout, accessibility, or routing could regress.
+  - TypeScript/domain/repository changes: run `npm run typecheck` and the
+    affected unit or component tests.
+  - IndexedDB schema, migrations, backup/restore, active workout persistence,
+    service worker/PWA, or deploy-critical changes: run the relevant focused
+    tests first, then the full gate before shipping.
+- The full release gate is `npm run typecheck`, `npm run lint`,
+  `npm run format:check`, `npm run test`, `npm run test:e2e`, and
+  `npm run build`.
+- Run the full release gate before deploying to the stable Vercel production
+  origin, before high-risk releases, or whenever the user explicitly asks for
+  exhaustive validation.
+- When the user asks for an app change or update intended for phone/PWA use,
+  deploy to stable with `npm run deploy:stable` only after the checks selected
+  for the risk level have passed. Use the full release gate for high-risk
+  changes and for changes touching deployment, persistence, service workers, or
+  cross-browser behavior.
+- In the final response, state which checks were run. If a relevant check was
+  skipped by risk-based choice, say so plainly and explain why.
 
 ## Code Quality and Git
 
