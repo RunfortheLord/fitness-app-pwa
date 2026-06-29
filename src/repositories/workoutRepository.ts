@@ -117,6 +117,7 @@ export function createWorkoutRepository(
           database.activeCycleWorkoutDays,
           database.activeCycleWorkoutExercises,
           database.programTemplates,
+          database.exercises,
           database.workouts,
           database.workoutExercises,
           database.workoutSets,
@@ -184,37 +185,56 @@ export function createWorkoutRepository(
           const workoutSets: WorkoutSet[] = []
 
           for (const sourceExercise of sourceExercises) {
+            const currentExercise = await database.exercises.get(
+              sourceExercise.exerciseId,
+            )
+            let exerciseSnapshot = sourceExercise.exerciseSnapshot
+            if (currentExercise?.origin === 'built_in') {
+              exerciseSnapshot = snapshotExercise(currentExercise)
+            } else if (
+              currentExercise &&
+              sourceExercise.restSecondsOverride === null
+            ) {
+              exerciseSnapshot = {
+                ...exerciseSnapshot,
+                defaultRestSeconds: currentExercise.defaultRestSeconds,
+              }
+            }
+            const sourceForWorkout = {
+              ...sourceExercise,
+              exerciseSnapshot,
+            }
             const workoutExercise = createWorkoutExercise(
               workout.id,
-              sourceExercise,
+              sourceForWorkout,
               now,
             )
             workoutExercises.push(workoutExercise)
             await database.workoutExercises.add(workoutExercise)
             const previousSets = await getPreviousCompletedExerciseSets({
               database,
-              exerciseId: sourceExercise.exerciseId,
-              exerciseName: sourceExercise.exerciseSnapshot.exerciseName,
+              exerciseId: sourceForWorkout.exerciseId,
+              exerciseName: sourceForWorkout.exerciseSnapshot.exerciseName,
               trackingMethodId:
-                sourceExercise.exerciseSnapshot.trackingMethodId,
+                sourceForWorkout.exerciseSnapshot.trackingMethodId,
               beforeStartedAt: now,
               sourceDayId: day.id,
             })
 
             for (
               let setNumber = 1;
-              setNumber <= sourceExercise.targetSetCount;
+              setNumber <= sourceForWorkout.targetSetCount;
               setNumber += 1
             ) {
               const originalTarget = createOriginalTargetSnapshot(
-                sourceExercise,
-                sourceExercise.exerciseSnapshot.trackingMethodId,
+                sourceForWorkout,
+                sourceForWorkout.exerciseSnapshot.trackingMethodId,
               )
               const suggestedLoad = suggestedLoadForSetIndex({
                 previousSets,
                 setNumber,
                 trackingMethodId:
-                  sourceExercise.exerciseSnapshot.trackingMethodId,
+                  sourceForWorkout.exerciseSnapshot.trackingMethodId,
               })
               // Pre-log the last recorded values for this day's exercise so the
               // user sees their previous weights/reps and can adjust as needed.
@@ -239,7 +259,7 @@ export function createWorkoutRepository(
                         },
                         userEditedTarget: null,
                         reason: 'within_range_hold',
-                        explanation: `Suggested from your most recent completed ${sourceExercise.exerciseSnapshot.exerciseName} set ${setNumber}.`,
+                        explanation: `Suggested from your most recent completed ${sourceForWorkout.exerciseSnapshot.exerciseName} set ${setNumber}.`,
                         sourceSetId: null,
                         generatedAt: now,
                       }
@@ -250,10 +270,10 @@ export function createWorkoutRepository(
                       Object.keys(preloggedValues).map((key) => [key, 'auto']),
                     )
                   : {},
-                rir: sourceExercise.targetRir,
+                rir: sourceForWorkout.targetRir,
                 completed: false,
                 completedAt: null,
-                restSecondsUsed: sourceExercise.restSecondsOverride,
+                restSecondsUsed: sourceForWorkout.restSecondsOverride,
                 createdAt: now,
                 updatedAt: now,
               }
@@ -340,6 +360,47 @@ export function createWorkoutRepository(
         notes,
         updatedAt: now,
       })
+    },
+
+    async updateWorkoutExerciseDefaultRest(
+      workoutExerciseId: string,
+      defaultRestSeconds: number,
+    ) {
+      if (
+        defaultRestSeconds < 0 ||
+        !Number.isFinite(defaultRestSeconds) ||
+        !Number.isInteger(defaultRestSeconds)
+      ) {
+        throw new Error('Default rest time must be a whole number of seconds.')
+      }
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        database.workouts,
+        database.workoutExercises,
+        async () => {
+          const workoutExercise =
+            await database.workoutExercises.get(workoutExerciseId)
+          if (!workoutExercise) {
+            throw new Error(
+              `Workout exercise ${workoutExerciseId} was not found.`,
+            )
+          }
+          const updated: WorkoutExercise = {
+            ...workoutExercise,
+            exerciseSnapshot: {
+              ...workoutExercise.exerciseSnapshot,
+              defaultRestSeconds,
+            },
+            updatedAt: now,
+          }
+          await database.workoutExercises.put(updated)
+          await database.workouts.update(workoutExercise.workoutId, {
+            updatedAt: now,
+          })
+          return updated
+        },
+      )
     },
 
     async updateWorkoutSet(setId: string, input: UpdateWorkoutSetInput) {

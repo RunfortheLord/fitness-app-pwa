@@ -32,12 +32,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     { webhookUrl: process.env.FEEDBACK_WEBHOOK_URL },
   )
 
-  if (result.ok) {
-    res.status(200).json(result)
+  if ('error' in result) {
+    res.status(statusForFeedbackError(result.error.code)).json(result)
     return
   }
 
-  res.status(statusForFeedbackError(result.error.code)).json(result)
+  res.status(200).json(result)
 }
 
 function readBody(body: unknown): Record<string, unknown> {

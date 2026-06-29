@@ -11,12 +11,14 @@ import { workoutRepository } from '@repositories/workoutRepository'
 import { nativeRestTimerNotificationService } from '@services/nativeRestTimerNotificationService'
 import {
   usesSystemNotificationTimerSound,
+  WEB_PUSH_REST_TIMER_NOTIFICATION_TAG,
   webPushRestTimerNotificationService,
 } from '@services/webPushRestTimerNotificationService'
 
 const REST_TIMER_POLL_MILLISECONDS = 500
 
 type TimerSoundSettings = {
+  bannersEnabled: boolean
   enabled: boolean
   soundId: string
 }
@@ -27,6 +29,7 @@ type TimerSoundSettings = {
  */
 export function RestTimerMonitor() {
   const timerSound = useRef<TimerSoundSettings>({
+    bannersEnabled: true,
     enabled: true,
     soundId: DEFAULT_TIMER_SOUND_ID,
   })
@@ -43,6 +46,7 @@ export function RestTimerMonitor() {
         return
       }
       timerSound.current = {
+        bannersEnabled: settings.timerBannersEnabled ?? true,
         enabled: settings.timerSoundEnabled ?? true,
         soundId: settings.selectedTimerSoundId ?? DEFAULT_TIMER_SOUND_ID,
       }
@@ -69,19 +73,21 @@ export function RestTimerMonitor() {
             timer.durationSeconds,
             timer.accumulatedPausedSeconds,
             timer.status,
-            timerSound.current.soundId,
+            timerSound.current.bannersEnabled,
+            timerSound.current.enabled,
           ].join(':')
         : 'no-active-rest-timer'
       if (nativeTimerSignature.current !== nextNativeTimerSignature) {
         try {
-          const nativeStatus = await nativeRestTimerNotificationService.sync(
-            timer ?? null,
-            timerSound.current.soundId,
-            { soundEnabled: timerSound.current.enabled },
-          )
+          const nativeStatus = timerSound.current.bannersEnabled
+            ? await nativeRestTimerNotificationService.sync(timer ?? null, {
+                soundEnabled: timerSound.current.enabled,
+              })
+            : await nativeRestTimerNotificationService.cancel()
           if (nativeStatus === 'unavailable') {
-            const webPushStatus =
-              await webPushRestTimerNotificationService.sync(timer ?? null)
+            const webPushStatus = timerSound.current.bannersEnabled
+              ? await webPushRestTimerNotificationService.sync(timer ?? null)
+              : await webPushRestTimerNotificationService.cancel()
             outsideAlertScheduled.current =
               webPushStatus === 'scheduled' || webPushStatus === 'expired'
           } else {
@@ -103,6 +109,8 @@ export function RestTimerMonitor() {
         announceRestComplete(
           timerSound.current,
           shouldPlayInAppTimerSound(outsideAlertScheduled.current),
+          shouldShowImmediateSystemTimerAlert(),
+          timer.id,
         )
       }
       if (completingTimerKeys.current.has(timerKey)) {
@@ -153,9 +161,19 @@ export function RestTimerMonitor() {
 function announceRestComplete(
   timerSound: TimerSoundSettings,
   playInAppSound: boolean,
+  showImmediateSystemAlert: boolean,
+  timerId: string,
 ) {
   if ('vibrate' in navigator) {
     navigator.vibrate?.(180)
+  }
+  if (timerSound.enabled && showImmediateSystemAlert) {
+    if (timerSound.bannersEnabled) {
+      void showImmediateSystemRestCompleteAlert(timerId).catch(() => {
+        // Visual completion remains authoritative when notifications are blocked.
+      })
+    }
+    return
   }
   if (timerSound.enabled && playInAppSound) {
     void playTimerSoundOnce(timerSound.soundId).catch(() => {
@@ -165,11 +183,31 @@ function announceRestComplete(
 }
 
 function shouldPlayInAppTimerSound(outsideAlertScheduled: boolean) {
-  if (outsideAlertScheduled) {
+  if (usesSystemNotificationTimerSound()) {
     return false
   }
-  if (!usesSystemNotificationTimerSound()) {
-    return true
+  return !outsideAlertScheduled
+}
+
+function shouldShowImmediateSystemTimerAlert() {
+  return (
+    usesSystemNotificationTimerSound() && document.visibilityState === 'visible'
+  )
+}
+
+async function showImmediateSystemRestCompleteAlert(timerId: string) {
+  const nativeStatus =
+    await nativeRestTimerNotificationService.showImmediateAlert({
+      body: 'Your next set is ready.',
+      extra: { timerId },
+      title: 'Rest timer complete',
+    })
+  if (nativeStatus !== 'unavailable') {
+    return nativeStatus
   }
-  return document.visibilityState === 'visible'
+  return webPushRestTimerNotificationService.showImmediateAlert({
+    body: 'Your next set is ready.',
+    tag: WEB_PUSH_REST_TIMER_NOTIFICATION_TAG,
+    title: 'Rest timer complete',
+  })
 }

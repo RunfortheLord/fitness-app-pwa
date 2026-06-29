@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { TrainingLogDatabase } from '@db/database'
+import { BUILT_IN_EXERCISES } from '@domain/exerciseLibrary'
+import { getTrackingMethod } from '@domain/trackingMethods'
 import { createExerciseRepository } from '@repositories/exerciseRepository'
 import { createProgramRepository } from '@repositories/programRepository'
 import { createWorkoutRepository } from '@repositories/workoutRepository'
@@ -112,6 +114,101 @@ describe('workoutRepository', () => {
     await expect(database.workoutSets.toArray()).resolves.toHaveLength(2)
     await expect(database.workoutHistoryEntries.toArray()).resolves.toEqual([])
     await expect(database.detectedWorkoutChanges.toArray()).resolves.toEqual([])
+  })
+
+  it('uses the current exercise default rest when starting from an older program snapshot', async () => {
+    const exerciseRepository = createExerciseRepository(database)
+    const exercise = await exerciseRepository.createExercise({
+      name: 'Remembered rest press',
+      defaultRestSeconds: 60,
+      trackingMethodId: 'weight_reps',
+    })
+    const program = await createProgramRepository(
+      database,
+    ).createProgramTemplate({
+      name: 'Remembered rest',
+      days: [
+        {
+          name: 'Day',
+          exercises: [
+            {
+              exerciseId: exercise.id,
+              targetSetCount: 2,
+              targetRepsMin: 5,
+              targetRepsMax: 8,
+              restSecondsOverride: null,
+            },
+          ],
+        },
+      ],
+    })
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    await exerciseRepository.updateExerciseDefaultRest(exercise.id, 105)
+
+    const started = await createWorkoutRepository(database).startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+
+    expect(started.exercises[0].exerciseSnapshot.defaultRestSeconds).toBe(105)
+    expect(started.sets.map((set) => set.restSecondsUsed)).toEqual([null, null])
+  })
+
+  it('uses corrected built-in tracking metadata when starting from an older program snapshot', async () => {
+    const bodyweightSquat = BUILT_IN_EXERCISES.find(
+      (exercise) => exercise.id === 'builtin:bodyweight-squat',
+    )
+    const repsOnly = getTrackingMethod('reps_only')
+    if (!bodyweightSquat || !repsOnly) {
+      throw new Error('Required exercise metadata was not found.')
+    }
+    await database.exercises.put(bodyweightSquat)
+    const program = await createProgramRepository(
+      database,
+    ).createProgramTemplate({
+      name: 'Corrected tracking',
+      days: [
+        {
+          name: 'Day',
+          exercises: [
+            {
+              exerciseId: bodyweightSquat.id,
+              targetSetCount: 1,
+              targetRepsMin: 8,
+              targetRepsMax: 12,
+              restSecondsOverride: null,
+            },
+          ],
+        },
+      ],
+    })
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    await database.activeCycleWorkoutExercises.update(active.exercises[0].id, {
+      exerciseSnapshot: {
+        ...active.exercises[0].exerciseSnapshot,
+        trackingMethodId: 'reps_only',
+        trackingMetrics: repsOnly.metrics,
+      },
+    })
+
+    const started = await createWorkoutRepository(database).startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+
+    expect(started.exercises[0].exerciseSnapshot).toMatchObject({
+      trackingMethodId: 'added_weight_reps',
+      trackingMetrics: [
+        expect.objectContaining({ key: 'addedWeight' }),
+        expect.objectContaining({ key: 'reps' }),
+      ],
+    })
   })
 
   it('checks the program day off for the current week when a workout is completed', async () => {

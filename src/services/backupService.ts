@@ -249,6 +249,7 @@ const userSettingsSchema = z.object({
   nutritionGoal: nutritionGoalSchema.nullable().optional(),
   timerSoundEnabled: z.boolean().optional().default(true),
   selectedTimerSoundId: z.string().optional().default('rest-complete-chime'),
+  timerBannersEnabled: z.boolean().optional().default(true),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })

@@ -10,6 +10,12 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-06-28-timer-fixed',
+    date: '2026-06-28',
+    title: 'Timer is finally fixed!',
+    items: ['Timer is finally fixed!'],
+  },
+  {
     id: '2026-06-27-guided-goal-setup',
     date: '2026-06-27',
     title: 'Guided nutrition goals',

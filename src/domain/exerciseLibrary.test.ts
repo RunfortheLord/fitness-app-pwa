@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BUILT_IN_EXERCISES,
   BUILT_IN_EXERCISE_SEED_VERSION,
+  CORE_BUILT_IN_EXERCISES,
   validateBuiltInExercises,
 } from '@domain/exerciseLibrary'
 
@@ -47,6 +48,24 @@ describe('built-in exercise library', () => {
       defaultWeightIncrement: 5,
     })
     expect(
+      BUILT_IN_EXERCISES.find((seed) => seed.name === 'Pull-Up'),
+    ).toMatchObject({
+      trackingMethodId: 'added_weight_reps',
+      defaultWeightIncrement: 5,
+    })
+    expect(
+      BUILT_IN_EXERCISES.find((seed) => seed.name === 'Chin-Up'),
+    ).toMatchObject({
+      trackingMethodId: 'added_weight_reps',
+      defaultWeightIncrement: 5,
+    })
+    expect(
+      BUILT_IN_EXERCISES.find((seed) => seed.name === 'Dip'),
+    ).toMatchObject({
+      trackingMethodId: 'added_weight_reps',
+      defaultWeightIncrement: 5,
+    })
+    expect(
       BUILT_IN_EXERCISES.find((seed) => seed.name === 'Assisted Pull-Up'),
     ).toMatchObject({
       trackingMethodId: 'assisted_weight_reps',
@@ -61,7 +80,8 @@ describe('built-in exercise library', () => {
       BUILT_IN_EXERCISES.find((seed) => seed.name === 'Scapular Pull-Up'),
     ).toMatchObject({
       equipmentType: 'bodyweight',
-      trackingMethodId: 'reps_only',
+      trackingMethodId: 'added_weight_reps',
+      defaultWeightIncrement: 5,
       primaryMuscleGroups: ['back'],
       secondaryMuscleGroups: ['shoulders'],
     })
@@ -69,6 +89,75 @@ describe('built-in exercise library', () => {
       BUILT_IN_EXERCISES.every((seed) => seed.primaryMuscleGroups.length),
     ).toBe(true)
   })
+
+  it('limits reps-only tracking to exercises without a meaningful load field', () => {
+    const repsOnlyNames = CORE_BUILT_IN_EXERCISES.filter(
+      (exercise) => exercise.trackingMethodId === 'reps_only',
+    )
+      .map((exercise) => exercise.name)
+      .sort()
+
+    expect(repsOnlyNames).toEqual(
+      [
+        '#1.5 Gripper Closes',
+        '#2 Gripper Closes',
+        'Ab Wheel Rollout',
+        'Band External Rotation',
+        'Band Face Pull',
+        'Band Pull-Apart',
+        'Banded Lateral Walk',
+        'Banded Leg Curl',
+        'Bird Dog',
+        'Burpee',
+        'Dead Bug',
+        'Dragon Flag',
+        'Hand Gripper Crushing',
+        'Mountain Climber',
+        'Neck Extension',
+        'Neck Flexion',
+        'Neck Lateral Flexion',
+        'Plyometric Push-Up',
+        'Pogo Jump',
+        'Reverse Crunch',
+        'Scapular Push-Up',
+        'Serratus Wall Slide',
+        'Wall Slide',
+      ].sort(),
+    )
+  })
+
+  it.each([
+    'Bodyweight Squat',
+    'Crunch',
+    'Glute Bridge',
+    'Hip Thrust',
+    'Inverted Row',
+    'Pistol Squat',
+    'Roman Chair Sit-Up',
+    'Scapular Pull-Up',
+    'Sit-Up',
+    'Standing Calf Raise',
+    'Step-Up',
+    'Walking Lunge',
+  ])('provides an added-weight field for %s', (name) => {
+    expect(
+      BUILT_IN_EXERCISES.find((exercise) => exercise.name === name),
+    ).toMatchObject({
+      trackingMethodId: 'added_weight_reps',
+      defaultWeightIncrement: 5,
+    })
+  })
+
+  it.each(['Medicine Ball Slam', 'Prone Y-Raise'])(
+    'provides a weight field for %s',
+    (name) => {
+      expect(
+        BUILT_IN_EXERCISES.find((exercise) => exercise.name === name),
+      ).toMatchObject({
+        trackingMethodId: 'weight_reps',
+      })
+    },
+  )
 
   it('contains the requested added exercises with tracking metadata', () => {
     expect(() => validateBuiltInExercises()).not.toThrow()
@@ -112,7 +201,7 @@ describe('built-in exercise library', () => {
     })
     expect(byName.get('3-Second Eccentric Pull-Up')).toMatchObject({
       id: 'builtin:three-second-eccentric-pull-up',
-      trackingMethodId: 'reps_only',
+      trackingMethodId: 'added_weight_reps',
     })
     expect(byName.get('1.5-Rep Dumbbell Lateral Raise')).toMatchObject({
       id: 'builtin:one-and-a-half-rep-dumbbell-lateral-raise',

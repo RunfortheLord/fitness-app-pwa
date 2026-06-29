@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { webPushRestTimerNotificationService } from './webPushRestTimerNotificationService'
+import {
+  WEB_PUSH_REST_TIMER_NOTIFICATION_TAG,
+  webPushRestTimerNotificationService,
+} from './webPushRestTimerNotificationService'
 
 const mocks = vi.hoisted(() => ({
+  closeNotification: vi.fn(),
+  getNotifications: vi.fn(),
   getSubscription: vi.fn(),
+  showNotification: vi.fn(),
   subscribe: vi.fn(),
 }))
 
@@ -31,6 +37,8 @@ function installWebPushGlobals(permission: NotificationPermission) {
           getSubscription: mocks.getSubscription,
           subscribe: mocks.subscribe,
         },
+        getNotifications: mocks.getNotifications,
+        showNotification: mocks.showNotification,
       }),
     },
   })
@@ -47,6 +55,10 @@ const subscription = {
 beforeEach(() => {
   localStorage.clear()
   mocks.getSubscription.mockReset()
+  mocks.closeNotification.mockReset()
+  mocks.getNotifications.mockReset()
+  mocks.getNotifications.mockResolvedValue([])
+  mocks.showNotification.mockReset()
   mocks.subscribe.mockReset()
   vi.unstubAllGlobals()
 })
@@ -118,5 +130,56 @@ describe('webPushRestTimerNotificationService', () => {
       'permission-required',
     )
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('previews the device notification alert through the service worker', async () => {
+    vi.useFakeTimers()
+    installWebPushGlobals('granted')
+    mocks.getNotifications.mockResolvedValue([
+      { close: mocks.closeNotification },
+    ])
+    mocks.showNotification.mockResolvedValue(undefined)
+
+    await expect(webPushRestTimerNotificationService.preview()).resolves.toBe(
+      'scheduled',
+    )
+
+    expect(mocks.showNotification).toHaveBeenCalledWith('Timer alert test', {
+      body: 'This is the iPhone alert used for rest timers.',
+      tag: 'rest-timer-alert-preview',
+    })
+    expect(mocks.getNotifications).toHaveBeenCalledWith({
+      tag: 'rest-timer-alert-preview',
+    })
+    expect(mocks.closeNotification).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(6_000)
+    expect(mocks.getNotifications).toHaveBeenCalledTimes(2)
+    expect(mocks.closeNotification).toHaveBeenCalledTimes(2)
+    vi.useRealTimers()
+  })
+
+  it('closes current and legacy timer notifications when canceled', async () => {
+    installWebPushGlobals('granted')
+    mocks.getSubscription.mockResolvedValue(subscription)
+    mocks.getNotifications.mockResolvedValue([
+      {
+        close: mocks.closeNotification,
+        tag: WEB_PUSH_REST_TIMER_NOTIFICATION_TAG,
+      },
+      { close: mocks.closeNotification, tag: 'rest-timer-old-id' },
+      { close: mocks.closeNotification, tag: 'another-feature' },
+    ])
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ ok: true, messageId: null })),
+    )
+
+    await expect(webPushRestTimerNotificationService.cancel()).resolves.toBe(
+      'canceled',
+    )
+
+    expect(mocks.getNotifications).toHaveBeenCalledWith()
+    expect(mocks.closeNotification).toHaveBeenCalledTimes(2)
   })
 })

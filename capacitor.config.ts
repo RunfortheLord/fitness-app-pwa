@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   plugins: {
     LocalNotifications: {
-      presentationOptions: [],
+      presentationOptions: ['banner', 'sound'],
     },
   },
 }

@@ -256,7 +256,7 @@ test('starts, resumes, edits, and cancels a live workout', async ({
   await builder.getByRole('textbox', { name: 'Add workout day' }).fill('Live A')
   await builder.getByRole('button', { name: 'Add day' }).click()
   await builder.getByRole('button', { name: 'Add exercise' }).click()
-  await addPrescription(builder, 'E2E Live press', '1')
+  await addPrescription(builder, 'E2E Live press', '2')
   await closeBuilder(builder)
 
   await page.getByRole('button', { name: 'Activate E2E Live program' }).click()
@@ -279,7 +279,7 @@ test('starts, resumes, edits, and cancels a live workout', async ({
   await page.getByRole('textbox', { name: 'Set 1 Weight' }).fill('95')
   await page.getByRole('textbox', { name: 'Set 1 Reps' }).fill('10')
   await page.getByRole('button', { name: 'Complete set 1' }).click()
-  await expect(page.getByText('Rest timer')).toBeVisible()
+  await expect(page.locator('.rest-timer-toolbar')).toBeVisible()
   await page.screenshot({
     fullPage: true,
     path: testInfo.outputPath('live-workout-390.png'),

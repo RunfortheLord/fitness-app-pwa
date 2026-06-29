@@ -3,6 +3,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Minus,
   Pause,
   Play,
   Plus,
@@ -10,6 +11,7 @@ import {
   Search,
   Settings2,
   Square,
+  TimerOff,
   Trash2,
 } from 'lucide-react'
 import {
@@ -18,6 +20,7 @@ import {
   useState,
   type FocusEvent,
   type PointerEvent,
+  type ReactNode,
 } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -117,12 +120,10 @@ export function LiveWorkoutPage() {
   const [confirmRemove, setConfirmRemove] = useState(false)
   const [picker, setPicker] = useState<ExercisePickerState>(null)
   const [timerSound, setTimerSound] = useState({
+    bannersEnabled: true,
     enabled: true,
     soundId: DEFAULT_TIMER_SOUND_ID,
   })
-  const [defaultRestSeconds, setDefaultRestSeconds] = useState<number | null>(
-    null,
-  )
   const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -183,6 +184,7 @@ export function LiveWorkoutPage() {
         return
       }
       setTimerSound({
+        bannersEnabled: settings.timerBannersEnabled ?? true,
         enabled: settings.timerSoundEnabled ?? true,
         soundId: settings.selectedTimerSoundId ?? DEFAULT_TIMER_SOUND_ID,
       })
@@ -191,7 +193,6 @@ export function LiveWorkoutPage() {
           settings.selectedTimerSoundId ?? DEFAULT_TIMER_SOUND_ID,
         )
       }
-      setDefaultRestSeconds(settings.defaultRestSeconds ?? null)
     })
     return () => {
       isCurrent = false
@@ -223,14 +224,17 @@ export function LiveWorkoutPage() {
     requestPermission = false,
   ) {
     try {
-      const nativeStatus = await nativeRestTimerNotificationService.sync(
-        timer,
-        timerSound.soundId,
-        { requestPermission, soundEnabled: timerSound.enabled },
-      )
+      const nativeStatus = timerSound.bannersEnabled
+        ? await nativeRestTimerNotificationService.sync(timer, {
+            requestPermission,
+            soundEnabled: timerSound.enabled,
+          })
+        : await nativeRestTimerNotificationService.cancel()
       const webPushStatus =
         nativeStatus === 'unavailable'
-          ? await webPushRestTimerNotificationService.sync(timer)
+          ? timerSound.bannersEnabled
+            ? await webPushRestTimerNotificationService.sync(timer)
+            : await webPushRestTimerNotificationService.cancel()
           : 'unavailable'
       setNativeTimerMessage(
         nativeTimerStatusMessage(nativeStatus) ??
@@ -251,6 +255,51 @@ export function LiveWorkoutPage() {
       action.then((timer) => syncNativeRestTimer(timer, requestPermission)),
       'Rest timer could not be updated.',
     )
+  }
+
+  function saveActiveExerciseDefaultRest(seconds: number) {
+    if (!activeExercise?.exerciseId) {
+      setError('Exercise default rest time could not be saved.')
+      return
+    }
+    const exerciseId = activeExercise.exerciseId
+    const workoutExerciseId = activeExercise.id
+    void Promise.all([
+      exerciseRepository.updateExerciseDefaultRest(exerciseId, seconds),
+      workoutRepository.updateWorkoutExerciseDefaultRest(
+        workoutExerciseId,
+        seconds,
+      ),
+    ])
+      .then(() => {
+        setError(null)
+        setState((current) => {
+          if (current.status !== 'ready') {
+            return current
+          }
+          return {
+            ...current,
+            exercises: current.exercises.map((exercise) =>
+              exercise.id === workoutExerciseId
+                ? {
+                    ...exercise,
+                    exerciseSnapshot: {
+                      ...exercise.exerciseSnapshot,
+                      defaultRestSeconds: seconds,
+                    },
+                  }
+                : exercise,
+            ),
+          }
+        })
+      })
+      .catch((caught: unknown) => {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : 'Exercise default rest time could not be saved.',
+        )
+      })
   }
 
   async function cancelNativeRestTimer() {
@@ -399,13 +448,18 @@ export function LiveWorkoutPage() {
               {state.workout.workoutSnapshot.activeCycleName ?? t('Program')}
             </p>
           </div>
-          <SecondaryButton
-            className="button-danger"
-            type="button"
-            onClick={() => setConfirmDiscard(true)}
-          >
-            {t('Discard Workout')}
-          </SecondaryButton>
+          <div className="live-workout-header-actions">
+            <PrimaryButton type="button" onClick={() => setConfirmFinish(true)}>
+              Finish Workout
+            </PrimaryButton>
+            <SecondaryButton
+              className="button-danger"
+              type="button"
+              onClick={() => setConfirmDiscard(true)}
+            >
+              {t('Discard Workout')}
+            </SecondaryButton>
+          </div>
         </div>
         <div className="live-workout-stats">
           <span>
@@ -420,43 +474,6 @@ export function LiveWorkoutPage() {
       {nativeTimerMessage ? (
         <StatusMessage tone="warning">{nativeTimerMessage}</StatusMessage>
       ) : null}
-
-      <RestTimerCard
-        onAddTime={() =>
-          runRestTimerMutation(
-            workoutRepository.addRestTimerSeconds(state.workout.id, 30),
-          )
-        }
-        onSubtractTime={() =>
-          runRestTimerMutation(
-            workoutRepository.addRestTimerSeconds(state.workout.id, -30),
-          )
-        }
-        onDismiss={() =>
-          runRestTimerMutation(
-            workoutRepository.dismissRestTimer(state.workout.id),
-          )
-        }
-        onPause={() =>
-          runRestTimerMutation(
-            workoutRepository.pauseRestTimer(state.workout.id),
-          )
-        }
-        onResume={() =>
-          runRestTimerMutation(
-            workoutRepository.resumeRestTimer(state.workout.id),
-          )
-        }
-        remainingSeconds={restRemaining}
-        timer={state.workout.activeRestTimer}
-        defaultRestSeconds={defaultRestSeconds}
-        onChangeDefaultRest={(seconds) => {
-          setDefaultRestSeconds(seconds)
-          void settingsRepository
-            .saveDefaultRestSeconds(seconds)
-            .catch(() => setError('Default rest time could not be saved.'))
-        }}
-      />
 
       <Card className="exercise-navigator" title="Exercises">
         <div className="exercise-tab-list">
@@ -481,11 +498,11 @@ export function LiveWorkoutPage() {
           exercise={activeExercise}
           exerciseCount={state.exercises.length}
           exerciseIndex={activeIndex}
+          onAddExercise={() => setPicker({ mode: 'add' })}
           onAddSet={() => run(workoutRepository.addSet(activeExercise.id))}
           onCompleteSet={(set, completed) => {
             const restSeconds =
               set.restSecondsUsed ??
-              defaultRestSeconds ??
               activeExercise.exerciseSnapshot.defaultRestSeconds ??
               0
             const hasMoreSetsInExercise = activeSets.some(
@@ -553,6 +570,42 @@ export function LiveWorkoutPage() {
             run(workoutRepository.skipExercise(activeExercise.id, skipped))
           }
           prescription={activePrescription}
+          restTimerPanel={
+            <RestTimerPanel
+              onAddTime={() =>
+                runRestTimerMutation(
+                  workoutRepository.addRestTimerSeconds(state.workout.id, 30),
+                )
+              }
+              onSubtractTime={() =>
+                runRestTimerMutation(
+                  workoutRepository.addRestTimerSeconds(state.workout.id, -30),
+                )
+              }
+              onDismiss={() =>
+                runRestTimerMutation(
+                  workoutRepository.dismissRestTimer(state.workout.id),
+                )
+              }
+              onPause={() =>
+                runRestTimerMutation(
+                  workoutRepository.pauseRestTimer(state.workout.id),
+                )
+              }
+              onResume={() =>
+                runRestTimerMutation(
+                  workoutRepository.resumeRestTimer(state.workout.id),
+                )
+              }
+              remainingSeconds={restRemaining}
+              timer={state.workout.activeRestTimer}
+              exerciseDefaultRestSeconds={
+                activeExercise.exerciseSnapshot.defaultRestSeconds ?? 0
+              }
+              exerciseName={activeExercise.exerciseSnapshot.exerciseName}
+              onChangeExerciseDefaultRest={saveActiveExerciseDefaultRest}
+            />
+          }
           sets={activeSets}
         />
       ) : (
@@ -560,22 +613,18 @@ export function LiveWorkoutPage() {
           <EmptyState
             title="No exercises"
             message="Add an exercise to begin logging this workout."
+            action={
+              <PrimaryButton
+                type="button"
+                onClick={() => setPicker({ mode: 'add' })}
+              >
+                <Plus aria-hidden="true" size={18} />
+                {t('Add Exercise')}
+              </PrimaryButton>
+            }
           />
         </Card>
       )}
-
-      <div className="live-workout-finish">
-        <SecondaryButton
-          type="button"
-          onClick={() => setPicker({ mode: 'add' })}
-        >
-          <Plus aria-hidden="true" size={18} />
-          {t('Add Exercise')}
-        </SecondaryButton>
-        <PrimaryButton type="button" onClick={() => setConfirmFinish(true)}>
-          Finish Workout
-        </PrimaryButton>
-      </div>
 
       <ExercisePickerSheet
         currentWorkoutId={state.workout.id}
@@ -706,6 +755,7 @@ function ExerciseWorkspace({
   exercise,
   exerciseCount,
   exerciseIndex,
+  onAddExercise,
   onAddSet,
   onCompleteSet,
   onDeleteSet,
@@ -717,6 +767,7 @@ function ExerciseWorkspace({
   onSetRir,
   onSkip,
   prescription,
+  restTimerPanel,
   sets,
 }: {
   canGoNext: boolean
@@ -724,6 +775,7 @@ function ExerciseWorkspace({
   exercise: WorkoutExercise
   exerciseCount: number
   exerciseIndex: number
+  onAddExercise: () => void
   onAddSet: () => void
   onCompleteSet: (set: WorkoutSet, completed: boolean) => void
   onDeleteSet: (setId: string) => void
@@ -738,6 +790,7 @@ function ExerciseWorkspace({
   onSetRir: (set: WorkoutSet, rir: number | null) => void
   onSkip: (skipped: boolean) => void
   prescription: ActiveCycleWorkoutExercise | undefined
+  restTimerPanel: ReactNode
   sets: WorkoutSet[]
 }) {
   const { t } = useLanguage()
@@ -768,7 +821,7 @@ function ExerciseWorkspace({
       {...swipe}
     >
       <div className="exercise-card-header">
-        <div>
+        <div className="exercise-title-block">
           <p className="eyebrow">
             {t('Exercise {current} of {total}', {
               current: exerciseIndex + 1,
@@ -781,26 +834,7 @@ function ExerciseWorkspace({
             {formatPrescriptionSummary(prescription, weightUnit)}
           </p>
         </div>
-        <div className="row-actions">
-          <SecondaryButton type="button" onClick={onReplaceExercise}>
-            <RefreshCcw aria-hidden="true" size={16} />
-            {t('Replace Exercise')}
-          </SecondaryButton>
-          <SecondaryButton
-            className="button-danger"
-            type="button"
-            onClick={onRemoveExercise}
-          >
-            {t('Remove Exercise')}
-          </SecondaryButton>
-          <SecondaryButton
-            type="button"
-            disabled={!exercise.skipped && !canSkipWorkoutExercise(sets)}
-            onClick={() => onSkip(!exercise.skipped)}
-          >
-            {t(exercise.skipped ? 'Unskip' : 'Skip Exercise')}
-          </SecondaryButton>
-        </div>
+        {restTimerPanel}
       </div>
 
       <div className="exercise-stepper" aria-label={t('Exercise navigation')}>
@@ -839,6 +873,34 @@ function ExerciseWorkspace({
         <Plus aria-hidden="true" size={18} />
         {t('Add Set')}
       </SecondaryButton>
+
+      <div
+        className="exercise-management-actions"
+        aria-label={t('Exercise actions')}
+      >
+        <SecondaryButton type="button" onClick={onAddExercise}>
+          <Plus aria-hidden="true" size={16} />
+          {t('Add Exercise')}
+        </SecondaryButton>
+        <SecondaryButton type="button" onClick={onReplaceExercise}>
+          <RefreshCcw aria-hidden="true" size={16} />
+          {t('Replace Exercise')}
+        </SecondaryButton>
+        <SecondaryButton
+          className="button-danger"
+          type="button"
+          onClick={onRemoveExercise}
+        >
+          {t('Remove Exercise')}
+        </SecondaryButton>
+        <SecondaryButton
+          type="button"
+          disabled={!exercise.skipped && !canSkipWorkoutExercise(sets)}
+          onClick={() => onSkip(!exercise.skipped)}
+        >
+          {t(exercise.skipped ? 'Unskip' : 'Skip Exercise')}
+        </SecondaryButton>
+      </div>
     </Card>
   )
 }
@@ -1039,10 +1101,11 @@ function MetricNumericInput({
   )
 }
 
-function RestTimerCard({
-  defaultRestSeconds,
+function RestTimerPanel({
+  exerciseDefaultRestSeconds,
+  exerciseName,
   onAddTime,
-  onChangeDefaultRest,
+  onChangeExerciseDefaultRest,
   onDismiss,
   onPause,
   onResume,
@@ -1050,9 +1113,10 @@ function RestTimerCard({
   remainingSeconds,
   timer,
 }: {
-  defaultRestSeconds: number | null
+  exerciseDefaultRestSeconds: number
+  exerciseName: string
   onAddTime: () => void
-  onChangeDefaultRest: (seconds: number | null) => void
+  onChangeExerciseDefaultRest: (seconds: number) => void
   onDismiss: () => void
   onPause: () => void
   onResume: () => void
@@ -1069,43 +1133,106 @@ function RestTimerCard({
   }
 
   function openSettings() {
-    setDraftRest(defaultRestSeconds != null ? String(defaultRestSeconds) : '')
+    setDraftRest(String(exerciseDefaultRestSeconds))
     setSettingsOpen(true)
   }
 
   function saveSettings() {
     const trimmed = draftRest.trim()
-    if (trimmed === '') {
-      onChangeDefaultRest(null)
-    } else {
-      const parsed = Number(trimmed)
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        return
-      }
-      onChangeDefaultRest(Math.round(parsed))
+    const parsed = Number(trimmed)
+    if (!trimmed || !Number.isFinite(parsed) || parsed < 0) {
+      return
     }
+    onChangeExerciseDefaultRest(Math.round(parsed))
     setSettingsOpen(false)
   }
 
+  const timerStatus =
+    timer.status === 'completed'
+      ? t('Rest complete')
+      : timer.status === 'paused'
+        ? t('Timer paused')
+        : t('Timer running')
+
   return (
-    <Card className="rest-timer-card" title="Rest timer">
-      <div className="rest-timer-header">
+    <>
+      <div className="rest-timer-toolbar" aria-label={t('Rest timer')}>
+        <span
+          aria-label={`${timerStatus}: ${formatDuration(remainingSeconds)}`}
+          aria-live="polite"
+          className="rest-timer-readout"
+          title={timerStatus}
+        >
+          <Clock aria-hidden="true" size={17} />
+          <span>{formatDuration(remainingSeconds)}</span>
+        </span>
+        {timer.status === 'completed' ? null : timer.status === 'paused' ? (
+          <IconButton
+            aria-label={t('Resume')}
+            title={t('Resume')}
+            type="button"
+            onClick={onResume}
+          >
+            <Play aria-hidden="true" size={17} />
+          </IconButton>
+        ) : (
+          <IconButton
+            aria-label={t('Pause')}
+            title={t('Pause')}
+            type="button"
+            onClick={onPause}
+          >
+            <Pause aria-hidden="true" size={17} />
+          </IconButton>
+        )}
+        <IconButton
+          aria-label="Subtract 30 seconds"
+          disabled={remainingSeconds === 0}
+          title="Subtract 30 seconds"
+          type="button"
+          onClick={onSubtractTime}
+        >
+          <Minus aria-hidden="true" size={17} />
+        </IconButton>
+        <IconButton
+          aria-label="Add 30 seconds"
+          title="Add 30 seconds"
+          type="button"
+          onClick={onAddTime}
+        >
+          <Plus aria-hidden="true" size={17} />
+        </IconButton>
+        <IconButton
+          aria-label="Clear rest timer"
+          title="Clear rest timer"
+          type="button"
+          onClick={onDismiss}
+        >
+          <TimerOff aria-hidden="true" size={17} />
+        </IconButton>
         <IconButton
           aria-label="Rest timer settings"
           aria-expanded={settingsOpen}
+          title="Rest timer settings"
           type="button"
-          onClick={() =>
-            settingsOpen ? setSettingsOpen(false) : openSettings()
-          }
+          onClick={openSettings}
         >
-          <Settings2 aria-hidden="true" size={18} />
+          <Settings2 aria-hidden="true" size={17} />
         </IconButton>
       </div>
-      {settingsOpen ? (
-        <div className="rest-timer-settings">
-          <FormField id="default-rest-seconds" label="Default rest (seconds)">
+
+      <BottomSheet
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        title="Rest timer settings"
+      >
+        <div className="rest-timer-settings-form">
+          <FormField
+            id="exercise-default-rest-seconds"
+            label="Exercise default rest (seconds)"
+          >
             <NumericInput
-              id="default-rest-seconds"
+              id="exercise-default-rest-seconds"
               onChange={(event) => setDraftRest(event.target.value)}
               placeholder="e.g. 90"
               value={draftRest}
@@ -1113,7 +1240,7 @@ function RestTimerCard({
           </FormField>
           <p className="muted">
             {t(
-              "Applies to rest timers that start after a set. Leave blank to use each exercise's own default.",
+              `Saved to ${exerciseName || 'this exercise'} and reused anywhere this exercise appears.`,
             )}
           </p>
           <div className="button-row">
@@ -1128,51 +1255,8 @@ function RestTimerCard({
             </PrimaryButton>
           </div>
         </div>
-      ) : null}
-      <p aria-live="polite" className="metric-value metric-value-small">
-        {formatDuration(remainingSeconds)}
-      </p>
-      <p className="muted">
-        {timer.status === 'completed'
-          ? t('Rest complete')
-          : timer.status === 'paused'
-            ? t('Timer paused')
-            : t('Timer running')}
-      </p>
-      <div className="button-row">
-        {timer.status === 'completed' ? null : timer.status === 'paused' ? (
-          <SecondaryButton type="button" onClick={onResume}>
-            <Play aria-hidden="true" size={18} />
-            {t('Resume')}
-          </SecondaryButton>
-        ) : (
-          <SecondaryButton type="button" onClick={onPause}>
-            <Pause aria-hidden="true" size={18} />
-            {t('Pause')}
-          </SecondaryButton>
-        )}
-        <div className="timer-adjust-row" aria-label={t('Timer adjustment')}>
-          <SecondaryButton
-            aria-label="Subtract 30 seconds"
-            disabled={remainingSeconds === 0}
-            type="button"
-            onClick={onSubtractTime}
-          >
-            -30
-          </SecondaryButton>
-          <SecondaryButton
-            aria-label="Add 30 seconds"
-            type="button"
-            onClick={onAddTime}
-          >
-            +30
-          </SecondaryButton>
-        </div>
-        <SecondaryButton type="button" onClick={onDismiss}>
-          Clear
-        </SecondaryButton>
-      </div>
-    </Card>
+      </BottomSheet>
+    </>
   )
 }
 

@@ -139,6 +139,8 @@ type ProgramFormState = {
 
 type PrescriptionFormState = {
   exerciseId: string
+  restMinutes: string
+  restSeconds: string
   targetSetCount: string
   targetWeight: string
   targetDurationSeconds: string
@@ -166,6 +168,8 @@ const emptyProgramForm: ProgramFormState = {
 
 const emptyPrescriptionForm: PrescriptionFormState = {
   exerciseId: '',
+  restMinutes: '2',
+  restSeconds: '0',
   targetSetCount: '3',
   targetWeight: '',
   targetDurationSeconds: '',
@@ -2101,22 +2105,31 @@ function PrescriptionEditor({
   const [searchQuery, setSearchQuery] = useState('')
   const [form, setForm] = useState<PrescriptionFormState>(() =>
     target.exercise
-      ? {
-          exerciseId: target.exercise.exerciseId,
-          targetSetCount: String(target.exercise.targetSetCount),
-          targetWeight: weightInputValue(
-            target.exercise.targetWeight,
-            weightUnit,
-            'lifting',
-          ),
-          targetDurationSeconds:
-            target.exercise.targetDurationSeconds?.toString() ?? '',
-          targetDistance: target.exercise.targetDistance?.toString() ?? '',
-          targetRepsMin: target.exercise.targetRepsMin?.toString() ?? '',
-          targetRepsMax: target.exercise.targetRepsMax?.toString() ?? '',
-          targetRir: target.exercise.targetRir?.toString() ?? '',
-          notes: target.exercise.notes,
-        }
+      ? (() => {
+          const currentExercise = exercises.find(
+            (exercise) => exercise.id === target.exercise?.exerciseId,
+          )
+          const restSeconds =
+            currentExercise?.defaultRestSeconds ??
+            target.exercise.exerciseSnapshot.defaultRestSeconds
+          return {
+            exerciseId: target.exercise.exerciseId,
+            ...restFieldsFromSeconds(restSeconds),
+            targetSetCount: String(target.exercise.targetSetCount),
+            targetWeight: weightInputValue(
+              target.exercise.targetWeight,
+              weightUnit,
+              'lifting',
+            ),
+            targetDurationSeconds:
+              target.exercise.targetDurationSeconds?.toString() ?? '',
+            targetDistance: target.exercise.targetDistance?.toString() ?? '',
+            targetRepsMin: target.exercise.targetRepsMin?.toString() ?? '',
+            targetRepsMax: target.exercise.targetRepsMax?.toString() ?? '',
+            targetRir: target.exercise.targetRir?.toString() ?? '',
+            notes: target.exercise.notes,
+          }
+        })()
       : emptyPrescriptionForm,
   )
   const [error, setError] = useState<string | null>(null)
@@ -2136,14 +2149,19 @@ function PrescriptionEditor({
     exerciseUsage,
   )
   const isDirty =
-    formIsDirty(form, target.exercise, weightUnit) || step === 'create'
+    formIsDirty(form, target.exercise, weightUnit, selectedExercise) ||
+    step === 'create'
 
   function update(field: keyof PrescriptionFormState, value: string) {
     setForm((current) => ({ ...current, [field]: value }))
   }
 
   function selectExercise(exercise: Exercise) {
-    setForm((current) => ({ ...current, exerciseId: exercise.id }))
+    setForm((current) => ({
+      ...current,
+      exerciseId: exercise.id,
+      ...restFieldsFromSeconds(exercise.defaultRestSeconds),
+    }))
     setStep('edit')
     setError(null)
   }
@@ -2161,27 +2179,46 @@ function PrescriptionEditor({
       setError(parsed.error)
       return
     }
-    const action = target.exercise
-      ? mode === 'template'
-        ? programRepository.updateTemplateExercise(
-            target.exercise.id,
-            parsed.value,
-          )
-        : programRepository.updateActiveCycleExercise(
-            target.exercise.id,
-            parsed.value,
-          )
-      : mode === 'template'
+    const parsedRest = parseRestDuration(form.restMinutes, form.restSeconds)
+    if (!parsedRest.ok) {
+      setError(parsedRest.error)
+      return
+    }
+    const savePrescription = (): Promise<unknown> => {
+      if (target.exercise) {
+        return mode === 'template'
+          ? programRepository.updateTemplateExercise(
+              target.exercise.id,
+              parsed.value,
+            )
+          : programRepository.updateActiveCycleExercise(
+              target.exercise.id,
+              parsed.value,
+            )
+      }
+      return mode === 'template'
         ? programRepository.addTemplateExercise(target.dayId, parsed.value)
         : programRepository.addActiveCycleExercise(target.dayId, parsed.value)
+    }
 
-    void action.then(onSaved).catch((caught: unknown) => {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : 'Prescription could not save.',
-      )
-    })
+    void exerciseRepository
+      .updateExerciseDefaultRest(parsed.value.exerciseId, parsedRest.value)
+      .then((updatedExercise) => {
+        setAvailableExercises((current) =>
+          current.map((exercise) =>
+            exercise.id === updatedExercise.id ? updatedExercise : exercise,
+          ),
+        )
+        return savePrescription()
+      })
+      .then(onSaved)
+      .catch((caught: unknown) => {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : 'Prescription could not save.',
+        )
+      })
   }
 
   function saveCustomExercise() {
@@ -2379,6 +2416,28 @@ function PrescriptionEditor({
                     )} increment`
                   : ''}
               </small>
+            </div>
+            <div className="compact-field-grid">
+              <FormField id="prescription-rest-minutes" label="Rest minutes">
+                <NumericInput
+                  id="prescription-rest-minutes"
+                  onChange={(event) =>
+                    update('restMinutes', event.target.value)
+                  }
+                  pattern="[0-9]*"
+                  value={form.restMinutes}
+                />
+              </FormField>
+              <FormField id="prescription-rest-seconds" label="Rest seconds">
+                <NumericInput
+                  id="prescription-rest-seconds"
+                  onChange={(event) =>
+                    update('restSeconds', event.target.value)
+                  }
+                  pattern="[0-9]*"
+                  value={form.restSeconds}
+                />
+              </FormField>
             </div>
             <div className="compact-field-grid">
               <FormField id="target-sets" label="Sets">
@@ -3189,8 +3248,7 @@ function parseExerciseForm(
   form: ExerciseFormState,
 ): { ok: true; value: CreateExerciseInput } | { ok: false; error: string } {
   const name = form.name.trim()
-  const restMinutes = Number(form.restMinutes)
-  const restSeconds = Number(form.restSeconds)
+  const restDuration = parseRestDuration(form.restMinutes, form.restSeconds)
   const trackingMethod = getTrackingMethod(form.trackingMethodId)
   const bodyweightPercentage =
     form.bodyweightLoadMode === 'bodyweight_percentage_plus_external'
@@ -3201,18 +3259,8 @@ function parseExerciseForm(
     return { ok: false, error: 'Exercise name is required.' }
   }
 
-  if (
-    !Number.isFinite(restMinutes) ||
-    !Number.isInteger(restMinutes) ||
-    restMinutes < 0 ||
-    !Number.isFinite(restSeconds) ||
-    !Number.isInteger(restSeconds) ||
-    restSeconds < 0
-  ) {
-    return {
-      ok: false,
-      error: 'Default rest time must use whole minutes and seconds.',
-    }
+  if (!restDuration.ok) {
+    return restDuration
   }
 
   if (!trackingMethod) {
@@ -3233,11 +3281,42 @@ function parseExerciseForm(
     value: {
       name,
       notes: form.notes.trim(),
-      defaultRestSeconds: restMinutes * 60 + restSeconds,
+      defaultRestSeconds: restDuration.value,
       trackingMethodId: trackingMethod.id,
       bodyweightLoadMode: form.bodyweightLoadMode,
       bodyweightPercentage: bodyweightPercentage.value,
     },
+  }
+}
+
+function parseRestDuration(
+  restMinutesInput: string,
+  restSecondsInput: string,
+): { ok: true; value: number } | { ok: false; error: string } {
+  const restMinutes = Number(restMinutesInput)
+  const restSeconds = Number(restSecondsInput)
+
+  if (
+    !Number.isFinite(restMinutes) ||
+    !Number.isInteger(restMinutes) ||
+    restMinutes < 0 ||
+    !Number.isFinite(restSeconds) ||
+    !Number.isInteger(restSeconds) ||
+    restSeconds < 0
+  ) {
+    return {
+      ok: false,
+      error: 'Default rest time must use whole minutes and seconds.',
+    }
+  }
+
+  return { ok: true, value: restMinutes * 60 + restSeconds }
+}
+
+function restFieldsFromSeconds(defaultRestSeconds: number) {
+  return {
+    restMinutes: String(Math.floor(defaultRestSeconds / 60)),
+    restSeconds: String(defaultRestSeconds % 60),
   }
 }
 
@@ -3465,10 +3544,13 @@ function formIsDirty(
   form: PrescriptionFormState,
   exercise: TemplateWorkoutExercise | ActiveCycleWorkoutExercise | null,
   unit: WeightUnit = 'lb',
+  selectedExercise: Exercise | null = null,
 ) {
   if (!exercise) {
     return (
       form.exerciseId !== '' ||
+      form.restMinutes !== emptyPrescriptionForm.restMinutes ||
+      form.restSeconds !== emptyPrescriptionForm.restSeconds ||
       form.targetSetCount !== emptyPrescriptionForm.targetSetCount ||
       form.targetWeight !== '' ||
       form.targetDurationSeconds !== '' ||
@@ -3480,8 +3562,14 @@ function formIsDirty(
     )
   }
 
+  const defaultRestSeconds =
+    selectedExercise?.defaultRestSeconds ??
+    exercise.exerciseSnapshot.defaultRestSeconds
+  const restFields = restFieldsFromSeconds(defaultRestSeconds)
   return (
     form.exerciseId !== exercise.exerciseId ||
+    form.restMinutes !== restFields.restMinutes ||
+    form.restSeconds !== restFields.restSeconds ||
     form.targetSetCount !== String(exercise.targetSetCount) ||
     form.targetWeight !==
       weightInputValue(exercise.targetWeight, unit, 'lifting') ||

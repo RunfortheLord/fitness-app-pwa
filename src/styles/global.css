@@ -932,6 +932,15 @@ textarea:focus-visible {
   min-width: 0;
 }
 
+.exercise-title-block {
+  flex: 1 1 190px;
+}
+
+.exercise-card-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .live-workout-stats {
   display: flex;
   flex-wrap: wrap;
@@ -950,6 +959,27 @@ textarea:focus-visible {
   color: var(--color-muted);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
+}
+
+.live-workout-header-actions {
+  display: grid;
+  width: min(100%, 360px);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.live-workout-header-actions .button {
+  width: 100%;
+}
+
+.exercise-management-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.exercise-management-actions .button {
+  width: 100%;
 }
 
 .exercise-navigator h2 {
@@ -1115,43 +1145,37 @@ textarea:focus-visible {
   align-items: end;
 }
 
-.rest-timer-card {
-  border-color: rgb(143 124 255 / 50%);
-}
-
-.rest-timer-header {
+.rest-timer-toolbar {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 2px;
 }
 
-.rest-timer-settings {
+.rest-timer-toolbar .icon-button {
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  justify-content: center;
+}
+
+.rest-timer-readout {
+  display: inline-flex;
+  min-width: 62px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  color: var(--color-text);
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.rest-timer-settings-form {
   display: grid;
   gap: var(--space-3);
-  padding: var(--space-3);
-  margin-bottom: var(--space-3);
-  border: 1px solid var(--color-border-soft);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-sunken, rgb(0 0 0 / 15%));
-}
-
-.timer-adjust-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(64px, 1fr));
-  gap: var(--space-2);
-}
-
-.live-workout-finish {
-  position: sticky;
-  bottom: calc(env(safe-area-inset-bottom) + var(--bottom-nav-height));
-  z-index: 10;
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: rgb(29 29 31 / 96%);
-  backdrop-filter: blur(14px);
 }
 
 .checkbox-row {
@@ -3072,7 +3096,27 @@ body.food-search-open .bottom-nav {
   text-align: center;
 }
 
+@media (max-width: 600px) {
+  .exercise-card-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .exercise-title-block {
+    grid-row: 2;
+  }
+
+  .rest-timer-toolbar {
+    grid-row: 1;
+    justify-self: end;
+  }
+}
+
 @media (max-width: 370px) {
+  .rest-timer-toolbar {
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+
   .bottom-nav {
     grid-template-columns: 1fr 1fr 64px 1fr 1fr;
     padding-right: var(--space-2);

@@ -50,6 +50,7 @@ foreign-key ID fields and sort indexes.
 - `nutritionTargets`
 - `timerSoundEnabled`
 - `selectedTimerSoundId`
+- `timerBannersEnabled`
 - `createdAt`
 - `updatedAt`
 

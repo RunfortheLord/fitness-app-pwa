@@ -99,6 +99,7 @@ export function SettingsPage() {
   const [isDestructiveOperationRunning, setIsDestructiveOperationRunning] =
     useState(false)
   const [timerSoundEnabled, setTimerSoundEnabled] = useState(true)
+  const [timerBannersEnabled, setTimerBannersEnabled] = useState(true)
   const [selectedTimerSoundId, setSelectedTimerSoundId] = useState(
     DEFAULT_TIMER_SOUND_ID,
   )
@@ -125,9 +126,11 @@ export function SettingsPage() {
   const { refreshDashboard } = useDashboardContext()
   const visibleCloudBackupInfo =
     authStatus === 'signedIn' && isOnline ? cloudBackupInfo : null
+  const usesNativeSystemSound = supportsNativeRestTimerNotifications()
   const usesWebPushSystemSound =
-    !supportsNativeRestTimerNotifications() &&
-    supportsWebPushRestTimerNotifications()
+    !usesNativeSystemSound && supportsWebPushRestTimerNotifications()
+  const usesSystemTimerAlertSound =
+    usesNativeSystemSound || usesWebPushSystemSound
 
   const requestedSection = searchParams.get('section')
   const isWhatsNewSubpageOpen = whatsNewOpen || requestedSection === 'whats-new'
@@ -164,6 +167,7 @@ export function SettingsPage() {
       }
 
       setTimerSoundEnabled(settings.timerSoundEnabled ?? true)
+      setTimerBannersEnabled(settings.timerBannersEnabled ?? true)
       setSelectedTimerSoundId(
         settings.selectedTimerSoundId ?? DEFAULT_TIMER_SOUND_ID,
       )
@@ -242,12 +246,24 @@ export function SettingsPage() {
   function saveTimerSettings(next: {
     timerSoundEnabled: boolean
     selectedTimerSoundId: string
+    timerBannersEnabled: boolean
   }) {
     setTimerSoundEnabled(next.timerSoundEnabled)
     setSelectedTimerSoundId(next.selectedTimerSoundId)
-    void settingsRepository.saveTimerSettings(next).then(() => {
-      setTimerSoundMessage('Timer sound settings saved.')
-    })
+    setTimerBannersEnabled(next.timerBannersEnabled)
+    void settingsRepository
+      .saveTimerSettings(next)
+      .then(async () => {
+        if (!next.timerBannersEnabled) {
+          await Promise.all([
+            nativeRestTimerNotificationService.cancel(),
+            webPushRestTimerNotificationService.cancel(),
+          ])
+        }
+      })
+      .then(() => {
+        setTimerSoundMessage('Timer settings saved.')
+      })
   }
 
   function saveWeightUnit(unit: WeightUnit) {
@@ -281,6 +297,21 @@ export function SettingsPage() {
     })
   }
 
+  async function previewSystemTimerAlert() {
+    try {
+      const status = usesNativeSystemSound
+        ? await nativeRestTimerNotificationService.preview()
+        : await webPushRestTimerNotificationService.preview()
+      setTimerSoundMessage(t(systemTimerAlertPreviewMessage(status)))
+    } catch {
+      setTimerSoundMessage(
+        t(
+          'Timer alert could not be tested. Check notification settings and try again.',
+        ),
+      )
+    }
+  }
+
   async function enableNativeTimerAlerts() {
     try {
       const status =
@@ -303,9 +334,11 @@ export function SettingsPage() {
         await webPushRestTimerNotificationService.requestPermission()
       if (status === 'granted') {
         const workout = await workoutRepository.getActiveWorkout()
-        await webPushRestTimerNotificationService.sync(
-          workout?.activeRestTimer ?? null,
-        )
+        if (timerBannersEnabled) {
+          await webPushRestTimerNotificationService.sync(
+            workout?.activeRestTimer ?? null,
+          )
+        }
       }
       setNativeTimerAlertMessage(webPushPermissionMessage(status))
     } catch {
@@ -577,8 +610,11 @@ export function SettingsPage() {
         {weightUnitMessage ? (
           <StatusMessage tone="success">{weightUnitMessage}</StatusMessage>
         ) : null}
-        {usesWebPushSystemSound ? (
+        {usesSystemTimerAlertSound ? (
           <>
+            {timerSoundMessage ? (
+              <StatusMessage tone="success">{timerSoundMessage}</StatusMessage>
+            ) : null}
             <p>
               <strong>{t('Timer alert sound')}</strong>
             </p>
@@ -587,6 +623,29 @@ export function SettingsPage() {
                 'Default iPhone notification sound. Its volume and playback behavior are controlled by iPhone notification settings.',
               )}
             </p>
+            <label className="checkbox-row">
+              <input
+                checked={timerBannersEnabled}
+                onChange={(event) =>
+                  saveTimerSettings({
+                    timerSoundEnabled,
+                    selectedTimerSoundId,
+                    timerBannersEnabled: event.currentTarget.checked,
+                  })
+                }
+                type="checkbox"
+              />
+              {t('Timer notification banners')}
+            </label>
+            <div className="button-row">
+              <SecondaryButton
+                disabled={!timerBannersEnabled}
+                type="button"
+                onClick={() => void previewSystemTimerAlert()}
+              >
+                {t('Test iPhone alert')}
+              </SecondaryButton>
+            </div>
           </>
         ) : (
           <>
@@ -600,6 +659,7 @@ export function SettingsPage() {
                   saveTimerSettings({
                     timerSoundEnabled: event.currentTarget.checked,
                     selectedTimerSoundId,
+                    timerBannersEnabled,
                   })
                 }
                 type="checkbox"
@@ -617,6 +677,7 @@ export function SettingsPage() {
                   saveTimerSettings({
                     timerSoundEnabled,
                     selectedTimerSoundId: event.currentTarget.value,
+                    timerBannersEnabled,
                   })
                 }
                 value={selectedTimerSoundId}
@@ -996,6 +1057,31 @@ function webPushPermissionMessage(status: WebPushRestTimerNotificationStatus) {
     case 'canceled':
     case 'expired':
       return 'Outside-app rest-timer alerts are enabled.'
+  }
+}
+
+function systemTimerAlertPreviewMessage(
+  status: WebPushRestTimerNotificationStatus,
+) {
+  switch (status) {
+    case 'scheduled':
+    case 'granted':
+      return 'Timer alert test sent. If you did not hear it, check iPhone notification sound settings for this app.'
+    case 'install-required':
+      return 'Install this app on the iPhone Home Screen, open the installed app, and try again.'
+    case 'denied':
+      return 'Notifications are disabled. Allow them for this app in iPhone Settings.'
+    case 'permission-required':
+      return 'Notification permission was not granted.'
+    case 'not-configured':
+      return 'Outside-app timer alerts are not configured on this deployment.'
+    case 'unavailable':
+      return 'This browser does not support iPhone timer alert tests.'
+    case 'failed':
+      return 'Timer alert could not be tested. Check notification settings and try again.'
+    case 'canceled':
+    case 'expired':
+      return 'Timer alert test sent. If you did not hear it, check iPhone notification sound settings for this app.'
   }
 }
 

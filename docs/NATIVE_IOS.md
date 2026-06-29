@@ -12,9 +12,13 @@ connection.
 - Starting, pausing, resuming, adding time, subtracting time, dismissing the
   timer, discarding the workout, and finishing the workout all resynchronize or
   cancel the one pending native notification.
-- The selected timer sound is bundled as an iOS notification sound.
+- The default iOS notification alert sound is used. The user controls sound,
+  volume, Focus, and notification presentation in iPhone Settings.
 - Notifications are marked time-sensitive. The user remains in control of
   notification, Focus, sound, and volume settings.
+- Foreground notifications use banner and sound presentation without adding a
+  separate Notification Center list entry. Delivered timer entries from older
+  app versions are removed when the app next synchronizes the timer.
 - Normal local notifications cannot override lowered system volume. Critical
   Alerts are not used.
 
@@ -62,8 +66,8 @@ containers.
 
 ## Physical iPhone Timer Test
 
-1. In Settings, enable **Timer completion sound** and tap
-   **Enable outside-app timer alerts**.
+1. In Settings, tap **Enable outside-app timer alerts**, then tap
+   **Test iPhone alert** and confirm the iPhone notification alert plays.
 2. Start a workout with at least two sets and complete the first set.
 3. Confirm the rest timer is running, then return to the iPhone Home Screen.
 4. Verify a sound and notification arrive at expiry.

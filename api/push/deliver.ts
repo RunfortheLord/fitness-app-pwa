@@ -50,7 +50,7 @@ export async function POST(request: Request) {
       job.subscription,
       JSON.stringify({
         body: 'Rest complete. Your next set is ready.',
-        tag: `rest-timer-${job.timerId}`,
+        tag: 'nutrifit-rest-timer',
         title: 'NutriFit Timer',
         url: '/workout',
       }),

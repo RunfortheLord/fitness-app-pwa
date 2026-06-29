@@ -48,6 +48,12 @@ describe('exerciseRepository', () => {
       equipmentType: 'barbell',
       primaryMuscleGroups: ['chest'],
     })
+    await expect(
+      repository.getExercise('builtin:bodyweight-squat'),
+    ).resolves.toMatchObject({
+      trackingMethodId: 'added_weight_reps',
+      defaultWeightIncrement: 5,
+    })
 
     const custom = await repository.createExercise({
       name: 'Visible custom exercise',

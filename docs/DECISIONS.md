@@ -61,6 +61,23 @@
 - Xcode signing and physical-device installation require macOS and cannot be
   completed or verified from the Windows development environment.
 
+## 2026-06-28: Timer Notification Banner Control
+
+- Settings include a local `timerBannersEnabled` preference so outside-app
+  rest-timer notification banners can be disabled without changing in-app timer
+  sounds.
+- When timer banners are disabled, the app cancels the pending native or Web
+  Push timer alert and does not schedule replacement banners for later timer
+  mutations.
+- Web Push timer deliveries and foreground completion alerts use one stable tag
+  across every timer. The service worker closes current and legacy timer
+  notifications before showing the next banner, then closes the displayed
+  notification after six seconds so it does not linger in Notification Center.
+- Native foreground presentation requests the iOS banner and sound options but
+  omits the notification-list option. Native cleanup also recognizes legacy
+  timer titles so opening or resynchronizing the app removes older delivered
+  entries created before stable notification IDs were introduced.
+
 ## 2026-06-26: Alpha Feedback Relay
 
 - Added an in-app "Send feedback" form (Settings) for alpha testers to send typed

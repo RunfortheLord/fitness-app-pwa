@@ -176,6 +176,7 @@ describe('SettingsPage', () => {
     renderSettings()
 
     expect(await screen.findByText('Timer alert sound')).toBeInTheDocument()
+    expect(screen.getByLabelText('Timer notification banners')).toBeChecked()
     expect(
       screen.getByText(
         'Default iPhone notification sound. Its volume and playback behavior are controlled by iPhone notification settings.',
@@ -185,6 +186,25 @@ describe('SettingsPage', () => {
     expect(
       screen.queryByRole('button', { name: 'Preview' }),
     ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Test iPhone alert' }),
+    ).toBeInTheDocument()
+  })
+
+  it('uses the default iPhone alert instead of bundled sounds for native iOS', async () => {
+    vi.spyOn(
+      nativeTimerNotifications,
+      'supportsNativeRestTimerNotifications',
+    ).mockReturnValue(true)
+
+    renderSettings()
+
+    expect(await screen.findByText('Timer alert sound')).toBeInTheDocument()
+    expect(screen.getByLabelText('Timer notification banners')).toBeChecked()
+    expect(screen.queryByText('Sound selection')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Test iPhone alert' }),
+    ).toBeInTheDocument()
   })
 
   it('explains iPhone audio controls when a preview cannot play', async () => {
@@ -201,6 +221,69 @@ describe('SettingsPage', () => {
         'Timer sound could not play. Raise media volume, check the selected audio output, and try again.',
       ),
     ).toBeInTheDocument()
+  })
+
+  it('tests the native iPhone alert from settings', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(
+      nativeTimerNotifications,
+      'supportsNativeRestTimerNotifications',
+    ).mockReturnValue(true)
+    const preview = vi
+      .spyOn(
+        nativeTimerNotifications.nativeRestTimerNotificationService,
+        'preview',
+      )
+      .mockResolvedValue('scheduled')
+
+    renderSettings()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Test iPhone alert' }),
+    )
+
+    expect(preview).toHaveBeenCalledTimes(1)
+    expect(
+      await screen.findByText(
+        'Timer alert test sent. If you did not hear it, check iPhone notification sound settings for this app.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('turns off timer notification banners and cancels pending outside-app alerts', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(
+      nativeTimerNotifications,
+      'supportsNativeRestTimerNotifications',
+    ).mockReturnValue(true)
+    const cancelNative = vi
+      .spyOn(
+        nativeTimerNotifications.nativeRestTimerNotificationService,
+        'cancel',
+      )
+      .mockResolvedValue('canceled')
+    const cancelWebPush = vi
+      .spyOn(
+        webPushTimerNotifications.webPushRestTimerNotificationService,
+        'cancel',
+      )
+      .mockResolvedValue('canceled')
+
+    renderSettings()
+
+    await user.click(await screen.findByLabelText('Timer notification banners'))
+
+    await waitFor(async () => {
+      expect(
+        (await settingsRepository.getSettings())?.timerBannersEnabled,
+      ).toBe(false)
+    })
+    expect(cancelNative).toHaveBeenCalledTimes(1)
+    expect(cancelWebPush).toHaveBeenCalledTimes(1)
+    expect(
+      screen.getByRole('button', { name: 'Test iPhone alert' }),
+    ).toBeDisabled()
+    expect(await screen.findByText('Timer settings saved.')).toBeInTheDocument()
   })
 
   it('enables outside-app timer alerts in the native iOS wrapper', async () => {
@@ -270,7 +353,9 @@ describe('SettingsPage', () => {
     renderSettings()
 
     expect(
-      await screen.findByText('Guided nutrition goals'),
+      await screen.findByRole('heading', {
+        name: 'Timer is finally fixed!',
+      }),
     ).toBeInTheDocument()
     expect(screen.queryByText('Pounds or kilograms')).not.toBeInTheDocument()
 

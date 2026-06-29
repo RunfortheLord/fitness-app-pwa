@@ -77,6 +77,16 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
     }
   }
 
+  function validateDefaultRestSeconds(seconds: number) {
+    if (
+      seconds < 0 ||
+      !Number.isFinite(seconds) ||
+      !Number.isInteger(seconds)
+    ) {
+      throw new Error('Default rest time must be a whole number of seconds.')
+    }
+  }
+
   async function hasExerciseReferences(id: string) {
     const [
       templateReference,
@@ -198,6 +208,21 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
       }
       validateExerciseInput(updated)
       validateBodyweightLoad(updated)
+      await database.exercises.put(updated)
+      return updated
+    },
+
+    async updateExerciseDefaultRest(id: string, defaultRestSeconds: number) {
+      validateDefaultRestSeconds(defaultRestSeconds)
+      const exercise = await database.exercises.get(id)
+      if (!exercise) {
+        throw new Error(`Exercise ${id} was not found.`)
+      }
+      const updated: Exercise = {
+        ...exercise,
+        defaultRestSeconds,
+        updatedAt: new Date().toISOString(),
+      }
       await database.exercises.put(updated)
       return updated
     },

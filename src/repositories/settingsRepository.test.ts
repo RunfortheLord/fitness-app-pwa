@@ -112,16 +112,19 @@ describe('settingsRepository', () => {
     await expect(repository.ensureSettings()).resolves.toMatchObject({
       timerSoundEnabled: true,
       selectedTimerSoundId: 'rest-complete-chime',
+      timerBannersEnabled: true,
     })
 
     await repository.saveTimerSettings({
       timerSoundEnabled: false,
       selectedTimerSoundId: 'clear-ding',
+      timerBannersEnabled: false,
     })
 
     await expect(database.userSettings.get('settings')).resolves.toMatchObject({
       timerSoundEnabled: false,
       selectedTimerSoundId: 'clear-ding',
+      timerBannersEnabled: false,
     })
   })
 })

@@ -52,6 +52,7 @@ const spanishTranslations: Record<string, string> = {
     'Cambia todos los pesos de la aplicación, incluido el historial.',
   'Timer completion sound': 'Sonido al terminar el temporizador',
   'Timer alert sound': 'Sonido de alerta del temporizador',
+  'Timer notification banners': 'Banners de notificación del temporizador',
   'Default iPhone notification sound. Its volume and playback behavior are controlled by iPhone notification settings.':
     'Sonido de notificación predeterminado del iPhone. El volumen y la reproducción se controlan desde los ajustes de notificaciones del iPhone.',
   'Sound selection': 'Selección de sonido',
@@ -59,6 +60,11 @@ const spanishTranslations: Record<string, string> = {
     'Los sonidos del temporizador dentro de la aplicación se mezclan brevemente con otro audio. Las alertas fuera de la aplicación usan el sonido de notificación del iPhone.',
   'Timer sound could not play. Raise media volume, check the selected audio output, and try again.':
     'No se pudo reproducir el sonido del temporizador. Sube el volumen multimedia, comprueba la salida de audio seleccionada e inténtalo de nuevo.',
+  'Timer alert could not be tested. Check notification settings and try again.':
+    'No se pudo probar la alerta del temporizador. Revisa los ajustes de notificaciones e inténtalo de nuevo.',
+  'Timer alert test sent. If you did not hear it, check iPhone notification sound settings for this app.':
+    'Prueba de alerta enviada. Si no la escuchaste, revisa los ajustes de sonido de notificaciones del iPhone para esta aplicación.',
+  'Test iPhone alert': 'Probar alerta del iPhone',
   'Clean completion chime': 'Campanilla limpia de finalización',
   'Bright bell': 'Campana brillante',
   'Soft digital chime': 'Campanilla digital suave',
@@ -203,7 +209,7 @@ const spanishTranslations: Record<string, string> = {
   'Total records': 'Registros totales',
   'Record counts': 'Recuento de registros',
   'Validation errors': 'Errores de validación',
-  'Timer sound settings saved.': 'Se guardó la configuración de sonido.',
+  'Timer settings saved.': 'Se guardó la configuración del temporizador.',
   'Weights now shown in kilograms. Existing history is converted automatically.':
     'Los pesos ahora se muestran en kilogramos. El historial se convierte automáticamente.',
   'Weights now shown in pounds. Existing history is converted automatically.':

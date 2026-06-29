@@ -38,6 +38,7 @@ export type SettingsRepository = {
   saveTimerSettings(input: {
     timerSoundEnabled: boolean
     selectedTimerSoundId: string
+    timerBannersEnabled: boolean
   }): Promise<UserSettings>
   saveDefaultRestSeconds(seconds: number | null): Promise<UserSettings>
   saveWeightUnit(unit: WeightUnit): Promise<UserSettings>
@@ -58,7 +59,8 @@ export function createSettingsRepository(
       if (
         existing.timerSoundEnabled !== undefined &&
         existing.selectedTimerSoundId &&
-        existing.language
+        existing.language &&
+        existing.timerBannersEnabled !== undefined
       ) {
         return existing
       }
@@ -69,6 +71,7 @@ export function createSettingsRepository(
         timerSoundEnabled: existing.timerSoundEnabled ?? true,
         selectedTimerSoundId:
           existing.selectedTimerSoundId ?? 'rest-complete-chime',
+        timerBannersEnabled: existing.timerBannersEnabled ?? true,
         updatedAt: now,
       }
       await database.userSettings.put(upgraded)
@@ -84,6 +87,7 @@ export function createSettingsRepository(
       nutritionTargets: defaultNutritionTargets,
       timerSoundEnabled: true,
       selectedTimerSoundId: 'rest-complete-chime',
+      timerBannersEnabled: true,
       createdAt: now,
       updatedAt: now,
     }
@@ -204,6 +208,7 @@ export function createSettingsRepository(
         ...settings,
         timerSoundEnabled: input.timerSoundEnabled,
         selectedTimerSoundId: input.selectedTimerSoundId,
+        timerBannersEnabled: input.timerBannersEnabled,
         updatedAt: now,
       }
       await database.userSettings.put(updated)

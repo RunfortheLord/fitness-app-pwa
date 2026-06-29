@@ -8,11 +8,13 @@ const mocks = vi.hoisted(() => ({
   ensureSettings: vi.fn(),
   getActiveWorkout: vi.fn(),
   nativeCancel: vi.fn(),
+  nativeShowImmediateAlert: vi.fn(),
   nativeSync: vi.fn(),
   playTimerSoundOnce: vi.fn(),
   preloadTimerSound: vi.fn(),
   usesSystemNotificationTimerSound: vi.fn(),
   webPushCancel: vi.fn(),
+  webPushShowImmediateAlert: vi.fn(),
   webPushSync: vi.fn(),
 }))
 
@@ -38,14 +40,17 @@ vi.mock('@domain/timerSounds', () => ({
 vi.mock('@services/nativeRestTimerNotificationService', () => ({
   nativeRestTimerNotificationService: {
     cancel: mocks.nativeCancel,
+    showImmediateAlert: mocks.nativeShowImmediateAlert,
     sync: mocks.nativeSync,
   },
 }))
 
 vi.mock('@services/webPushRestTimerNotificationService', () => ({
+  WEB_PUSH_REST_TIMER_NOTIFICATION_TAG: 'nutrifit-rest-timer',
   usesSystemNotificationTimerSound: mocks.usesSystemNotificationTimerSound,
   webPushRestTimerNotificationService: {
     cancel: mocks.webPushCancel,
+    showImmediateAlert: mocks.webPushShowImmediateAlert,
     sync: mocks.webPushSync,
   },
 }))
@@ -63,10 +68,12 @@ beforeEach(() => {
   })
   mocks.completeRestTimer.mockResolvedValue(undefined)
   mocks.nativeCancel.mockResolvedValue('unavailable')
+  mocks.nativeShowImmediateAlert.mockResolvedValue('unavailable')
   mocks.nativeSync.mockResolvedValue('unavailable')
   mocks.playTimerSoundOnce.mockResolvedValue(undefined)
   mocks.usesSystemNotificationTimerSound.mockReturnValue(false)
   mocks.webPushCancel.mockResolvedValue('canceled')
+  mocks.webPushShowImmediateAlert.mockResolvedValue('scheduled')
   mocks.webPushSync.mockResolvedValue('unavailable')
 })
 
@@ -164,7 +171,7 @@ describe('RestTimerMonitor', () => {
     expect(mocks.completeRestTimer).toHaveBeenCalledWith('workout-1')
   })
 
-  it('plays bundled timer audio in a visible installed iPhone web app when push is unavailable', async () => {
+  it('uses a system notification for visible installed iPhone timer completion', async () => {
     mocks.usesSystemNotificationTimerSound.mockReturnValue(true)
     mocks.webPushSync.mockResolvedValue('failed')
     mocks.getActiveWorkout.mockResolvedValue({
@@ -186,7 +193,12 @@ describe('RestTimerMonitor', () => {
       await Promise.resolve()
     })
 
-    expect(mocks.playTimerSoundOnce).toHaveBeenCalledWith('bright-bell')
+    expect(mocks.playTimerSoundOnce).not.toHaveBeenCalled()
+    expect(mocks.webPushShowImmediateAlert).toHaveBeenCalledWith({
+      body: 'Your next set is ready.',
+      tag: 'nutrifit-rest-timer',
+      title: 'Rest timer complete',
+    })
   })
 
   it('does not play bundled timer audio in a hidden installed iPhone web app', async () => {
@@ -216,5 +228,34 @@ describe('RestTimerMonitor', () => {
     })
 
     expect(mocks.playTimerSoundOnce).not.toHaveBeenCalled()
+  })
+
+  it('cancels outside-app alerts when timer banners are disabled', async () => {
+    mocks.ensureSettings.mockResolvedValue({
+      timerBannersEnabled: false,
+      timerSoundEnabled: true,
+      selectedTimerSoundId: 'bright-bell',
+    })
+    mocks.getActiveWorkout.mockResolvedValue({
+      id: 'workout-1',
+      activeRestTimer: {
+        id: 'timer-1',
+        startedAt: '2026-06-27T12:00:00.000Z',
+        durationSeconds: 120,
+        pausedAt: null,
+        accumulatedPausedSeconds: 0,
+        status: 'running',
+      },
+    })
+
+    render(<RestTimerMonitor />)
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(mocks.nativeSync).not.toHaveBeenCalled()
+    expect(mocks.nativeCancel).toHaveBeenCalledTimes(1)
+    expect(mocks.webPushCancel).toHaveBeenCalledTimes(1)
   })
 })
