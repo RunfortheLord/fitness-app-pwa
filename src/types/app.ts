@@ -282,6 +282,7 @@ export type BodyweightEntry = {
 }
 
 export type RunStatus = 'active' | 'paused' | 'completed' | 'cancelled'
+export type RunTrackingMode = 'gps' | 'treadmill' | 'manual'
 export type RunSampleDecision = 'accepted' | 'rejected' | 'gap'
 export type RunSampleRejectionReason =
   | 'first_sample'
@@ -305,6 +306,9 @@ export type Run = {
   distanceMeters: number
   currentPaceSecondsPerMile: number | null
   averageMovingPaceSecondsPerMile: number | null
+  trackingMode?: RunTrackingMode
+  treadmillStepCount?: number
+  treadmillStrideMeters?: number | null
   hasGpsGap: boolean
   lowPaceAlertedAt: IsoTimestamp | null
   notes: string

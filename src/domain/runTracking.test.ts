@@ -3,13 +3,14 @@ import { describe, expect, it } from 'vitest'
 import {
   METERS_PER_MILE,
   calculateCurrentPaceSecondsPerMile,
+  calculateLiveRunMetrics,
   calculatePaceSecondsPerMile,
   createCompletedSplits,
   defaultRunProcessingConfig,
   processRunSample,
   shouldShowLowPaceAlert,
 } from './runTracking'
-import type { RunSample } from '@shared-types/app'
+import type { Run, RunSample } from '@shared-types/app'
 
 const baseSample: RunSample = {
   id: 'sample-1',
@@ -136,6 +137,51 @@ describe('runTracking', () => {
     expect(
       calculateCurrentPaceSecondsPerMile(samples, '2026-06-19T12:00:30.000Z'),
     ).toBe(480)
+  })
+
+  it('refreshes active run time from timestamps and excludes treadmill pauses', () => {
+    const run: Run = {
+      id: 'run-1',
+      localDate: '2026-06-19',
+      status: 'active',
+      startedAt: '2026-06-19T12:00:00.000Z',
+      completedAt: null,
+      elapsedSeconds: 0,
+      movingSeconds: 0,
+      distanceMeters: METERS_PER_MILE,
+      currentPaceSecondsPerMile: null,
+      averageMovingPaceSecondsPerMile: null,
+      trackingMode: 'treadmill',
+      treadmillStepCount: 2000,
+      treadmillStrideMeters: 0.8,
+      hasGpsGap: false,
+      lowPaceAlertedAt: null,
+      notes: '',
+      createdAt: '2026-06-19T12:00:00.000Z',
+      updatedAt: '2026-06-19T12:00:00.000Z',
+    }
+
+    expect(
+      calculateLiveRunMetrics(
+        run,
+        [
+          {
+            id: 'pause-1',
+            runId: run.id,
+            startedAt: '2026-06-19T12:02:00.000Z',
+            endedAt: '2026-06-19T12:03:00.000Z',
+            createdAt: '2026-06-19T12:02:00.000Z',
+            updatedAt: '2026-06-19T12:03:00.000Z',
+          },
+        ],
+        '2026-06-19T12:05:00.000Z',
+      ),
+    ).toEqual({
+      elapsedSeconds: 300,
+      movingSeconds: 240,
+      currentPaceSecondsPerMile: 240,
+      averageMovingPaceSecondsPerMile: 240,
+    })
   })
 
   it('uses sustained low pace and cooldown for alerts', () => {

@@ -220,8 +220,10 @@
 ## Tracking a Run
 
 1. User opens Run.
-2. App shows Start Run without requesting location permission yet.
-3. User taps Start Run.
+2. App shows Start Outdoor Run, Start Treadmill, and Log Run Manually without
+   requesting location or motion permission yet.
+3. User chooses an outdoor GPS run, treadmill sensing with stride length, or a
+   completed manual entry.
 4. App checks that no active run or active lifting workout exists, then starts
    foreground geolocation. If a lifting workout exists, the user can resume it
    or explicitly discard it before starting the run.
@@ -235,6 +237,25 @@
 9. User taps Finish and confirms.
 10. App saves the completed run and keeps samples, pauses, splits,
     classifications, and GPS-gap markers for History and backup.
+
+## Manually Logging a Run
+
+1. User opens Run and chooses Log Run Manually.
+2. User selects outdoor/other or treadmill and enters date, distance, duration,
+   and optional notes.
+3. App validates positive distance and duration, derives average pace, and
+   saves a completed run directly to History.
+
+## Tracking a Treadmill Run
+
+1. User opens Run, chooses Start Treadmill, enters stride length, and explicitly
+   grants motion access when the device requires it.
+2. App counts foreground device-motion steps and derives estimated distance
+   from the stored stride length.
+3. Elapsed time updates every second. Pause and resume exclude paused time from
+   moving time.
+4. User finishes the run and can review its type, steps, estimated distance,
+   duration, and pace in History.
 
 ## Viewing Run History
 

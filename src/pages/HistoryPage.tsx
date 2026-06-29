@@ -330,24 +330,36 @@ export function HistoryPage() {
       {editError ? <ValidationMessage message={editError} /> : null}
       <div className="history-layout">
         {!selectedWorkout && !state.selectedRun ? (
-          <Card title={isHomeHistory ? undefined : 'History'}>
-            <div className="history-list">
+          <section aria-label="History" className="history-card-section">
+            {!isHomeHistory ? <h2>History</h2> : null}
+            <div className="history-list history-card-list">
               {listHistoryItems(state.workouts, state.runs).map((item) =>
                 item.type === 'run' ? (
                   <button
                     aria-label={`${formatHistoryDate(item.run.localDate)} Run`}
+                    className="history-item-card history-run-card"
                     key={item.run.id}
                     onClick={() => setHistoryParams({ run: item.run.id })}
                     type="button"
                   >
-                    <strong>{formatHistoryDate(item.run.localDate)}</strong>
-                    <span>{t('Run')}</span>
+                    <span>
+                      <strong>{formatHistoryDate(item.run.localDate)}</strong>
+                      <small>{formatRunType(item.run)}</small>
+                    </span>
+                    <span>
+                      <strong>{formatDistance(item.run.distanceMeters)}</strong>
+                      <small>
+                        {formatRunDuration(item.run.elapsedSeconds)} ·{' '}
+                        {formatPace(item.run.averageMovingPaceSecondsPerMile)}
+                      </small>
+                    </span>
                   </button>
                 ) : (
                   <button
                     aria-label={`${formatHistoryDate(
                       item.workout.localDate,
                     )} ${item.workout.name}`}
+                    className="history-item-card"
                     key={item.workout.id}
                     onClick={() =>
                       setHistoryParams({ workout: item.workout.id })
@@ -360,7 +372,7 @@ export function HistoryPage() {
                 ),
               )}
             </div>
-          </Card>
+          </section>
         ) : null}
 
         {state.selectedRun ? (
@@ -1060,9 +1072,15 @@ function RunHistoryDetail({ structure }: { structure: RunStructure }) {
           <small>Average pace</small>
         </span>
         <span>
-          <strong>{run.hasGpsGap ? 'Yes' : 'No'}</strong>
-          <small>GPS gap</small>
+          <strong>{formatRunType(run)}</strong>
+          <small>Tracking</small>
         </span>
+        {run.trackingMode === 'treadmill' ? (
+          <span>
+            <strong>{run.treadmillStepCount ?? 0}</strong>
+            <small>Steps sensed</small>
+          </span>
+        ) : null}
       </div>
       <dl className="history-detail-list">
         <div>
@@ -1076,6 +1094,7 @@ function RunHistoryDetail({ structure }: { structure: RunStructure }) {
           </dd>
         </div>
       </dl>
+      {run.notes ? <p>{run.notes}</p> : null}
       <h3>Mile splits</h3>
       {splits.length ? (
         <div className="run-split-list">
@@ -1457,6 +1476,16 @@ function listHistoryItems(workouts: WorkoutHistoryEntry[], runs: Run[]) {
       run,
     })),
   ].sort((left, right) => right.completedAt.localeCompare(left.completedAt))
+}
+
+function formatRunType(run: Run) {
+  if (run.trackingMode === 'treadmill') {
+    return 'Treadmill run'
+  }
+  if (run.trackingMode === 'manual') {
+    return 'Manual run'
+  }
+  return 'Outdoor GPS run'
 }
 
 function formatTimestamp(timestamp: string) {

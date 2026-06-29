@@ -308,6 +308,27 @@ test('starts, resumes, edits, and cancels a live workout', async ({
   await expect(page).toHaveURL(/\/training/)
 })
 
+test('manually logs a treadmill run as an individual History card', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/run')
+
+  await page.getByRole('button', { name: 'Log Run Manually' }).click()
+  await page.getByLabel('Run type').selectOption('treadmill')
+  await page.getByLabel('Distance (miles)').fill('3.1')
+  await page.getByLabel('Duration (minutes)').fill('30')
+  await page.getByLabel('Notes').fill('Incline session')
+  await page.getByRole('button', { name: 'Save Run' }).click()
+  await expect(page.getByText('Run saved to History.')).toBeVisible()
+
+  await page.goto('/history')
+  const runCard = page.getByRole('button', { name: /Run$/ })
+  await expect(runCard).toHaveClass(/history-run-card/)
+  await expect(runCard).toContainText('Treadmill run')
+  await expect(runCard).toContainText('3.10 mi')
+})
+
 test('creates, logs, edits, deletes, and persists nutrition entries', async ({
   page,
 }, testInfo) => {

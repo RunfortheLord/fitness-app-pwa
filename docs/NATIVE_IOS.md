@@ -53,6 +53,15 @@ The native app uses bundled assets, not a remote `server.url`. A web deployment
 does not update an installed native build; run `npm run ios:sync` and install a
 new Xcode build for each native release.
 
+The native wrapper disables iOS Shake to Undo inside this app. Running motion
+otherwise repeatedly triggers the system "Undo Typing" dialog after any recent
+text entry. This native setting does not control Safari or a Home Screen PWA;
+those surfaces follow the iPhone's system Shake to Undo setting.
+
+`Info.plist` contains when-in-use location and motion usage descriptions for
+outdoor GPS and treadmill sensing. Neither permission is requested until the
+user explicitly starts the corresponding run mode.
+
 ## Moving Existing PWA Data
 
 The Home Screen PWA and the native wrapper have separate local storage

@@ -344,6 +344,17 @@
 - Active workout state must persist across navigation, refresh, app close, and installed PWA reopen.
 - Active run state persists in IndexedDB. GPS is not backfilled after reload,
   browser suspension, or PWA restart; only received samples are stored.
+- Outdoor run elapsed time is rendered from timestamps every second. The app
+  keeps a high-accuracy geolocation watch and requests a fresh foreground fix
+  every five seconds because iOS may otherwise leave a watch subscription
+  unchanged. Missing fixes never create distance.
+- GPS-gap decisions remain in local run data for audit and backup, but the
+  recurring run-screen/history warning is intentionally not shown.
+- Treadmill sensing counts foreground device-motion peaks with a refractory
+  interval. Estimated distance is step count multiplied by the user-entered
+  stride length; the UI labels this as estimated rather than GPS distance.
+- Manual run entries are completed history records with user-entered date,
+  distance, duration, type, and notes. Pace is derived locally.
 - Rest timers are timestamp-based.
 - Completing a workout saves history before any optional structural program update.
 - Run moving time is the sum of accepted GPS sample intervals whose implied

@@ -382,7 +382,30 @@ describe('HistoryPage', () => {
     expect(screen.getAllByText('10:00/mi').length).toBeGreaterThan(0)
     expect(screen.getByText('Mile 1')).toBeInTheDocument()
     expect(screen.getByText('walking')).toBeInTheDocument()
-    expect(screen.getByText('GPS gap')).toBeInTheDocument()
+    expect(screen.queryByText('GPS gap')).not.toBeInTheDocument()
+    expect(screen.getByText('Outdoor GPS run')).toBeInTheDocument()
+  })
+
+  it('shows each completed run as a standalone history card', async () => {
+    const repository = createRunRepository(db)
+    await repository.logManualRun(
+      {
+        localDate: '2026-06-18',
+        distanceMeters: 5000,
+        elapsedSeconds: 1500,
+        trackingMode: 'treadmill',
+      },
+      new Date('2026-06-18T18:00:00.000Z'),
+    )
+
+    renderHistory()
+
+    const runCard = await screen.findByRole('button', {
+      name: /Jun 18, 2026 Run/,
+    })
+    expect(runCard).toHaveClass('history-item-card', 'history-run-card')
+    expect(runCard).toHaveTextContent('Treadmill run')
+    expect(runCard).toHaveTextContent('3.11 mi')
   })
 
   it('displays full workout detail including snapshots, timestamps, sets, skipped exercises, and changes', async () => {

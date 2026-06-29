@@ -688,6 +688,11 @@ const runSchema = z.object({
   distanceMeters: nonNegativeNumber,
   currentPaceSecondsPerMile: z.union([nonNegativeInteger, z.null()]),
   averageMovingPaceSecondsPerMile: z.union([nonNegativeInteger, z.null()]),
+  trackingMode: z.enum(['gps', 'treadmill', 'manual']).optional(),
+  treadmillStepCount: nonNegativeInteger.optional(),
+  treadmillStrideMeters: z
+    .union([z.number().finite().positive(), z.null()])
+    .optional(),
   hasGpsGap: z.boolean(),
   lowPaceAlertedAt: z.union([isoTimestampSchema, z.null()]),
   notes: z.string(),

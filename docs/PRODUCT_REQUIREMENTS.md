@@ -198,10 +198,13 @@
 - Applying changes must be transactional.
 - The user must be able to finish and save the workout without applying changes.
 
-### GPS Runs
+### Runs
 
 - Running must be a separate section and must not force run data into lifting set rows.
-- GPS collection must begin only after the user presses Start Run.
+- Users must be able to start an outdoor GPS run, start a motion-sensed
+  treadmill run with an editable stride length, or manually save a completed
+  outdoor/treadmill run with date, distance, duration, and notes.
+- GPS collection must begin only after the user presses Start Outdoor Run.
 - Active runs must support Start Run, Pause, Resume, Finish, elapsed time,
   moving time, distance, current pace, average moving pace, and per-mile splits.
 - Active runs must persist start time, pause periods, samples, accepted
@@ -221,10 +224,17 @@
 - Splits must be created at every completed mile from accepted distance only.
 - Current pace must use a stable recent accepted-sample window rather than a
   single point. Average pace uses accepted distance and moving time.
+- While an outdoor run is active, elapsed time must refresh from timestamps
+  every second and high-accuracy GPS must be refreshed throughout the run
+  without fabricating distance between missing samples.
+- Treadmill sensing must use foreground device-motion step detection and a
+  user-visible stride estimate. Sensed step count, estimated distance, elapsed
+  time, and pause-adjusted moving time must persist.
 - A conservative low-pace detector may ask whether the user is walking,
   resting, or continuing, with hysteresis/cooldown. It must not automatically
   discard time or distance.
-- Completed runs must appear in History with date, total distance, elapsed
+- Completed runs must appear as individual History cards with date, tracking
+  type, total distance, elapsed
   time, moving time, average moving pace, mile splits, classifications, and
   GPS-gap indication.
 - Foreground browser tracking is supported when permission exists. iOS and
@@ -235,7 +245,8 @@
 
 ### History
 
-- Workout history must open first as a dense date-sorted list of completed workouts and runs, with one compact row per history item.
+- Workout history must open first as a date-sorted list of completed workouts
+  and runs, with one distinct card per history item.
 - Selecting a workout history row must open a detail view that includes local workout date, workout name, program and day source when applicable, start time, completion time, duration, exercises, performed sets, weight, reps, RIR, completion status, notes, skipped exercises, and applied or rejected structural changes.
 - Completed run history must include a dedicated run detail view with distance,
   elapsed time, moving time, average moving pace, mile splits, walking/rest

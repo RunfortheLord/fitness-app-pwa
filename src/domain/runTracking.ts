@@ -1,4 +1,6 @@
 import type {
+  Run,
+  RunPause,
   RunSample,
   RunSampleRejectionReason,
   RunSplit,
@@ -170,6 +172,49 @@ export function calculatePaceSecondsPerMile(
     return null
   }
   return Math.round(seconds / (distanceMeters / METERS_PER_MILE))
+}
+
+export function calculateLiveRunMetrics(
+  run: Run,
+  pauses: RunPause[],
+  now: string,
+): Pick<
+  Run,
+  | 'elapsedSeconds'
+  | 'movingSeconds'
+  | 'currentPaceSecondsPerMile'
+  | 'averageMovingPaceSecondsPerMile'
+> {
+  if (run.status !== 'active') {
+    return {
+      elapsedSeconds: run.elapsedSeconds,
+      movingSeconds: run.movingSeconds,
+      currentPaceSecondsPerMile: run.currentPaceSecondsPerMile,
+      averageMovingPaceSecondsPerMile: run.averageMovingPaceSecondsPerMile,
+    }
+  }
+  const elapsedSeconds = Math.floor(secondsBetween(run.startedAt, now))
+  if (run.trackingMode !== 'treadmill') {
+    return {
+      elapsedSeconds,
+      movingSeconds: run.movingSeconds,
+      currentPaceSecondsPerMile: run.currentPaceSecondsPerMile,
+      averageMovingPaceSecondsPerMile: run.averageMovingPaceSecondsPerMile,
+    }
+  }
+  const pausedSeconds = pauses.reduce(
+    (total, pause) =>
+      total + secondsBetween(pause.startedAt, pause.endedAt ?? now),
+    0,
+  )
+  const movingSeconds = Math.max(0, elapsedSeconds - pausedSeconds)
+  const pace = calculatePaceSecondsPerMile(run.distanceMeters, movingSeconds)
+  return {
+    elapsedSeconds,
+    movingSeconds,
+    currentPaceSecondsPerMile: pace,
+    averageMovingPaceSecondsPerMile: pace,
+  }
 }
 
 export function calculateCurrentPaceSecondsPerMile(

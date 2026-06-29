@@ -24,6 +24,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Adam's Fitness uses your location while the run tracker is open to measure outdoor distance and pace.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Adam's Fitness uses motion while the treadmill tracker is open to sense steps and estimate distance.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

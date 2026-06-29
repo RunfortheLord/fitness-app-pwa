@@ -81,15 +81,24 @@ as passed from desktop emulation, Playwright, or simulator testing.
 - [ ] Review detected changes.
 - [ ] View workout history.
 - [ ] Open Run.
-- [ ] Confirm no location permission prompt appears before tapping Start Run.
-- [ ] Tap Start Run and handle the location permission prompt.
+- [ ] Confirm no location or motion prompt appears before choosing a run mode.
+- [ ] Tap Start Outdoor Run and handle the location permission prompt.
 - [ ] Confirm Start Run offers resume or discard when a lifting workout is active.
 - [ ] Confirm elapsed time, moving time, distance, current pace, average moving pace, and mile splits remain readable around 390 x 844.
 - [ ] Pause and resume a run.
 - [ ] Close and reopen the app with an active run and confirm it resumes without fabricated GPS points.
 - [ ] Finish a run only after the confirmation dialog.
 - [ ] Discard an active run only after the confirmation dialog.
-- [ ] View completed run history and confirm splits, walking/rest classification, and GPS-gap labels are readable.
+- [ ] Confirm outdoor elapsed time updates every second and GPS distance keeps
+      updating from repeated foreground fixes.
+- [ ] Start a treadmill run, allow motion access, secure the phone on the body,
+      and confirm steps and estimated distance update.
+- [ ] Manually log both an outdoor run and treadmill run with date, distance,
+      duration, and notes.
+- [ ] View completed run History and confirm each run is a separate card with
+      tracking type, distance, duration, and pace.
+- [ ] In the native wrapper, confirm running motion does not open the system
+      Undo Typing dialog.
 - [ ] Background the installed PWA and confirm any GPS suspension is represented as a limitation/gap rather than claimed continuous tracking.
 - [ ] Confirm no route samples appear in console logs or external network requests.
 - [ ] Physical-device GPS accuracy, permission, and background-suspension behavior still require this manual iPhone pass.

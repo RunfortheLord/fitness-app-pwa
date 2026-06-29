@@ -10,6 +10,18 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-06-28-run-tracking',
+    date: '2026-06-28',
+    title: 'Run tracking upgrades',
+    items: [
+      'Outdoor run time and GPS refresh continuously while the tracker is open.',
+      'Track treadmill runs with motion-sensed steps and an editable stride estimate.',
+      'Log completed outdoor or treadmill runs manually with distance, duration, date, and notes.',
+      'Completed runs now appear as individual cards in History.',
+      'The native iPhone app no longer opens Undo Typing when running motion shakes the phone.',
+    ],
+  },
+  {
     id: '2026-06-28-timer-fixed',
     date: '2026-06-28',
     title: 'Timer is finally fixed!',

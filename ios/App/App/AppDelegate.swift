@@ -7,7 +7,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // A phone carried during a run receives repeated shake gestures. Disable
+        // the system Undo Typing prompt inside this app so those motion events do
+        // not interrupt active run tracking.
+        application.applicationSupportsShakeToEdit = false
         return true
     }
 

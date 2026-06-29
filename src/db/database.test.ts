@@ -636,6 +636,57 @@ describe('database', () => {
 
     await destroyTestDatabase(migratedDatabase)
   })
+
+  it('backfills GPS tracking metadata on existing runs when migrating to v13', async () => {
+    const name = `training-log-v13-run-migration-${crypto.randomUUID()}`
+    const oldDatabase = new Dexie(name)
+    oldDatabase.version(12).stores({
+      appMetadata: '&id',
+      runs: '&id, status, localDate, startedAt, completedAt',
+    })
+    await oldDatabase.table('appMetadata').put({
+      id: 'app',
+      databaseSchemaVersion: 12,
+      backupSchemaVersion: 1,
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('runs').put({
+      id: 'legacy-run',
+      localDate: '2026-06-18',
+      status: 'completed',
+      startedAt: '2026-06-18T12:00:00.000Z',
+      completedAt: '2026-06-18T12:30:00.000Z',
+      elapsedSeconds: 1800,
+      movingSeconds: 1700,
+      distanceMeters: 5000,
+      currentPaceSecondsPerMile: null,
+      averageMovingPaceSecondsPerMile: 547,
+      hasGpsGap: false,
+      lowPaceAlertedAt: null,
+      notes: '',
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:30:00.000Z',
+    })
+    oldDatabase.close()
+
+    const migratedDatabase = new TrainingLogDatabase(name)
+
+    await expect(
+      migratedDatabase.runs.get('legacy-run'),
+    ).resolves.toMatchObject({
+      trackingMode: 'gps',
+      treadmillStepCount: 0,
+      treadmillStrideMeters: null,
+    })
+    await expect(
+      migratedDatabase.appMetadata.get('app'),
+    ).resolves.toMatchObject({
+      databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+    })
+
+    await destroyTestDatabase(migratedDatabase)
+  })
 })
 
 const v2Stores = {

@@ -24,6 +24,7 @@ beforeEach(async () => {
         errorCallback = error
         return 42
       }),
+      getCurrentPosition: vi.fn(),
       clearWatch: vi.fn(),
     },
   })
@@ -42,7 +43,7 @@ describe('RunPage', () => {
     expect(await screen.findByText('No active run')).toBeInTheDocument()
     expect(navigator.geolocation.watchPosition).not.toHaveBeenCalled()
 
-    await user.click(screen.getByRole('button', { name: /Start Run/ }))
+    await user.click(screen.getByRole('button', { name: /Start Outdoor Run/ }))
     await waitFor(() =>
       expect(navigator.geolocation.watchPosition).toHaveBeenCalledTimes(1),
     )
@@ -54,13 +55,23 @@ describe('RunPage', () => {
       await expect(db.runSamples.count()).resolves.toBe(1)
     })
     expect(await screen.findByText('Mile splits')).toBeInTheDocument()
+
+    await act(async () => {
+      successCallback?.(mockPosition(41.8801, -87.63, 8, 10))
+    })
+    await waitFor(async () => {
+      await expect(db.runSamples.count()).resolves.toBe(2)
+      expect((await db.runs.toArray())[0]?.distanceMeters).toBeGreaterThan(0)
+    })
   })
 
   it('handles permission denied without repeating prompts', async () => {
     const user = userEvent.setup()
     render(<RunPage />)
 
-    await user.click(await screen.findByRole('button', { name: /Start Run/ }))
+    await user.click(
+      await screen.findByRole('button', { name: /Start Outdoor Run/ }),
+    )
     await waitFor(() =>
       expect(navigator.geolocation.watchPosition).toHaveBeenCalledTimes(1),
     )
@@ -83,7 +94,9 @@ describe('RunPage', () => {
   it('recovers an active run after remount and confirms finish', async () => {
     const user = userEvent.setup()
     const { unmount } = render(<RunPage />)
-    await user.click(await screen.findByRole('button', { name: /Start Run/ }))
+    await user.click(
+      await screen.findByRole('button', { name: /Start Outdoor Run/ }),
+    )
     unmount()
 
     render(<RunPage />)
@@ -99,6 +112,73 @@ describe('RunPage', () => {
     await waitFor(async () => {
       await expect(db.runs.toArray()).resolves.toEqual([
         expect.objectContaining({ status: 'completed' }),
+      ])
+    })
+  })
+
+  it('logs a completed run manually without starting GPS', async () => {
+    const user = userEvent.setup()
+    render(<RunPage />)
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Log Run Manually' }),
+    )
+    await user.selectOptions(screen.getByLabelText('Run type'), 'treadmill')
+    await user.type(screen.getByLabelText('Distance (miles)'), '3.1')
+    await user.type(screen.getByLabelText('Duration (minutes)'), '30')
+    await user.type(screen.getByLabelText('Notes'), 'Incline session')
+    await user.click(screen.getByRole('button', { name: 'Save Run' }))
+
+    expect(await screen.findByText('Run saved to History.')).toBeInTheDocument()
+    await expect(db.runs.toArray()).resolves.toEqual([
+      expect.objectContaining({
+        status: 'completed',
+        trackingMode: 'treadmill',
+        elapsedSeconds: 1800,
+        notes: 'Incline session',
+      }),
+    ])
+    expect(navigator.geolocation.watchPosition).not.toHaveBeenCalled()
+  })
+
+  it('starts treadmill sensing only after motion permission and persists detected steps', async () => {
+    const user = userEvent.setup()
+    class MockDeviceMotionEvent extends Event {
+      static requestPermission = vi.fn().mockResolvedValue('granted')
+    }
+    Object.defineProperty(window, 'DeviceMotionEvent', {
+      configurable: true,
+      value: MockDeviceMotionEvent,
+    })
+    render(<RunPage />)
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Start Treadmill' }),
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Start Treadmill Run' }),
+    )
+    await waitFor(() =>
+      expect(MockDeviceMotionEvent.requestPermission).toHaveBeenCalledOnce(),
+    )
+    await waitFor(async () => {
+      await expect(db.runs.toArray()).resolves.toEqual([
+        expect.objectContaining({
+          status: 'active',
+          trackingMode: 'treadmill',
+        }),
+      ])
+    })
+
+    act(() => {
+      window.dispatchEvent(mockMotionEvent(0, 9.8))
+      window.dispatchEvent(mockMotionEvent(300, 12))
+    })
+    await waitFor(async () => {
+      await expect(db.runs.toArray()).resolves.toEqual([
+        expect.objectContaining({
+          treadmillStepCount: 1,
+        }),
       ])
     })
   })
@@ -124,4 +204,15 @@ function mockPosition(
     timestamp: Date.parse('2026-06-19T12:00:00.000Z') + offsetSeconds * 1000,
     toJSON: () => ({}),
   }
+}
+
+function mockMotionEvent(timestamp: number, z: number) {
+  const event = new Event('devicemotion')
+  Object.defineProperties(event, {
+    timeStamp: { value: timestamp },
+    accelerationIncludingGravity: {
+      value: { x: 0, y: 0, z },
+    },
+  })
+  return event
 }

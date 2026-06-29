@@ -2433,6 +2433,43 @@ body.food-search-open .bottom-nav {
   text-align: left;
 }
 
+.history-card-section {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.history-card-section h2 {
+  margin: 0;
+}
+
+.history-item-card {
+  box-shadow: var(--shadow-card);
+}
+
+.history-run-card {
+  grid-template-columns: minmax(0, 1fr) auto;
+  border-color: color-mix(
+    in srgb,
+    var(--color-accent) 38%,
+    var(--color-border-soft)
+  );
+}
+
+.history-run-card > span {
+  display: grid;
+  gap: 2px;
+}
+
+.history-run-card > span:last-child {
+  justify-items: end;
+  text-align: right;
+}
+
+.history-run-card small {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+}
+
 .history-list button span {
   min-width: 0;
   overflow: hidden;
@@ -3009,9 +3046,19 @@ body.food-search-open .bottom-nav {
 
 .run-hero,
 .run-controls,
-.run-split-list {
+.run-split-list,
+.run-start-actions,
+.manual-run-form {
   display: grid;
   gap: var(--space-3);
+}
+
+.run-start-actions {
+  width: 100%;
+}
+
+.manual-run-form {
+  margin-top: var(--space-2);
 }
 
 .run-status-row {

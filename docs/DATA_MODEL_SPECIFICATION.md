@@ -437,6 +437,10 @@ not rewrite completed `WorkoutHistorySet` values.
 - `distanceMeters`
 - `currentPaceSecondsPerMile`
 - `averageMovingPaceSecondsPerMile`
+- `trackingMode`: `gps`, `treadmill`, or `manual`; legacy records migrate to
+  `gps`
+- `treadmillStepCount`
+- `treadmillStrideMeters`: nullable
 - `hasGpsGap`
 - `lowPaceAlertedAt`
 - `notes`
@@ -560,6 +564,9 @@ not add distance or moving time.
   history, historical program/day snapshots, nutrition logs, bodyweight data,
   custom foods, custom exercises, settings, API-key settings, barcode settings,
   and existing database/storage identifiers.
+- Schema version 13 adds run tracking mode, treadmill step count, and treadmill
+  stride metadata. Existing runs migrate to GPS mode without changing recorded
+  distance, time, samples, splits, pauses, or classifications.
 
 ## Transaction Boundaries
 

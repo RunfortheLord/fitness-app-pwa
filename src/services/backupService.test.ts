@@ -249,6 +249,9 @@ describe('backupService', () => {
       distanceMeters: 3218.688,
       currentPaceSecondsPerMile: null,
       averageMovingPaceSecondsPerMile: 750,
+      trackingMode: 'treadmill',
+      treadmillStepCount: 4100,
+      treadmillStrideMeters: 0.75,
       hasGpsGap: true,
       lowPaceAlertedAt: '2026-06-19T12:12:00.000Z',
       notes: '',
@@ -306,6 +309,11 @@ describe('backupService', () => {
       latitude: 41.88,
       decision: 'accepted',
     })
+    expect(result.backup.data.runs[0]).toMatchObject({
+      trackingMode: 'treadmill',
+      treadmillStepCount: 4100,
+      treadmillStrideMeters: 0.75,
+    })
     expect(
       createCsvFiles(result.backup.data).map((file) => file.name),
     ).toContain('runSamples.csv')
@@ -320,7 +328,13 @@ describe('backupService', () => {
       new Date('2026-06-19T15:00:00.000Z'),
     )
 
-    await expect(database.runs.count()).resolves.toBe(1)
+    await expect(database.runs.toArray()).resolves.toEqual([
+      expect.objectContaining({
+        trackingMode: 'treadmill',
+        treadmillStepCount: 4100,
+        treadmillStrideMeters: 0.75,
+      }),
+    ])
     await expect(database.runSamples.count()).resolves.toBe(1)
     await expect(database.runSplits.count()).resolves.toBe(1)
     await expect(database.runClassifications.count()).resolves.toBe(1)
