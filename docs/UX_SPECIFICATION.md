@@ -152,6 +152,8 @@
 
 ### Barcode Scanner
 
+- The Nutrition camera action opens a compact menu directly below the camera
+  button. It contains two 44-pixel circular actions: barcode and AI.
 - Scanner opens from the Nutrition screen and requests camera access only after
   user action.
 - The scanner shows a visible frame, cancel control, retry path, permission
@@ -162,6 +164,20 @@
   fat, and source. It never logs immediately.
 - Unknown or incomplete barcode records open the custom-food form with the
   barcode associated locally.
+
+### AI Meal Camera
+
+- The AI action opens a full Nutrition subpage with the rear-facing camera
+  preview, capture action, permission/loading/failure states, and retry.
+- Without a configured Gemini key, the subpage links to the Gemini integration
+  in Settings and does not request camera access.
+- Capturing a photo sends a resized JPEG directly to Gemini 3.5 Flash. The app
+  validates the structured result before using it.
+- A successful result opens the existing recipe builder with an editable name,
+  estimated ingredient snapshots, assumptions, and a prominent estimate
+  warning.
+- No recipe is persisted until the user presses Save recipe. Leaving the flow
+  discards the draft.
 
 ## Training Screen
 
@@ -376,6 +392,10 @@
   action and explains that delivery remains controlled by iPhone notification
   and volume settings.
 - Nutrition targets are managed from the Nutrition dashboard, not Settings.
+- AI meal analysis includes a device-local Gemini API key field, connection
+  test, status, replacement, and removal controls. The key is excluded from
+  backups. Settings explains that meal photos go directly to Google and that
+  free-tier requests may be used by Google to improve its products.
 - Backup export.
 - CSV export.
 - Restore backup.

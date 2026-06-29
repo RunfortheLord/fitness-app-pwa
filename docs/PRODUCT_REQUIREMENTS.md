@@ -114,11 +114,20 @@
   so historical logs work offline and do not change when provider data changes.
 - The app must display calories, protein, total carbohydrates, and fat only.
 - The first release includes local barcode scanning for UPC/EAN lookup through
-  USDA branded foods and Open Food Facts fallback. It must exclude barcode
-  submission, AI food-photo analysis, automatic calorie adjustments, bundled bulk food
-  databases, micronutrients, search-as-you-type Open Food Facts calls, and meal
-  recommendations. Spanish Open Food Facts search must require an explicit
-  keyboard or on-screen Search action and remain server-cached.
+  USDA branded foods and Open Food Facts fallback.
+- The camera action must expose separate barcode and AI-photo options. AI-photo
+  analysis is optional and requires a device-local, user-supplied Gemini API
+  key. It uses Gemini 3.5 Flash to create an unsaved recipe draft from a meal
+  photo. The user must review the estimate and press Save recipe before any
+  recipe data is persisted.
+- AI-photo analysis must not create foods, log food, adjust nutrition targets,
+  or save a recipe automatically. It must clearly identify generated nutrition
+  as an estimate.
+- The first release must continue to exclude barcode submission, automatic
+  calorie adjustments, bundled bulk food databases, micronutrients,
+  search-as-you-type Open Food Facts calls, and meal recommendations. Spanish
+  Open Food Facts search must require an explicit keyboard or on-screen Search
+  action and remain server-cached.
 
 ### Bodyweight
 
@@ -288,7 +297,7 @@
 
 ## Out of Scope
 
-- Account creation, login, persistent database server, required cloud sync, social features, friends, followers, public profiles, subscriptions, advertisements, wearable integrations, Apple Health integration, AI coaching, AI food-photo analysis, bundled external food database, barcode submission, micronutrients, automatic calorie adjustment, automated training progression, automatic program advancement, trend-weight calculations, weekly adherence percentage, non-history graphs, route maps or external map tiles, reliable fully backgrounded GPS tracking, public App Store distribution, and required push notifications for core app use. Optional outside-app rest-timer Web Push alerts and development-signed personal-device installation of the native iOS wrapper are supported.
+- Account creation, login, persistent database server, required cloud sync, social features, friends, followers, public profiles, subscriptions, advertisements, wearable integrations, Apple Health integration, AI coaching, bundled external food database, barcode submission, micronutrients, automatic calorie adjustment, automated training progression, automatic program advancement, trend-weight calculations, weekly adherence percentage, non-history graphs, route maps or external map tiles, reliable fully backgrounded GPS tracking, public App Store distribution, and required push notifications for core app use. Optional user-initiated Gemini meal-photo estimation, outside-app rest-timer Web Push alerts, and development-signed personal-device installation of the native iOS wrapper are supported.
 
 ## Acceptance Criteria
 

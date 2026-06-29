@@ -2,7 +2,6 @@ import {
   Archive,
   ArrowLeft,
   BookmarkPlus,
-  Camera,
   CopyPlus,
   Edit2,
   Flame,
@@ -42,6 +41,7 @@ import {
 import { useLanguage } from '@components/languageContextValue'
 import { useSubpageBackGesture } from '@hooks/useSubpageBackGesture'
 import { FoodIcon } from '@components/FoodIcon'
+import { FoodCameraMenu } from '@components/FoodCameraMenu'
 import {
   addLocalDays,
   formatLocalDate,
@@ -94,6 +94,10 @@ import {
 } from '@domain/meals'
 import { snapshotFood } from '@domain/snapshots'
 import {
+  createRecipeDraftFromGemini,
+  type GeminiMealAnalysis,
+} from '@domain/geminiMealAnalysis'
+import {
   formatWeight,
   weightInputToLb,
   weightInputValue,
@@ -120,6 +124,7 @@ import {
   nutritionSummaryService,
   type DailyNutritionSummary,
 } from '@services/nutritionSummaryService'
+import { AiMealCameraSubpage } from '@pages/AiMealCameraSubpage'
 import type {
   BodyweightEntry,
   Food,
@@ -169,7 +174,9 @@ type RecipeDraft = {
   // The saved-meal id when editing an existing recipe; null when creating one.
   editingId: string | null
   name: string
+  notes: string
   components: RecipeComponentDraft[]
+  source: 'manual' | 'gemini'
 }
 
 type FoodFormState = {
@@ -288,6 +295,8 @@ export function NutritionPage() {
   const [recipeDraft, setRecipeDraft] = useState<RecipeDraft | null>(null)
   const [recipeError, setRecipeError] = useState<string | null>(null)
   const [recipeSaving, setRecipeSaving] = useState(false)
+  const [aiCameraOpen, setAiCameraOpen] = useState(false)
+  const [geminiApiKey, setGeminiApiKey] = useState<string | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
   const [goalData, setGoalData] = useState<{
     goal: NutritionGoal | null
@@ -299,6 +308,7 @@ export function NutritionPage() {
     setSearchOpen(false)
     setRecipeDraft(null)
   })
+  useSubpageBackGesture(aiCameraOpen, () => setAiCameraOpen(false))
 
   const openSearch = useCallback(() => {
     setQuery('')
@@ -316,7 +326,13 @@ export function NutritionPage() {
     setSubmittedProviderQuery('')
     setAddedItems([])
     setRecipeError(null)
-    setRecipeDraft({ editingId: null, name: '', components: [] })
+    setRecipeDraft({
+      editingId: null,
+      name: '',
+      notes: '',
+      components: [],
+      source: 'manual',
+    })
     setSearchOpen(true)
   }, [])
 
@@ -330,11 +346,13 @@ export function NutritionPage() {
     setRecipeDraft({
       editingId: meal.id,
       name: meal.name,
+      notes: meal.notes,
       components: meal.components.map((component) => ({
         foodId: component.foodId,
         foodSnapshot: component.foodSnapshot,
         servingMultiplier: component.servingMultiplier,
       })),
+      source: 'manual',
     })
     setSearchOpen(true)
   }, [])
@@ -348,14 +366,38 @@ export function NutritionPage() {
     setLibraryRevision((value) => value + 1)
   }, [])
 
+  const openAiCamera = useCallback(() => {
+    setSearchOpen(false)
+    setRecipeDraft(null)
+    setRecipeError(null)
+    setAiCameraOpen(true)
+  }, [])
+
+  const useGeminiRecipeDraft = useCallback((analysis: GeminiMealAnalysis) => {
+    const generated = createRecipeDraftFromGemini(analysis)
+    setRecipeDraft({
+      editingId: null,
+      name: generated.name,
+      notes: generated.notes,
+      components: generated.components,
+      source: 'gemini',
+    })
+    setRecipeError(null)
+    setAiCameraOpen(false)
+    setSearchOpen(true)
+  }, [])
+
   // The food search is a focused full-screen mode. Hide the bottom nav while it
   // is open so the keyboard never floats it up over the results (iOS Safari).
   useEffect(() => {
-    document.body.classList.toggle('food-search-open', searchOpen)
+    document.body.classList.toggle(
+      'food-search-open',
+      searchOpen || aiCameraOpen,
+    )
     return () => {
       document.body.classList.remove('food-search-open')
     }
-  }, [searchOpen])
+  }, [aiCameraOpen, searchOpen])
 
   const addRecipeComponent = useCallback(
     (food: Food, servingMultiplier: number) => {
@@ -536,6 +578,18 @@ export function NutritionPage() {
         apiKey: settings?.apiKey ?? null,
         status: settings?.status ?? 'not_configured',
       })
+    })
+    return () => {
+      isCurrent = false
+    }
+  }, [revision])
+
+  useEffect(() => {
+    let isCurrent = true
+    void settingsRepository.getGeminiApiKeySettings().then((settings) => {
+      if (isCurrent) {
+        setGeminiApiKey(settings?.apiKey ?? null)
+      }
     })
     return () => {
       isCurrent = false
@@ -770,10 +824,12 @@ export function NutritionPage() {
     const action = editingId
       ? foodRepository.updateSavedMeal(editingId, {
           name: recipeDraft.name.trim(),
+          notes: recipeDraft.notes,
           components,
         })
       : foodRepository.createSavedMeal({
           name: recipeDraft.name.trim(),
+          notes: recipeDraft.notes,
           components,
         })
     void action
@@ -796,7 +852,13 @@ export function NutritionPage() {
   return (
     <PageContainer>
       <Toast message={message} onDismiss={() => setMessage(null)} />
-      {searchOpen ? (
+      {aiCameraOpen ? (
+        <AiMealCameraSubpage
+          apiKey={geminiApiKey}
+          onAnalyzed={useGeminiRecipeDraft}
+          onBack={() => setAiCameraOpen(false)}
+        />
+      ) : searchOpen ? (
         <FoodSearchSubpage
           providerSearch={providerSearch}
           results={daySearchResults}
@@ -825,6 +887,7 @@ export function NutritionPage() {
               .catch(() => setMessage('Could not open that food log.'))
           }}
           onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
+          onOpenAiCamera={openAiCamera}
           onOpenScanner={() => setSheet({ type: 'scanner' })}
           onSelectResult={(result) => {
             if (result.type === 'savedMeal') {
@@ -882,6 +945,7 @@ export function NutritionPage() {
               <DailyTotalsCard summary={summary} />
               <FoodSearchTrigger
                 onOpen={openSearch}
+                onOpenAiCamera={openAiCamera}
                 onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
                 onOpenScanner={() => setSheet({ type: 'scanner' })}
                 onOpenRecipe={startRecipe}
@@ -912,6 +976,7 @@ export function NutritionPage() {
               />
               <FoodSearchTrigger
                 onOpen={openSearch}
+                onOpenAiCamera={openAiCamera}
                 onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
                 onOpenScanner={() => setSheet({ type: 'scanner' })}
                 onOpenRecipe={startRecipe}
@@ -1201,11 +1266,13 @@ function DailyTotalsCard({
 // subpage. Quick add and barcode scan stay reachable here without a detour.
 function FoodSearchTrigger({
   onOpen,
+  onOpenAiCamera,
   onOpenQuickAdd,
   onOpenScanner,
   onOpenRecipe,
 }: {
   onOpen: () => void
+  onOpenAiCamera: () => void
   onOpenQuickAdd: () => void
   onOpenScanner: () => void
   onOpenRecipe: () => void
@@ -1222,9 +1289,10 @@ function FoodSearchTrigger({
           <IconButton aria-label="New recipe" onClick={onOpenRecipe}>
             <BookmarkPlus aria-hidden="true" size={20} />
           </IconButton>
-          <IconButton aria-label="Scan barcode" onClick={onOpenScanner}>
-            <Camera aria-hidden="true" size={20} />
-          </IconButton>
+          <FoodCameraMenu
+            onOpenAiCamera={onOpenAiCamera}
+            onOpenScanner={onOpenScanner}
+          />
         </div>
       </div>
       <button className="food-search-trigger" type="button" onClick={onOpen}>
@@ -1247,6 +1315,7 @@ function FoodSearchSubpage({
   onSaveRecipe,
   onBack,
   onEditFood,
+  onOpenAiCamera,
   onOpenQuickAdd,
   onOpenScanner,
   onOpenRecipe,
@@ -1268,6 +1337,7 @@ function FoodSearchSubpage({
   onSaveRecipe: () => void
   onBack: () => void
   onEditFood: (food: Food) => void
+  onOpenAiCamera: () => void
   onOpenQuickAdd: () => void
   onOpenScanner: () => void
   onOpenRecipe: () => void
@@ -1333,13 +1403,21 @@ function FoodSearchSubpage({
                 </IconButton>
               </>
             )}
-            <IconButton aria-label="Scan barcode" onClick={onOpenScanner}>
-              <Camera aria-hidden="true" size={20} />
-            </IconButton>
+            <FoodCameraMenu
+              onOpenAiCamera={onOpenAiCamera}
+              onOpenScanner={onOpenScanner}
+            />
           </div>
         </div>
         {recipeMode && recipeDraft ? (
           <div className="recipe-build-bar" aria-label={t('Recipe builder')}>
+            {recipeDraft.source === 'gemini' ? (
+              <StatusMessage tone="warning">
+                {t(
+                  'AI-estimated nutrition. Review every ingredient before saving this recipe.',
+                )}
+              </StatusMessage>
+            ) : null}
             <div className="food-search-subpage-input">
               <BookmarkPlus aria-hidden="true" size={18} />
               <input
@@ -1394,6 +1472,9 @@ function FoodSearchSubpage({
                 )}{' '}
                 kcal
               </p>
+            ) : null}
+            {recipeDraft.source === 'gemini' && recipeDraft.notes ? (
+              <p className="muted recipe-build-notes">{recipeDraft.notes}</p>
             ) : null}
             {recipeError ? <ValidationMessage message={recipeError} /> : null}
             <PrimaryButton

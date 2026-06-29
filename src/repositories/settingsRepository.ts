@@ -27,14 +27,23 @@ export type SettingsRepository = {
   getNutritionGoal(): Promise<NutritionGoal | null>
   saveNutritionGoal(goal: NutritionGoalInput): Promise<NutritionGoal>
   getUsdaApiKeySettings(): Promise<ApiKeyIntegrationSettings | undefined>
+  getGeminiApiKeySettings(): Promise<ApiKeyIntegrationSettings | undefined>
   saveUsdaApiKey(
+    apiKey: string,
+    status: IntegrationConnectionStatus,
+  ): Promise<ApiKeyIntegrationSettings>
+  saveGeminiApiKey(
     apiKey: string,
     status: IntegrationConnectionStatus,
   ): Promise<ApiKeyIntegrationSettings>
   updateUsdaApiKeyStatus(
     status: IntegrationConnectionStatus,
   ): Promise<ApiKeyIntegrationSettings | undefined>
+  updateGeminiApiKeyStatus(
+    status: IntegrationConnectionStatus,
+  ): Promise<ApiKeyIntegrationSettings | undefined>
   removeUsdaApiKey(): Promise<void>
+  removeGeminiApiKey(): Promise<void>
   saveTimerSettings(input: {
     timerSoundEnabled: boolean
     selectedTimerSoundId: string
@@ -53,6 +62,49 @@ export function createSettingsRepository(
   database: TrainingLogDatabase = db,
   testHooks: SettingsRepositoryTestHooks = {},
 ): SettingsRepository {
+  async function saveApiKey(
+    id: ApiKeyIntegrationSettings['id'],
+    label: string,
+    apiKey: string,
+    status: IntegrationConnectionStatus,
+  ) {
+    const trimmed = apiKey.trim()
+    if (!trimmed) {
+      throw new Error(`${label} API key is required.`)
+    }
+    const now = new Date().toISOString()
+    const existing = await database.apiKeyIntegrationSettings.get(id)
+    const settings: ApiKeyIntegrationSettings = {
+      id,
+      apiKey: trimmed,
+      status,
+      lastTestedAt: status === 'testing' ? null : now,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    }
+    await database.apiKeyIntegrationSettings.put(settings)
+    return settings
+  }
+
+  async function updateApiKeyStatus(
+    id: ApiKeyIntegrationSettings['id'],
+    status: IntegrationConnectionStatus,
+  ) {
+    const existing = await database.apiKeyIntegrationSettings.get(id)
+    if (!existing) {
+      return undefined
+    }
+    const now = new Date().toISOString()
+    const updated: ApiKeyIntegrationSettings = {
+      ...existing,
+      status,
+      lastTestedAt: status === 'testing' ? existing.lastTestedAt : now,
+      updatedAt: now,
+    }
+    await database.apiKeyIntegrationSettings.put(updated)
+    return updated
+  }
+
   async function ensureSettings() {
     const existing = await database.userSettings.get('settings')
     if (existing) {
@@ -158,47 +210,32 @@ export function createSettingsRepository(
       return database.apiKeyIntegrationSettings.get('usda_fooddata_central')
     },
 
-    async saveUsdaApiKey(apiKey, status) {
-      const trimmed = apiKey.trim()
-      if (!trimmed) {
-        throw new Error('USDA API key is required.')
-      }
-      const now = new Date().toISOString()
-      const existing = await database.apiKeyIntegrationSettings.get(
-        'usda_fooddata_central',
-      )
-      const settings: ApiKeyIntegrationSettings = {
-        id: 'usda_fooddata_central',
-        apiKey: trimmed,
-        status,
-        lastTestedAt: status === 'testing' ? null : now,
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-      }
-      await database.apiKeyIntegrationSettings.put(settings)
-      return settings
+    getGeminiApiKeySettings() {
+      return database.apiKeyIntegrationSettings.get('google_gemini')
     },
 
-    async updateUsdaApiKeyStatus(status) {
-      const existing = await database.apiKeyIntegrationSettings.get(
-        'usda_fooddata_central',
-      )
-      if (!existing) {
-        return undefined
-      }
-      const now = new Date().toISOString()
-      const updated: ApiKeyIntegrationSettings = {
-        ...existing,
-        status,
-        lastTestedAt: status === 'testing' ? existing.lastTestedAt : now,
-        updatedAt: now,
-      }
-      await database.apiKeyIntegrationSettings.put(updated)
-      return updated
+    saveUsdaApiKey(apiKey, status) {
+      return saveApiKey('usda_fooddata_central', 'USDA', apiKey, status)
+    },
+
+    saveGeminiApiKey(apiKey, status) {
+      return saveApiKey('google_gemini', 'Gemini', apiKey, status)
+    },
+
+    updateUsdaApiKeyStatus(status) {
+      return updateApiKeyStatus('usda_fooddata_central', status)
+    },
+
+    updateGeminiApiKeyStatus(status) {
+      return updateApiKeyStatus('google_gemini', status)
     },
 
     removeUsdaApiKey() {
       return database.apiKeyIntegrationSettings.delete('usda_fooddata_central')
+    },
+
+    removeGeminiApiKey() {
+      return database.apiKeyIntegrationSettings.delete('google_gemini')
     },
 
     async saveTimerSettings(input) {

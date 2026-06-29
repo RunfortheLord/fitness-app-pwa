@@ -127,4 +127,24 @@ describe('settingsRepository', () => {
       timerBannersEnabled: false,
     })
   })
+
+  it('stores Gemini keys separately and removes them without changing USDA', async () => {
+    const repository = createSettingsRepository(database)
+
+    await repository.saveUsdaApiKey('usda-key', 'connected')
+    await repository.saveGeminiApiKey('gemini-key', 'testing')
+    await repository.updateGeminiApiKeyStatus('connected')
+
+    await expect(repository.getGeminiApiKeySettings()).resolves.toMatchObject({
+      id: 'google_gemini',
+      apiKey: 'gemini-key',
+      status: 'connected',
+    })
+
+    await repository.removeGeminiApiKey()
+    await expect(repository.getGeminiApiKeySettings()).resolves.toBeUndefined()
+    await expect(repository.getUsdaApiKeySettings()).resolves.toMatchObject({
+      apiKey: 'usda-key',
+    })
+  })
 })

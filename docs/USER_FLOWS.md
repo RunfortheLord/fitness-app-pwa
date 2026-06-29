@@ -55,6 +55,18 @@
 11. If a reusable or provider-retained food changes later, this logged entry
     keeps its original snapshot values.
 
+## Creating A Recipe From A Meal Photo
+
+1. User adds and tests a personal Gemini API key in Settings.
+2. User opens Nutrition and selects the camera action.
+3. User selects AI, aims the rear-facing camera, and takes a photo.
+4. The app resizes the photo and sends it directly to Gemini 3.5 Flash.
+5. The app validates the structured ingredient and nutrition estimates.
+6. The existing recipe builder opens with an estimated recipe name,
+   snapshot-only ingredients, assumptions, and an estimate warning.
+7. No food, log, or saved recipe exists yet. Leaving discards the draft.
+8. User reviews the draft and presses Save recipe to persist it.
+
 ## Correcting an Imported Food
 
 1. User selects an imported provider food or a provider search result.

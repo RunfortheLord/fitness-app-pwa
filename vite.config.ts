@@ -4,6 +4,8 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { defineConfig } from 'vitest/config'
 
+const isDeveloperStable = process.env.VITE_DEPLOYMENT_CHANNEL === 'dev-stable'
+
 export default defineConfig({
   plugins: [
     react(),
@@ -15,9 +17,11 @@ export default defineConfig({
         'icons/icon-512.png',
       ],
       manifest: {
-        name: 'Fitness Log',
-        short_name: 'Fitness',
-        description: 'A local-first fitness training log.',
+        name: isDeveloperStable ? 'Fitness Log Dev' : 'Fitness Log',
+        short_name: isDeveloperStable ? 'Fitness Dev' : 'Fitness',
+        description: isDeveloperStable
+          ? 'Developer-stable local-first fitness training log.'
+          : 'A local-first fitness training log.',
         theme_color: '#101011',
         background_color: '#101011',
         display: 'standalone',

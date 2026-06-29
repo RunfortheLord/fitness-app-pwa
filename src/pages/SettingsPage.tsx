@@ -57,6 +57,11 @@ import {
   type CloudBackupInfo,
 } from '@services/cloudSyncService'
 import { FeedbackClientError, sendFeedback } from '@services/feedbackClient'
+import {
+  geminiConnectionStatusForError,
+  testGeminiApiKey,
+} from '@services/geminiMealAnalysisClient'
+import type { IntegrationConnectionStatus } from '@shared-types/app'
 
 type BuildInfo = {
   builtAt: string
@@ -119,6 +124,13 @@ export function SettingsPage() {
   const [feedbackSending, setFeedbackSending] = useState(false)
   const [feedbackError, setFeedbackError] = useState<string | null>(null)
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null)
+  const [geminiApiKeyInput, setGeminiApiKeyInput] = useState('')
+  const [geminiConfigured, setGeminiConfigured] = useState(false)
+  const [geminiStatus, setGeminiStatus] =
+    useState<IntegrationConnectionStatus>('not_configured')
+  const [geminiBusy, setGeminiBusy] = useState(false)
+  const [geminiMessage, setGeminiMessage] = useState<string | null>(null)
+  const [geminiError, setGeminiError] = useState<string | null>(null)
   const [whatsNewOpen, setWhatsNewOpen] = useState(
     () => searchParams.get('section') === 'whats-new',
   )
@@ -178,6 +190,33 @@ export function SettingsPage() {
       isCurrent = false
     }
   }, [])
+
+  useEffect(() => {
+    let isCurrent = true
+    void settingsRepository.getGeminiApiKeySettings().then((settings) => {
+      if (!isCurrent) {
+        return
+      }
+      setGeminiConfigured(Boolean(settings?.apiKey))
+      setGeminiStatus(settings?.status ?? 'not_configured')
+    })
+    return () => {
+      isCurrent = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (requestedSection !== 'ai-meal') {
+      return
+    }
+    const timeoutId = window.setTimeout(() => {
+      document.getElementById('ai-meal-settings')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [requestedSection])
 
   useEffect(() => {
     function updateOnlineState() {
@@ -533,6 +572,72 @@ export function SettingsPage() {
     }
   }
 
+  async function saveAndTestGeminiKey() {
+    const apiKey = geminiApiKeyInput.trim()
+    if (!apiKey) {
+      setGeminiError('Enter a Gemini API key.')
+      return
+    }
+    setGeminiBusy(true)
+    setGeminiMessage(null)
+    setGeminiError(null)
+    setGeminiStatus('testing')
+    try {
+      await settingsRepository.saveGeminiApiKey(apiKey, 'testing')
+      await testGeminiApiKey({ apiKey })
+      await settingsRepository.updateGeminiApiKeyStatus('connected')
+      setGeminiConfigured(true)
+      setGeminiStatus('connected')
+      setGeminiApiKeyInput('')
+      setGeminiMessage('Gemini 3.5 Flash is connected.')
+    } catch (error) {
+      const status = geminiConnectionStatusForError(error)
+      await settingsRepository.updateGeminiApiKeyStatus(status)
+      setGeminiConfigured(true)
+      setGeminiStatus(status)
+      setGeminiError(geminiSettingsError(status))
+    } finally {
+      setGeminiBusy(false)
+    }
+  }
+
+  async function testSavedGeminiKey() {
+    setGeminiBusy(true)
+    setGeminiMessage(null)
+    setGeminiError(null)
+    setGeminiStatus('testing')
+    try {
+      const settings = await settingsRepository.getGeminiApiKeySettings()
+      if (!settings?.apiKey) {
+        setGeminiConfigured(false)
+        setGeminiStatus('not_configured')
+        setGeminiError('Enter a Gemini API key.')
+        return
+      }
+      await settingsRepository.updateGeminiApiKeyStatus('testing')
+      await testGeminiApiKey({ apiKey: settings.apiKey })
+      await settingsRepository.updateGeminiApiKeyStatus('connected')
+      setGeminiStatus('connected')
+      setGeminiMessage('Gemini 3.5 Flash is connected.')
+    } catch (error) {
+      const status = geminiConnectionStatusForError(error)
+      await settingsRepository.updateGeminiApiKeyStatus(status)
+      setGeminiStatus(status)
+      setGeminiError(geminiSettingsError(status))
+    } finally {
+      setGeminiBusy(false)
+    }
+  }
+
+  async function removeGeminiKey() {
+    await settingsRepository.removeGeminiApiKey()
+    setGeminiApiKeyInput('')
+    setGeminiConfigured(false)
+    setGeminiStatus('not_configured')
+    setGeminiError(null)
+    setGeminiMessage('Gemini API key removed from this device.')
+  }
+
   if (isWhatsNewSubpageOpen) {
     return (
       <PageContainer>
@@ -741,6 +846,88 @@ export function SettingsPage() {
           </>
         ) : null}
       </Card>
+
+      <section id="ai-meal-settings">
+        <SectionHeader title="AI meal analysis" />
+        <Card>
+          <p>
+            <strong>Gemini 3.5 Flash</strong>
+          </p>
+          <p className="muted">
+            {t(
+              'The key stays in local app storage. Meal photos are sent directly from this device to Google for analysis and are never included in app backups. Google may use free-tier requests to improve its products.',
+            )}
+          </p>
+          <FormField
+            id="gemini-api-key"
+            label="Gemini API key"
+            helpText={
+              geminiConfigured
+                ? 'A key is saved on this device. Enter another key to replace it.'
+                : 'Create a free key in Google AI Studio.'
+            }
+          >
+            <input
+              autoCapitalize="none"
+              autoComplete="off"
+              id="gemini-api-key"
+              onChange={(event) =>
+                setGeminiApiKeyInput(event.currentTarget.value)
+              }
+              placeholder={
+                geminiConfigured
+                  ? t('Key saved on this device')
+                  : t('Paste Gemini API key')
+              }
+              spellCheck={false}
+              type="password"
+              value={geminiApiKeyInput}
+            />
+          </FormField>
+          <p className="muted">
+            {t('Status')}: {t(geminiStatusLabel(geminiStatus))}
+          </p>
+          {geminiMessage ? (
+            <StatusMessage tone="success">{geminiMessage}</StatusMessage>
+          ) : null}
+          {geminiError ? <ValidationMessage message={geminiError} /> : null}
+          <div className="button-row">
+            <PrimaryButton
+              disabled={geminiBusy}
+              onClick={() => void saveAndTestGeminiKey()}
+              type="button"
+            >
+              {geminiBusy ? 'Testing...' : 'Save and test'}
+            </PrimaryButton>
+            {geminiConfigured ? (
+              <>
+                <SecondaryButton
+                  disabled={geminiBusy}
+                  onClick={() => void testSavedGeminiKey()}
+                  type="button"
+                >
+                  Test connection
+                </SecondaryButton>
+                <SecondaryButton
+                  disabled={geminiBusy}
+                  onClick={() => void removeGeminiKey()}
+                  type="button"
+                >
+                  Remove key
+                </SecondaryButton>
+              </>
+            ) : null}
+            <a
+              className="button button-secondary"
+              href="https://aistudio.google.com/app/apikey"
+              rel="noreferrer"
+              target="_blank"
+            >
+              {t('Get API key')}
+            </a>
+          </div>
+        </Card>
+      </section>
 
       <SectionHeader title="Local data" />
       <Card>
@@ -1035,6 +1222,42 @@ export function SettingsPage() {
       </ModalConfirmationDialog>
     </PageContainer>
   )
+}
+
+function geminiStatusLabel(status: IntegrationConnectionStatus) {
+  switch (status) {
+    case 'not_configured':
+      return 'Not configured'
+    case 'testing':
+      return 'Testing'
+    case 'connected':
+      return 'Connected'
+    case 'invalid_key':
+      return 'Invalid key'
+    case 'rate_limited':
+      return 'Rate limited'
+    case 'network_unavailable':
+      return 'Offline'
+    case 'service_unavailable':
+      return 'Unavailable'
+  }
+}
+
+function geminiSettingsError(status: IntegrationConnectionStatus) {
+  switch (status) {
+    case 'invalid_key':
+      return 'Google rejected this Gemini API key.'
+    case 'rate_limited':
+      return 'The Gemini free-tier limit was reached. Try again later.'
+    case 'network_unavailable':
+      return 'Gemini could not be reached. Check your connection and try again.'
+    case 'service_unavailable':
+      return 'Gemini is unavailable right now. Try again later.'
+    case 'not_configured':
+    case 'testing':
+    case 'connected':
+      return 'Gemini connection testing did not complete.'
+  }
 }
 
 function webPushPermissionMessage(status: WebPushRestTimerNotificationStatus) {

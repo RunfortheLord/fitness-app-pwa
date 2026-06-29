@@ -18,6 +18,7 @@ import { backupService } from '@services/backupService'
 import { cloudSyncService } from '@services/cloudSyncService'
 import * as nativeTimerNotifications from '@services/nativeRestTimerNotificationService'
 import * as webPushTimerNotifications from '@services/webPushRestTimerNotificationService'
+import { testGeminiApiKey } from '@services/geminiMealAnalysisClient'
 import { seedFood } from '@test/seedFactories'
 
 const authHookMocks = vi.hoisted(() => ({
@@ -32,6 +33,15 @@ const cloudSyncMocks = vi.hoisted(() => ({
   restoreFromCloud: vi.fn(),
 }))
 
+vi.mock('@services/geminiMealAnalysisClient', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@services/geminiMealAnalysisClient')>()
+  return {
+    ...actual,
+    testGeminiApiKey: vi.fn(),
+  }
+})
+
 vi.mock('@hooks/useAuth', () => ({
   useAuth: authHookMocks.useAuth,
 }))
@@ -41,6 +51,7 @@ vi.mock('@services/cloudSyncService', () => ({
 }))
 
 const mockCloudSyncService = vi.mocked(cloudSyncService)
+const mockTestGeminiApiKey = vi.mocked(testGeminiApiKey)
 
 beforeEach(async () => {
   authHookMocks.signIn.mockReset()
@@ -68,6 +79,8 @@ beforeEach(async () => {
     recordCount: 7,
     updatedAt: '2026-01-02T03:04:05.000Z',
   })
+  mockTestGeminiApiKey.mockReset()
+  mockTestGeminiApiKey.mockResolvedValue()
   await db.delete()
   await db.open()
   await initializeAppData()
@@ -158,6 +171,33 @@ describe('SettingsPage', () => {
     expect(screen.queryByText('Nutrition targets')).not.toBeInTheDocument()
     expect(screen.queryByText('Integrations')).not.toBeInTheDocument()
     expect(screen.queryByText(/USDA FoodData Central/)).not.toBeInTheDocument()
+  })
+
+  it('saves and tests a device-local Gemini key', async () => {
+    const user = userEvent.setup()
+    renderSettings()
+
+    await user.type(
+      await screen.findByLabelText('Gemini API key'),
+      'gemini-device-key',
+    )
+    await user.click(screen.getByRole('button', { name: 'Save and test' }))
+
+    await waitFor(() =>
+      expect(mockTestGeminiApiKey).toHaveBeenCalledWith({
+        apiKey: 'gemini-device-key',
+      }),
+    )
+    await expect(
+      settingsRepository.getGeminiApiKeySettings(),
+    ).resolves.toMatchObject({
+      apiKey: 'gemini-device-key',
+      status: 'connected',
+    })
+    expect(
+      await screen.findByText('Gemini 3.5 Flash is connected.'),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Gemini API key')).toHaveValue('')
   })
 
   it('uses the default iPhone alert instead of bundled sounds for Web Push', async () => {
@@ -354,7 +394,7 @@ describe('SettingsPage', () => {
 
     expect(
       await screen.findByRole('heading', {
-        name: 'Powerlifting-focused full body program',
+        name: 'Optional AI meal camera',
       }),
     ).toBeInTheDocument()
     expect(screen.queryByText('Pounds or kilograms')).not.toBeInTheDocument()
@@ -452,6 +492,10 @@ describe('SettingsPage', () => {
     const user = userEvent.setup()
     await seedFood(db)
     await settingsRepository.saveUsdaApiKey('clear-secret-key', 'connected')
+    await settingsRepository.saveGeminiApiKey(
+      'clear-gemini-secret-key',
+      'connected',
+    )
     renderSettings()
 
     await user.click(screen.getByRole('button', { name: 'Clear all data' }))
@@ -474,13 +518,21 @@ describe('SettingsPage', () => {
     await expect(
       settingsRepository.getUsdaApiKeySettings(),
     ).resolves.toBeUndefined()
+    await expect(
+      settingsRepository.getGeminiApiKeySettings(),
+    ).resolves.toBeUndefined()
   })
 
-  it('excludes USDA API keys from JSON backups and CSV exports', async () => {
+  it('excludes integration API keys from JSON backups and CSV exports', async () => {
     await settingsRepository.saveUsdaApiKey('backup-secret-key', 'connected')
+    await settingsRepository.saveGeminiApiKey(
+      'gemini-backup-secret',
+      'connected',
+    )
 
     const json = await backupService.createJsonBackup()
     expect(json.json).not.toContain('backup-secret-key')
+    expect(json.json).not.toContain('gemini-backup-secret')
     expect(JSON.stringify(json.backup)).not.toContain('apiKeyIntegration')
 
     const csv = await backupService.createCsvArchive()

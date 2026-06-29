@@ -8,7 +8,7 @@ export type AppLanguage = 'en' | 'es'
 export type EnergyUnit = 'kcal'
 export type FoodSourceType = 'local' | 'provider'
 export type FoodProviderId = 'usda' | 'open_food_facts'
-export type IntegrationProviderId = 'usda_fooddata_central'
+export type IntegrationProviderId = 'usda_fooddata_central' | 'google_gemini'
 export type IntegrationConnectionStatus =
   | 'not_configured'
   | 'testing'

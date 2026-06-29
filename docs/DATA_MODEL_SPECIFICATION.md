@@ -56,7 +56,7 @@ foreign-key ID fields and sort indexes.
 
 ### ApiKeyIntegrationSettings
 
-- `id`: currently `usda_fooddata_central`
+- `id`: `usda_fooddata_central` or `google_gemini`
 - `apiKey`: user-supplied key stored only in device-local IndexedDB
 - `status`: `not_configured`, `testing`, `connected`, `invalid_key`,
   `rate_limited`, `network_unavailable`, or `service_unavailable`

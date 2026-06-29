@@ -23,6 +23,7 @@
     "test:e2e:ui": "playwright test --ui",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run test && npm run test:e2e && npm run build",
     "deploy:preview": "npx --yes vercel deploy --target preview --yes",
+    "deploy:dev-stable": "npx --yes vercel deploy --prod --yes --project fitness-app-pwa-dev-stable --build-env VITE_DEPLOYMENT_CHANNEL=dev-stable --build-env VITE_DEPLOYMENT_ENV=Developer-Stable",
     "deploy:stable": "npx --yes vercel deploy --prod --yes",
     "release:stable": "npm run check && npm run deploy:stable"
   },

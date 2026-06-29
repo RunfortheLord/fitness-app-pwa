@@ -1,5 +1,21 @@
 # Decisions
 
+## 2026-06-29: Optional Gemini Meal Photos And Isolated Developer Stable
+
+- The direct request for AI meal-photo analysis supersedes the earlier
+  first-release exclusion only for this user-initiated workflow. It does not
+  enable AI coaching, recommendations, automatic targets, or automatic logging.
+- Gemini 3.5 Flash receives one resized meal photo and returns validated,
+  structured ingredient estimates. The result becomes a snapshot-only recipe
+  draft; no foods, logs, or saved meals are written until Save recipe is
+  pressed.
+- The user supplies a Gemini key in Settings. It is stored in the existing
+  device-local API-key store, sent only to Google, and excluded from backups,
+  exports, and diagnostics.
+- Phone/PWA updates deploy to the separate `fitness-app-pwa-dev-stable` Vercel
+  production project by default. The existing `fitness-app-pwa` stable project
+  is deployed only after an explicit promotion request.
+
 ## 2026-06-27: Optional Web Push Rest-Timer Alerts
 
 - The product owner explicitly approved a free Web Push dependency for the
@@ -396,7 +412,8 @@
 - Social features and public profiles.
 - Subscriptions and ads.
 - Wearables and Apple Health.
-- AI coaching and AI food-photo analysis.
+- AI coaching and AI nutrition recommendations. User-initiated Gemini
+  meal-photo estimates are the only approved AI nutrition workflow.
 - Bundled external food database and barcode scanner.
 - Micronutrients and meal plans.
 - Automated calorie adjustment.

@@ -64,10 +64,14 @@
   origin, before high-risk releases, or whenever the user explicitly asks for
   exhaustive validation.
 - When the user asks for an app change or update intended for phone/PWA use,
-  deploy to stable with `npm run deploy:stable` only after the checks selected
-  for the risk level have passed. Use the full release gate for high-risk
-  changes and for changes touching deployment, persistence, service workers, or
-  cross-browser behavior.
+  deploy to the isolated developer-stable PWA with
+  `npm run deploy:dev-stable` after the checks selected for the risk level have
+  passed.
+- Do not deploy to the stable PWA with `npm run deploy:stable` unless the user
+  explicitly asks to promote or implement all accumulated update changes on
+  stable. Use the full release gate before any stable deployment.
+- Use the full release gate for high-risk changes and for changes touching
+  deployment, persistence, service workers, or cross-browser behavior.
 - In the final response, state which checks were run. If a relevant check was
   skipped by risk-based choice, say so plainly and explain why.
 

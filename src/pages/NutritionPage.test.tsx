@@ -29,6 +29,7 @@ import {
   FoodProviderClientError,
   searchProviderFoods,
 } from '@services/foodProviderClient'
+import { analyzeMealPhoto } from '@services/geminiMealAnalysisClient'
 
 vi.mock('@services/foodProviderClient', () => {
   class MockFoodProviderClientError extends Error {
@@ -47,7 +48,17 @@ vi.mock('@services/foodProviderClient', () => {
   }
 })
 
+vi.mock('@services/geminiMealAnalysisClient', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@services/geminiMealAnalysisClient')>()
+  return {
+    ...actual,
+    analyzeMealPhoto: vi.fn(),
+  }
+})
+
 const mockSearchProviderFoods = vi.mocked(searchProviderFoods)
+const mockAnalyzeMealPhoto = vi.mocked(analyzeMealPhoto)
 
 beforeEach(async () => {
   mockSearchProviderFoods.mockReset()
@@ -57,6 +68,7 @@ beforeEach(async () => {
     results: [],
     fallbackUsed: false,
   })
+  mockAnalyzeMealPhoto.mockReset()
   await db.delete()
   await db.open()
   await initializeAppData()
@@ -68,6 +80,132 @@ afterEach(async () => {
 })
 
 describe('NutritionPage', () => {
+  it('opens barcode and AI choices below the food camera action', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Open camera options' }),
+    )
+
+    const menu = screen.getByRole('menu', { name: 'Camera options' })
+    expect(
+      within(menu).getByRole('menuitem', { name: 'Scan barcode' }),
+    ).toBeInTheDocument()
+    await user.click(
+      within(menu).getByRole('menuitem', { name: 'Analyze meal photo' }),
+    )
+
+    expect(
+      await screen.findByRole('heading', { name: 'AI meal camera' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/Add your Gemini API key in Settings/),
+    ).toBeInTheDocument()
+    await expect(db.savedMeals.count()).resolves.toBe(0)
+  })
+
+  it('turns a captured meal estimate into an unsaved recipe draft', async () => {
+    const user = userEvent.setup()
+    await settingsRepository.saveGeminiApiKey('gemini-test-key', 'connected')
+    mockAnalyzeMealPhoto.mockResolvedValue({
+      recipeName: 'Photo chicken bowl',
+      confidence: 'medium',
+      assumptions: ['One cup of cooked rice'],
+      ingredients: [
+        {
+          name: 'Grilled chicken',
+          servingQuantity: 5,
+          servingUnit: 'oz',
+          calories: 240,
+          proteinGrams: 45,
+          carbohydrateGrams: 0,
+          fatGrams: 5,
+        },
+        {
+          name: 'Cooked rice',
+          servingQuantity: 1,
+          servingUnit: 'cup',
+          calories: 205,
+          proteinGrams: 4,
+          carbohydrateGrams: 45,
+          fatGrams: 0.4,
+        },
+      ],
+    })
+
+    const stop = vi.fn()
+    const originalMediaDevices = navigator.mediaDevices
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop }],
+        }),
+      },
+    })
+    const play = vi
+      .spyOn(HTMLMediaElement.prototype, 'play')
+      .mockResolvedValue()
+    const videoWidth = vi
+      .spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get')
+      .mockReturnValue(1200)
+    const videoHeight = vi
+      .spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get')
+      .mockReturnValue(900)
+    const getContext = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue({
+        drawImage: vi.fn(),
+      } as unknown as CanvasRenderingContext2D)
+    const toDataUrl = vi
+      .spyOn(HTMLCanvasElement.prototype, 'toDataURL')
+      .mockReturnValue('data:image/jpeg;base64,photo-bytes')
+
+    try {
+      renderNutrition()
+      await user.click(
+        await screen.findByRole('button', { name: 'Open camera options' }),
+      )
+      await user.click(
+        screen.getByRole('menuitem', { name: 'Analyze meal photo' }),
+      )
+      await user.click(
+        await screen.findByRole('button', { name: 'Take meal photo' }),
+      )
+
+      expect(
+        await screen.findByDisplayValue('Photo chicken bowl'),
+      ).toBeInTheDocument()
+      expect(screen.getByText('Grilled chicken')).toBeInTheDocument()
+      expect(screen.getByText('Cooked rice')).toBeInTheDocument()
+      expect(screen.getByText(/AI-estimated nutrition/)).toBeInTheDocument()
+      await expect(db.savedMeals.count()).resolves.toBe(0)
+
+      await user.click(screen.getByRole('button', { name: 'Save recipe (2)' }))
+      await waitFor(async () => expect(await db.savedMeals.count()).toBe(1))
+      await expect(db.savedMeals.toArray()).resolves.toMatchObject([
+        {
+          name: 'Photo chicken bowl',
+          components: [
+            { foodId: null, foodSnapshot: { foodName: 'Grilled chicken' } },
+            { foodId: null, foodSnapshot: { foodName: 'Cooked rice' } },
+          ],
+        },
+      ])
+    } finally {
+      play.mockRestore()
+      videoWidth.mockRestore()
+      videoHeight.mockRestore()
+      getContext.mockRestore()
+      toDataUrl.mockRestore()
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: originalMediaDevices,
+      })
+    }
+  })
+
   it('creates, searches, logs, edits, deletes, and snapshots food logs', async () => {
     const user = userEvent.setup()
     await configureUsdaKey()

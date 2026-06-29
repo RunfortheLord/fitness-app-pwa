@@ -10,6 +10,16 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-06-29-ai-meal-camera',
+    date: '2026-06-29',
+    title: 'Optional AI meal camera',
+    items: [
+      'The Nutrition camera now offers separate barcode and AI meal-photo actions.',
+      'Connect a personal Gemini API key in Settings to turn a meal photo into a recipe draft.',
+      'AI estimates stay unsaved until you review the ingredients and press Save recipe.',
+    ],
+  },
+  {
     id: '2026-06-28-powerlifting-full-body',
     date: '2026-06-28',
     title: 'Powerlifting-focused full body program',
