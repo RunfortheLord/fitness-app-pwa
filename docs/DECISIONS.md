@@ -235,6 +235,16 @@
 - Historical RIR values on non-final sets are preserved in storage and backups
   even when the current UI does not render an input for them.
 
+## Repeated-Exercise Prefill
+
+- Workout-start prefills use the most recent completed session with the same
+  stable exercise ID across all programs and workout days.
+- Each prior weighted-repetition set is converted to an Epley estimated
+  one-repetition maximum, translated to the new prescription's minimum reps,
+  and rounded to the exercise's configured weight increment. Additional new
+  sets reuse the last usable prior set. Reps and load are editable suggestions,
+  not automatic progression or permanent prescription changes.
+
 ## Estimated 1RM Graphs
 
 - Estimated one-repetition maximum is now a derived History view rather than a

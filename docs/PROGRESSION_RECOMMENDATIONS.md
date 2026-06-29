@@ -41,6 +41,15 @@ the increment from assistance and clamps at zero.
 
 ## Current-Workout Rules
 
+When a weighted-repetition exercise starts with prior completed history, every
+programmed set is prefilled from the corresponding set in the most recent
+session for the same stable exercise ID, regardless of program or day. Added
+sets use the last usable prior set. The prior set's Epley estimate is translated
+to the new prescription's minimum reps and rounded to the exercise's weight
+increment. The target reps are also prefilled. If an estimate is unavailable,
+the prior load is retained. These values are suggestions and remain editable;
+focusing a populated numeric field selects its full value.
+
 After a programmed set is completed, the next uncompleted programmed set for the
 same exercise is recomputed from the original target and completed actual reps.
 Re-rendering and reload do not compound suggestions.

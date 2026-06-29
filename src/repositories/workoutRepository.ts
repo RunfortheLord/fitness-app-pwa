@@ -13,6 +13,7 @@ import {
 } from '@domain/progressionRecommendations'
 import { snapshotExercise } from '@domain/snapshots'
 import { currentProgramWeek } from '@domain/programWeeks'
+import { suggestedWeightForReps } from '@domain/workoutPrefill'
 import { detectWorkoutStructuralChanges } from '@domain/workoutChanges'
 import { canSkipWorkoutExercise } from '@domain/workoutSkip'
 import type { LocalDateString } from '@domain/dates'
@@ -218,7 +219,6 @@ export function createWorkoutRepository(
               trackingMethodId:
                 sourceForWorkout.exerciseSnapshot.trackingMethodId,
               beforeStartedAt: now,
-              sourceDayId: day.id,
             })
 
             for (
@@ -230,17 +230,15 @@ export function createWorkoutRepository(
                 sourceForWorkout,
                 sourceForWorkout.exerciseSnapshot.trackingMethodId,
               )
-              const suggestedLoad = suggestedLoadForSetIndex({
+              const prefill = previousSessionPrefillForSet({
                 previousSets,
                 setNumber,
                 trackingMethodId:
                   sourceForWorkout.exerciseSnapshot.trackingMethodId,
-              })
-              // Pre-log the last recorded values for this day's exercise so the
-              // user sees their previous weights/reps and can adjust as needed.
-              const preloggedValues = preloggedMetricValuesForSet({
-                previousSets,
-                setNumber,
+                targetReps:
+                  sourceForWorkout.targetRepsMin ??
+                  sourceForWorkout.targetRepsMax,
+                weightIncrement: currentExercise?.defaultWeightIncrement,
               })
               const set: WorkoutSet = {
                 id: createId(),
@@ -249,25 +247,31 @@ export function createWorkoutRepository(
                 setNumber,
                 targetSnapshot: originalTarget,
                 targetRecommendation:
-                  suggestedLoad !== null && originalTarget
+                  prefill?.suggestedLoad !== null &&
+                  prefill?.suggestedLoad !== undefined &&
+                  originalTarget
                     ? {
                         version: 1,
                         originalTarget,
                         suggestedTarget: {
                           ...originalTarget,
-                          targetWeight: suggestedLoad,
+                          targetWeight: prefill.suggestedLoad,
                         },
                         userEditedTarget: null,
                         reason: 'within_range_hold',
-                        explanation: `Suggested from your most recent completed ${sourceForWorkout.exerciseSnapshot.exerciseName} set ${setNumber}.`,
-                        sourceSetId: null,
+                        explanation: `Suggested from your most recent completed ${sourceForWorkout.exerciseSnapshot.exerciseName} set ${prefill.sourceSetNumber}.`,
+                        sourceSetId: prefill.sourceSetId,
                         generatedAt: now,
                       }
                     : null,
-                metricValues: preloggedValues ?? initialMetricValuesForSet(),
-                metricValueSources: preloggedValues
+                metricValues:
+                  prefill?.metricValues ?? initialMetricValuesForSet(),
+                metricValueSources: prefill
                   ? Object.fromEntries(
-                      Object.keys(preloggedValues).map((key) => [key, 'auto']),
+                      Object.keys(prefill.metricValues).map((key) => [
+                        key,
+                        'auto',
+                      ]),
                     )
                   : {},
                 rir: sourceForWorkout.targetRir,
@@ -1778,35 +1782,67 @@ async function getPreviousCompletedExercise({
     )[0]?.exercise
 }
 
-function suggestedLoadForSetIndex({
+function previousSessionPrefillForSet({
   previousSets,
   setNumber,
   trackingMethodId,
+  targetReps,
+  weightIncrement,
 }: {
   previousSets: WorkoutHistorySet[]
   setNumber: number
   trackingMethodId: TrackingMethodId
+  targetReps: number | null
+  weightIncrement: number | null | undefined
 }) {
   const metricKey = loadMetricKey(trackingMethodId)
   if (!metricKey) {
-    return null
+    return preloggedMetricValuesForSet({ previousSets, setNumber })
   }
   const usable = previousSets.filter((set) => {
-    const value = set.metricValues[metricKey]
+    const weight = set.metricValues[metricKey]
+    const reps = set.metricValues.reps
     return (
       set.completed &&
       set.metricValues.failed !== true &&
-      typeof value === 'number' &&
-      Number.isFinite(value) &&
-      value > 0
+      typeof weight === 'number' &&
+      Number.isFinite(weight) &&
+      weight > 0 &&
+      typeof reps === 'number' &&
+      Number.isFinite(reps) &&
+      reps > 0
     )
   })
   const corresponding = usable.find((set) => set.setNumber === setNumber)
-  const fallback = usable.filter((set) => set.setNumber < setNumber).at(-1)
-  const value = (corresponding ?? fallback)?.metricValues[metricKey]
-  return typeof value === 'number' && Number.isFinite(value) && value > 0
-    ? value
-    : null
+  const source = corresponding ?? usable.at(-1)
+  const previousWeight = source?.metricValues[metricKey]
+  const previousReps = source?.metricValues.reps
+  if (
+    !source ||
+    typeof previousWeight !== 'number' ||
+    typeof previousReps !== 'number'
+  ) {
+    return null
+  }
+  const reps = targetReps ?? previousReps
+  const suggestedLoad =
+    trackingMethodId === 'assisted_weight_reps'
+      ? previousWeight
+      : suggestedWeightForReps({
+          previousWeight,
+          previousReps,
+          targetReps: reps,
+          weightIncrement,
+        })
+  return {
+    suggestedLoad,
+    sourceSetId: source.id,
+    sourceSetNumber: source.setNumber,
+    metricValues: {
+      [metricKey]: suggestedLoad,
+      reps,
+    },
+  }
 }
 
 /**
@@ -1820,7 +1856,12 @@ function preloggedMetricValuesForSet({
 }: {
   previousSets: WorkoutHistorySet[]
   setNumber: number
-}): WorkoutSet['metricValues'] | null {
+}): {
+  suggestedLoad: null
+  sourceSetId: string
+  sourceSetNumber: number
+  metricValues: WorkoutSet['metricValues']
+} | null {
   const usable = previousSets.filter(
     (set) => set.completed && set.metricValues.failed !== true,
   )
@@ -1836,7 +1877,14 @@ function preloggedMetricValuesForSet({
       values[key] = value
     }
   }
-  return Object.keys(values).length ? values : null
+  return Object.keys(values).length
+    ? {
+        suggestedLoad: null,
+        sourceSetId: source.id,
+        sourceSetNumber: source.setNumber,
+        metricValues: values,
+      }
+    : null
 }
 
 function loadMetricKey(trackingMethodId: TrackingMethodId) {

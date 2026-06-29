@@ -164,6 +164,11 @@
   workspace, previous performance, set rows, and rest timer.
 - Set rows must display fields appropriate to the exercise tracking method.
 - Typical weighted set rows must show set number, previous performance, weight, reps, RIR, and completed control.
+- Repeating a weighted-repetition exercise must prefill every programmed set
+  from its most recent completed session for the same stable exercise,
+  regardless of program or prescribed rep range. Suggested loads are derived
+  from the prior set's estimated one-repetition maximum and the new target
+  reps, and remain editable.
 - Users must be able to add sets, delete sets, edit completed sets, complete
   sets, skip exercises, replace exercises, add exercises, reorder exercises
   where practical, change session rest time, and discard the active workout

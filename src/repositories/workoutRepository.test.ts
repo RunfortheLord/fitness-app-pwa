@@ -674,7 +674,7 @@ describe('workoutRepository', () => {
     ])
     expect(
       second.sets.map((set) => set.targetRecommendation?.sourceSetId),
-    ).toEqual([null, null, null])
+    ).toEqual([first.sets[0].id, first.sets[1].id, extra.id])
   })
 
   it('matches legacy built-in history by exact exercise snapshot name', async () => {
@@ -714,46 +714,60 @@ describe('workoutRepository', () => {
     expect(second.sets[0].metricValues.weight).toBe(95)
   })
 
-  it('does not pre-log weights from a different day sharing the same exercise', async () => {
+  it('prefills every set across programs and rep schemes from the latest exercise session', async () => {
     const program = await seedProgram(database)
     const programRepository = createProgramRepository(database)
     const active = await programRepository.activateTemplate(program.template.id)
     const repository = createWorkoutRepository(database)
     const exerciseId = active.exercises[0].exerciseId
 
-    // A second active-cycle day that programs the same exercise.
-    const dayB = await programRepository.addActiveCycleDay(active.cycle.id, {
-      name: 'Lower',
-    })
-    await programRepository.addActiveCycleExercise(dayB.id, {
-      exerciseId,
-      targetSetCount: 1,
-      targetRepsMin: 8,
-      targetRepsMax: 10,
-    })
-
-    // Complete day A with a recorded weight.
     const first = await repository.startWorkout({
       activeCycleId: active.cycle.id,
       dayId: active.days[0].id,
       localDate: testLocalDate,
     })
     await repository.updateWorkoutSet(first.sets[0].id, {
-      metricValues: { weight: 200, reps: 8 },
+      metricValues: { weight: 200, reps: 10 },
       completed: true,
     })
     await repository.completeWorkout({
       workoutId: first.workout.id,
-      completedAt: first.workout.startedAt,
+      completedAt: '2026-01-01T00:00:00.000Z',
     })
 
-    // Day B's first workout must not inherit day A's weights.
+    const nextProgram = await programRepository.createProgramTemplate({
+      name: 'Different program',
+      days: [
+        {
+          name: 'Different day',
+          exercises: [
+            {
+              exerciseId,
+              targetSetCount: 3,
+              targetRepsMin: 5,
+              targetRepsMax: 5,
+            },
+          ],
+        },
+      ],
+    })
+    const nextActive = await programRepository.activateTemplate(
+      nextProgram.template.id,
+    )
     const second = await repository.startWorkout({
-      activeCycleId: active.cycle.id,
-      dayId: dayB.id,
+      activeCycleId: nextActive.cycle.id,
+      dayId: nextActive.days[0].id,
       localDate: testLocalDate,
     })
-    expect(second.sets[0].metricValues.weight).toBeUndefined()
+
+    expect(second.sets.map((set) => set.metricValues)).toEqual([
+      { weight: 230, reps: 5 },
+      { weight: 230, reps: 5 },
+      { weight: 230, reps: 5 },
+    ])
+    expect(
+      second.sets.map((set) => set.targetRecommendation?.sourceSetId),
+    ).toEqual([first.sets[0].id, first.sets[0].id, first.sets[0].id])
   })
 
   it('records applied structural changes separately from workout completion', async () => {

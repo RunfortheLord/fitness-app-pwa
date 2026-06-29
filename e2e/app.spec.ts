@@ -278,6 +278,13 @@ test('starts, resumes, edits, and cancels a live workout', async ({
   ).toHaveCount(0)
   await page.getByRole('textbox', { name: 'Set 1 Weight' }).fill('95')
   await page.getByRole('textbox', { name: 'Set 1 Reps' }).fill('10')
+  await page.getByRole('textbox', { name: 'Set 1 Weight' }).click()
+  await page
+    .getByRole('textbox', { name: 'Set 1 Weight' })
+    .pressSequentially('105')
+  await expect(page.getByRole('textbox', { name: 'Set 1 Weight' })).toHaveValue(
+    '105',
+  )
   await page.getByRole('button', { name: 'Complete set 1' }).click()
   await expect(page.locator('.rest-timer-toolbar')).toBeVisible()
   await page.screenshot({
@@ -287,7 +294,7 @@ test('starts, resumes, edits, and cancels a live workout', async ({
 
   await page.reload()
   await expect(page.getByRole('textbox', { name: 'Set 1 Weight' })).toHaveValue(
-    '95',
+    '105',
   )
   await expect(page.getByRole('textbox', { name: 'Set 1 Reps' })).toHaveValue(
     '10',
