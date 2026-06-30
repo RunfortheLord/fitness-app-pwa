@@ -137,17 +137,16 @@
 
 ### Bodyweight
 
-- Users must be able to add multiple bodyweight entries per local calendar date.
-- Users must be able to edit or delete a selected bodyweight entry for
-  correction.
+- Users must be able to add at most one bodyweight entry per local calendar
+  date and edit or delete that entry for correction.
 - Pounds must be the default unit.
 - Historical values must remain available in a graph-ready record format.
-- The latest timestamped bodyweight entry is the current bodyweight.
-- Home must show the latest entry for the selected date when one exists.
+- The most recent dated bodyweight entry is the current bodyweight.
+- Home must show the entry for the selected date when one exists.
 - History must include a bodyweight graph with one-month, three-month,
   six-month, and all-time ranges.
-- Same-day records must be retained. The graph plots each stored entry by its
-  timestamp; it does not average, delete, or rewrite source records for display.
+- Legacy same-day records restored from an older backup must remain preserved,
+  but only the latest record for that date contributes to trend weight.
 - The first release must exclude trend-weight calculation and weight-change recommendations.
 
 ### Exercise Library
@@ -310,8 +309,8 @@
 - A user can install the app to an iPhone home screen and open it in standalone mode.
 - A user can use Home, Nutrition, Add, Training, History, and Settings while offline after installation.
 - A user can set nutrition targets, create foods, log foods with decimal serving multipliers, and see correct daily totals from snapshotted values.
-- A user can add bodyweight for a selected date, preserve multiple same-day
-  records, edit the latest selected-date entry, and view bodyweight progress.
+- A user can add one bodyweight entry per selected date, edit that entry, and
+  view bodyweight progress.
 - A user can create exercises using all required tracking presets.
 - A user can create a program template, activate it into an independent active cycle, manually select a workout day, and start a workout.
 - A user can close and reopen the installed PWA and resume the active workout with preserved set entries and timer state.

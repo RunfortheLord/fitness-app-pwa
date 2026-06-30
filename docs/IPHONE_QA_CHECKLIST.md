@@ -39,8 +39,9 @@ as passed from desktop emulation, Playwright, or simulator testing.
 ## Core Workflow
 
 - [ ] Log bodyweight from Home.
-- [ ] Log a second bodyweight entry on the same local date and confirm both are retained.
-- [ ] Edit the latest selected-date bodyweight entry.
+- [ ] Log bodyweight again on the same local date and confirm the existing entry
+      is edited rather than duplicated.
+- [ ] Edit the selected-date bodyweight entry.
 - [ ] Confirm Home current bodyweight, selected-date status, and compact trend update immediately after save.
 - [ ] Open Bodyweight Progress from Home.
 - [ ] Change 1M, 3M, 6M, and All range controls with touch and keyboard.

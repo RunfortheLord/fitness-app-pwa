@@ -1,7 +1,6 @@
 import { differenceInCalendarDays } from 'date-fns'
 
 import { parseLocalDate, type LocalDateString } from '@domain/dates'
-import { sortBodyweightEntries } from '@domain/bodyweightProgress'
 import type { BodyweightEntry } from '@shared-types/app'
 
 // Per-calendar-day exponential smoothing factor. A "trend weight" damps daily
@@ -32,20 +31,49 @@ export function effectiveTrendAlphaForCalendarDays(
 }
 
 /**
- * Returns the smoothed (EMA) trend weight at each timestamped entry, oldest
- * first. Every measurement contributes to the trend, including multiple
- * measurements on one local calendar date. The first point seeds the trend
- * with the raw weight; each later point smooths using a coefficient scaled by
- * at least one day and compounded across longer calendar gaps.
+ * Keeps the latest timestamped entry for every local calendar date, oldest
+ * first. New data entry permits only one measurement per date; this also keeps
+ * restored legacy duplicates from receiving extra weight in the trend.
+ */
+export function latestBodyweightEntryPerCalendarDate(
+  entries: BodyweightEntry[],
+): BodyweightEntry[] {
+  const latestByDate = new Map<LocalDateString, BodyweightEntry>()
+  for (const entry of entries) {
+    const current = latestByDate.get(entry.localDate)
+    if (!current || compareEntryRecency(entry, current) > 0) {
+      latestByDate.set(entry.localDate, entry)
+    }
+  }
+  return [...latestByDate.values()].sort(
+    (left, right) =>
+      left.localDate.localeCompare(right.localDate) ||
+      compareEntryRecency(left, right),
+  )
+}
+
+function compareEntryRecency(left: BodyweightEntry, right: BodyweightEntry) {
+  return (
+    left.updatedAt.localeCompare(right.updatedAt) ||
+    left.createdAt.localeCompare(right.createdAt) ||
+    left.id.localeCompare(right.id)
+  )
+}
+
+/**
+ * Returns the smoothed (EMA) trend weight at each local calendar date, oldest
+ * first. The first point seeds the trend with the raw weight; each later point
+ * smooths using a coefficient scaled by the number of calendar days since the
+ * previous weigh-in.
  */
 export function trendWeightSeries(
   entries: BodyweightEntry[],
 ): TrendWeightPoint[] {
-  const sortedEntries = sortBodyweightEntries(entries)
+  const dailyEntries = latestBodyweightEntryPerCalendarDate(entries)
   const series: TrendWeightPoint[] = []
   let ema = 0
-  for (let index = 0; index < sortedEntries.length; index += 1) {
-    const entry = sortedEntries[index]
+  for (let index = 0; index < dailyEntries.length; index += 1) {
+    const entry = dailyEntries[index]
     if (index === 0) {
       ema = entry.weight
     } else {
@@ -53,7 +81,7 @@ export function trendWeightSeries(
         1,
         differenceInCalendarDays(
           parseLocalDate(entry.localDate),
-          parseLocalDate(sortedEntries[index - 1].localDate),
+          parseLocalDate(dailyEntries[index - 1].localDate),
         ),
       )
       const effectiveAlpha = effectiveTrendAlphaForCalendarDays(

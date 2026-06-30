@@ -242,7 +242,7 @@ describe('HomePage', () => {
     saveSpy.mockRestore()
   })
 
-  it('preserves multiple same-day entries while current weight uses the latest timestamp', async () => {
+  it('edits the existing entry when logging bodyweight again on the same date', async () => {
     const user = userEvent.setup()
     renderHome()
     await waitForDashboardReady()
@@ -254,13 +254,18 @@ describe('HomePage', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
     await user.click(screen.getByRole('button', { name: 'Log bodyweight' }))
-    await user.type(await bodyweightInput(), '189')
+    const existingInput = await bodyweightInput()
+    await waitFor(() => expect(existingInput).toHaveValue('188'))
+    await user.clear(existingInput)
+    await user.type(existingInput, '189')
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(await screen.findAllByText('189 lb')).not.toHaveLength(0)
     expect(screen.getByText('Selected date: 189 lb')).toBeInTheDocument()
-    expect(screen.getByLabelText('Bodyweight trend')).toHaveTextContent('+1 lb')
-    await expect(db.bodyweightEntries.toArray()).resolves.toHaveLength(2)
+    expect(screen.getByLabelText('Bodyweight trend')).toHaveTextContent(
+      'One entry',
+    )
+    await expect(db.bodyweightEntries.toArray()).resolves.toHaveLength(1)
   })
 
   it('opens bodyweight entry from the center Add sheet', async () => {

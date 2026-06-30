@@ -94,12 +94,12 @@
 4. User enters bodyweight in pounds by default.
 5. App validates a positive realistic numeric value.
 6. User saves.
-7. App creates a new timestamped bodyweight entry for that local date.
+7. App creates a bodyweight entry for that local date. If an entry already
+   exists, the sheet opens it for correction instead of creating another.
 8. Home immediately refreshes current bodyweight, selected-date status, and the
    compact trend summary.
-9. If the user needs to correct the selected date's latest entry, the user
-   chooses Edit Latest, changes the value, and saves. The app updates that
-   selected record instead of rewriting other same-day records.
+9. If the user needs to correct the selected date's entry, the user chooses
+   Edit Latest, changes the value, and saves.
 
 ## Viewing Bodyweight Progress
 
@@ -107,8 +107,8 @@
 2. User chooses View Graph from the Bodyweight card.
 3. App opens History in the Bodyweight Progress view.
 4. User chooses 1M, 3M, 6M, or All range.
-5. App plots each retained bodyweight entry by timestamp. Multiple same-day
-   entries remain separate points.
+5. App plots each retained bodyweight entry by date. Legacy duplicate-date
+   records remain available for backup compatibility.
 6. User taps or focuses a point.
 7. App shows the selected entry's bodyweight, local date, and timestamp.
 8. Empty and one-point states avoid showing a misleading trend.

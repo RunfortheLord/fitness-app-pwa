@@ -358,8 +358,8 @@
   queries Open Food Facts and prefers provider-supplied Spanish display fields.
 - Nutrition is manual and simple.
 - Food log entries snapshot nutrition values at logging time.
-- Bodyweight supports multiple timestamped entries per local calendar date,
-  pounds by default.
+- Bodyweight permits one entry per local calendar date, pounds by default.
+  Legacy duplicate-date records remain restorable without destructive cleanup.
 - Exercise tracking uses metric-driven presets to allow future expansion.
 - The built-in offline exercise library is an original curated seed list. No
   third-party exercise database, third-party application code, images, videos,

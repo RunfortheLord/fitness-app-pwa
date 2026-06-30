@@ -117,8 +117,8 @@ CSV export creates a local TAR archive containing one CSV file per exported tabl
 CSV files include headers, stable IDs, parent IDs, ordering fields, timestamps, local dates, archived status, source IDs, and escaped values for commas, quotation marks, line breaks, and empty values. Nested snapshot fields are serialized as JSON inside the CSV cell.
 
 Bodyweight CSV and JSON exports include every stored bodyweight entry,
-including multiple entries for the same local date. Export does not collapse,
-average, or rewrite same-day records used by the progress graph.
+including legacy duplicate-date records restored from older backups. Export
+does not collapse, average, or rewrite source records.
 
 Run CSV and JSON exports include active and completed runs plus raw GPS samples,
 sample decisions, rejection reasons, pause periods, splits, GPS-gap markers,

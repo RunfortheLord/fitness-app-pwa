@@ -49,7 +49,7 @@ export function BodyweightEntrySheet({
 
     return entryId
       ? bodyweightRepository.getBodyweightEntry(entryId)
-      : undefined
+      : bodyweightRepository.getBodyweightForDate(localDate)
   }, [entryId, localDate])
 
   if (!localDate) {
