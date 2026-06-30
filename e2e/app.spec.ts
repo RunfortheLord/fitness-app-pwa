@@ -300,9 +300,10 @@ test('starts, resumes, edits, and cancels a live workout', async ({
     '10',
   )
 
+  await page.getByLabel('Workout options').click()
   await page.getByRole('button', { name: 'Discard Workout' }).click()
   await page
-    .getByRole('dialog', { name: 'Discard Workout' })
+    .getByRole('dialog', { name: 'Discard workout?' })
     .getByRole('button', { name: 'Discard Workout' })
     .click()
   await expect(page).toHaveURL(/\/training/)
@@ -415,14 +416,18 @@ test('logs, edits, deletes, switches dates, and persists bodyweight after reload
     .getByRole('textbox', { name: 'Bodyweight' })
     .fill('188.4')
   await page.getByRole('button', { name: 'Save' }).click()
-  const bodyweightCard = page.getByLabel('Bodyweight', { exact: true })
+  const bodyweightCard = page.locator('.home-bodyweight-summary')
   await expect(
-    bodyweightCard.locator('.metric-value-small', { hasText: '188.4 lb' }),
+    bodyweightCard.locator('.home-bw-value-secondary', {
+      hasText: '188.4 lb',
+    }),
   ).toBeVisible({ timeout: 15_000 })
 
   await page.reload()
   await expect(
-    bodyweightCard.locator('.metric-value-small', { hasText: '188.4 lb' }),
+    bodyweightCard.locator('.home-bw-value-secondary', {
+      hasText: '188.4 lb',
+    }),
   ).toBeVisible()
 
   await page.getByRole('button', { name: 'Edit latest' }).click()
@@ -433,7 +438,9 @@ test('logs, edits, deletes, switches dates, and persists bodyweight after reload
   await editInput.fill('189.2')
   await page.getByRole('button', { name: 'Save' }).click()
   await expect(
-    bodyweightCard.locator('.metric-value-small', { hasText: '189.2 lb' }),
+    bodyweightCard.locator('.home-bw-value-secondary', {
+      hasText: '189.2 lb',
+    }),
   ).toBeVisible()
 
   await page.getByRole('button', { name: 'Next day' }).click()
@@ -442,7 +449,9 @@ test('logs, edits, deletes, switches dates, and persists bodyweight after reload
   ).toBeVisible()
   await page.getByRole('button', { name: 'Previous day' }).click()
   await expect(
-    bodyweightCard.locator('.metric-value-small', { hasText: '189.2 lb' }),
+    bodyweightCard.locator('.home-bw-value-secondary', {
+      hasText: '189.2 lb',
+    }),
   ).toBeVisible()
 
   await page.getByRole('button', { name: 'Edit latest' }).click()
@@ -452,12 +461,16 @@ test('logs, edits, deletes, switches dates, and persists bodyweight after reload
     .getByRole('button', { name: 'Delete' })
     .click()
   await expect(
-    bodyweightCard.locator('.metric-value-small', { hasText: 'No entry' }),
+    bodyweightCard.locator('.home-bw-value-secondary', {
+      hasText: 'No entry',
+    }),
   ).toBeVisible()
 
   await page.reload()
   await expect(
-    bodyweightCard.locator('.metric-value-small', { hasText: 'No entry' }),
+    bodyweightCard.locator('.home-bw-value-secondary', {
+      hasText: 'No entry',
+    }),
   ).toBeVisible()
 })
 
@@ -573,7 +586,9 @@ test('settings exposes local data controls and validates malformed restore files
   await expect(weightUnit.locator('option[value="lb"]')).toHaveText(
     'Pounds (lb)',
   )
+  await page.getByRole('button', { name: 'About' }).click()
   await expect(page.getByText('Backup format version')).toBeVisible()
+  await page.getByRole('button', { name: 'Data' }).click()
   await expect(
     page.getByText(/Local backup files and CSV exports stay on this device/),
   ).toBeVisible()
@@ -710,8 +725,8 @@ test('completes the release workflow through backup restore', async ({
   await page.getByRole('button', { name: 'Save' }).click()
   await expect(
     page
-      .getByLabel('Bodyweight', { exact: true })
-      .locator('.metric-value-small', { hasText: '188.4 lb' }),
+      .locator('.home-bodyweight-summary')
+      .locator('.home-bw-value-secondary', { hasText: '188.4 lb' }),
   ).toBeVisible()
 
   await page.goto('/training')
@@ -816,7 +831,7 @@ test('completes the release workflow through backup restore', async ({
   ).not.toHaveAttribute('aria-invalid', 'true')
   await page.getByRole('button', { name: 'Complete set 4' }).click()
 
-  await page.getByRole('button', { name: 'Finish Workout' }).click()
+  await page.getByRole('button', { name: 'Finish' }).click()
   await page
     .getByRole('dialog', { name: 'Finish workout?' })
     .getByRole('button', { name: 'Finish Workout' })
@@ -826,6 +841,7 @@ test('completes the release workflow through backup restore', async ({
   await expect(page.getByText('Review')).toHaveCount(0)
 
   await page.goto('/settings')
+  await page.getByRole('button', { name: 'Data' }).click()
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Export JSON backup' }).click()
   const download = await downloadPromise
@@ -843,6 +859,7 @@ test('completes the release workflow through backup restore', async ({
   await expect(page.getByText('No recent foods')).toBeVisible()
 
   await page.goto('/settings')
+  await page.getByRole('button', { name: 'Data' }).click()
   await page.locator('input[type="file"]').setInputFiles(backupPath)
   await expect(page.getByLabel('Import preview')).toBeVisible()
   const restoreDialog = page.getByRole('dialog', {
@@ -888,11 +905,14 @@ async function addPrescription(
     await builder.getByRole('textbox', { name: 'Max reps' }).fill('10')
   }
   await builder.getByRole('button', { name: 'Save prescription' }).click()
+  await expect(builder.getByLabel('Prescription editor')).not.toBeVisible({
+    timeout: 15_000,
+  })
 }
 
 async function closeBuilder(builder: Locator) {
   await builder.getByRole('button', { name: /^Back from edit/ }).click()
-  await expect(builder).not.toBeVisible()
+  await expect(builder).not.toBeVisible({ timeout: 15_000 })
 }
 
 async function waitForExerciseLibrary(page: Page) {

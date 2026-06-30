@@ -1,9 +1,11 @@
 import {
+  BellRing,
   Check,
   ChevronLeft,
   ChevronRight,
   Clock,
   Minus,
+  MoreHorizontal,
   Pause,
   Play,
   Plus,
@@ -13,6 +15,7 @@ import {
   Square,
   TimerOff,
   Trash2,
+  X,
 } from 'lucide-react'
 import {
   useEffect,
@@ -449,16 +452,27 @@ export function LiveWorkoutPage() {
             </p>
           </div>
           <div className="live-workout-header-actions">
-            <PrimaryButton type="button" onClick={() => setConfirmFinish(true)}>
-              Finish Workout
-            </PrimaryButton>
-            <SecondaryButton
-              className="button-danger"
+            <PrimaryButton
+              className="live-workout-finish"
               type="button"
-              onClick={() => setConfirmDiscard(true)}
+              onClick={() => setConfirmFinish(true)}
             >
-              {t('Discard Workout')}
-            </SecondaryButton>
+              Finish
+            </PrimaryButton>
+            <details className="live-workout-options">
+              <summary aria-label={t('Workout options')}>
+                <MoreHorizontal aria-hidden="true" size={20} />
+              </summary>
+              <div className="live-workout-options-menu">
+                <button
+                  className="button-danger"
+                  type="button"
+                  onClick={() => setConfirmDiscard(true)}
+                >
+                  {t('Discard Workout')}
+                </button>
+              </div>
+            </details>
           </div>
         </div>
         <div className="live-workout-stats">
@@ -472,7 +486,22 @@ export function LiveWorkoutPage() {
 
       {error ? <ValidationMessage message={error} /> : null}
       {nativeTimerMessage ? (
-        <StatusMessage tone="warning">{nativeTimerMessage}</StatusMessage>
+        <div className="live-timer-notice" role="status">
+          <BellRing aria-hidden="true" size={17} />
+          <span>{nativeTimerMessage}</span>
+          <button
+            type="button"
+            onClick={() => void navigate('/settings?section=notifications')}
+          >
+            {t('Timer settings')}
+          </button>
+          <IconButton
+            aria-label={t('Dismiss timer notice')}
+            onClick={() => setNativeTimerMessage(null)}
+          >
+            <X aria-hidden="true" size={16} />
+          </IconButton>
+        </div>
       ) : null}
 
       <Card className="exercise-navigator" title="Exercises">
@@ -933,9 +962,20 @@ function SetRow({
   set: WorkoutSet
 }) {
   const { t } = useLanguage()
+  const [validationRequested, setValidationRequested] = useState(false)
+  const [rirTouched, setRirTouched] = useState(false)
+  const [locallyValidMetricKeys, setLocallyValidMetricKeys] = useState(
+    () => new Set<string>(),
+  )
+  const [rirDraftValid, setRirDraftValid] = useState(false)
   const showRir = supportsRir(metrics) && set.id === finalProgrammedSetId
   const repsPerSide = exerciseRecordsRepsPerSide(exercise)
   const invalidMetricKeys = invalidRequiredMetricKeys(set, metrics)
+  const effectiveInvalidMetricKeys = new Set(
+    [...invalidMetricKeys].filter((key) => !locallyValidMetricKeys.has(key)),
+  )
+  const isRirInvalid =
+    showRir && (set.rir === null || set.rir === undefined) && !rirDraftValid
   const weightUnit = useWeightUnit()
   return (
     <div className={set.completed ? 'set-row completed' : 'set-row'}>
@@ -956,7 +996,19 @@ function SetRow({
                 repsPerSide,
               )}`}
               disabled={set.completed}
-              invalid={invalidMetricKeys.has(metric.key)}
+              invalid={effectiveInvalidMetricKeys.has(metric.key)}
+              validationRequested={validationRequested}
+              onDraftValidityChange={(valid) => {
+                setLocallyValidMetricKeys((current) => {
+                  const next = new Set(current)
+                  if (valid) {
+                    next.add(metric.key)
+                  } else {
+                    next.delete(metric.key)
+                  }
+                  return next
+                })
+              }}
               onValueChange={(value) =>
                 onMetricChange(
                   metric.key,
@@ -997,12 +1049,15 @@ function SetRow({
           <NumericInput
             aria-label={`Set ${set.setNumber} final RIR`}
             disabled={set.completed}
-            aria-invalid={
-              showRir && (set.rir === null || set.rir === undefined)
-            }
-            onBlur={(event) =>
-              onRirChange(parseNullableNumber(event.currentTarget.value))
-            }
+            aria-invalid={(validationRequested || rirTouched) && isRirInvalid}
+            onBlur={(event) => {
+              setRirTouched(true)
+              const rir = parseNullableNumber(event.currentTarget.value)
+              setRirDraftValid(
+                typeof rir === 'number' && Number.isFinite(rir) && rir >= 0,
+              )
+              onRirChange(rir)
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
                 event.preventDefault()
@@ -1021,7 +1076,17 @@ function SetRow({
             ? 'set-complete-button completed'
             : 'set-complete-button'
         }
-        onClick={() => onComplete(!set.completed)}
+        onClick={() => {
+          if (
+            !set.completed &&
+            (effectiveInvalidMetricKeys.size > 0 || isRirInvalid)
+          ) {
+            setValidationRequested(true)
+            return
+          }
+          setValidationRequested(false)
+          onComplete(!set.completed)
+        }}
       >
         {set.completed ? (
           <Check aria-hidden="true" size={18} />
@@ -1032,6 +1097,12 @@ function SetRow({
       <IconButton aria-label={`Delete set ${set.setNumber}`} onClick={onDelete}>
         <Trash2 aria-hidden="true" size={18} />
       </IconButton>
+      {validationRequested &&
+      (effectiveInvalidMetricKeys.size > 0 || isRirInvalid) ? (
+        <span className="set-validation-message" role="alert">
+          {t('Enter the required set values before completing it.')}
+        </span>
+      ) : null}
     </div>
   )
 }
@@ -1040,9 +1111,11 @@ function MetricNumericInput({
   disabled,
   invalid,
   metricKey,
+  onDraftValidityChange,
   onKeyDown,
   onValueChange,
   placeholder,
+  validationRequested,
   value,
   valueType,
   ...props
@@ -1052,11 +1125,14 @@ function MetricNumericInput({
 > & {
   invalid: boolean
   metricKey: string
+  onDraftValidityChange: (valid: boolean) => void
   onValueChange: (value: WorkoutSetMetricValue) => void
+  validationRequested: boolean
   value: string
   valueType: TrackingMetric['valueType']
 }) {
   const [draft, setDraft] = useState(value)
+  const [touched, setTouched] = useState(false)
   const isEditingRef = useRef(false)
   const lastPropValueRef = useRef(value)
 
@@ -1079,11 +1155,12 @@ function MetricNumericInput({
   return (
     <NumericInput
       {...props}
-      aria-invalid={invalid}
+      aria-invalid={invalid && (touched || validationRequested)}
       disabled={disabled}
       onBlur={() => {
         isEditingRef.current = false
         lastPropValueRef.current = value
+        setTouched(true)
       }}
       onChange={(event) => {
         const next =
@@ -1092,9 +1169,15 @@ function MetricNumericInput({
             : valueType === 'integer'
               ? event.currentTarget.value.replace(/\D+/g, '')
               : event.currentTarget.value
+        const parsedValue = parseMetricValue(next, valueType, metricKey)
         isEditingRef.current = true
         setDraft(next)
-        onValueChange(parseMetricValue(next, valueType, metricKey))
+        onDraftValidityChange(
+          typeof parsedValue === 'number' &&
+            Number.isFinite(parsedValue) &&
+            parsedValue >= 0,
+        )
+        onValueChange(parsedValue)
       }}
       onFocus={(event) => {
         isEditingRef.current = true

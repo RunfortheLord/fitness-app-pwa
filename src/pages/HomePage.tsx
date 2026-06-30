@@ -52,7 +52,6 @@ export function HomePage() {
     setSelectedDate,
   } = useDashboardContext()
   const navigate = useNavigate()
-  const weightUnit = useWeightUnit()
   const today = formatLocalDate(new Date())
   const [dashboardState, setDashboardState] = useState<DashboardLoadState>({
     status: 'loading',
@@ -160,35 +159,69 @@ export function HomePage() {
 
         <Card
           className="home-action-card"
-          title={dashboard?.activeProgram?.cycle.name ?? 'No active program'}
+          title={
+            dashboard?.activeWorkout
+              ? 'Workout in progress'
+              : (dashboard?.activeProgram?.cycle.name ?? 'No active program')
+          }
         >
           <div className="dashboard-shortcuts">
-            <PrimaryButton
-              type="button"
-              disabled={!dashboard?.activeProgram?.days.length}
-              onClick={() => void navigate('/training')}
-            >
-              Start workout
-            </PrimaryButton>
-            {dashboard?.activeProgram?.days.length ? (
-              <SecondaryButton type="button">
-                {`${t('Next')}: ${
-                  dashboard.activeProgram.nextDay?.name ??
-                  dashboard.activeProgram.days[0]?.name
-                }`}
-              </SecondaryButton>
+            {dashboard?.activeWorkout ? (
+              <>
+                <PrimaryButton
+                  type="button"
+                  onClick={() => void navigate('/workout')}
+                >
+                  Resume workout
+                </PrimaryButton>
+                <p className="home-action-meta">
+                  {dashboard.activeWorkout.name} ·{' '}
+                  {t('Started {date}', {
+                    date: dashboard.activeWorkout.localDate,
+                  })}
+                </p>
+              </>
+            ) : dashboard?.activeProgram?.days.length ? (
+              <>
+                <PrimaryButton
+                  type="button"
+                  onClick={() => void navigate('/training')}
+                >
+                  Start workout
+                </PrimaryButton>
+                <p className="home-action-meta">
+                  {`${t('Next')}: ${
+                    dashboard.activeProgram.nextDay?.name ??
+                    dashboard.activeProgram.days[0]?.name
+                  }`}
+                </p>
+              </>
             ) : (
-              <SecondaryButton type="button">Create program</SecondaryButton>
+              <PrimaryButton
+                type="button"
+                onClick={() => void navigate('/training?createProgram=1')}
+              >
+                Create program
+              </PrimaryButton>
             )}
           </div>
         </Card>
       </section>
 
       <section className="metric-grid" aria-label="Daily summary">
-        <HomeBodyweightMetric
+        <HomeBodyweightSummary
+          trend={dashboard?.bodyweightTrend}
           trendWeight={trendWeight}
           lastRecorded={dashboard?.currentBodyweight}
-          onOpen={() => openBodyweightSheet(selectedDate)}
+          selectedEntry={dashboard?.bodyweight}
+          onEdit={() =>
+            openBodyweightSheet({
+              entryId: dashboard?.bodyweight?.id,
+              localDate: selectedDate,
+            })
+          }
+          onLog={() => openBodyweightSheet(selectedDate)}
+          onView={() => void navigate('/history?view=bodyweight')}
         />
         <MetricCard
           label="Calories remaining"
@@ -219,100 +252,6 @@ export function HomePage() {
         ) : null}
       </Card>
 
-      <Card title="Bodyweight">
-        <div className="card-row">
-          <span className="quick-action-icon">
-            <Scale aria-hidden="true" size={20} />
-          </span>
-          <div>
-            {dashboard?.currentBodyweight ? (
-              <>
-                <p className="metric-value metric-value-small">
-                  {formatWeightWithUnit(
-                    dashboard.currentBodyweight.weight,
-                    weightUnit,
-                    'bodyweight',
-                  )}
-                </p>
-                <p className="muted">
-                  {t('Current from {date}', {
-                    date: dashboard.currentBodyweight.localDate,
-                  })}
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="metric-value metric-value-small">
-                  {t('No entry')}
-                </p>
-                <p className="muted">{t('Log bodyweight to start a trend.')}</p>
-              </>
-            )}
-          </div>
-        </div>
-        {dashboard?.bodyweight ? (
-          <p className="muted">
-            Selected date:{' '}
-            {formatWeightWithUnit(
-              dashboard.bodyweight.weight,
-              weightUnit,
-              'bodyweight',
-            )}
-          </p>
-        ) : (
-          <p className="muted">{t('Selected date: no bodyweight entry')}</p>
-        )}
-        <HomeBodyweightTrend trend={dashboard?.bodyweightTrend} />
-        <div className="button-row">
-          <PrimaryButton
-            type="button"
-            onClick={() => openBodyweightSheet(selectedDate)}
-          >
-            Log bodyweight
-          </PrimaryButton>
-          {dashboard?.bodyweight ? (
-            <SecondaryButton
-              type="button"
-              onClick={() =>
-                openBodyweightSheet({
-                  entryId: dashboard.bodyweight?.id,
-                  localDate: selectedDate,
-                })
-              }
-            >
-              Edit latest
-            </SecondaryButton>
-          ) : null}
-          <SecondaryButton
-            type="button"
-            onClick={() => void navigate('/history?view=bodyweight')}
-          >
-            View graph
-          </SecondaryButton>
-        </div>
-      </Card>
-
-      {dashboard?.activeWorkout ? (
-        <Card title="Resume workout">
-          <p className="metric-value metric-value-small">
-            {dashboard.activeWorkout.name}
-          </p>
-          <p className="muted">
-            {t('Started {date}', {
-              date: dashboard.activeWorkout.localDate,
-            })}
-          </p>
-          <div className="button-row">
-            <PrimaryButton
-              type="button"
-              onClick={() => void navigate('/workout')}
-            >
-              Resume workout
-            </PrimaryButton>
-          </div>
-        </Card>
-      ) : null}
-
       {dashboard?.metadata ? (
         <div className="visually-hidden">
           Local database schema {dashboard.metadata.databaseSchemaVersion};
@@ -323,48 +262,88 @@ export function HomePage() {
   )
 }
 
-function HomeBodyweightMetric({
+function HomeBodyweightSummary({
+  trend,
   trendWeight,
   lastRecorded,
-  onOpen,
+  selectedEntry,
+  onEdit,
+  onLog,
+  onView,
 }: {
+  trend: BodyweightTrendSummary | undefined
   trendWeight: number | null
   lastRecorded: BodyweightEntry | undefined
-  onOpen: () => void
+  selectedEntry: BodyweightEntry | undefined
+  onEdit: () => void
+  onLog: () => void
+  onView: () => void
 }) {
   const { t } = useLanguage()
   const weightUnit = useWeightUnit()
   return (
-    <button
-      aria-label={t('Open bodyweight log')}
-      className="card metric-card home-bodyweight-metric-card"
-      onClick={onOpen}
-      type="button"
-    >
-      <p className="metric-label">{t('Bodyweight')}</p>
-      <div className="home-bw-metric">
-        <div className="home-bw-stat">
-          <span className="home-bw-value">
-            {trendWeight !== null
-              ? formatWeightWithUnit(trendWeight, weightUnit, 'bodyweight')
-              : '—'}
-          </span>
-          <span className="home-bw-caption">{t('Trend weight')}</span>
+    <Card className="metric-card home-bodyweight-summary">
+      <button
+        aria-label={t('Open bodyweight log')}
+        className="home-bodyweight-summary-trigger"
+        onClick={onLog}
+        type="button"
+      >
+        <span className="home-bodyweight-title">
+          <Scale aria-hidden="true" size={18} />
+          {t('Bodyweight')}
+        </span>
+        <div className="home-bw-metric">
+          <div className="home-bw-stat">
+            <span className="home-bw-value">
+              {trendWeight !== null
+                ? formatWeightWithUnit(trendWeight, weightUnit, 'bodyweight')
+                : '—'}
+            </span>
+            <span className="home-bw-caption">{t('Trend weight')}</span>
+          </div>
+          <div className="home-bw-stat">
+            <span className="home-bw-value home-bw-value-secondary">
+              {lastRecorded
+                ? formatWeightWithUnit(
+                    lastRecorded.weight,
+                    weightUnit,
+                    'bodyweight',
+                  )
+                : t('No entry')}
+            </span>
+            <span className="home-bw-caption">{t('Last recorded')}</span>
+          </div>
         </div>
-        <div className="home-bw-stat">
-          <span className="home-bw-value home-bw-value-secondary">
-            {lastRecorded
-              ? formatWeightWithUnit(
-                  lastRecorded.weight,
-                  weightUnit,
-                  'bodyweight',
-                )
-              : '—'}
+        {lastRecorded ? (
+          <span className="home-bw-current-date">
+            {t('Current from {date}', { date: lastRecorded.localDate })}
           </span>
-          <span className="home-bw-caption">{t('Last recorded')}</span>
-        </div>
+        ) : null}
+      </button>
+      {selectedEntry ? (
+        <p className="muted">
+          Selected date:{' '}
+          {formatWeightWithUnit(selectedEntry.weight, weightUnit, 'bodyweight')}
+        </p>
+      ) : (
+        <p className="muted">{t('Selected date: no bodyweight entry')}</p>
+      )}
+      <HomeBodyweightTrend trend={trend} />
+      <div className="button-row home-bodyweight-actions">
+        <PrimaryButton type="button" onClick={onLog}>
+          Log bodyweight
+        </PrimaryButton>
+        {selectedEntry ? (
+          <SecondaryButton type="button" onClick={onEdit}>
+            Edit latest
+          </SecondaryButton>
+        ) : null}
+        <SecondaryButton type="button" onClick={onView}>
+          View graph
+        </SecondaryButton>
       </div>
-    </button>
+    </Card>
   )
 }
 

@@ -436,7 +436,7 @@ describe('TrainingPage', () => {
     renderTraining()
 
     await user.click(
-      screen.getAllByRole('button', { name: 'Create program' })[0],
+      (await screen.findAllByRole('button', { name: 'Create program' }))[0],
     )
     await user.type(
       screen.getByRole('textbox', { name: 'Program name' }),
@@ -492,11 +492,7 @@ describe('TrainingPage', () => {
     )
 
     expect(
-      await screen.findByRole(
-        'button',
-        { name: 'Finish Workout' },
-        { timeout: 5_000 },
-      ),
+      await screen.findByRole('button', { name: 'Finish' }, { timeout: 5_000 }),
     ).toBeInTheDocument()
     const workoutHeader =
       firstRender.container.querySelector('.live-workout-hero')
@@ -507,7 +503,7 @@ describe('TrainingPage', () => {
     expect(exerciseWorkspace).not.toBeNull()
     expect(
       within(workoutHeader as HTMLElement).getByRole('button', {
-        name: 'Finish Workout',
+        name: 'Finish',
       }),
     ).toBeInTheDocument()
 
@@ -541,6 +537,16 @@ describe('TrainingPage', () => {
     expect(
       within(exerciseWorkspace as HTMLElement).getByLabelText('Exercise notes'),
     ).toHaveTextContent('No exercise notes.')
+
+    const initialWeight = screen.getByRole('textbox', {
+      name: 'Set 1 Weight',
+    })
+    expect(initialWeight).toHaveAttribute('aria-invalid', 'false')
+    await user.click(screen.getByRole('button', { name: 'Complete set 1' }))
+    expect(
+      screen.getByText('Enter the required set values before completing it.'),
+    ).toBeInTheDocument()
+    expect(initialWeight).toHaveAttribute('aria-invalid', 'true')
 
     await user.clear(screen.getByRole('textbox', { name: 'Set 1 Weight' }))
     await user.type(
@@ -611,9 +617,12 @@ describe('TrainingPage', () => {
     })
     renderTraining(['/workout'])
 
-    await user.click(
-      await screen.findByRole('button', { name: 'Complete set 1' }),
+    await user.type(
+      await screen.findByRole('textbox', { name: 'Set 1 Weight' }),
+      '95',
     )
+    await user.type(screen.getByRole('textbox', { name: 'Set 1 Reps' }), '8')
+    await user.click(screen.getByRole('button', { name: 'Complete set 1' }))
 
     await waitFor(async () => {
       const workout = await db.workouts.toCollection().first()

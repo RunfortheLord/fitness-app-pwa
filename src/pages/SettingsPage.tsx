@@ -69,6 +69,13 @@ type BuildInfo = {
   gitHash: string
 }
 
+type SettingsSection =
+  | 'preferences'
+  | 'notifications'
+  | 'integrations'
+  | 'data'
+  | 'about'
+
 export function SettingsPage() {
   const { language, setLanguage, t } = useLanguage()
   // Visiting Settings (where the full changelog lives) counts as seeing the
@@ -145,6 +152,7 @@ export function SettingsPage() {
     usesNativeSystemSound || usesWebPushSystemSound
 
   const requestedSection = searchParams.get('section')
+  const settingsSection = settingsSectionFromQuery(requestedSection)
   const isWhatsNewSubpageOpen = whatsNewOpen || requestedSection === 'whats-new'
   const closeWhatsNewSubpage = () => {
     setWhatsNewOpen(false)
@@ -669,468 +677,503 @@ export function SettingsPage() {
         <StatusMessage tone="warning">{operationError}</StatusMessage>
       ) : null}
 
-      <SectionHeader title="Preferences" />
-      <Card>
-        <FormField
-          id="app-language-select"
-          label="App language"
-          helpText="Changes the language used throughout the app."
-        >
-          <select
-            id="app-language-select"
-            onChange={(event) => {
-              void saveAppLanguage(event.currentTarget.value as AppLanguage)
-            }}
-            value={language}
-          >
-            {APP_LANGUAGE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {t(option.label)}
-              </option>
-            ))}
-          </select>
-        </FormField>
-        {languageMessage ? (
-          <StatusMessage tone="success">{languageMessage}</StatusMessage>
-        ) : null}
-        <FormField
-          id="weight-unit-select"
-          label="Weight unit"
-          helpText="Switches every weight in the app, including past history."
-        >
-          <select
-            id="weight-unit-select"
-            onChange={(event) =>
-              saveWeightUnit(event.currentTarget.value as WeightUnit)
-            }
-            value={weightUnit}
-          >
-            {WEIGHT_UNIT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {t(option.label)}
-              </option>
-            ))}
-          </select>
-        </FormField>
-        {weightUnitMessage ? (
-          <StatusMessage tone="success">{weightUnitMessage}</StatusMessage>
-        ) : null}
-        {usesSystemTimerAlertSound ? (
-          <>
-            {timerSoundMessage ? (
-              <StatusMessage tone="success">{timerSoundMessage}</StatusMessage>
-            ) : null}
-            <p>
-              <strong>{t('Timer alert sound')}</strong>
-            </p>
-            <p className="muted">
-              {t(
-                'Default iPhone notification sound. Its volume and playback behavior are controlled by iPhone notification settings.',
-              )}
-            </p>
-            <label className="checkbox-row">
-              <input
-                checked={timerBannersEnabled}
-                onChange={(event) =>
-                  saveTimerSettings({
-                    timerSoundEnabled,
-                    selectedTimerSoundId,
-                    timerBannersEnabled: event.currentTarget.checked,
-                  })
-                }
-                type="checkbox"
-              />
-              {t('Timer notification banners')}
-            </label>
-            <div className="button-row">
-              <SecondaryButton
-                disabled={!timerBannersEnabled}
-                type="button"
-                onClick={() => void previewSystemTimerAlert()}
-              >
-                {t('Test iPhone alert')}
-              </SecondaryButton>
-            </div>
-          </>
-        ) : (
-          <>
-            {timerSoundMessage ? (
-              <StatusMessage tone="success">{timerSoundMessage}</StatusMessage>
-            ) : null}
-            <label className="checkbox-row">
-              <input
-                checked={timerSoundEnabled}
-                onChange={(event) =>
-                  saveTimerSettings({
-                    timerSoundEnabled: event.currentTarget.checked,
-                    selectedTimerSoundId,
-                    timerBannersEnabled,
-                  })
-                }
-                type="checkbox"
-              />
-              {t('Timer completion sound')}
-            </label>
+      <SettingsSectionNavigation
+        activeSection={settingsSection}
+        onChange={(section) => {
+          void navigate(`/settings?section=${section}`, { replace: true })
+        }}
+      />
+
+      {settingsSection === 'preferences' ? (
+        <>
+          <SectionHeader title="Preferences" />
+          <Card>
             <FormField
-              id="timer-sound-select"
-              label="Sound selection"
-              helpText="In-app timer sounds briefly mix with other audio. Outside-app alerts use the iPhone notification sound."
+              id="app-language-select"
+              label="App language"
+              helpText="Changes the language used throughout the app."
             >
               <select
-                id="timer-sound-select"
-                onChange={(event) =>
-                  saveTimerSettings({
-                    timerSoundEnabled,
-                    selectedTimerSoundId: event.currentTarget.value,
-                    timerBannersEnabled,
-                  })
-                }
-                value={selectedTimerSoundId}
+                id="app-language-select"
+                onChange={(event) => {
+                  void saveAppLanguage(event.currentTarget.value as AppLanguage)
+                }}
+                value={language}
               >
-                {TIMER_SOUNDS.map((sound) => (
-                  <option key={sound.id} value={sound.id}>
-                    {t(sound.name)}
+                {APP_LANGUAGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {t(option.label)}
                   </option>
                 ))}
               </select>
             </FormField>
-            <div className="button-row">
-              <SecondaryButton
-                type="button"
-                onClick={() => previewTimerSound(selectedTimerSoundId)}
+            {languageMessage ? (
+              <StatusMessage tone="success">{languageMessage}</StatusMessage>
+            ) : null}
+            <FormField
+              id="weight-unit-select"
+              label="Weight unit"
+              helpText="Switches every weight in the app, including past history."
+            >
+              <select
+                id="weight-unit-select"
+                onChange={(event) =>
+                  saveWeightUnit(event.currentTarget.value as WeightUnit)
+                }
+                value={weightUnit}
               >
-                Preview
-              </SecondaryButton>
-            </div>
-          </>
-        )}
-        {supportsNativeRestTimerNotifications() ? (
-          <>
-            <p className="muted">
-              {t(
-                'Native timer alerts are scheduled on this iPhone and work when the app is closed or in the background.',
-              )}
-            </p>
-            <SecondaryButton
-              type="button"
-              onClick={() => void enableNativeTimerAlerts()}
-            >
-              {t('Enable outside-app timer alerts')}
-            </SecondaryButton>
-            {nativeTimerAlertMessage ? (
-              <StatusMessage tone="warning">
-                {t(nativeTimerAlertMessage)}
-              </StatusMessage>
+                {WEIGHT_UNIT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {t(option.label)}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+            {weightUnitMessage ? (
+              <StatusMessage tone="success">{weightUnitMessage}</StatusMessage>
             ) : null}
-          </>
-        ) : supportsWebPushRestTimerNotifications() ? (
-          <>
-            <p className="muted">
-              {t(
-                isInstalledWebApp()
-                  ? 'Web notifications can alert you when the timer finishes while another app or the Home Screen is open. Internet access and iPhone notification sounds are required.'
-                  : 'Install this app on the iPhone Home Screen before enabling outside-app timer alerts.',
-              )}
-            </p>
-            <SecondaryButton
-              type="button"
-              onClick={() => void enableWebPushTimerAlerts()}
-            >
-              {t('Enable outside-app timer alerts')}
-            </SecondaryButton>
-            {nativeTimerAlertMessage ? (
-              <StatusMessage tone="warning">
-                {t(nativeTimerAlertMessage)}
-              </StatusMessage>
-            ) : null}
-          </>
-        ) : null}
-      </Card>
+          </Card>
+        </>
+      ) : null}
 
-      <section id="ai-meal-settings">
-        <SectionHeader title="AI meal analysis" />
-        <Card>
-          <p>
-            <strong>Gemini 3.5 Flash</strong>
-          </p>
-          <p className="muted">
-            {t(
-              'The key stays in local app storage. Meal photos are sent directly from this device to Google for analysis and are never included in app backups. Google may use free-tier requests to improve its products.',
-            )}
-          </p>
-          <FormField
-            id="gemini-api-key"
-            label="Gemini API key"
-            helpText={
-              geminiConfigured
-                ? 'A key is saved on this device. Enter another key to replace it.'
-                : 'Create a free key in Google AI Studio.'
-            }
-          >
-            <input
-              autoCapitalize="none"
-              autoComplete="off"
-              id="gemini-api-key"
-              onChange={(event) =>
-                setGeminiApiKeyInput(event.currentTarget.value)
-              }
-              placeholder={
-                geminiConfigured
-                  ? t('Key saved on this device')
-                  : t('Paste Gemini API key')
-              }
-              spellCheck={false}
-              type="password"
-              value={geminiApiKeyInput}
-            />
-          </FormField>
-          <p className="muted">
-            {t('Status')}: {t(geminiStatusLabel(geminiStatus))}
-          </p>
-          {geminiMessage ? (
-            <StatusMessage tone="success">{geminiMessage}</StatusMessage>
-          ) : null}
-          {geminiError ? <ValidationMessage message={geminiError} /> : null}
-          <div className="button-row">
-            <PrimaryButton
-              disabled={geminiBusy}
-              onClick={() => void saveAndTestGeminiKey()}
-              type="button"
-            >
-              {geminiBusy ? 'Testing...' : 'Save and test'}
-            </PrimaryButton>
-            {geminiConfigured ? (
+      {settingsSection === 'notifications' ? (
+        <>
+          <SectionHeader title="Notifications" />
+          <Card>
+            {usesSystemTimerAlertSound ? (
               <>
-                <SecondaryButton
-                  disabled={geminiBusy}
-                  onClick={() => void testSavedGeminiKey()}
-                  type="button"
+                {timerSoundMessage ? (
+                  <StatusMessage tone="success">
+                    {timerSoundMessage}
+                  </StatusMessage>
+                ) : null}
+                <p>
+                  <strong>{t('Timer alert sound')}</strong>
+                </p>
+                <p className="muted">
+                  {t(
+                    'Default iPhone notification sound. Its volume and playback behavior are controlled by iPhone notification settings.',
+                  )}
+                </p>
+                <label className="checkbox-row">
+                  <input
+                    checked={timerBannersEnabled}
+                    onChange={(event) =>
+                      saveTimerSettings({
+                        timerSoundEnabled,
+                        selectedTimerSoundId,
+                        timerBannersEnabled: event.currentTarget.checked,
+                      })
+                    }
+                    type="checkbox"
+                  />
+                  {t('Timer notification banners')}
+                </label>
+                <div className="button-row">
+                  <SecondaryButton
+                    disabled={!timerBannersEnabled}
+                    type="button"
+                    onClick={() => void previewSystemTimerAlert()}
+                  >
+                    {t('Test iPhone alert')}
+                  </SecondaryButton>
+                </div>
+              </>
+            ) : (
+              <>
+                {timerSoundMessage ? (
+                  <StatusMessage tone="success">
+                    {timerSoundMessage}
+                  </StatusMessage>
+                ) : null}
+                <label className="checkbox-row">
+                  <input
+                    checked={timerSoundEnabled}
+                    onChange={(event) =>
+                      saveTimerSettings({
+                        timerSoundEnabled: event.currentTarget.checked,
+                        selectedTimerSoundId,
+                        timerBannersEnabled,
+                      })
+                    }
+                    type="checkbox"
+                  />
+                  {t('Timer completion sound')}
+                </label>
+                <FormField
+                  id="timer-sound-select"
+                  label="Sound selection"
+                  helpText="In-app timer sounds briefly mix with other audio. Outside-app alerts use the iPhone notification sound."
                 >
-                  Test connection
-                </SecondaryButton>
+                  <select
+                    id="timer-sound-select"
+                    onChange={(event) =>
+                      saveTimerSettings({
+                        timerSoundEnabled,
+                        selectedTimerSoundId: event.currentTarget.value,
+                        timerBannersEnabled,
+                      })
+                    }
+                    value={selectedTimerSoundId}
+                  >
+                    {TIMER_SOUNDS.map((sound) => (
+                      <option key={sound.id} value={sound.id}>
+                        {t(sound.name)}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+                <div className="button-row">
+                  <SecondaryButton
+                    type="button"
+                    onClick={() => previewTimerSound(selectedTimerSoundId)}
+                  >
+                    Preview
+                  </SecondaryButton>
+                </div>
+              </>
+            )}
+            {supportsNativeRestTimerNotifications() ? (
+              <>
+                <p className="muted">
+                  {t(
+                    'Native timer alerts are scheduled on this iPhone and work when the app is closed or in the background.',
+                  )}
+                </p>
                 <SecondaryButton
-                  disabled={geminiBusy}
-                  onClick={() => void removeGeminiKey()}
                   type="button"
+                  onClick={() => void enableNativeTimerAlerts()}
                 >
-                  Remove key
+                  {t('Enable outside-app timer alerts')}
                 </SecondaryButton>
+                {nativeTimerAlertMessage ? (
+                  <StatusMessage tone="warning">
+                    {t(nativeTimerAlertMessage)}
+                  </StatusMessage>
+                ) : null}
+              </>
+            ) : supportsWebPushRestTimerNotifications() ? (
+              <>
+                <p className="muted">
+                  {t(
+                    isInstalledWebApp()
+                      ? 'Web notifications can alert you when the timer finishes while another app or the Home Screen is open. Internet access and iPhone notification sounds are required.'
+                      : 'Install this app on the iPhone Home Screen before enabling outside-app timer alerts.',
+                  )}
+                </p>
+                <SecondaryButton
+                  type="button"
+                  onClick={() => void enableWebPushTimerAlerts()}
+                >
+                  {t('Enable outside-app timer alerts')}
+                </SecondaryButton>
+                {nativeTimerAlertMessage ? (
+                  <StatusMessage tone="warning">
+                    {t(nativeTimerAlertMessage)}
+                  </StatusMessage>
+                ) : null}
               </>
             ) : null}
-            <a
-              className="button button-secondary"
-              href="https://aistudio.google.com/app/apikey"
-              rel="noreferrer"
-              target="_blank"
+          </Card>
+        </>
+      ) : null}
+
+      {settingsSection === 'integrations' ? (
+        <section id="ai-meal-settings">
+          <SectionHeader title="AI meal analysis" />
+          <Card>
+            <p>
+              <strong>Gemini 3.5 Flash</strong>
+            </p>
+            <p className="muted">
+              {t(
+                'The key stays in local app storage. Meal photos are sent directly from this device to Google for analysis and are never included in app backups. Google may use free-tier requests to improve its products.',
+              )}
+            </p>
+            <FormField
+              id="gemini-api-key"
+              label="Gemini API key"
+              helpText={
+                geminiConfigured
+                  ? 'A key is saved on this device. Enter another key to replace it.'
+                  : 'Create a free key in Google AI Studio.'
+              }
             >
-              {t('Get API key')}
-            </a>
-          </div>
-        </Card>
-      </section>
-
-      <SectionHeader title="Local data" />
-      <Card>
-        <p className="muted">
-          {t(
-            'Local backup files and CSV exports stay on this device unless you use the separate cloud backup controls below.',
-          )}
-        </p>
-        <div className="button-row">
-          <SecondaryButton type="button" onClick={exportJsonBackup}>
-            Export JSON backup
-          </SecondaryButton>
-          <SecondaryButton type="button" onClick={exportCsvArchive}>
-            Export CSV archive
-          </SecondaryButton>
-          <SecondaryButton
-            disabled={isDestructiveOperationRunning}
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            Restore JSON
-          </SecondaryButton>
-        </div>
-        <input
-          ref={fileInputRef}
-          aria-label="Restore JSON backup file"
-          accept="application/json,.json"
-          className="visually-hidden"
-          type="file"
-          onChange={(event) => {
-            void parseRestoreFile(event.target.files?.[0])
-          }}
-        />
-        {restorePreview ? <ImportPreview preview={restorePreview} /> : null}
-        <div className="button-row settings-clear-all-row">
-          <SecondaryButton
-            className="button-danger"
-            disabled={isDestructiveOperationRunning}
-            type="button"
-            onClick={() => setIsClearConfirmOpen(true)}
-          >
-            Clear all data
-          </SecondaryButton>
-        </div>
-      </Card>
-
-      <SectionHeader title="Cloud backup" />
-      <Card className="cloud-backup-card">
-        <p className="muted">
-          {t(
-            'Manual Google-account backup and restore. Local data remains usable while signed out or offline.',
-          )}
-        </p>
-        {!isOnline ? (
-          <StatusMessage tone="warning">
-            Cloud backup is unavailable offline. Local app data still works on
-            this device.
-          </StatusMessage>
-        ) : null}
-        {cloudMessage ? (
-          <StatusMessage tone="success">{cloudMessage}</StatusMessage>
-        ) : null}
-        {cloudError ? (
-          <StatusMessage tone="warning">{cloudError}</StatusMessage>
-        ) : null}
-        <dl className="settings-list">
-          <div>
-            <dt>{t('Account')}</dt>
-            <dd>
-              {authStatus === 'loading'
-                ? t('Checking sign-in')
-                : user?.email
-                  ? user.email
-                  : t('Not signed in')}
-            </dd>
-          </div>
-          <div>
-            <dt>{t('Last cloud backup')}</dt>
-            <dd>
-              {visibleCloudBackupInfo
-                ? `${formatCloudTimestamp(visibleCloudBackupInfo.updatedAt)} · ${visibleCloudBackupInfo.recordCount} records`
-                : t('No cloud backup loaded')}
-            </dd>
-          </div>
-        </dl>
-        <div className="button-row">
-          {authStatus === 'signedIn' ? (
-            <>
+              <input
+                autoCapitalize="none"
+                autoComplete="off"
+                id="gemini-api-key"
+                onChange={(event) =>
+                  setGeminiApiKeyInput(event.currentTarget.value)
+                }
+                placeholder={
+                  geminiConfigured
+                    ? t('Key saved on this device')
+                    : t('Paste Gemini API key')
+                }
+                spellCheck={false}
+                type="password"
+                value={geminiApiKeyInput}
+              />
+            </FormField>
+            <p className="muted">
+              {t('Status')}: {t(geminiStatusLabel(geminiStatus))}
+            </p>
+            {geminiMessage ? (
+              <StatusMessage tone="success">{geminiMessage}</StatusMessage>
+            ) : null}
+            {geminiError ? <ValidationMessage message={geminiError} /> : null}
+            <div className="button-row">
               <PrimaryButton
-                disabled={cloudBusy || !isOnline}
+                disabled={geminiBusy}
+                onClick={() => void saveAndTestGeminiKey()}
                 type="button"
-                onClick={() => void backupToCloud()}
               >
-                {cloudBusy ? 'Working' : 'Back up now'}
+                {geminiBusy ? 'Testing...' : 'Save and test'}
               </PrimaryButton>
-              <SecondaryButton
-                disabled={cloudBusy || !isOnline}
-                type="button"
-                onClick={() => setIsCloudRestoreConfirmOpen(true)}
+              {geminiConfigured ? (
+                <>
+                  <SecondaryButton
+                    disabled={geminiBusy}
+                    onClick={() => void testSavedGeminiKey()}
+                    type="button"
+                  >
+                    Test connection
+                  </SecondaryButton>
+                  <SecondaryButton
+                    disabled={geminiBusy}
+                    onClick={() => void removeGeminiKey()}
+                    type="button"
+                  >
+                    Remove key
+                  </SecondaryButton>
+                </>
+              ) : null}
+              <a
+                className="button button-secondary"
+                href="https://aistudio.google.com/app/apikey"
+                rel="noreferrer"
+                target="_blank"
               >
-                Restore from cloud
+                {t('Get API key')}
+              </a>
+            </div>
+          </Card>
+        </section>
+      ) : null}
+
+      {settingsSection === 'data' ? (
+        <>
+          <SectionHeader title="Local data" />
+          <Card>
+            <p className="muted">
+              {t(
+                'Local backup files and CSV exports stay on this device unless you use the separate cloud backup controls below.',
+              )}
+            </p>
+            <div className="button-row">
+              <SecondaryButton type="button" onClick={exportJsonBackup}>
+                Export JSON backup
+              </SecondaryButton>
+              <SecondaryButton type="button" onClick={exportCsvArchive}>
+                Export CSV archive
               </SecondaryButton>
               <SecondaryButton
-                disabled={cloudBusy}
+                disabled={isDestructiveOperationRunning}
                 type="button"
-                onClick={() => void signOutFromCloud()}
+                onClick={() => fileInputRef.current?.click()}
               >
-                Sign out
+                Restore JSON
               </SecondaryButton>
-            </>
-          ) : (
+            </div>
+            <input
+              ref={fileInputRef}
+              aria-label="Restore JSON backup file"
+              accept="application/json,.json"
+              className="visually-hidden"
+              type="file"
+              onChange={(event) => {
+                void parseRestoreFile(event.target.files?.[0])
+              }}
+            />
+            {restorePreview ? <ImportPreview preview={restorePreview} /> : null}
+            <div className="button-row settings-clear-all-row">
+              <SecondaryButton
+                className="button-danger"
+                disabled={isDestructiveOperationRunning}
+                type="button"
+                onClick={() => setIsClearConfirmOpen(true)}
+              >
+                Clear all data
+              </SecondaryButton>
+            </div>
+          </Card>
+
+          <SectionHeader title="Cloud backup" />
+          <Card className="cloud-backup-card">
+            <p className="muted">
+              {t(
+                'Manual Google-account backup and restore. Local data remains usable while signed out or offline.',
+              )}
+            </p>
+            {!isOnline ? (
+              <StatusMessage tone="warning">
+                Cloud backup is unavailable offline. Local app data still works
+                on this device.
+              </StatusMessage>
+            ) : null}
+            {cloudMessage ? (
+              <StatusMessage tone="success">{cloudMessage}</StatusMessage>
+            ) : null}
+            {cloudError ? (
+              <StatusMessage tone="warning">{cloudError}</StatusMessage>
+            ) : null}
+            <dl className="settings-list">
+              <div>
+                <dt>{t('Account')}</dt>
+                <dd>
+                  {authStatus === 'loading'
+                    ? t('Checking sign-in')
+                    : user?.email
+                      ? user.email
+                      : t('Not signed in')}
+                </dd>
+              </div>
+              <div>
+                <dt>{t('Last cloud backup')}</dt>
+                <dd>
+                  {visibleCloudBackupInfo
+                    ? `${formatCloudTimestamp(visibleCloudBackupInfo.updatedAt)} · ${visibleCloudBackupInfo.recordCount} records`
+                    : t('No cloud backup loaded')}
+                </dd>
+              </div>
+            </dl>
+            <div className="button-row">
+              {authStatus === 'signedIn' ? (
+                <>
+                  <PrimaryButton
+                    disabled={cloudBusy || !isOnline}
+                    type="button"
+                    onClick={() => void backupToCloud()}
+                  >
+                    {cloudBusy ? 'Working' : 'Back up now'}
+                  </PrimaryButton>
+                  <SecondaryButton
+                    disabled={cloudBusy || !isOnline}
+                    type="button"
+                    onClick={() => setIsCloudRestoreConfirmOpen(true)}
+                  >
+                    Restore from cloud
+                  </SecondaryButton>
+                  <SecondaryButton
+                    disabled={cloudBusy}
+                    type="button"
+                    onClick={() => void signOutFromCloud()}
+                  >
+                    Sign out
+                  </SecondaryButton>
+                </>
+              ) : (
+                <PrimaryButton
+                  disabled={authStatus === 'loading' || !isOnline}
+                  type="button"
+                  onClick={() => void startGoogleSignIn()}
+                >
+                  Sign in with Google
+                </PrimaryButton>
+              )}
+            </div>
+          </Card>
+        </>
+      ) : null}
+
+      {settingsSection === 'about' ? (
+        <>
+          <SectionHeader title="Send feedback" />
+          <Card>
+            <p className="muted">
+              {t(
+                'Found a bug or have an idea? Send it straight to the developer. Your app version and device are included to help with debugging.',
+              )}
+            </p>
+            <FormField id="feedback-message" label="Your feedback">
+              <textarea
+                id="feedback-message"
+                className="feedback-textarea"
+                maxLength={1800}
+                onChange={(event) => setFeedbackText(event.target.value)}
+                placeholder={t(
+                  "What's working, what's not, or what you'd like to see…",
+                )}
+                rows={4}
+                value={feedbackText}
+              />
+            </FormField>
+            {feedbackError ? (
+              <ValidationMessage message={feedbackError} />
+            ) : null}
+            {feedbackMessage ? (
+              <StatusMessage tone="success">{feedbackMessage}</StatusMessage>
+            ) : null}
             <PrimaryButton
-              disabled={authStatus === 'loading' || !isOnline}
               type="button"
-              onClick={() => void startGoogleSignIn()}
+              disabled={feedbackSending || !feedbackText.trim()}
+              onClick={() => void submitFeedback()}
             >
-              Sign in with Google
+              {feedbackSending ? 'Sending…' : 'Send feedback'}
             </PrimaryButton>
-          )}
-        </div>
-      </Card>
+          </Card>
 
-      <SectionHeader title="Send feedback" />
-      <Card>
-        <p className="muted">
-          {t(
-            'Found a bug or have an idea? Send it straight to the developer. Your app version and device are included to help with debugging.',
-          )}
-        </p>
-        <FormField id="feedback-message" label="Your feedback">
-          <textarea
-            id="feedback-message"
-            className="feedback-textarea"
-            maxLength={1800}
-            onChange={(event) => setFeedbackText(event.target.value)}
-            placeholder={t(
-              "What's working, what's not, or what you'd like to see…",
-            )}
-            rows={4}
-            value={feedbackText}
-          />
-        </FormField>
-        {feedbackError ? <ValidationMessage message={feedbackError} /> : null}
-        {feedbackMessage ? (
-          <StatusMessage tone="success">{feedbackMessage}</StatusMessage>
-        ) : null}
-        <PrimaryButton
-          type="button"
-          disabled={feedbackSending || !feedbackText.trim()}
-          onClick={() => void submitFeedback()}
-        >
-          {feedbackSending ? 'Sending…' : 'Send feedback'}
-        </PrimaryButton>
-      </Card>
+          <div id="settings-whats-new">
+            <SectionHeader title="What's new" />
+            <Card>
+              {LATEST_CHANGELOG_ENTRY ? (
+                <ChangelogList entries={[LATEST_CHANGELOG_ENTRY]} />
+              ) : (
+                <p className="muted">{t('No updates logged yet.')}</p>
+              )}
+              <div className="button-row">
+                <SecondaryButton
+                  type="button"
+                  onClick={() => setWhatsNewOpen(true)}
+                >
+                  Show all
+                </SecondaryButton>
+              </div>
+            </Card>
+          </div>
 
-      <div id="settings-whats-new">
-        <SectionHeader title="What's new" />
-        <Card>
-          {LATEST_CHANGELOG_ENTRY ? (
-            <ChangelogList entries={[LATEST_CHANGELOG_ENTRY]} />
-          ) : (
-            <p className="muted">{t('No updates logged yet.')}</p>
-          )}
-          <div className="button-row">
-            <SecondaryButton
-              type="button"
-              onClick={() => setWhatsNewOpen(true)}
-            >
-              Show all
-            </SecondaryButton>
-          </div>
-        </Card>
-      </div>
-
-      <SectionHeader title="Application" />
-      <Card>
-        <dl className="settings-list">
-          <div>
-            <dt>{t('Application version')}</dt>
-            <dd>{APPLICATION_VERSION}</dd>
-          </div>
-          <div>
-            <dt>{t('Build')}</dt>
-            <dd>
-              {buildInfo
-                ? `${buildInfo.gitHash} · ${buildInfo.environment} · ${formatBuildTimestamp(buildInfo.builtAt)}`
-                : t('Development')}
-            </dd>
-          </div>
-          <div>
-            <dt>{t('Database schema version')}</dt>
-            <dd>{DATABASE_SCHEMA_VERSION}</dd>
-          </div>
-          <div>
-            <dt>{t('Backup format version')}</dt>
-            <dd>{BACKUP_FORMAT_VERSION}</dd>
-          </div>
-          <div>
-            <dt>{t('Metadata backup schema')}</dt>
-            <dd>{BACKUP_SCHEMA_VERSION}</dd>
-          </div>
-        </dl>
-      </Card>
+          <SectionHeader title="Application" />
+          <Card>
+            <dl className="settings-list">
+              <div>
+                <dt>{t('Application version')}</dt>
+                <dd>{APPLICATION_VERSION}</dd>
+              </div>
+              <div>
+                <dt>{t('Build')}</dt>
+                <dd>
+                  {buildInfo
+                    ? `${buildInfo.gitHash} · ${buildInfo.environment} · ${formatBuildTimestamp(buildInfo.builtAt)}`
+                    : t('Development')}
+                </dd>
+              </div>
+              <div>
+                <dt>{t('Database schema version')}</dt>
+                <dd>{DATABASE_SCHEMA_VERSION}</dd>
+              </div>
+              <div>
+                <dt>{t('Backup format version')}</dt>
+                <dd>{BACKUP_FORMAT_VERSION}</dd>
+              </div>
+              <div>
+                <dt>{t('Metadata backup schema')}</dt>
+                <dd>{BACKUP_SCHEMA_VERSION}</dd>
+              </div>
+            </dl>
+          </Card>
+        </>
+      ) : null}
 
       <ModalConfirmationDialog
         confirmLabel="Replace data"
@@ -1222,6 +1265,58 @@ export function SettingsPage() {
       </ModalConfirmationDialog>
     </PageContainer>
   )
+}
+
+function SettingsSectionNavigation({
+  activeSection,
+  onChange,
+}: {
+  activeSection: SettingsSection
+  onChange: (section: SettingsSection) => void
+}) {
+  const { t } = useLanguage()
+  const sections: Array<{ label: string; value: SettingsSection }> = [
+    { label: 'Preferences', value: 'preferences' },
+    { label: 'Notifications', value: 'notifications' },
+    { label: 'Integrations', value: 'integrations' },
+    { label: 'Data', value: 'data' },
+    { label: 'About', value: 'about' },
+  ]
+
+  return (
+    <nav className="settings-section-nav" aria-label={t('Settings sections')}>
+      {sections.map((section) => (
+        <button
+          aria-current={
+            activeSection === section.value ? ('page' as const) : undefined
+          }
+          key={section.value}
+          onClick={() => onChange(section.value)}
+          type="button"
+        >
+          {t(section.label)}
+        </button>
+      ))}
+    </nav>
+  )
+}
+
+function settingsSectionFromQuery(section: string | null): SettingsSection {
+  switch (section) {
+    case 'notifications':
+      return 'notifications'
+    case 'ai-meal':
+    case 'integrations':
+      return 'integrations'
+    case 'data':
+      return 'data'
+    case 'about':
+    case 'whats-new':
+      return 'about'
+    case 'preferences':
+    default:
+      return 'preferences'
+  }
 }
 
 function geminiStatusLabel(status: IntegrationConnectionStatus) {

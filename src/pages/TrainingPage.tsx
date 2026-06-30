@@ -466,6 +466,7 @@ export function TrainingPage() {
             checkedDayIds={weekChecks.checkedDayIds}
             onToggleDayCheck={toggleDayCheck}
             loadStatus={loadState.status}
+            onBrowse={() => setProgramView('browse')}
             onCreateProgram={onCreateProgram}
             onDeactivate={(cycle) =>
               setProgramConfirmation({ type: 'deactivate', cycle })
@@ -493,6 +494,9 @@ export function TrainingPage() {
             onDelete={onDeleteProgram}
             onEdit={onEditProgram}
             onShowMore={() => setProgramView('library')}
+            showBrowse={
+              Boolean(loadState.currentCycle) || userTemplates.length > 0
+            }
             templates={userTemplates}
           />
 
@@ -756,6 +760,7 @@ function ProgramOverview({
   checkedDayIds,
   onToggleDayCheck,
   loadStatus,
+  onBrowse,
   onCreateProgram,
   onDeactivate,
   onEditCycle,
@@ -770,6 +775,7 @@ function ProgramOverview({
     checked: boolean,
   ) => void
   loadStatus: LoadState['status']
+  onBrowse: () => void
   onCreateProgram: () => void
   onDeactivate: (cycle: ActiveProgramCycle) => void
   onEditCycle: (cycleId: string) => void
@@ -790,9 +796,14 @@ function ProgramOverview({
           title="No active cycle"
           message="Create or activate a program template to choose workout days manually."
           action={
-            <PrimaryButton type="button" onClick={onCreateProgram}>
-              Create program
-            </PrimaryButton>
+            <div className="button-row empty-state-actions">
+              <PrimaryButton type="button" onClick={onCreateProgram}>
+                Create program
+              </PrimaryButton>
+              <SecondaryButton type="button" onClick={onBrowse}>
+                Browse programs
+              </SecondaryButton>
+            </div>
           }
         />
       ) : null}
@@ -960,6 +971,7 @@ function ProgramLibrary({
   onDelete,
   onEdit,
   onShowMore,
+  showBrowse,
   templates,
 }: {
   loadStatus: LoadState['status']
@@ -970,6 +982,7 @@ function ProgramLibrary({
   onDelete: (template: ProgramTemplate) => void
   onEdit: (templateId: string) => void
   onShowMore: () => void
+  showBrowse: boolean
   templates: ProgramTemplate[]
 }) {
   const visibleTemplates = templates.slice(0, 3)
@@ -979,9 +992,11 @@ function ProgramLibrary({
       <SectionHeader
         title="Program library"
         action={
-          <IconButton aria-label="Create program" onClick={onCreateProgram}>
-            <Plus aria-hidden="true" size={20} />
-          </IconButton>
+          templates.length ? (
+            <IconButton aria-label="Create program" onClick={onCreateProgram}>
+              <Plus aria-hidden="true" size={20} />
+            </IconButton>
+          ) : undefined
         }
       />
       <Card>
@@ -992,11 +1007,6 @@ function ProgramLibrary({
           <EmptyState
             title="No saved programs"
             message="Create your own program or add one from Browse programs."
-            action={
-              <SecondaryButton type="button" onClick={onCreateProgram}>
-                Create program
-              </SecondaryButton>
-            }
           />
         ) : null}
         {loadStatus === 'ready' && templates.length ? (
@@ -1018,13 +1028,15 @@ function ProgramLibrary({
             ) : null}
           </div>
         ) : null}
-        <SecondaryButton
-          className="program-browse-button"
-          type="button"
-          onClick={onBrowse}
-        >
-          Browse programs
-        </SecondaryButton>
+        {showBrowse ? (
+          <SecondaryButton
+            className="program-browse-button"
+            type="button"
+            onClick={onBrowse}
+          >
+            Browse programs
+          </SecondaryButton>
+        ) : null}
       </Card>
     </>
   )
@@ -1174,9 +1186,12 @@ function BrowseProgramsPage({
         <EmptyState title="No programs found" message="Try another search." />
       ) : null}
       {loadStatus === 'ready' && filteredTemplates.length ? (
-        <div className="program-library-list">
+        <div className="program-library-list program-browse-list">
           {filteredTemplates.map((template) => (
-            <div className="program-template-row" key={template.id}>
+            <div
+              className="program-template-row program-browse-row"
+              key={template.id}
+            >
               <button
                 aria-label={`Preview ${template.name}`}
                 className="program-preview-trigger"

@@ -2,7 +2,6 @@ import {
   Dumbbell,
   Footprints,
   NotebookPen,
-  Plus,
   Scale,
   Sparkles,
   SquarePen,
@@ -178,9 +177,15 @@ function AppShellContent({ children }: AppShellProps) {
       <AppHeader
         title={routeTitle}
         action={
-          <Link className="icon-link" aria-label={t('Settings')} to="/settings">
-            <Settings aria-hidden="true" size={22} />
-          </Link>
+          location.pathname.startsWith('/settings') ? undefined : (
+            <Link
+              className="icon-link"
+              aria-label={t('Settings')}
+              to="/settings"
+            >
+              <Settings aria-hidden="true" size={22} />
+            </Link>
+          )
         }
       />
 
@@ -345,13 +350,6 @@ function AppShellContent({ children }: AppShellProps) {
               <small>{t('Build reusable workout days')}</small>
             </span>
           </button>
-          <IconButton
-            aria-label={t('Close quick actions')}
-            className="quick-action-add"
-            onClick={() => setIsQuickActionOpen(false)}
-          >
-            <Plus aria-hidden="true" size={22} />
-          </IconButton>
         </div>
       </BottomSheet>
       <BodyweightEntrySheet

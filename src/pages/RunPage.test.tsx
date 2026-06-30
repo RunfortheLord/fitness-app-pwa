@@ -150,6 +150,7 @@ describe('RunPage', () => {
       configurable: true,
       value: MockDeviceMotionEvent,
     })
+    const addEventListener = vi.spyOn(window, 'addEventListener')
     render(<RunPage />)
 
     await user.click(
@@ -169,6 +170,12 @@ describe('RunPage', () => {
         }),
       ])
     })
+    await waitFor(() =>
+      expect(addEventListener).toHaveBeenCalledWith(
+        'devicemotion',
+        expect.any(Function),
+      ),
+    )
 
     act(() => {
       window.dispatchEvent(mockMotionEvent(0, 9.8))

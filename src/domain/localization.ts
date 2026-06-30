@@ -39,6 +39,11 @@ const spanishTranslations: Record<string, string> = {
   'Create program': 'Crear programa',
   'Build reusable workout days': 'Crea días de entrenamiento reutilizables',
   Preferences: 'Preferencias',
+  Notifications: 'Notificaciones',
+  Integrations: 'Integraciones',
+  Data: 'Datos',
+  About: 'Acerca de',
+  'Settings sections': 'Secciones de configuración',
   Language: 'Idioma',
   'App language': 'Idioma de la aplicación',
   'Changes the language used throughout the app.':
@@ -346,6 +351,11 @@ const spanishTranslations: Record<string, string> = {
   'Replacement exercises start blank.':
     'Los ejercicios de reemplazo comienzan vacíos.',
   'Already in workout': 'Ya está en el entrenamiento',
+  'Timer settings': 'Configuración del temporizador',
+  'Dismiss timer notice': 'Descartar aviso del temporizador',
+  'Workout options': 'Opciones del entrenamiento',
+  'Enter the required set values before completing it.':
+    'Introduce los valores obligatorios antes de completar la serie.',
   Next: 'Siguiente',
   Previous: 'Anterior',
   Program: 'Programa',

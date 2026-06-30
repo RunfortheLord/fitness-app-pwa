@@ -831,7 +831,7 @@ describe('NutritionPage', () => {
     expect(
       await screen.findByText(/Food providers are unavailable/),
     ).toBeInTheDocument()
-    expect(screen.getByText('No acceptable results')).toBeInTheDocument()
+    expect(screen.queryByText('No acceptable results')).not.toBeInTheDocument()
   })
 
   it('selects, converts, and logs external foods as immutable snapshots', async () => {

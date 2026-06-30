@@ -319,11 +319,14 @@ async function addPrescription(
     await builder.getByRole('textbox', { name: 'Max reps' }).fill('10')
   }
   await builder.getByRole('button', { name: 'Save prescription' }).click()
+  await expect(builder.getByLabel('Prescription editor')).not.toBeVisible({
+    timeout: 15_000,
+  })
 }
 
 async function closeBuilder(builder: Locator) {
   await builder.getByRole('button', { name: /^Back from edit/ }).click()
-  await expect(builder).not.toBeVisible()
+  await expect(builder).not.toBeVisible({ timeout: 15_000 })
 }
 
 async function fillRestInputs(page: Page, rest: string) {

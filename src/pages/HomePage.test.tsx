@@ -89,6 +89,9 @@ describe('HomePage', () => {
     expect(screen.getByText('No entry')).toBeInTheDocument()
     expect(screen.getByText('No active program')).toBeInTheDocument()
     expect(
+      screen.getByRole('button', { name: 'Create program' }),
+    ).toBeInTheDocument()
+    expect(
       screen.queryByRole('heading', { name: 'Dashboard' }),
     ).not.toBeInTheDocument()
     expect(
@@ -159,9 +162,35 @@ describe('HomePage', () => {
       screen.getByRole('button', { name: 'Start workout' }),
     ).toBeInTheDocument()
     // The card surfaces the next-up day (the first day of a fresh cycle).
+    expect(screen.getByText('Next: Upper')).toBeInTheDocument()
+  })
+
+  it('replaces start actions with one resume action during an active workout', async () => {
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    await createWorkoutRepository(db).startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+
+    renderHome()
+    await waitForDashboardReady()
+
     expect(
-      screen.getByRole('button', { name: 'Next: Upper' }),
+      screen.getByRole('heading', { name: 'Workout in progress' }),
     ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Resume workout' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Start workout' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Resume workout' }),
+    ).not.toBeInTheDocument()
   })
 
   it('creates, edits, and deletes bodyweight through the dashboard sheet', async () => {

@@ -136,9 +136,14 @@ describe('SettingsPage', () => {
   })
 
   it('shows settings metadata, local-only explanation, and data actions', async () => {
+    const user = userEvent.setup()
     renderSettings()
 
     expect(await screen.findByText('Pounds (lb)')).toBeInTheDocument()
+    expect(
+      screen.getByRole('navigation', { name: 'Settings sections' }),
+    ).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Notifications' }))
     expect(screen.getByText('Sound selection')).toBeInTheDocument()
     expect(
       screen.getByText(
@@ -146,9 +151,11 @@ describe('SettingsPage', () => {
       ),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Preview' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'About' }))
     expect(screen.getByText('Application version')).toBeInTheDocument()
     expect(screen.getByText('Database schema version')).toBeInTheDocument()
     expect(screen.getByText('Backup format version')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Data' }))
     expect(
       screen.getByText(
         /Local backup files and CSV exports stay on this device/,
@@ -169,7 +176,6 @@ describe('SettingsPage', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('Not signed in')).toBeInTheDocument()
     expect(screen.queryByText('Nutrition targets')).not.toBeInTheDocument()
-    expect(screen.queryByText('Integrations')).not.toBeInTheDocument()
     expect(screen.queryByText(/USDA FoodData Central/)).not.toBeInTheDocument()
   })
 
@@ -177,6 +183,9 @@ describe('SettingsPage', () => {
     const user = userEvent.setup()
     renderSettings()
 
+    await user.click(
+      await screen.findByRole('button', { name: 'Integrations' }),
+    )
     await user.type(
       await screen.findByLabelText('Gemini API key'),
       'gemini-device-key',
@@ -201,6 +210,7 @@ describe('SettingsPage', () => {
   })
 
   it('uses the default iPhone alert instead of bundled sounds for Web Push', async () => {
+    const user = userEvent.setup()
     vi.spyOn(
       nativeTimerNotifications,
       'supportsNativeRestTimerNotifications',
@@ -215,6 +225,9 @@ describe('SettingsPage', () => {
 
     renderSettings()
 
+    await user.click(
+      await screen.findByRole('button', { name: 'Notifications' }),
+    )
     expect(await screen.findByText('Timer alert sound')).toBeInTheDocument()
     expect(screen.getByLabelText('Timer notification banners')).toBeChecked()
     expect(
@@ -232,6 +245,7 @@ describe('SettingsPage', () => {
   })
 
   it('uses the default iPhone alert instead of bundled sounds for native iOS', async () => {
+    const user = userEvent.setup()
     vi.spyOn(
       nativeTimerNotifications,
       'supportsNativeRestTimerNotifications',
@@ -239,6 +253,9 @@ describe('SettingsPage', () => {
 
     renderSettings()
 
+    await user.click(
+      await screen.findByRole('button', { name: 'Notifications' }),
+    )
     expect(await screen.findByText('Timer alert sound')).toBeInTheDocument()
     expect(screen.getByLabelText('Timer notification banners')).toBeChecked()
     expect(screen.queryByText('Sound selection')).not.toBeInTheDocument()
@@ -254,6 +271,9 @@ describe('SettingsPage', () => {
     )
     renderSettings()
 
+    await user.click(
+      await screen.findByRole('button', { name: 'Notifications' }),
+    )
     await user.click(await screen.findByRole('button', { name: 'Preview' }))
 
     expect(
@@ -278,6 +298,9 @@ describe('SettingsPage', () => {
 
     renderSettings()
 
+    await user.click(
+      await screen.findByRole('button', { name: 'Notifications' }),
+    )
     await user.click(
       await screen.findByRole('button', { name: 'Test iPhone alert' }),
     )
@@ -311,6 +334,9 @@ describe('SettingsPage', () => {
 
     renderSettings()
 
+    await user.click(
+      await screen.findByRole('button', { name: 'Notifications' }),
+    )
     await user.click(await screen.findByLabelText('Timer notification banners'))
 
     await waitFor(async () => {
@@ -338,6 +364,9 @@ describe('SettingsPage', () => {
     ).mockResolvedValue('granted')
     renderSettings()
 
+    await user.click(
+      await screen.findByRole('button', { name: 'Notifications' }),
+    )
     await user.click(
       await screen.findByRole('button', {
         name: 'Enable outside-app timer alerts',
@@ -378,7 +407,9 @@ describe('SettingsPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Configuración' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('Preferencias')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Preferencias' }),
+    ).toBeInTheDocument()
     expect(screen.getByLabelText('Idioma de la aplicación')).toHaveValue('es')
     expect(screen.getByText('Inicio')).toBeInTheDocument()
 
@@ -392,6 +423,7 @@ describe('SettingsPage', () => {
     const user = userEvent.setup()
     renderSettings()
 
+    await user.click(await screen.findByRole('button', { name: 'About' }))
     expect(
       await screen.findByRole('heading', {
         name: 'Optional AI meal camera',
@@ -429,6 +461,7 @@ describe('SettingsPage', () => {
     })
     renderSettings()
 
+    await user.click(await screen.findByRole('button', { name: 'Data' }))
     expect(await screen.findByText('person@example.com')).toBeInTheDocument()
     expect(await screen.findByText(/4 records/)).toBeInTheDocument()
 
@@ -450,6 +483,7 @@ describe('SettingsPage', () => {
     })
     renderSettings()
 
+    await user.click(await screen.findByRole('button', { name: 'Data' }))
     await user.click(screen.getByRole('button', { name: 'Restore from cloud' }))
     const dialog = screen.getByRole('dialog', {
       name: 'Restore cloud backup?',
@@ -476,6 +510,7 @@ describe('SettingsPage', () => {
     const food = await seedFood(db)
     renderSettings()
 
+    await user.click(await screen.findByRole('button', { name: 'Data' }))
     const fileInput = document.querySelector('input[type="file"]')
     expect(fileInput).toBeInstanceOf(HTMLInputElement)
     await user.upload(
@@ -498,6 +533,7 @@ describe('SettingsPage', () => {
     )
     renderSettings()
 
+    await user.click(await screen.findByRole('button', { name: 'Data' }))
     await user.click(screen.getByRole('button', { name: 'Clear all data' }))
     const dialog = screen.getByRole('dialog', { name: 'Clear all data?' })
     await user.click(

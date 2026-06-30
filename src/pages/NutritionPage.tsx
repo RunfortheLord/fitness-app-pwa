@@ -1453,6 +1453,9 @@ function FoodSearchSubpage({
   const { language, t } = useLanguage()
   const hasResults = results.some((section) => section.items.length > 0)
   const normalizedQuery = normalizeProviderQuery(query)
+  const providerSearchBlocksEmptyState =
+    providerSearch.status === 'loading' ||
+    providerStatusMessage(providerSearch.status) !== null
   const recipeMode = recipeDraft !== null
   const recipeCalories =
     recipeDraft?.components.reduce(
@@ -1727,7 +1730,7 @@ function FoodSearchSubpage({
               ) : null,
             )}
           </div>
-        ) : (
+        ) : providerSearchBlocksEmptyState ? null : (
           <EmptyState
             title={normalizedQuery ? 'No acceptable results' : 'Search foods'}
             message={
