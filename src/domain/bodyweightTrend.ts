@@ -1,14 +1,18 @@
 import { differenceInCalendarDays } from 'date-fns'
 
-import { parseLocalDate, type LocalDateString } from '@domain/dates'
+import {
+  addLocalDays,
+  parseLocalDate,
+  type LocalDateString,
+} from '@domain/dates'
 import type { BodyweightEntry } from '@shared-types/app'
 
-// Per-calendar-day exponential smoothing factor. A "trend weight" damps daily
-// scale fluctuations so a single high or low reading does not dominate. This is
-// the one-day alpha; gaps of several days compound it (see
-// effectiveTrendAlphaForCalendarDays) so a long pause between weigh-ins lets the
-// trend move proportionally further toward the new measurement.
-export const TREND_SMOOTHING = 0.25
+// Daily exponential smoothing factor applied after missing calendar dates are
+// filled by linear interpolation. MacroFactor publicly describes this general
+// pipeline but does not publish its smoothing coefficient. Ten percent gives
+// this approximation a roughly 6.6-day half-life without letting one reading
+// after a long gap nearly replace the existing trend.
+export const TREND_SMOOTHING = 0.1
 
 const MS_PER_DAY = 86_400_000
 
@@ -16,18 +20,6 @@ export type TrendWeightPoint = {
   localDate: LocalDateString
   weight: number
   trend: number
-}
-
-/**
- * Converts the one-calendar-day smoothing coefficient into the equivalent
- * coefficient for a gap of several calendar days. Applying it once equals
- * applying the daily update once per elapsed calendar day.
- */
-export function effectiveTrendAlphaForCalendarDays(
-  dailyAlpha: number,
-  calendarDays: number,
-): number {
-  return calendarDays <= 0 ? 0 : 1 - Math.pow(1 - dailyAlpha, calendarDays)
 }
 
 /**
@@ -61,40 +53,49 @@ function compareEntryRecency(left: BodyweightEntry, right: BodyweightEntry) {
 }
 
 /**
- * Returns the smoothed (EMA) trend weight at each local calendar date, oldest
- * first. The first point seeds the trend with the raw weight; each later point
- * smooths using a coefficient scaled by the number of calendar days since the
- * previous weigh-in.
+ * Builds one scale-weight value per local calendar date, linearly interpolating
+ * dates between observed measurements, then returns a daily EMA trend. The
+ * first observation seeds the trend; no values are extrapolated before the
+ * first observation or after the latest one.
  */
 export function trendWeightSeries(
   entries: BodyweightEntry[],
 ): TrendWeightPoint[] {
-  const dailyEntries = latestBodyweightEntryPerCalendarDate(entries)
-  const series: TrendWeightPoint[] = []
-  let ema = 0
-  for (let index = 0; index < dailyEntries.length; index += 1) {
-    const entry = dailyEntries[index]
-    if (index === 0) {
-      ema = entry.weight
-    } else {
-      const calendarDays = Math.max(
-        1,
-        differenceInCalendarDays(
-          parseLocalDate(entry.localDate),
-          parseLocalDate(dailyEntries[index - 1].localDate),
-        ),
-      )
-      const effectiveAlpha = effectiveTrendAlphaForCalendarDays(
-        TREND_SMOOTHING,
-        calendarDays,
-      )
-      ema += effectiveAlpha * (entry.weight - ema)
-    }
-    series.push({
-      localDate: entry.localDate,
-      weight: entry.weight,
+  const observedEntries = latestBodyweightEntryPerCalendarDate(entries)
+  const first = observedEntries[0]
+  if (!first) {
+    return []
+  }
+
+  let ema = first.weight
+  const series: TrendWeightPoint[] = [
+    {
+      localDate: first.localDate,
+      weight: first.weight,
       trend: ema,
-    })
+    },
+  ]
+
+  for (let index = 1; index < observedEntries.length; index += 1) {
+    const previous = observedEntries[index - 1]
+    const current = observedEntries[index]
+    const calendarDays = differenceInCalendarDays(
+      parseLocalDate(current.localDate),
+      parseLocalDate(previous.localDate),
+    )
+
+    for (let dayOffset = 1; dayOffset <= calendarDays; dayOffset += 1) {
+      const interpolationProgress = dayOffset / calendarDays
+      const interpolatedWeight =
+        previous.weight +
+        interpolationProgress * (current.weight - previous.weight)
+      ema += TREND_SMOOTHING * (interpolatedWeight - ema)
+      series.push({
+        localDate: addLocalDays(previous.localDate, dayOffset),
+        weight: interpolatedWeight,
+        trend: ema,
+      })
+    }
   }
   return series
 }
@@ -115,8 +116,10 @@ export function currentTrendWeight(entries: BodyweightEntry[]): number | null {
 export type TrendSlope = {
   /** Observed change in trend weight per week (signed). */
   weeklyChangeLb: number
-  /** Number of trend points used. */
+  /** Number of daily observed or interpolated trend points used. */
   pointCount: number
+  /** Number of actual measurements represented in the trend window. */
+  measurementCount: number
   /** Calendar days spanned by the points used. */
   spanDays: number
 }
@@ -138,6 +141,12 @@ export function weeklyTrendSlope(
   const points = trendWeightSeries(entries)
     .map((point) => ({ x: toDayNumber(point.localDate), y: point.trend }))
     .filter((point) => point.x >= startDay && point.x <= asOfDay)
+  const measurementCount = latestBodyweightEntryPerCalendarDate(entries).filter(
+    (entry) => {
+      const day = toDayNumber(entry.localDate)
+      return day >= startDay && day <= asOfDay
+    },
+  ).length
 
   if (points.length < 2) {
     return null
@@ -165,6 +174,7 @@ export function weeklyTrendSlope(
   return {
     weeklyChangeLb: slopePerDay * 7,
     pointCount: n,
+    measurementCount,
     spanDays,
   }
 }

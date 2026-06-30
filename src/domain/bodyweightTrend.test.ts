@@ -39,9 +39,19 @@ describe('bodyweightTrend', () => {
   it('smooths daily fluctuations with an EMA', () => {
     const series = trendWeightSeries([entry(0, 200), entry(1, 210)])
     expect(series[0].trend).toBe(200)
-    // 200 + 0.25 * (210 - 200) = 202.5
-    expect(series[1].trend).toBeCloseTo(202.5, 5)
-    expect(currentTrendWeight([entry(0, 200), entry(1, 210)])).toBe(202.5)
+    // 200 + 0.1 * (210 - 200) = 201
+    expect(series[1].trend).toBeCloseTo(201, 5)
+    expect(currentTrendWeight([entry(0, 200), entry(1, 210)])).toBe(201)
+  })
+
+  it('moves down when the latest daily measurement is below the trend', () => {
+    const before = [entry(0, 200), entry(1, 210)]
+    const trendBefore = currentTrendWeight(before)
+    const latestWeight = 190
+    const trendAfter = currentTrendWeight([...before, entry(2, latestWeight)])
+
+    expect(latestWeight).toBeLessThan(trendBefore!)
+    expect(trendAfter).toBeLessThan(trendBefore!)
   })
 
   it('reports a negative weekly slope for a downward trend', () => {
@@ -50,7 +60,8 @@ describe('bodyweightTrend', () => {
       { asOf: dayString(14) },
     )
     expect(slope).not.toBeNull()
-    expect(slope?.pointCount).toBe(3)
+    expect(slope?.pointCount).toBe(15)
+    expect(slope?.measurementCount).toBe(3)
     expect(slope?.spanDays).toBe(14)
     expect(slope?.weeklyChangeLb).toBeLessThan(0)
   })
@@ -63,12 +74,13 @@ describe('bodyweightTrend', () => {
     expect(slope?.weeklyChangeLb).toBeCloseTo(0, 5)
   })
 
-  it('excludes entries outside the trailing window', () => {
+  it('reports daily points and actual measurements separately', () => {
     const slope = weeklyTrendSlope(
       [entry(-20, 300), entry(7, 180), entry(10, 180), entry(14, 180)],
       { asOf: dayString(14), windowDays: 14 },
     )
-    expect(slope?.pointCount).toBe(3)
+    expect(slope?.pointCount).toBe(15)
+    expect(slope?.measurementCount).toBe(3)
   })
 
   it('returns null without at least two points spanning more than one day', () => {

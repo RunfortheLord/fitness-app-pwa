@@ -14,7 +14,8 @@ import type {
 
 // Trailing trend-weight window analysed for a manual update.
 export const ADJUSTMENT_WINDOW_DAYS = 14
-// Minimum trend points and calendar span required before any change is made.
+// Minimum observed measurements and calendar span required before any change is
+// made. Interpolated daily trend points do not satisfy the measurement minimum.
 export const ADJUSTMENT_MIN_POINTS = 3
 export const ADJUSTMENT_MIN_SPAN_DAYS = 7
 // A change is rounded to this increment, capped at this magnitude, and treated
@@ -77,7 +78,7 @@ export function evaluateCalorieUpdate(input: {
 
   if (
     !slope ||
-    slope.pointCount < ADJUSTMENT_MIN_POINTS ||
+    slope.measurementCount < ADJUSTMENT_MIN_POINTS ||
     slope.spanDays < ADJUSTMENT_MIN_SPAN_DAYS
   ) {
     return { status: 'insufficient_data' }
