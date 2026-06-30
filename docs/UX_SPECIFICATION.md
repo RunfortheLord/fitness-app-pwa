@@ -153,8 +153,10 @@
 ### Barcode Scanner
 
 - The Nutrition camera action opens a compact vertical menu directly below the
-  camera button. Its bottom edge forms a semicircle matching the camera action,
-  and it contains two large, contrasted circular actions: barcode and AI.
+  camera button. It animates downward from behind the camera circle, remains
+  visually connected to it, and ends tightly around the AI action without an
+  empty semicircular extension. It contains two large, contrasted circular
+  actions: barcode and AI.
 - Scrolling or pressing outside the open camera menu does not dismiss it. The
   camera toggle and Escape can dismiss it explicitly, and navigating away
   resets it before the user returns.

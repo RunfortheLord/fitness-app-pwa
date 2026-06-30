@@ -40,35 +40,35 @@ export function FoodCameraMenu({
       >
         <Camera aria-hidden="true" size={24} />
       </IconButton>
-      {isOpen ? (
-        <div
-          aria-label="Camera options"
-          className="camera-action-popover"
-          role="menu"
+      <div
+        aria-hidden={!isOpen}
+        aria-label="Camera options"
+        className={`camera-action-popover${isOpen ? ' is-open' : ''}`}
+        inert={!isOpen}
+        role="menu"
+      >
+        <IconButton
+          aria-label="Scan barcode"
+          onClick={() => {
+            setIsOpen(false)
+            onOpenScanner()
+          }}
+          role="menuitem"
         >
-          <IconButton
-            aria-label="Scan barcode"
-            onClick={() => {
-              setIsOpen(false)
-              onOpenScanner()
-            }}
-            role="menuitem"
-          >
-            <ScanBarcode aria-hidden="true" size={25} />
-          </IconButton>
-          <IconButton
-            aria-label="Analyze meal photo"
-            className="camera-ai-button"
-            onClick={() => {
-              setIsOpen(false)
-              onOpenAiCamera()
-            }}
-            role="menuitem"
-          >
-            <span aria-hidden="true">AI</span>
-          </IconButton>
-        </div>
-      ) : null}
+          <ScanBarcode aria-hidden="true" size={25} />
+        </IconButton>
+        <IconButton
+          aria-label="Analyze meal photo"
+          className="camera-ai-button"
+          onClick={() => {
+            setIsOpen(false)
+            onOpenAiCamera()
+          }}
+          role="menuitem"
+        >
+          <span aria-hidden="true">AI</span>
+        </IconButton>
+      </div>
     </div>
   )
 }
