@@ -4,7 +4,6 @@ import {
   TREND_SMOOTHING,
   currentTrendWeight,
   effectiveTrendAlphaForCalendarDays,
-  latestBodyweightEntryPerCalendarDate,
   trendWeightSeries,
 } from '@domain/bodyweightTrend'
 import type { LocalDateString } from '@domain/dates'
@@ -39,15 +38,23 @@ describe('calendar-day-aware bodyweight trend', () => {
     expect(sevenDays!).toBeLessThan(oneDay!)
   })
 
-  it('uses only the latest timestamped entry on a duplicated local date', () => {
-    const entries = [
-      entry('early', '2026-06-01', 190, '2026-06-01T12:00:00.000Z'),
-      entry('late', '2026-06-01', 188, '2026-06-01T20:00:00.000Z'),
-      entry('next', '2026-06-02', 187, '2026-06-02T12:00:00.000Z'),
+  it('lets every same-day measurement move the trend in its direction', () => {
+    const beforeSecondMeasurement = [
+      entry('prior', '2026-06-01', 180),
+      entry('early', '2026-06-02', 170, '2026-06-02T08:00:00.000Z'),
     ]
-    expect(
-      latestBodyweightEntryPerCalendarDate(entries).map((item) => item.id),
-    ).toEqual(['late', 'next'])
+    const trendBefore = currentTrendWeight(beforeSecondMeasurement)
+    const laterWeight = 175
+
+    expect(laterWeight).toBeLessThan(trendBefore!)
+
+    const trendAfter = currentTrendWeight([
+      ...beforeSecondMeasurement,
+      entry('late', '2026-06-02', laterWeight, '2026-06-02T20:00:00.000Z'),
+    ])
+
+    expect(trendAfter).toBeLessThan(trendBefore!)
+    expect(trendAfter).toBe(176.9)
   })
 
   it('is independent of input order', () => {
