@@ -1,5 +1,5 @@
 import { Camera, ScanBarcode } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { IconButton } from '@components/ui'
 
@@ -11,20 +11,10 @@ export function FoodCameraMenu({
   onOpenScanner: () => void
 }) {
   const [isOpen, setIsOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!isOpen) {
       return
-    }
-
-    function closeOnOutsidePress(event: PointerEvent) {
-      if (
-        event.target instanceof Node &&
-        !menuRef.current?.contains(event.target)
-      ) {
-        setIsOpen(false)
-      }
     }
 
     function closeOnEscape(event: KeyboardEvent) {
@@ -33,16 +23,14 @@ export function FoodCameraMenu({
       }
     }
 
-    document.addEventListener('pointerdown', closeOnOutsidePress)
     document.addEventListener('keydown', closeOnEscape)
     return () => {
-      document.removeEventListener('pointerdown', closeOnOutsidePress)
       document.removeEventListener('keydown', closeOnEscape)
     }
   }, [isOpen])
 
   return (
-    <div className="camera-action-menu" ref={menuRef}>
+    <div className="camera-action-menu">
       <IconButton
         aria-expanded={isOpen}
         aria-haspopup="menu"

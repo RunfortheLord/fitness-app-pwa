@@ -155,6 +155,7 @@ type AddedItem = {
 type SheetState =
   | { type: 'food'; food: Food | null; initialForm?: FoodFormState }
   | { type: 'select'; result: FoodResult }
+  | { type: 'recipeComponent'; index: number }
   | { type: 'entry'; entry: FoodLogEntry }
   | { type: 'quickAdd' }
   | { type: 'scanner' }
@@ -445,6 +446,24 @@ export function NutritionPage() {
         : current,
     )
   }, [])
+
+  const updateRecipeComponent = useCallback(
+    (index: number, servingMultiplier: number) => {
+      setRecipeDraft((current) =>
+        current
+          ? {
+              ...current,
+              components: current.components.map((component, componentIndex) =>
+                componentIndex === index
+                  ? { ...component, servingMultiplier }
+                  : component,
+              ),
+            }
+          : current,
+      )
+    },
+    [],
+  )
 
   const appendAddedItem = useCallback(
     (result: FoodResult, entry: FoodLogEntry) => {
@@ -929,6 +948,9 @@ export function NutritionPage() {
             )
           }
           onRemoveRecipeComponent={removeRecipeComponent}
+          onOpenRecipeComponent={(index) =>
+            setSheet({ type: 'recipeComponent', index })
+          }
           onLogAiRecipe={logAiRecipe}
           onSaveRecipe={saveRecipe}
           onToggleSaveAiRecipe={() => setSaveAiRecipe((current) => !current)}
@@ -1190,6 +1212,19 @@ export function NutritionPage() {
         />
       ) : null}
 
+      {sheet?.type === 'recipeComponent' &&
+      recipeDraft?.components[sheet.index] ? (
+        <RecipeIngredientSheet
+          component={recipeDraft.components[sheet.index]}
+          isOpen
+          onClose={() => setSheet(null)}
+          onSaved={(servingMultiplier) => {
+            updateRecipeComponent(sheet.index, servingMultiplier)
+            setSheet(null)
+          }}
+        />
+      ) : null}
+
       {sheet?.type === 'entry' ? (
         <EditFoodLogSheet
           entry={sheet.entry}
@@ -1372,6 +1407,7 @@ function FoodSearchSubpage({
   saveAiRecipe,
   onRecipeNameChange,
   onRemoveRecipeComponent,
+  onOpenRecipeComponent,
   onLogAiRecipe,
   onSaveRecipe,
   onToggleSaveAiRecipe,
@@ -1397,6 +1433,7 @@ function FoodSearchSubpage({
   saveAiRecipe: boolean
   onRecipeNameChange: (name: string) => void
   onRemoveRecipeComponent: (index: number) => void
+  onOpenRecipeComponent: (index: number) => void
   onLogAiRecipe: () => void
   onSaveRecipe: () => void
   onToggleSaveAiRecipe: () => void
@@ -1417,6 +1454,13 @@ function FoodSearchSubpage({
   const hasResults = results.some((section) => section.items.length > 0)
   const normalizedQuery = normalizeProviderQuery(query)
   const recipeMode = recipeDraft !== null
+  const recipeCalories =
+    recipeDraft?.components.reduce(
+      (total, component) =>
+        total +
+        component.foodSnapshot.caloriesPerServing * component.servingMultiplier,
+      0,
+    ) ?? 0
 
   return (
     <div className="food-search-subpage subpage-enter">
@@ -1477,11 +1521,13 @@ function FoodSearchSubpage({
         {recipeMode && recipeDraft ? (
           <div className="recipe-build-bar" aria-label={t('Recipe builder')}>
             {recipeDraft.source === 'gemini' ? (
-              <StatusMessage tone="warning">
-                {t(
-                  'AI-estimated nutrition. Review every ingredient before saving this recipe.',
-                )}
-              </StatusMessage>
+              <p
+                aria-label={t('Estimated total calories')}
+                className="ai-recipe-calorie-total"
+              >
+                <span>{t('Calories')}:</span>{' '}
+                <strong>{roundMacro(recipeCalories)}</strong>
+              </p>
             ) : null}
             <div className="food-search-subpage-input">
               <BookmarkPlus aria-hidden="true" size={18} />
@@ -1496,26 +1542,63 @@ function FoodSearchSubpage({
             {recipeDraft.components.length ? (
               <div className="recipe-build-components">
                 {recipeDraft.components.map((component, index) => (
-                  <span
-                    className="recipe-build-chip"
+                  <div
+                    className="recipe-ingredient-row"
                     key={`${component.foodId ?? component.foodSnapshot.foodName}-${index}`}
-                    title={component.foodSnapshot.foodName}
                   >
-                    <FoodIcon
-                      name={component.foodSnapshot.foodName}
-                      size={16}
-                    />
-                    <span className="recipe-build-chip-name">
-                      {component.foodSnapshot.foodName}
-                    </span>
+                    <button
+                      aria-label={t('Edit {name} ingredient', {
+                        name: component.foodSnapshot.foodName,
+                      })}
+                      className="recipe-ingredient-main"
+                      onClick={() => onOpenRecipeComponent(index)}
+                      type="button"
+                    >
+                      <FoodIcon
+                        name={component.foodSnapshot.foodName}
+                        size={34}
+                      />
+                      <span className="recipe-ingredient-copy">
+                        <strong>{component.foodSnapshot.foodName}</strong>
+                        <small>
+                          {formatAmountValue(
+                            component.foodSnapshot.servingQuantity *
+                              component.servingMultiplier,
+                          )}{' '}
+                          {component.foodSnapshot.servingUnit}
+                        </small>
+                        <small>
+                          {formatCalories(
+                            component.foodSnapshot.caloriesPerServing *
+                              component.servingMultiplier,
+                          )}{' '}
+                          kcal · P{' '}
+                          {formatMacroGram(
+                            component.foodSnapshot.proteinGramsPerServing *
+                              component.servingMultiplier,
+                          )}{' '}
+                          C{' '}
+                          {formatMacroGram(
+                            component.foodSnapshot.carbohydrateGramsPerServing *
+                              component.servingMultiplier,
+                          )}{' '}
+                          F{' '}
+                          {formatMacroGram(
+                            component.foodSnapshot.fatGramsPerServing *
+                              component.servingMultiplier,
+                          )}
+                        </small>
+                      </span>
+                    </button>
                     <button
                       aria-label={`Remove ${component.foodSnapshot.foodName}`}
+                      className="recipe-ingredient-remove"
                       onClick={() => onRemoveRecipeComponent(index)}
                       type="button"
                     >
                       <Trash2 aria-hidden="true" size={14} />
                     </button>
-                  </span>
+                  </div>
                 ))}
               </div>
             ) : (
@@ -1523,19 +1606,10 @@ function FoodSearchSubpage({
                 {t('Search foods below and add them to this recipe.')}
               </p>
             )}
-            {recipeDraft.components.length ? (
+            {recipeDraft.components.length &&
+            recipeDraft.source !== 'gemini' ? (
               <p className="muted recipe-build-total">
-                {t('Total')}:{' '}
-                {roundMacro(
-                  recipeDraft.components.reduce(
-                    (total, component) =>
-                      total +
-                      component.foodSnapshot.caloriesPerServing *
-                        component.servingMultiplier,
-                    0,
-                  ),
-                )}{' '}
-                kcal
+                {t('Total')}: {roundMacro(recipeCalories)} kcal
               </p>
             ) : null}
             {recipeDraft.source === 'gemini' && recipeDraft.notes ? (
@@ -2668,6 +2742,138 @@ function FoodCalorieEquation({ form }: { form: typeof emptyFoodForm }) {
       P {proteinGrams}g x 4 + C {carbohydrateGrams}g x 4 + F {fatGrams}g x 9 ={' '}
       {calories} kcal
     </p>
+  )
+}
+
+function RecipeIngredientSheet({
+  component,
+  isOpen,
+  onClose,
+  onSaved,
+}: {
+  component: RecipeComponentDraft
+  isOpen: boolean
+  onClose: () => void
+  onSaved: (servingMultiplier: number) => void
+}) {
+  const { t } = useLanguage()
+  const snapshot = component.foodSnapshot
+  const unitKey = snapshot.servingUnit.trim().toLocaleLowerCase()
+  const initialAmount = snapshot.servingQuantity * component.servingMultiplier
+  const [amount, setAmount] = useState(() => formatAmountValue(initialAmount))
+  const [error, setError] = useState<string | null>(null)
+  const parsedAmount = parsePositiveNumber(amount)
+  const servingMultiplier =
+    parsedAmount && snapshot.servingQuantity > 0
+      ? parsedAmount / snapshot.servingQuantity
+      : null
+  const preview = servingMultiplier
+    ? {
+        calories: snapshot.caloriesPerServing * servingMultiplier,
+        protein: snapshot.proteinGramsPerServing * servingMultiplier,
+        carbs: snapshot.carbohydrateGramsPerServing * servingMultiplier,
+        fat: snapshot.fatGramsPerServing * servingMultiplier,
+      }
+    : null
+  const quickAmounts = quantityChipsForUnit(unitKey)
+
+  function stepAmount(direction: 1 | -1) {
+    const next = nextSteppedAmount(
+      parsedAmount ?? initialAmount,
+      unitKey,
+      direction,
+    )
+    if (next != null) {
+      setAmount(formatAmountValue(next))
+    }
+  }
+
+  function save() {
+    if (!servingMultiplier) {
+      setError('Serving amount must be greater than zero.')
+      return
+    }
+    onSaved(servingMultiplier)
+  }
+
+  return (
+    <Sheet isOpen={isOpen} onClose={onClose} title="Ingredient details">
+      <p className="sheet-context">
+        <strong>{snapshot.foodName}</strong>
+        <br />
+        <span className="muted">
+          {formatAmountValue(snapshot.servingQuantity)} {snapshot.servingUnit}{' '}
+          {t('AI-estimated serving')}
+        </span>
+      </p>
+      <p className="metric-value metric-value-small">
+        {formatCalories(preview?.calories)} kcal
+      </p>
+      <div className="macro-row nutrition-row">
+        <span>Protein {formatMacroGram(preview?.protein)} g</span>
+        <span>Carbs {formatMacroGram(preview?.carbs)} g</span>
+        <span>Fat {formatMacroGram(preview?.fat)} g</span>
+      </div>
+      <FormField id="recipe-serving-amount" label="Serving amount">
+        <div className="amount-stepper">
+          <IconButton
+            aria-label="Decrease amount"
+            disabled={nextSteppedAmount(parsedAmount ?? 0, unitKey, -1) == null}
+            onClick={() => stepAmount(-1)}
+            type="button"
+          >
+            <Minus aria-hidden="true" size={18} />
+          </IconButton>
+          <NumericInput
+            autoFocus
+            id="recipe-serving-amount"
+            onChange={(event) => setAmount(event.target.value)}
+            onFocus={(event) => event.currentTarget.select()}
+            value={amount}
+          />
+          <IconButton
+            aria-label="Increase amount"
+            onClick={() => stepAmount(1)}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={18} />
+          </IconButton>
+        </div>
+      </FormField>
+      <div className="quantity-chips" role="group" aria-label="Quick amounts">
+        {quickAmounts.map((value) => {
+          const isActive =
+            parsedAmount != null && Math.abs(parsedAmount - value) < 0.01
+          return (
+            <button
+              aria-pressed={isActive}
+              className={`quantity-chip${isActive ? ' is-active' : ''}`}
+              key={value}
+              onClick={() => setAmount(formatAmountValue(value))}
+              type="button"
+            >
+              {formatQuantityChipLabel(value)}
+            </button>
+          )
+        })}
+      </div>
+      <FormField id="recipe-serving-unit" label="Serving unit">
+        <select disabled id="recipe-serving-unit" value={snapshot.servingUnit}>
+          <option value={snapshot.servingUnit}>{snapshot.servingUnit}</option>
+        </select>
+      </FormField>
+      {preview ? (
+        <p className="muted">
+          Preview: {formatCalories(preview.calories)} kcal - P{' '}
+          {formatMacroGram(preview.protein)} C {formatMacroGram(preview.carbs)}{' '}
+          F {formatMacroGram(preview.fat)}
+        </p>
+      ) : null}
+      {error ? <ValidationMessage message={error} /> : null}
+      <PrimaryButton onClick={save} type="button">
+        {t('Update ingredient')}
+      </PrimaryButton>
+    </Sheet>
   )
 }
 

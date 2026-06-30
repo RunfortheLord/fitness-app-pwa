@@ -155,6 +155,9 @@
 - The Nutrition camera action opens a compact vertical menu directly below the
   camera button. Its bottom edge forms a semicircle matching the camera action,
   and it contains two large, contrasted circular actions: barcode and AI.
+- Scrolling or pressing outside the open camera menu does not dismiss it. The
+  camera toggle and Escape can dismiss it explicitly, and navigating away
+  resets it before the user returns.
 - Scanner opens from the Nutrition screen and requests camera access only after
   user action.
 - The scanner shows a visible frame, cancel control, retry path, permission
@@ -169,7 +172,8 @@
 ### AI Meal Camera
 
 - The AI action opens a full Nutrition subpage with the rear-facing camera
-  preview, capture action, permission/loading/failure states, and retry.
+  preview, capture action, photo-library import action,
+  permission/loading/failure states, and retry.
 - Without a configured Gemini key, the subpage links to the Gemini integration
   in Settings and does not request camera access.
 - Capturing a photo sends a resized JPEG directly to Gemini 3.5 Flash. The app
@@ -177,12 +181,15 @@
 - While analysis is running, the captured photo is covered by a friendly robot
   calculation animation and clear processing text.
 - A successful result opens the existing recipe builder with an editable name,
-  estimated ingredient snapshots, assumptions, and a prominent estimate
-  warning.
-- Estimated ingredients appear as a vertical list. Save as recipe is an
-  off-by-default checkmark option. Log food is the primary action; it logs every
-  estimated ingredient to the selected date, optionally saves the recipe, and
-  exits the subpage.
+  estimated ingredient snapshots, assumptions, and clear estimate context.
+- The builder leads with a prominent total formatted as "Calories: XX".
+  Estimated ingredients appear as tappable, food-style rows in a vertical list.
+  Each row shows its current serving and macro summary; opening it provides the
+  detected serving amount, detailed macros, serving controls, and a live
+  preview. The existing food search remains available for adding ingredients.
+- Save as recipe is an off-by-default checkmark option. Log food is the primary
+  action; it logs every estimated ingredient to the selected date, optionally
+  saves the recipe, and exits the subpage.
 - When Gemini returns no detected ingredients, the subpage displays "AI failed"
   for approximately three seconds and returns to the page that launched it.
 - Leaving before Log food discards the draft.

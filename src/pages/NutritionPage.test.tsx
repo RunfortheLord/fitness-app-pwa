@@ -80,6 +80,30 @@ afterEach(async () => {
 })
 
 describe('NutritionPage', () => {
+  it('keeps camera options open through scrolling and resets on navigation', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Open camera options' }),
+    )
+    expect(
+      screen.getByRole('menu', { name: 'Camera options' }),
+    ).toBeInTheDocument()
+
+    fireEvent.scroll(window)
+    fireEvent.pointerDown(document.body)
+    expect(
+      screen.getByRole('menu', { name: 'Camera options' }),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('link', { name: 'Home' }))
+    await user.click(screen.getByRole('link', { name: 'Nutrition' }))
+    expect(
+      screen.queryByRole('menu', { name: 'Camera options' }),
+    ).not.toBeInTheDocument()
+  })
+
   it('opens barcode and AI choices below the food camera action', async () => {
     const user = userEvent.setup()
     renderNutrition()
@@ -199,16 +223,54 @@ describe('NutritionPage', () => {
       ).toBeInTheDocument()
       expect(screen.getByText('Grilled chicken')).toBeInTheDocument()
       expect(screen.getByText('Cooked rice')).toBeInTheDocument()
-      expect(screen.getByText(/AI-estimated nutrition/)).toBeInTheDocument()
+      expect(
+        screen.getByLabelText('Estimated total calories'),
+      ).toHaveTextContent('Calories: 445')
+      expect(
+        screen.queryByText(/AI-estimated nutrition/),
+      ).not.toBeInTheDocument()
       const saveRecipe = screen.getByRole('checkbox', {
         name: 'Save as recipe',
       })
       expect(saveRecipe).toHaveAttribute('aria-checked', 'false')
       await expect(db.savedMeals.count()).resolves.toBe(0)
 
+      await user.click(
+        screen.getByRole('button', {
+          name: 'Edit Grilled chicken ingredient',
+        }),
+      )
+      expect(
+        screen.getByRole('dialog', { name: 'Ingredient details' }),
+      ).toBeInTheDocument()
+      const servingAmount = screen.getByRole('textbox', {
+        name: 'Serving amount',
+      })
+      expect(servingAmount).toHaveValue('5')
+      await user.clear(servingAmount)
+      await user.type(servingAmount, '10')
+      expect(screen.getByText(/Preview: 480 kcal/)).toBeInTheDocument()
+      await user.click(
+        screen.getByRole('button', { name: 'Update ingredient' }),
+      )
+      expect(
+        screen.getByLabelText('Estimated total calories'),
+      ).toHaveTextContent('Calories: 685')
+      expect(screen.getByText('10 oz')).toBeInTheDocument()
+
       await user.click(screen.getByRole('button', { name: 'Log food (2)' }))
       await waitFor(async () => expect(await db.foodLogEntries.count()).toBe(2))
       await expect(db.savedMeals.count()).resolves.toBe(0)
+      await expect(db.foodLogEntries.toArray()).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            computedCalories: 480,
+            foodSnapshot: expect.objectContaining({
+              foodName: 'Grilled chicken',
+            }),
+          }),
+        ]),
+      )
       expect(
         await screen.findByText('Logged 2 ingredients.'),
       ).toBeInTheDocument()

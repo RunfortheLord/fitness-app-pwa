@@ -55,6 +55,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  vi.unstubAllGlobals()
   play.mockRestore()
   videoWidth.mockRestore()
   videoHeight.mockRestore()
@@ -67,6 +68,63 @@ afterEach(() => {
 })
 
 describe('AiMealCameraSubpage', () => {
+  it('imports and analyzes a photo from the device library', async () => {
+    const user = userEvent.setup()
+    const closeBitmap = vi.fn()
+    const onAnalyzed = vi.fn()
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn().mockResolvedValue({
+        width: 1800,
+        height: 1200,
+        close: closeBitmap,
+      }),
+    )
+    mockAnalyzeMealPhoto.mockResolvedValue({
+      recipeName: 'Imported meal',
+      confidence: 'medium',
+      assumptions: [],
+      ingredients: [
+        {
+          name: 'Rice',
+          servingQuantity: 1,
+          servingUnit: 'cup',
+          calories: 205,
+          proteinGrams: 4,
+          carbohydrateGrams: 45,
+          fatGrams: 0.4,
+        },
+      ],
+    })
+
+    render(
+      <AiMealCameraSubpage
+        apiKey="test-key"
+        onAnalyzed={onAnalyzed}
+        onBack={vi.fn()}
+      />,
+    )
+
+    const input = await screen.findByLabelText('Choose meal photo from library')
+    await user.upload(
+      input,
+      new File(['photo'], 'meal.png', { type: 'image/png' }),
+    )
+
+    await waitFor(() =>
+      expect(mockAnalyzeMealPhoto).toHaveBeenCalledWith({
+        apiKey: 'test-key',
+        image: {
+          base64: 'photo-bytes',
+          dataUrl: 'data:image/jpeg;base64,photo-bytes',
+          mimeType: 'image/jpeg',
+        },
+      }),
+    )
+    await waitFor(() => expect(onAnalyzed).toHaveBeenCalledTimes(1))
+    expect(closeBitmap).toHaveBeenCalledTimes(1)
+  })
+
   it('shows the robot calculation state while analysis is running', async () => {
     const user = userEvent.setup()
     mockAnalyzeMealPhoto.mockImplementation(() => new Promise(() => undefined))

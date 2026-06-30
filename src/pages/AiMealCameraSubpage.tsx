@@ -1,5 +1,18 @@
-import { ArrowLeft, Bot, Camera, RefreshCw, Settings } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  ArrowLeft,
+  Bot,
+  Camera,
+  ImagePlus,
+  RefreshCw,
+  Settings,
+} from 'lucide-react'
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 
 import {
   IconButton,
@@ -31,6 +44,8 @@ export function AiMealCameraSubpage({
   const { t } = useLanguage()
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const cameraAttemptRef = useRef(0)
   const mountedRef = useRef(true)
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>('starting')
   const [cameraError, setCameraError] = useState<string | null>(null)
@@ -53,6 +68,7 @@ export function AiMealCameraSubpage({
   }, [])
 
   const startCamera = useCallback(async () => {
+    const attemptId = ++cameraAttemptRef.current
     stopCamera()
     setCapturedPhoto(null)
     setAnalysisError(null)
@@ -74,7 +90,7 @@ export function AiMealCameraSubpage({
           height: { ideal: 1280 },
         },
       })
-      if (!mountedRef.current) {
+      if (!mountedRef.current || attemptId !== cameraAttemptRef.current) {
         stream.getTracks().forEach((track) => track.stop())
         return
       }
@@ -85,7 +101,7 @@ export function AiMealCameraSubpage({
       }
       setCameraStatus('ready')
     } catch (error) {
-      if (!mountedRef.current) {
+      if (!mountedRef.current || attemptId !== cameraAttemptRef.current) {
         return
       }
       setCameraStatus('error')
@@ -103,6 +119,7 @@ export function AiMealCameraSubpage({
         window.clearTimeout(startupId)
       }
       mountedRef.current = false
+      cameraAttemptRef.current += 1
       stopCamera()
     }
   }, [apiKey, startCamera, stopCamera])
@@ -152,28 +169,41 @@ export function AiMealCameraSubpage({
       return
     }
 
-    const scale = Math.min(
-      1,
-      1280 / Math.max(video.videoWidth, video.videoHeight),
-    )
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.max(1, Math.round(video.videoWidth * scale))
-    canvas.height = Math.max(1, Math.round(video.videoHeight * scale))
-    const context = canvas.getContext('2d')
-    if (!context) {
+    let photo
+    try {
+      photo = preparePhoto(video, video.videoWidth, video.videoHeight)
+    } catch {
       setCameraError('The photo could not be prepared.')
       return
-    }
-    context.drawImage(video, 0, 0, canvas.width, canvas.height)
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.82)
-    const photo = {
-      base64: dataUrl.slice(dataUrl.indexOf(',') + 1),
-      dataUrl,
-      mimeType: 'image/jpeg' as const,
     }
     setCapturedPhoto(photo)
     stopCamera()
     void analyze(photo)
+  }
+
+  async function importPhoto(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0]
+    event.currentTarget.value = ''
+    if (!file) {
+      return
+    }
+    setAnalysisError(null)
+    setAnalysisFailed(false)
+    setCameraError(null)
+    cameraAttemptRef.current += 1
+    stopCamera()
+    try {
+      const photo = await prepareUploadedMealPhoto(file)
+      if (!mountedRef.current) {
+        return
+      }
+      setCapturedPhoto(photo)
+      void analyze(photo)
+    } catch {
+      if (mountedRef.current) {
+        setCameraError('The selected photo could not be prepared.')
+      }
+    }
   }
 
   return (
@@ -251,6 +281,14 @@ export function AiMealCameraSubpage({
           ) : null}
 
           <div className="ai-camera-controls">
+            <input
+              accept="image/*"
+              aria-label={t('Choose meal photo from library')}
+              className="visually-hidden"
+              onChange={(event) => void importPhoto(event)}
+              ref={fileInputRef}
+              type="file"
+            />
             {cameraStatus === 'ready' && !capturedPhoto ? (
               <IconButton
                 aria-label="Take meal photo"
@@ -265,6 +303,15 @@ export function AiMealCameraSubpage({
                 <RefreshCw aria-hidden="true" size={18} />
                 Retry camera
               </PrimaryButton>
+            ) : null}
+            {!analyzing ? (
+              <SecondaryButton
+                onClick={() => fileInputRef.current?.click()}
+                type="button"
+              >
+                <ImagePlus aria-hidden="true" size={18} />
+                {t('Choose from photos')}
+              </SecondaryButton>
             ) : null}
             {capturedPhoto && analysisError && !analyzing ? (
               <>
@@ -285,13 +332,49 @@ export function AiMealCameraSubpage({
           </div>
           <p className="muted ai-camera-disclaimer">
             {t(
-              'Photo nutrition is an estimate. Review every ingredient before saving the recipe.',
+              'Photo nutrition is an estimate. Review every ingredient before logging food.',
             )}
           </p>
         </>
       )}
     </section>
   )
+}
+
+async function prepareUploadedMealPhoto(file: File) {
+  if (!file.type.startsWith('image/')) {
+    throw new Error('The selected file is not an image.')
+  }
+  const bitmap = await createImageBitmap(file, {
+    imageOrientation: 'from-image',
+  })
+  try {
+    return preparePhoto(bitmap, bitmap.width, bitmap.height)
+  } finally {
+    bitmap.close()
+  }
+}
+
+function preparePhoto(
+  source: CanvasImageSource,
+  sourceWidth: number,
+  sourceHeight: number,
+) {
+  const scale = Math.min(1, 1280 / Math.max(sourceWidth, sourceHeight))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(sourceWidth * scale))
+  canvas.height = Math.max(1, Math.round(sourceHeight * scale))
+  const context = canvas.getContext('2d')
+  if (!context) {
+    throw new Error('The photo could not be prepared.')
+  }
+  context.drawImage(source, 0, 0, canvas.width, canvas.height)
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.82)
+  return {
+    base64: dataUrl.slice(dataUrl.indexOf(',') + 1),
+    dataUrl,
+    mimeType: 'image/jpeg' as const,
+  }
 }
 
 function cameraErrorMessage(error: unknown) {

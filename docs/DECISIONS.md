@@ -13,6 +13,13 @@
 - The AI processing state uses a lightweight code-native robot calculation
   animation. An empty ingredient result shows "AI failed" for approximately
   three seconds, then restores the page that launched the camera.
+- Meal analysis accepts either a new camera capture or a user-selected image
+  from the device photo library. Imported images are resized and converted to
+  the same JPEG input used by camera capture.
+- AI drafts lead with total calories and use tappable food-style ingredient
+  rows. Serving edits scale the ingredient snapshot macros without changing the
+  original per-serving estimate. Existing food search remains available for
+  adding ingredients.
 - The user supplies a Gemini key in Settings. It is stored in the existing
   device-local API-key store, sent only to Google, and excluded from backups,
   exports, and diagnostics.

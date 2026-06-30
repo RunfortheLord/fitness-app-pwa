@@ -258,15 +258,28 @@ const spanishTranslations: Record<string, string> = {
   'Captured meal': 'Comida capturada',
   'AI meal camera preview': 'Vista previa de la cámara de comida con IA',
   'Analyzing meal': 'Analizando comida',
+  'Crunching the numbers…': 'Calculando los números…',
+  'Building your ingredient estimate':
+    'Preparando la estimación de ingredientes',
+  'AI failed': 'La IA falló',
   'Starting camera': 'Iniciando cámara',
   'Take meal photo': 'Tomar foto de la comida',
+  'Choose meal photo from library': 'Elegir foto de comida de la fototeca',
+  'Choose from photos': 'Elegir de Fotos',
   'Retry camera': 'Reintentar cámara',
   Retake: 'Volver a tomar',
   'Retry analysis': 'Reintentar análisis',
   'Photo nutrition is an estimate. Review every ingredient before saving the recipe.':
     'La nutrición de la foto es una estimación. Revisa cada ingrediente antes de guardar la receta.',
+  'Photo nutrition is an estimate. Review every ingredient before logging food.':
+    'La nutrición de la foto es una estimación. Revisa cada ingrediente antes de registrar la comida.',
   'AI-estimated nutrition. Review every ingredient before saving this recipe.':
     'Nutrición estimada por IA. Revisa cada ingrediente antes de guardar esta receta.',
+  'Estimated total calories': 'Calorías totales estimadas',
+  'Edit {name} ingredient': 'Editar ingrediente {name}',
+  'AI-estimated serving': 'porción estimada por IA',
+  'Update ingredient': 'Actualizar ingrediente',
+  'Save as recipe': 'Guardar como receta',
   'AI meal analysis': 'Análisis de comida con IA',
   'Gemini API key': 'Clave API de Gemini',
   'A key is saved on this device. Enter another key to replace it.':

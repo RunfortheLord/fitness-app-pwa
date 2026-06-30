@@ -59,18 +59,23 @@
 
 1. User adds and tests a personal Gemini API key in Settings.
 2. User opens Nutrition and selects the camera action.
-3. User selects AI, aims the rear-facing camera, and takes a photo.
+3. User selects AI, then takes a photo with the rear-facing camera or imports
+   one from the device photo library.
 4. The app resizes the photo and sends it directly to Gemini 3.5 Flash.
 5. The app validates the structured ingredient and nutrition estimates.
 6. The existing recipe builder opens with an estimated recipe name,
-   snapshot-only ingredients, assumptions, and an estimate warning.
-7. Ingredients are shown vertically. Save as recipe is available as an
-   off-by-default checkmark.
-8. User reviews the draft and presses Log food. The app logs every ingredient
-   snapshot to the selected date, optionally saves the recipe when checked, and
-   exits the subpage.
-9. If no ingredients are detected, the app shows "AI failed" for approximately
-   three seconds and returns to the page that launched the camera.
+   snapshot-only ingredients, assumptions, and estimate context.
+7. The total calories appear prominently. Ingredients are shown as tappable
+   food-style rows in a vertical list, with the detected serving and macro
+   summary.
+8. User can open any ingredient to inspect detailed macros and change its
+   serving amount. User can also search for additional ingredients.
+9. Save as recipe is available as an off-by-default checkmark.
+10. User reviews the draft and presses Log food. The app logs every ingredient
+    snapshot to the selected date, optionally saves the recipe when checked, and
+    exits the subpage.
+11. If no ingredients are detected, the app shows "AI failed" for approximately
+    three seconds and returns to the page that launched the camera.
 
 ## Correcting an Imported Food
 

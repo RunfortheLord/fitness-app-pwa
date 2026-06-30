@@ -118,8 +118,13 @@
 - The camera action must expose separate barcode and AI-photo options. AI-photo
   analysis is optional and requires a device-local, user-supplied Gemini API
   key. It uses Gemini 3.5 Flash to create an unsaved recipe draft from a meal
-  photo. The user must review the estimate and explicitly press Log food before
-  the estimated ingredient snapshots are added to the selected date.
+  photo captured in the app or selected from the device photo library. The user
+  must review the estimate and explicitly press Log food before the estimated
+  ingredient snapshots are added to the selected date.
+- Each estimated ingredient must be an editable food-style row. Opening it shows
+  the detected serving amount, detailed calories and macros, and controls for
+  changing that amount before logging. The draft must show its recalculated
+  total calories prominently.
 - AI-photo analysis must not create reusable foods, adjust nutrition targets, or
   save a recipe automatically. Save as recipe is an off-by-default checkmark
   option beside the primary Log food action. It must clearly identify generated
