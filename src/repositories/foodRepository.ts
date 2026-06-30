@@ -82,6 +82,15 @@ export type LogSavedMealInput = {
   mealType?: MealType
 }
 
+export type LogMealDraftInput = {
+  name: string
+  components: SavedMealComponent[]
+  localDate: LocalDateString
+  mealType?: MealType
+  notes?: string
+  saveAsRecipe: boolean
+}
+
 export type FoodRepositoryTestHooks = {
   afterFoodLogAdded?: () => void | Promise<void>
 }
@@ -582,6 +591,67 @@ export function createFoodRepository(
         await testHooks.afterFoodLogAdded?.()
         return entries
       })
+    },
+
+    async logMealDraft(input: LogMealDraftInput) {
+      const name = input.name.trim()
+      if (input.saveAsRecipe && !name) {
+        throw new Error('Saved meal name is required.')
+      }
+      if (input.components.length === 0) {
+        throw new Error('A meal needs at least one food.')
+      }
+      for (const component of input.components) {
+        validateServingMultiplier(component.servingMultiplier)
+      }
+
+      const mealType = input.mealType ?? mealTypeForDate(new Date())
+      return database.transaction(
+        'rw',
+        database.savedMeals,
+        database.foodLogEntries,
+        async () => {
+          const now = new Date().toISOString()
+          const savedMeal: SavedMeal | null = input.saveAsRecipe
+            ? {
+                id: createId(),
+                name,
+                components: input.components,
+                notes: input.notes ?? '',
+                status: 'active',
+                createdAt: now,
+                updatedAt: now,
+              }
+            : null
+          if (savedMeal) {
+            await database.savedMeals.add(savedMeal)
+          }
+
+          const entries: FoodLogEntry[] = []
+          for (const component of input.components) {
+            const entryTimestamp = createMonotonicTimestamp()
+            const entry: FoodLogEntry = {
+              id: createId(),
+              localDate: input.localDate,
+              foodId: component.foodId,
+              foodSnapshot: component.foodSnapshot,
+              mealType,
+              servingMultiplier: component.servingMultiplier,
+              ...computeLogTotals(
+                component.foodSnapshot,
+                component.servingMultiplier,
+              ),
+              notes: '',
+              createdAt: entryTimestamp,
+              updatedAt: entryTimestamp,
+            }
+            await database.foodLogEntries.add(entry)
+            entries.push(entry)
+          }
+          await testHooks.afterFoodLogAdded?.()
+          return { entries, savedMeal }
+        },
+      )
     },
 
     getFood(id: string) {

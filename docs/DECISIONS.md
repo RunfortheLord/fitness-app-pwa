@@ -7,8 +7,12 @@
   enable AI coaching, recommendations, automatic targets, or automatic logging.
 - Gemini 3.5 Flash receives one resized meal photo and returns validated,
   structured ingredient estimates. The result becomes a snapshot-only recipe
-  draft; no foods, logs, or saved meals are written until Save recipe is
-  pressed.
+  draft. Log food atomically writes each ingredient snapshot to the selected
+  date; Save as recipe is a separate, off-by-default checkmark applied in the
+  same transaction.
+- The AI processing state uses a lightweight code-native robot calculation
+  animation. An empty ingredient result shows "AI failed" for approximately
+  three seconds, then restores the page that launched the camera.
 - The user supplies a Gemini key in Settings. It is stored in the existing
   device-local API-key store, sent only to Google, and excluded from backups,
   exports, and diagnostics.

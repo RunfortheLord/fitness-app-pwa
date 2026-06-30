@@ -19,6 +19,7 @@ export type GeminiMealAnalysisErrorCode =
       'not_configured' | 'testing' | 'connected'
     >
   | 'invalid_response'
+  | 'no_food_detected'
 
 export class GeminiMealAnalysisError extends Error {
   readonly code: GeminiMealAnalysisErrorCode
@@ -68,7 +69,7 @@ const mealAnalysisJsonSchema = {
     },
     ingredients: {
       type: 'array',
-      minItems: 1,
+      minItems: 0,
       maxItems: 20,
       items: {
         type: 'object',
@@ -106,7 +107,8 @@ Identify each visually distinguishable food component and estimate the consumed
 amount, calories, protein, total carbohydrates, and fat for that component.
 Include likely sauces or cooking fats only when visually plausible and state
 important uncertainty in assumptions. Do not provide dietary advice, targets,
-or recommendations. Values are estimates and must fit the response schema.
+or recommendations. If no food is visible, return an empty ingredients array.
+Values are estimates and must fit the response schema.
 `.trim()
 
 export async function analyzeMealPhoto(input: {
@@ -143,13 +145,30 @@ export async function analyzeMealPhoto(input: {
 
   const outputText = extractOutputText(response)
   try {
-    return geminiMealAnalysisSchema.parse(JSON.parse(outputText))
-  } catch {
+    const parsed: unknown = JSON.parse(outputText)
+    if (hasEmptyIngredientList(parsed)) {
+      throw new GeminiMealAnalysisError('no_food_detected', 'AI failed')
+    }
+    return geminiMealAnalysisSchema.parse(parsed)
+  } catch (error) {
+    if (error instanceof GeminiMealAnalysisError) {
+      throw error
+    }
     throw new GeminiMealAnalysisError(
       'invalid_response',
       'Gemini returned meal data that the app could not validate.',
     )
   }
+}
+
+function hasEmptyIngredientList(value: unknown) {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'ingredients' in value &&
+    Array.isArray(value.ingredients) &&
+    value.ingredients.length === 0
+  )
 }
 
 export async function testGeminiApiKey(input: {
@@ -177,7 +196,9 @@ export function geminiConnectionStatusForError(
   if (!(error instanceof GeminiMealAnalysisError)) {
     return 'service_unavailable'
   }
-  return error.code === 'invalid_response' ? 'service_unavailable' : error.code
+  return error.code === 'invalid_response' || error.code === 'no_food_detected'
+    ? 'service_unavailable'
+    : error.code
 }
 
 async function requestGemini(

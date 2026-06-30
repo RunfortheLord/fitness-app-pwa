@@ -209,6 +209,68 @@ describe('foodRepository', () => {
     await expect(repository.listSavedMeals()).resolves.toEqual([])
   })
 
+  it('logs a draft meal and saves it only when requested', async () => {
+    const repository = createFoodRepository(database)
+    const food = await seedFood(database)
+    const components = [
+      {
+        foodId: food.id,
+        foodSnapshot: snapshotFood(food),
+        servingMultiplier: 1.5,
+      },
+    ]
+
+    const loggedOnly = await repository.logMealDraft({
+      name: 'Photo meal',
+      components,
+      localDate: testLocalDate,
+      saveAsRecipe: false,
+    })
+
+    expect(loggedOnly.savedMeal).toBeNull()
+    expect(loggedOnly.entries).toHaveLength(1)
+    expect(loggedOnly.entries[0].computedCalories).toBe(300)
+    await expect(database.savedMeals.count()).resolves.toBe(0)
+
+    const loggedAndSaved = await repository.logMealDraft({
+      name: 'Photo meal',
+      components,
+      localDate: testLocalDate,
+      saveAsRecipe: true,
+    })
+
+    expect(loggedAndSaved.savedMeal?.name).toBe('Photo meal')
+    await expect(database.savedMeals.count()).resolves.toBe(1)
+    await expect(database.foodLogEntries.count()).resolves.toBe(2)
+  })
+
+  it('rolls back AI recipe saving when ingredient logging fails', async () => {
+    const food = await seedFood(database)
+    const repository = createFoodRepository(database, {
+      afterFoodLogAdded: () => {
+        throw new Error('forced draft log failure')
+      },
+    })
+
+    await expect(
+      repository.logMealDraft({
+        name: 'Photo meal',
+        components: [
+          {
+            foodId: food.id,
+            foodSnapshot: snapshotFood(food),
+            servingMultiplier: 1,
+          },
+        ],
+        localDate: testLocalDate,
+        saveAsRecipe: true,
+      }),
+    ).rejects.toThrow('forced draft log failure')
+
+    await expect(database.savedMeals.count()).resolves.toBe(0)
+    await expect(database.foodLogEntries.count()).resolves.toBe(0)
+  })
+
   it('edits a saved meal name and components', async () => {
     const repository = createFoodRepository(database)
     const makeFood = (name: string, calories: number) =>

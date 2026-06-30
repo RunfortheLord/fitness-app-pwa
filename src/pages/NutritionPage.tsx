@@ -2,6 +2,7 @@ import {
   Archive,
   ArrowLeft,
   BookmarkPlus,
+  Check,
   CopyPlus,
   Edit2,
   Flame,
@@ -295,7 +296,9 @@ export function NutritionPage() {
   const [recipeDraft, setRecipeDraft] = useState<RecipeDraft | null>(null)
   const [recipeError, setRecipeError] = useState<string | null>(null)
   const [recipeSaving, setRecipeSaving] = useState(false)
+  const [saveAiRecipe, setSaveAiRecipe] = useState(false)
   const [aiCameraOpen, setAiCameraOpen] = useState(false)
+  const [aiCameraReturnToSearch, setAiCameraReturnToSearch] = useState(false)
   const [geminiApiKey, setGeminiApiKey] = useState<string | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
   const [goalData, setGoalData] = useState<{
@@ -308,7 +311,14 @@ export function NutritionPage() {
     setSearchOpen(false)
     setRecipeDraft(null)
   })
-  useSubpageBackGesture(aiCameraOpen, () => setAiCameraOpen(false))
+  const closeAiCamera = useCallback(() => {
+    setAiCameraOpen(false)
+    if (aiCameraReturnToSearch) {
+      setSearchOpen(true)
+    }
+  }, [aiCameraReturnToSearch])
+
+  useSubpageBackGesture(aiCameraOpen, closeAiCamera)
 
   const openSearch = useCallback(() => {
     setQuery('')
@@ -367,11 +377,11 @@ export function NutritionPage() {
   }, [])
 
   const openAiCamera = useCallback(() => {
+    setAiCameraReturnToSearch(searchOpen)
     setSearchOpen(false)
-    setRecipeDraft(null)
     setRecipeError(null)
     setAiCameraOpen(true)
-  }, [])
+  }, [searchOpen])
 
   const useGeminiRecipeDraft = useCallback((analysis: GeminiMealAnalysis) => {
     const generated = createRecipeDraftFromGemini(analysis)
@@ -383,6 +393,7 @@ export function NutritionPage() {
       source: 'gemini',
     })
     setRecipeError(null)
+    setSaveAiRecipe(false)
     setAiCameraOpen(false)
     setSearchOpen(true)
   }, [])
@@ -849,6 +860,51 @@ export function NutritionPage() {
       })
   }
 
+  const logAiRecipe = () => {
+    if (!recipeDraft || recipeDraft.source !== 'gemini') {
+      return
+    }
+    if (saveAiRecipe && !recipeDraft.name.trim()) {
+      setRecipeError('Give the recipe a name or turn off Save as recipe.')
+      return
+    }
+    if (recipeDraft.components.length === 0) {
+      setRecipeError('Add at least one food to the recipe.')
+      return
+    }
+    const shouldSaveRecipe = saveAiRecipe
+    setRecipeSaving(true)
+    void foodRepository
+      .logMealDraft({
+        name: recipeDraft.name,
+        components: recipeDraft.components,
+        localDate: selectedDate,
+        notes: recipeDraft.notes,
+        saveAsRecipe: shouldSaveRecipe,
+      })
+      .then(({ entries }) => {
+        setRecipeSaving(false)
+        setSearchOpen(false)
+        setRecipeDraft(null)
+        setRecipeError(null)
+        setSaveAiRecipe(false)
+        setMessage(
+          shouldSaveRecipe
+            ? `Logged ${entries.length} ingredients and saved the recipe.`
+            : `Logged ${entries.length} ingredients.`,
+        )
+        reload({ refreshLibrary: shouldSaveRecipe })
+      })
+      .catch((caught: unknown) => {
+        setRecipeSaving(false)
+        setRecipeError(
+          caught instanceof Error
+            ? caught.message
+            : 'Food could not be logged.',
+        )
+      })
+  }
+
   return (
     <PageContainer>
       <Toast message={message} onDismiss={() => setMessage(null)} />
@@ -856,7 +912,7 @@ export function NutritionPage() {
         <AiMealCameraSubpage
           apiKey={geminiApiKey}
           onAnalyzed={useGeminiRecipeDraft}
-          onBack={() => setAiCameraOpen(false)}
+          onBack={closeAiCamera}
         />
       ) : searchOpen ? (
         <FoodSearchSubpage
@@ -866,13 +922,16 @@ export function NutritionPage() {
           recipeDraft={recipeDraft}
           recipeError={recipeError}
           recipeSaving={recipeSaving}
+          saveAiRecipe={saveAiRecipe}
           onRecipeNameChange={(name) =>
             setRecipeDraft((current) =>
               current ? { ...current, name } : current,
             )
           }
           onRemoveRecipeComponent={removeRecipeComponent}
+          onLogAiRecipe={logAiRecipe}
           onSaveRecipe={saveRecipe}
+          onToggleSaveAiRecipe={() => setSaveAiRecipe((current) => !current)}
           onBack={closeSearch}
           onEditFood={(food) => setSheet({ type: 'food', food })}
           onOpenRecipe={startRecipe}
@@ -1310,9 +1369,12 @@ function FoodSearchSubpage({
   recipeDraft,
   recipeError,
   recipeSaving,
+  saveAiRecipe,
   onRecipeNameChange,
   onRemoveRecipeComponent,
+  onLogAiRecipe,
   onSaveRecipe,
+  onToggleSaveAiRecipe,
   onBack,
   onEditFood,
   onOpenAiCamera,
@@ -1332,9 +1394,12 @@ function FoodSearchSubpage({
   recipeDraft: RecipeDraft | null
   recipeError: string | null
   recipeSaving: boolean
+  saveAiRecipe: boolean
   onRecipeNameChange: (name: string) => void
   onRemoveRecipeComponent: (index: number) => void
+  onLogAiRecipe: () => void
   onSaveRecipe: () => void
+  onToggleSaveAiRecipe: () => void
   onBack: () => void
   onEditFood: (food: Food) => void
   onOpenAiCamera: () => void
@@ -1477,19 +1542,45 @@ function FoodSearchSubpage({
               <p className="muted recipe-build-notes">{recipeDraft.notes}</p>
             ) : null}
             {recipeError ? <ValidationMessage message={recipeError} /> : null}
-            <PrimaryButton
-              disabled={recipeSaving}
-              onClick={onSaveRecipe}
-              type="button"
-            >
-              {recipeSaving
-                ? 'Saving…'
-                : `${recipeDraft.editingId ? 'Update' : 'Save'} recipe${
-                    recipeDraft.components.length
-                      ? ` (${recipeDraft.components.length})`
-                      : ''
-                  }`}
-            </PrimaryButton>
+            {recipeDraft.source === 'gemini' ? (
+              <div className="ai-recipe-actions">
+                <button
+                  aria-checked={saveAiRecipe}
+                  className="recipe-save-toggle"
+                  onClick={onToggleSaveAiRecipe}
+                  role="checkbox"
+                  type="button"
+                >
+                  <span aria-hidden="true" className="recipe-save-checkmark">
+                    <Check size={18} strokeWidth={3} />
+                  </span>
+                  {t('Save as recipe')}
+                </button>
+                <PrimaryButton
+                  disabled={recipeSaving}
+                  onClick={onLogAiRecipe}
+                  type="button"
+                >
+                  {recipeSaving
+                    ? 'Logging…'
+                    : `Log food (${recipeDraft.components.length})`}
+                </PrimaryButton>
+              </div>
+            ) : (
+              <PrimaryButton
+                disabled={recipeSaving}
+                onClick={onSaveRecipe}
+                type="button"
+              >
+                {recipeSaving
+                  ? 'Saving…'
+                  : `${recipeDraft.editingId ? 'Update' : 'Save'} recipe${
+                      recipeDraft.components.length
+                        ? ` (${recipeDraft.components.length})`
+                        : ''
+                    }`}
+              </PrimaryButton>
+            )}
           </div>
         ) : addedItems.length ? (
           <div className="added-items-tray" aria-label={t('Items added')}>

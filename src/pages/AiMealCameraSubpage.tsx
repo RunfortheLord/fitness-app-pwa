@@ -1,4 +1,4 @@
-import { ArrowLeft, Camera, RefreshCw, Settings } from 'lucide-react'
+import { ArrowLeft, Bot, Camera, RefreshCw, Settings } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
@@ -42,6 +42,7 @@ export function AiMealCameraSubpage({
   >(null)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
+  const [analysisFailed, setAnalysisFailed] = useState(false)
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop())
@@ -106,6 +107,14 @@ export function AiMealCameraSubpage({
     }
   }, [apiKey, startCamera, stopCamera])
 
+  useEffect(() => {
+    if (!analysisFailed) {
+      return
+    }
+    const returnId = window.setTimeout(onBack, 3_000)
+    return () => window.clearTimeout(returnId)
+  }, [analysisFailed, onBack])
+
   const analyze = useCallback(
     async (photo: GeminiImageInput) => {
       if (!apiKey) {
@@ -113,6 +122,7 @@ export function AiMealCameraSubpage({
       }
       setAnalyzing(true)
       setAnalysisError(null)
+      setAnalysisFailed(false)
       try {
         const result = await analyzeMealPhoto({ apiKey, image: photo })
         if (mountedRef.current) {
@@ -120,7 +130,14 @@ export function AiMealCameraSubpage({
         }
       } catch (error) {
         if (mountedRef.current) {
-          setAnalysisError(analysisErrorMessage(error))
+          if (
+            error instanceof GeminiMealAnalysisError &&
+            error.code === 'no_food_detected'
+          ) {
+            setAnalysisFailed(true)
+          } else {
+            setAnalysisError(analysisErrorMessage(error))
+          }
           setAnalyzing(false)
         }
       }
@@ -197,7 +214,28 @@ export function AiMealCameraSubpage({
             )}
             {analyzing ? (
               <div className="ai-camera-progress">
-                <LoadingState label="Analyzing meal" />
+                <div
+                  aria-label={t('Analyzing meal')}
+                  className="ai-processing-robot"
+                  role="status"
+                >
+                  <span className="ai-processing-numbers" aria-hidden="true">
+                    <span>1</span>
+                    <span>+</span>
+                    <span>0</span>
+                    <span>kcal</span>
+                  </span>
+                  <span className="ai-processing-bot" aria-hidden="true">
+                    <Bot size={54} strokeWidth={1.8} />
+                  </span>
+                  <strong>{t('Crunching the numbers…')}</strong>
+                  <span>{t('Building your ingredient estimate')}</span>
+                </div>
+              </div>
+            ) : analysisFailed ? (
+              <div className="ai-camera-progress ai-camera-failed" role="alert">
+                <Bot aria-hidden="true" size={46} />
+                <strong>{t('AI failed')}</strong>
               </div>
             ) : null}
           </div>

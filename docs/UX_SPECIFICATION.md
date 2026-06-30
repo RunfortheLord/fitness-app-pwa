@@ -152,8 +152,9 @@
 
 ### Barcode Scanner
 
-- The Nutrition camera action opens a compact menu directly below the camera
-  button. It contains two 44-pixel circular actions: barcode and AI.
+- The Nutrition camera action opens a compact vertical menu directly below the
+  camera button. Its bottom edge forms a semicircle matching the camera action,
+  and it contains two large, contrasted circular actions: barcode and AI.
 - Scanner opens from the Nutrition screen and requests camera access only after
   user action.
 - The scanner shows a visible frame, cancel control, retry path, permission
@@ -173,11 +174,18 @@
   in Settings and does not request camera access.
 - Capturing a photo sends a resized JPEG directly to Gemini 3.5 Flash. The app
   validates the structured result before using it.
+- While analysis is running, the captured photo is covered by a friendly robot
+  calculation animation and clear processing text.
 - A successful result opens the existing recipe builder with an editable name,
   estimated ingredient snapshots, assumptions, and a prominent estimate
   warning.
-- No recipe is persisted until the user presses Save recipe. Leaving the flow
-  discards the draft.
+- Estimated ingredients appear as a vertical list. Save as recipe is an
+  off-by-default checkmark option. Log food is the primary action; it logs every
+  estimated ingredient to the selected date, optionally saves the recipe, and
+  exits the subpage.
+- When Gemini returns no detected ingredients, the subpage displays "AI failed"
+  for approximately three seconds and returns to the page that launched it.
+- Leaving before Log food discards the draft.
 
 ## Training Screen
 

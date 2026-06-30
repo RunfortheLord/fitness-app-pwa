@@ -105,7 +105,27 @@ describe('NutritionPage', () => {
     await expect(db.savedMeals.count()).resolves.toBe(0)
   })
 
-  it('turns a captured meal estimate into an unsaved recipe draft', async () => {
+  it('returns to food search when the AI camera was launched there', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await openFoodSearch(user)
+    await user.click(
+      screen.getByRole('button', { name: 'Open camera options' }),
+    )
+    await user.click(
+      screen.getByRole('menuitem', { name: 'Analyze meal photo' }),
+    )
+    await user.click(
+      await screen.findByRole('button', { name: 'Back to nutrition' }),
+    )
+
+    expect(
+      screen.getByRole('searchbox', { name: 'Search foods' }),
+    ).toBeInTheDocument()
+  })
+
+  it('logs a captured meal and only saves the recipe when selected', async () => {
     const user = userEvent.setup()
     await settingsRepository.saveGeminiApiKey('gemini-test-key', 'connected')
     mockAnalyzeMealPhoto.mockResolvedValue({
@@ -180,10 +200,37 @@ describe('NutritionPage', () => {
       expect(screen.getByText('Grilled chicken')).toBeInTheDocument()
       expect(screen.getByText('Cooked rice')).toBeInTheDocument()
       expect(screen.getByText(/AI-estimated nutrition/)).toBeInTheDocument()
+      const saveRecipe = screen.getByRole('checkbox', {
+        name: 'Save as recipe',
+      })
+      expect(saveRecipe).toHaveAttribute('aria-checked', 'false')
       await expect(db.savedMeals.count()).resolves.toBe(0)
 
-      await user.click(screen.getByRole('button', { name: 'Save recipe (2)' }))
+      await user.click(screen.getByRole('button', { name: 'Log food (2)' }))
+      await waitFor(async () => expect(await db.foodLogEntries.count()).toBe(2))
+      await expect(db.savedMeals.count()).resolves.toBe(0)
+      expect(
+        await screen.findByText('Logged 2 ingredients.'),
+      ).toBeInTheDocument()
+
+      await user.click(
+        screen.getByRole('button', { name: 'Open camera options' }),
+      )
+      await user.click(
+        screen.getByRole('menuitem', { name: 'Analyze meal photo' }),
+      )
+      await user.click(
+        await screen.findByRole('button', { name: 'Take meal photo' }),
+      )
+      const saveRecipeOnSecondScan = await screen.findByRole('checkbox', {
+        name: 'Save as recipe',
+      })
+      await user.click(saveRecipeOnSecondScan)
+      expect(saveRecipeOnSecondScan).toHaveAttribute('aria-checked', 'true')
+      await user.click(screen.getByRole('button', { name: 'Log food (2)' }))
+
       await waitFor(async () => expect(await db.savedMeals.count()).toBe(1))
+      await expect(db.foodLogEntries.count()).resolves.toBe(4)
       await expect(db.savedMeals.toArray()).resolves.toMatchObject([
         {
           name: 'Photo chicken bowl',

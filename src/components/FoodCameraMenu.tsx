@@ -47,9 +47,10 @@ export function FoodCameraMenu({
         aria-expanded={isOpen}
         aria-haspopup="menu"
         aria-label="Open camera options"
+        className="camera-menu-trigger"
         onClick={() => setIsOpen((current) => !current)}
       >
-        <Camera aria-hidden="true" size={20} />
+        <Camera aria-hidden="true" size={24} />
       </IconButton>
       {isOpen ? (
         <div
@@ -65,7 +66,7 @@ export function FoodCameraMenu({
             }}
             role="menuitem"
           >
-            <ScanBarcode aria-hidden="true" size={20} />
+            <ScanBarcode aria-hidden="true" size={25} />
           </IconButton>
           <IconButton
             aria-label="Analyze meal photo"

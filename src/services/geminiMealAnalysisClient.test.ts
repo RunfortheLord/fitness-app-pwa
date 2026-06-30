@@ -87,6 +87,40 @@ describe('geminiMealAnalysisClient', () => {
     } satisfies Partial<GeminiMealAnalysisError>)
   })
 
+  it('identifies an empty ingredient result as no food detected', async () => {
+    const fetchImpl: typeof fetch = async () =>
+      jsonResponse({
+        status: 'completed',
+        steps: [
+          {
+            type: 'model_output',
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  recipeName: 'No meal found',
+                  confidence: 'low',
+                  assumptions: [],
+                  ingredients: [],
+                }),
+              },
+            ],
+          },
+        ],
+      })
+
+    await expect(
+      analyzeMealPhoto({
+        apiKey: 'test-key',
+        image: { base64: 'image-bytes', mimeType: 'image/jpeg' },
+        fetchImpl,
+      }),
+    ).rejects.toMatchObject({
+      code: 'no_food_detected',
+      message: 'AI failed',
+    } satisfies Partial<GeminiMealAnalysisError>)
+  })
+
   it('tests a saved key with the configured Flash model', async () => {
     let requestBody: Record<string, unknown> | null = null
     const fetchImpl: typeof fetch = async (_input, init) => {

@@ -118,11 +118,12 @@
 - The camera action must expose separate barcode and AI-photo options. AI-photo
   analysis is optional and requires a device-local, user-supplied Gemini API
   key. It uses Gemini 3.5 Flash to create an unsaved recipe draft from a meal
-  photo. The user must review the estimate and press Save recipe before any
-  recipe data is persisted.
-- AI-photo analysis must not create foods, log food, adjust nutrition targets,
-  or save a recipe automatically. It must clearly identify generated nutrition
-  as an estimate.
+  photo. The user must review the estimate and explicitly press Log food before
+  the estimated ingredient snapshots are added to the selected date.
+- AI-photo analysis must not create reusable foods, adjust nutrition targets, or
+  save a recipe automatically. Save as recipe is an off-by-default checkmark
+  option beside the primary Log food action. It must clearly identify generated
+  nutrition as an estimate.
 - The first release must continue to exclude barcode submission, automatic
   calorie adjustments, bundled bulk food databases, micronutrients,
   search-as-you-type Open Food Facts calls, and meal recommendations. Spanish

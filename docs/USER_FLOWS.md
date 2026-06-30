@@ -64,8 +64,13 @@
 5. The app validates the structured ingredient and nutrition estimates.
 6. The existing recipe builder opens with an estimated recipe name,
    snapshot-only ingredients, assumptions, and an estimate warning.
-7. No food, log, or saved recipe exists yet. Leaving discards the draft.
-8. User reviews the draft and presses Save recipe to persist it.
+7. Ingredients are shown vertically. Save as recipe is available as an
+   off-by-default checkmark.
+8. User reviews the draft and presses Log food. The app logs every ingredient
+   snapshot to the selected date, optionally saves the recipe when checked, and
+   exits the subpage.
+9. If no ingredients are detected, the app shows "AI failed" for approximately
+   three seconds and returns to the page that launched the camera.
 
 ## Correcting an Imported Food
 
