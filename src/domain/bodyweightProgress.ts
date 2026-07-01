@@ -10,6 +10,7 @@ import {
   weightDisplayNumber,
   weightUnitSuffix,
 } from '@domain/weightUnits'
+import { weeklyTimeAwareTrendChange } from '@domain/bodyweightTrend'
 import type { BodyweightEntry, WeightUnit } from '@shared-types/app'
 
 export type BodyweightRange = '1m' | '3m' | '6m' | 'all'
@@ -25,7 +26,7 @@ export type BodyweightTrendSummary =
       status: 'ready'
       first: BodyweightEntry
       latest: BodyweightEntry
-      change: number
+      weeklyChange: number
       direction: 'up' | 'down' | 'flat'
       text: string
     }
@@ -117,23 +118,32 @@ export function summarizeBodyweightTrend(
     }
   }
 
-  // Stored weights are canonical pounds; the change is a pounds delta that we
-  // convert into the display unit for the human-readable summary text.
-  const change = latest.weight - first.weight
+  const weeklyTrendChange = weeklyTimeAwareTrendChange(sorted)
+  if (!weeklyTrendChange) {
+    return {
+      status: 'single',
+      latest,
+      text: `Current bodyweight is ${formatWeightWithUnit(latest.weight, unit, 'bodyweight')}. Add another entry to show a trend.`,
+    }
+  }
+
+  // Stored weights are canonical pounds; the weekly change is a pounds delta
+  // that we convert into the display unit for human-readable summary text.
+  const weeklyChange = weeklyTrendChange.weeklyChangeLb
   const direction =
-    Math.abs(change) < 0.05 ? 'flat' : change > 0 ? 'up' : 'down'
+    Math.abs(weeklyChange) < 0.05 ? 'flat' : weeklyChange > 0 ? 'up' : 'down'
   const directionText =
     direction === 'flat'
-      ? 'no meaningful change'
-      : `${change > 0 ? 'up' : 'down'} ${weightDisplayNumber(Math.abs(change), unit, 'bodyweight')} ${weightUnitSuffix(unit)}`
+      ? `0 ${weightUnitSuffix(unit)} per week`
+      : `${weeklyChange > 0 ? 'up' : 'down'} ${weightDisplayNumber(Math.abs(weeklyChange), unit, 'bodyweight')} ${weightUnitSuffix(unit)} per week`
 
   return {
     status: 'ready',
     first,
     latest,
-    change,
+    weeklyChange,
     direction,
-    text: `From ${first.localDate} to ${latest.localDate}, bodyweight is ${directionText}, from ${weightDisplayNumber(first.weight, unit, 'bodyweight')} to ${formatWeightWithUnit(latest.weight, unit, 'bodyweight')}.`,
+    text: `Trend weight is changing ${directionText}.`,
   }
 }
 
@@ -198,6 +208,13 @@ export function formatBodyweightChange(
       ? formatWeight(Math.abs(change))
       : weightDisplayNumber(Math.abs(change), unit, 'bodyweight')
   return `${sign}${displayChange} ${suffix}`
+}
+
+export function formatBodyweightWeeklyChange(
+  change: number,
+  unit: WeightUnit = 'lb',
+) {
+  return `${formatBodyweightChange(change, unit)}/week`
 }
 
 function chartTime(entry: BodyweightEntry) {

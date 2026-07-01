@@ -153,6 +153,7 @@ const spanishTranslations: Record<string, string> = {
   'Resume workout': 'Reanudar entrenamiento',
   'Trend weight': 'Peso de tendencia',
   'Last recorded': 'Último registro',
+  'Weekly change': 'Cambio semanal',
   'No trend yet': 'Aún no hay tendencia',
   'Add at least two entries to show change.':
     'Añade al menos dos registros para mostrar el cambio.',

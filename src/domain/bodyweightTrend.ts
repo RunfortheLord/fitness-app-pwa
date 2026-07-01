@@ -15,11 +15,23 @@ import type { BodyweightEntry } from '@shared-types/app'
 export const TREND_SMOOTHING = 0.1
 
 const MS_PER_DAY = 86_400_000
+const TIME_AWARE_TREND_HALF_LIFE_DAYS = 7
+const WEEKLY_CHANGE_HALF_LIFE_DAYS = 14
+const WEEKLY_CHANGE_LOOKBACK_DAYS = 28
 
 export type TrendWeightPoint = {
   localDate: LocalDateString
   weight: number
   trend: number
+}
+
+export type WeeklyTrendChange = {
+  /** Estimated trend-weight change per week, signed and stored in pounds. */
+  weeklyChangeLb: number
+  /** Number of observed trend points used. */
+  pointCount: number
+  /** Calendar days spanned by the points used. */
+  spanDays: number
 }
 
 /**
@@ -101,11 +113,74 @@ export function trendWeightSeries(
 }
 
 /**
+ * Builds a trend point for each observed local date using a time-aware EWMA.
+ * The actual calendar gap between weigh-ins controls each point's influence.
+ */
+export function timeAwareTrendWeightSeries(
+  entries: BodyweightEntry[],
+): TrendWeightPoint[] {
+  const observedEntries = latestBodyweightEntryPerCalendarDate(entries).filter(
+    (entry) => Number.isFinite(entry.weight) && parseableLocalDate(entry),
+  )
+  const first = observedEntries[0]
+  if (!first) {
+    return []
+  }
+
+  let trend = first.weight
+  const series: TrendWeightPoint[] = [
+    {
+      localDate: first.localDate,
+      weight: first.weight,
+      trend,
+    },
+  ]
+
+  for (let index = 1; index < observedEntries.length; index += 1) {
+    const previous = observedEntries[index - 1]
+    const current = observedEntries[index]
+    const daysElapsed = differenceInCalendarDays(
+      parseLocalDate(current.localDate),
+      parseLocalDate(previous.localDate),
+    )
+    if (daysElapsed <= 0) {
+      continue
+    }
+
+    const alpha =
+      1 - Math.pow(2, -daysElapsed / TIME_AWARE_TREND_HALF_LIFE_DAYS)
+    trend += alpha * (current.weight - trend)
+    series.push({
+      localDate: current.localDate,
+      weight: current.weight,
+      trend,
+    })
+  }
+
+  return series
+}
+
+/**
  * The most recent trend weight, rounded to one decimal, or null when there are
  * no entries.
  */
 export function currentTrendWeight(entries: BodyweightEntry[]): number | null {
   const series = trendWeightSeries(entries)
+  const latest = series.at(-1)
+  if (!latest) {
+    return null
+  }
+  return Math.round(latest.trend * 10) / 10
+}
+
+/**
+ * The current time-aware trend weight rounded to one decimal, or null when no
+ * valid entries exist.
+ */
+export function currentTimeAwareTrendWeight(
+  entries: BodyweightEntry[],
+): number | null {
+  const series = timeAwareTrendWeightSeries(entries)
   const latest = series.at(-1)
   if (!latest) {
     return null
@@ -179,6 +254,111 @@ export function weeklyTrendSlope(
   }
 }
 
+export function weeklyTimeAwareTrendChange(
+  entries: BodyweightEntry[],
+  options: {
+    asOf?: LocalDateString
+    lookbackDays?: number
+    halfLifeDays?: number
+  } = {},
+): WeeklyTrendChange | null {
+  const series = timeAwareTrendWeightSeries(entries)
+  const latest = series.at(-1)
+  if (!latest) {
+    return null
+  }
+
+  const lookbackDays = options.lookbackDays ?? WEEKLY_CHANGE_LOOKBACK_DAYS
+  const halfLifeDays = options.halfLifeDays ?? WEEKLY_CHANGE_HALF_LIFE_DAYS
+  const asOfDay = toDayNumber(options.asOf ?? latest.localDate)
+  const startDay = asOfDay - lookbackDays
+  const points = series
+    .map((point) => ({
+      x: toDayNumber(point.localDate),
+      y: point.trend,
+    }))
+    .filter((point) => point.x >= startDay && point.x <= asOfDay)
+
+  if (points.length < 2) {
+    return null
+  }
+
+  const fallback = () => fallbackWeeklyChange(points)
+
+  if (points.length < 3) {
+    return fallback()
+  }
+
+  const regression = weightedSlope(points, asOfDay, halfLifeDays)
+  return regression ?? fallback()
+}
+
 function toDayNumber(localDate: LocalDateString): number {
   return Math.round(parseLocalDate(localDate).getTime() / MS_PER_DAY)
+}
+
+function parseableLocalDate(entry: BodyweightEntry) {
+  return Number.isFinite(parseLocalDate(entry.localDate).getTime())
+}
+
+function fallbackWeeklyChange(
+  points: Array<{ x: number; y: number }>,
+): WeeklyTrendChange | null {
+  const oldest = points[0]
+  const newest = points.at(-1)
+  if (!oldest || !newest) {
+    return null
+  }
+  const spanDays = newest.x - oldest.x
+  if (spanDays <= 0) {
+    return null
+  }
+  return {
+    weeklyChangeLb: ((newest.y - oldest.y) / spanDays) * 7,
+    pointCount: points.length,
+    spanDays,
+  }
+}
+
+function weightedSlope(
+  points: Array<{ x: number; y: number }>,
+  asOfDay: number,
+  halfLifeDays: number,
+): WeeklyTrendChange | null {
+  if (!(halfLifeDays > 0)) {
+    return null
+  }
+
+  let sumWeight = 0
+  let sumX = 0
+  let sumY = 0
+  let sumXx = 0
+  let sumXy = 0
+  for (const point of points) {
+    const x = point.x - asOfDay
+    const daysAgo = Math.max(0, asOfDay - point.x)
+    const pointWeight = Math.pow(2, -daysAgo / halfLifeDays)
+    sumWeight += pointWeight
+    sumX += pointWeight * x
+    sumY += pointWeight * point.y
+    sumXx += pointWeight * x * x
+    sumXy += pointWeight * x * point.y
+  }
+
+  const denominator = sumWeight * sumXx - sumX * sumX
+  if (!Number.isFinite(denominator) || denominator <= 0) {
+    return null
+  }
+
+  const slopePerDay = (sumWeight * sumXy - sumX * sumY) / denominator
+  const spanDays = points.at(-1)!.x - points[0].x
+  if (!Number.isFinite(slopePerDay) || spanDays <= 0) {
+    return null
+  }
+
+  return {
+    weeklyChangeLb: slopePerDay * 7,
+    pointCount: points.length,
+    spanDays,
+  }
 }

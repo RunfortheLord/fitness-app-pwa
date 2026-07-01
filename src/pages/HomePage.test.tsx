@@ -13,7 +13,7 @@ import { vi } from 'vitest'
 
 import { App } from '@app/App'
 import { db } from '@db/database'
-import { formatLocalDate } from '@domain/dates'
+import { addLocalDays, formatLocalDate } from '@domain/dates'
 import { bodyweightRepository } from '@repositories/bodyweightRepository'
 import { HomePage } from '@pages/HomePage'
 import { NutritionPage } from '@pages/NutritionPage'
@@ -300,6 +300,33 @@ describe('HomePage', () => {
       'One entry',
     )
     await expect(db.bodyweightEntries.toArray()).resolves.toHaveLength(1)
+  })
+
+  it('shows weekly trend weight change on the bodyweight card', async () => {
+    const today = formatLocalDate(new Date())
+    await bodyweightRepository.saveBodyweight({
+      localDate: addLocalDays(today, -14),
+      weight: 200,
+    })
+    await bodyweightRepository.saveBodyweight({
+      localDate: addLocalDays(today, -7),
+      weight: 190,
+    })
+    await bodyweightRepository.saveBodyweight({
+      localDate: today,
+      weight: 200,
+    })
+
+    renderHome()
+    await waitForDashboardReady()
+
+    expect(screen.getByText('Weekly change')).toBeInTheDocument()
+    expect(screen.getByLabelText('Bodyweight trend')).toHaveTextContent(
+      /lb\/week/,
+    )
+    expect(screen.getByLabelText('Bodyweight trend')).not.toHaveTextContent(
+      /from/i,
+    )
   })
 
   it('opens bodyweight entry from the center Add sheet', async () => {

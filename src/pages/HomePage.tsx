@@ -21,10 +21,10 @@ import {
   type LocalDateString,
 } from '@domain/dates'
 import {
-  formatBodyweightChange,
+  formatBodyweightWeeklyChange,
   type BodyweightTrendSummary,
 } from '@domain/bodyweightProgress'
-import { currentTrendWeight } from '@domain/bodyweightTrend'
+import { currentTimeAwareTrendWeight } from '@domain/bodyweightTrend'
 import { formatWeight as formatWeightWithUnit } from '@domain/weightUnits'
 import type { BodyweightEntry } from '@shared-types/app'
 import { useDashboardContext } from '@hooks/useDashboardContext'
@@ -103,7 +103,7 @@ export function HomePage() {
     dashboard?.nutrition.remainingCalories ?? 0,
   )
   const trendWeight = dashboard
-    ? currentTrendWeight(dashboard.bodyweightEntries)
+    ? currentTimeAwareTrendWeight(dashboard.bodyweightEntries)
     : null
 
   return (
@@ -374,8 +374,10 @@ function HomeBodyweightTrend({
 
   return (
     <div className="home-trend" aria-label={t('Bodyweight trend')}>
-      <span>{formatBodyweightChange(trend.change, weightUnit)}</span>
-      <small>{t(trend.text)}</small>
+      <span>
+        {formatBodyweightWeeklyChange(trend.weeklyChange, weightUnit)}
+      </span>
+      <small>{t('Weekly change')}</small>
     </div>
   )
 }
