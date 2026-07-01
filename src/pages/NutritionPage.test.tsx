@@ -450,6 +450,57 @@ describe('NutritionPage', () => {
     expect(await screen.findByText('300 kcal')).toBeInTheDocument()
   })
 
+  it('shows and quick-adds local foods using their remembered serving calories', async () => {
+    const user = userEvent.setup()
+    const repository = createFoodRepository(db)
+    const food = await repository.createFood({
+      name: 'Gummi worms',
+      servingQuantity: 40,
+      servingUnit: 'g',
+      servingDescription: '',
+      caloriesPerServing: 300,
+      proteinGramsPerServing: 5,
+      carbohydrateGramsPerServing: 72.5,
+      fatGramsPerServing: 0,
+      notes: '',
+    })
+    await repository.logFood({
+      foodId: food.id,
+      localDate: '2026-07-01',
+      servingMultiplier: 27 / 40,
+    })
+    await repository.rememberFoodUnit({
+      foodId: food.id,
+      unitKey: 'serving',
+      amount: 27,
+    })
+
+    renderNutrition()
+    await user.type(await openFoodSearch(user), 'gummi')
+
+    const selectFood = await screen.findByRole('button', {
+      name: 'Select Gummi worms',
+    })
+    expect(within(selectFood).getByText('203 kcal')).toBeInTheDocument()
+
+    await user.click(selectFood)
+    expect(
+      await screen.findByRole('textbox', { name: 'Serving amount' }),
+    ).toHaveValue('27')
+    expect(screen.getByText(/Preview: 203 kcal/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Close food details' }))
+    await user.click(
+      await screen.findByRole('button', { name: 'Add Gummi worms' }),
+    )
+
+    await waitFor(async () => {
+      const entries = await db.foodLogEntries.orderBy('createdAt').toArray()
+      expect(entries).toHaveLength(2)
+      expect(entries[1]?.computedCalories).toBeCloseTo(202.5)
+    })
+  })
+
   it('keeps the active food result sections stable while several foods are logged', async () => {
     const user = userEvent.setup()
     const repository = createFoodRepository(db)

@@ -131,6 +131,7 @@ import type {
   Food,
   FoodLogEntry,
   FoodSnapshot,
+  FoodUnitPreference,
   IntegrationConnectionStatus,
   MealType,
   NutritionGoal,
@@ -217,6 +218,7 @@ type LoadState = {
   logs: FoodLogEntry[]
   recentFoods: Food[]
   favoriteFoods: Food[]
+  foodUnitPreferences: Record<string, FoodUnitPreference>
   savedMeals: SavedMeal[]
   summary: DailyNutritionSummary | null
   status: 'loading' | 'ready' | 'error'
@@ -280,6 +282,7 @@ export function NutritionPage() {
     logs: [],
     recentFoods: [],
     favoriteFoods: [],
+    foodUnitPreferences: {},
     savedMeals: [],
     summary: null,
     status: 'loading',
@@ -574,8 +577,9 @@ export function NutritionPage() {
       foodRepository.listRecentFoods(50),
       foodRepository.listFavoriteFoods(),
       foodRepository.listSavedMeals(),
+      foodRepository.listRememberedFoodUnits(),
     ])
-      .then(([recentFoods, favoriteFoods, savedMeals]) => {
+      .then(([recentFoods, favoriteFoods, savedMeals, foodUnitPreferences]) => {
         if (!isCurrent) {
           return
         }
@@ -583,6 +587,12 @@ export function NutritionPage() {
           ...current,
           recentFoods,
           favoriteFoods,
+          foodUnitPreferences: Object.fromEntries(
+            foodUnitPreferences.map((preference) => [
+              preference.foodId,
+              preference,
+            ]),
+          ),
           savedMeals,
         }))
       })
@@ -783,17 +793,27 @@ export function NutritionPage() {
   }
 
   // Trailing "+" on a search row: log the food immediately at its displayed
-  // serving (the representative portion shown on the row), no sheet. Tapping the
-  // row banner still opens the sheet for adjusting serving size.
+  // serving, including a remembered unit+amount when present. Tapping the row
+  // banner still opens the sheet for adjusting serving size.
   const quickAddResult = (result: FoodSearchResult) => {
     if (result.type === 'savedMeal') {
       logSavedMeal(result.meal)
       return
     }
+    const preference =
+      result.type === 'local'
+        ? loadState.foodUnitPreferences[result.food.id]
+        : undefined
+    const rememberedSelection =
+      result.type === 'local' && preference
+        ? servingSelectionForFood(result.food, preference)
+        : null
     const option = servingOptionsForResult(result, null)[0]
-    const amount = option?.amount ?? 1
-    const multiplier = option?.toServingMultiplier(amount) ?? 1
-    const servingMultiplier = multiplier > 0 ? multiplier : 1
+    const defaultAmount = option?.amount ?? 1
+    const defaultMultiplier = option?.toServingMultiplier(defaultAmount) ?? 1
+    const servingMultiplier =
+      rememberedSelection?.servingMultiplier ??
+      (defaultMultiplier > 0 ? defaultMultiplier : 1)
     const mealType = mealTypeForDate(new Date())
     const action =
       result.type === 'external'
@@ -937,6 +957,7 @@ export function NutritionPage() {
         <FoodSearchSubpage
           providerSearch={providerSearch}
           results={daySearchResults}
+          foodUnitPreferences={loadState.foodUnitPreferences}
           addedItems={addedItems}
           recipeDraft={recipeDraft}
           recipeError={recipeError}
@@ -1074,6 +1095,7 @@ export function NutritionPage() {
                 <FoodShortcutCard
                   title="Favorites"
                   foods={loadState.favoriteFoods}
+                  foodUnitPreferences={loadState.foodUnitPreferences}
                   emptyTitle="No favorites"
                   emptyMessage="Star a food to pin it here for one-tap logging."
                   onSelect={(food) =>
@@ -1089,6 +1111,7 @@ export function NutritionPage() {
               <FoodShortcutCard
                 title="Recent foods"
                 foods={loadState.recentFoods}
+                foodUnitPreferences={loadState.foodUnitPreferences}
                 emptyTitle="No recent foods"
                 emptyMessage="Logged reusable foods appear here for repeat entries."
                 onSelect={(food) =>
@@ -1199,12 +1222,19 @@ export function NutritionPage() {
                 }
               : undefined
           }
-          onSaved={(entry) => {
+          onSaved={(entry, preference) => {
             // Logging from the search subpage keeps the subpage open so several
             // foods can be added in one pass; record the item in the tray.
             if (searchOpen && sheet.type === 'select') {
               appendAddedItem(sheet.result, entry)
             }
+            setLoadState((current) => ({
+              ...current,
+              foodUnitPreferences: {
+                ...current.foodUnitPreferences,
+                [preference.foodId]: preference,
+              },
+            }))
             setMessage('Food logged.')
             setSheet(null)
             reloadAfterFoodLog()
@@ -1413,6 +1443,7 @@ function FoodSearchTrigger({
 function FoodSearchSubpage({
   providerSearch,
   results,
+  foodUnitPreferences,
   addedItems,
   recipeDraft,
   recipeError,
@@ -1439,6 +1470,7 @@ function FoodSearchSubpage({
 }: {
   providerSearch: ProviderSearchState
   results: Array<{ title: string; items: FoodSearchResult[] }>
+  foodUnitPreferences: Record<string, FoodUnitPreference>
   addedItems: AddedItem[]
   recipeDraft: RecipeDraft | null
   recipeError: string | null
@@ -1728,6 +1760,11 @@ function FoodSearchSubpage({
                       <FoodLibraryRow
                         key={resultKey(result)}
                         result={result}
+                        rememberedServing={
+                          result.type === 'local'
+                            ? foodUnitPreferences[result.food.id]
+                            : null
+                        }
                         onEdit={
                           result.type === 'local' &&
                           result.food.sourceType !== 'provider'
@@ -2159,6 +2196,7 @@ function usdaStatusLabel(status: IntegrationConnectionStatus) {
 
 function FoodLibraryRow({
   result,
+  rememberedServing,
   onEdit,
   onSelect,
   onAdd,
@@ -2167,6 +2205,7 @@ function FoodLibraryRow({
   onQuickLog,
 }: {
   result: FoodSearchResult
+  rememberedServing?: FoodUnitPreference | null
   onEdit: (() => void) | null
   onSelect: () => void
   // When provided, the trailing "+" logs the food at its displayed serving
@@ -2176,7 +2215,7 @@ function FoodLibraryRow({
   onToggleFavorite?: (() => void) | null
   onQuickLog?: (() => void) | null
 }) {
-  const display = resultDisplay(result)
+  const display = resultDisplay(result, rememberedServing)
   const iconCategory =
     result.type === 'external' ? result.food.foodCategory : null
   const iconName =
@@ -2251,7 +2290,10 @@ function FoodLibraryRow({
   )
 }
 
-function resultDisplay(result: FoodSearchResult) {
+function resultDisplay(
+  result: FoodSearchResult,
+  rememberedServing?: FoodUnitPreference | null,
+) {
   if (result.type === 'savedMeal') {
     return {
       name: result.meal.name,
@@ -2265,11 +2307,18 @@ function resultDisplay(result: FoodSearchResult) {
 
   if (result.type === 'local') {
     const split = splitBrandFromName(result.food.name, result.food.brandName)
+    const servingMultiplier = rememberedServing
+      ? servingSelectionForFood(result.food, rememberedServing)
+          ?.servingMultiplier
+      : null
     return {
       name: split.name,
       brand: split.brand,
       serving: formatFoodServingLabel(result.food),
-      calories: result.food.caloriesPerServing,
+      calories:
+        servingMultiplier == null
+          ? result.food.caloriesPerServing
+          : Math.round(result.food.caloriesPerServing * servingMultiplier),
     }
   }
 
@@ -2293,6 +2342,7 @@ const RECENT_FOODS_DISPLAY_CAP = 7
 function FoodShortcutCard({
   title,
   foods,
+  foodUnitPreferences,
   emptyTitle,
   emptyMessage,
   onSelect,
@@ -2301,6 +2351,7 @@ function FoodShortcutCard({
 }: {
   title: string
   foods: Food[]
+  foodUnitPreferences: Record<string, FoodUnitPreference>
   emptyTitle: string
   emptyMessage: string
   onSelect: (food: Food) => void
@@ -2320,6 +2371,7 @@ function FoodShortcutCard({
                 food,
                 section: food.sourceType === 'provider' ? 'used' : 'recent',
               }}
+              rememberedServing={foodUnitPreferences[food.id]}
               onEdit={null}
               onSelect={() => onSelect(food)}
               isFavorite={Boolean(food.isFavorite)}
@@ -2909,7 +2961,7 @@ function SelectedFoodSheet({
   onCreateCopy: (initialForm: FoodFormState) => void
   onSelectAlternate: (food: NormalizedFoodResult) => void
   onClose: () => void
-  onSaved: (entry: FoodLogEntry) => void
+  onSaved: (entry: FoodLogEntry, preference: FoodUnitPreference) => void
   // When present the sheet adds the chosen food (at the chosen serving) to a
   // recipe instead of logging it to the day.
   onAddToRecipe?: (food: Food, servingMultiplier: number) => void
@@ -3037,12 +3089,12 @@ function SelectedFoodSheet({
 
     return action
       .then(async (entry) => {
-        await foodRepository.rememberFoodUnit({
+        const preference = await foodRepository.rememberFoodUnit({
           foodId: entry.foodId ?? foodId,
           unitKey: selectedOption.key,
           amount: parsedAmount,
         })
-        onSaved(entry)
+        onSaved(entry, preference)
       })
       .catch((caught: unknown) => {
         setError(
@@ -4195,6 +4247,22 @@ function parseOptionalMacro(value: string) {
 
 function roundMacro(value: number | undefined) {
   return Math.round((value ?? 0) * 10) / 10
+}
+
+function servingSelectionForFood(food: Food, preference: FoodUnitPreference) {
+  const option = servingOptionsForFood(food, preference.unitKey).find(
+    (candidate) => candidate.key === preference.unitKey,
+  )
+  const servingMultiplier = option?.toServingMultiplier(preference.amount)
+  if (
+    !option ||
+    servingMultiplier == null ||
+    !Number.isFinite(servingMultiplier) ||
+    servingMultiplier <= 0
+  ) {
+    return null
+  }
+  return { option, servingMultiplier }
 }
 
 function snapshotServingLabel(entry: FoodLogEntry) {

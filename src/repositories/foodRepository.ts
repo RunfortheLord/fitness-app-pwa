@@ -313,6 +313,10 @@ export function createFoodRepository(
       return database.foodUnitPreferences.get(foodId)
     },
 
+    listRememberedFoodUnits() {
+      return database.foodUnitPreferences.toArray()
+    },
+
     async cacheBarcodeProduct(input: {
       barcode: string
       foodId: string
