@@ -57,7 +57,7 @@ describe('RunPage', () => {
     expect(await screen.findByText('Mile splits')).toBeInTheDocument()
 
     await act(async () => {
-      successCallback?.(mockPosition(41.8801, -87.63, 8, 10))
+      successCallback?.(mockPosition(41.8802, -87.63, 8, 10))
     })
     await waitFor(async () => {
       await expect(db.runSamples.count()).resolves.toBe(2)
@@ -208,7 +208,7 @@ function mockPosition(
       speed: null,
       toJSON: () => ({}),
     },
-    timestamp: Date.parse('2026-06-19T12:00:00.000Z') + offsetSeconds * 1000,
+    timestamp: Date.now() + offsetSeconds * 1000,
     toJSON: () => ({}),
   }
 }

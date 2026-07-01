@@ -124,8 +124,15 @@ export function createRunRepository(database: TrainingLogDatabase = db) {
           if (!run || run.status !== 'active') {
             throw new Error(`Active run ${runId} was not found.`)
           }
-          const previousAccepted = await latestAcceptedSample(database, runId)
-          const result = processRunSample(rawSample, previousAccepted)
+          const previousAccepted = await latestTrackingAnchor(database, runId)
+          const result = processRunSample(
+            rawSample,
+            previousAccepted,
+            undefined,
+            {
+              notBeforeTimestamp: run.startedAt,
+            },
+          )
           const timestamp = rawSample.timestamp
           const sample: RunSample = {
             id: createId(),
@@ -145,10 +152,7 @@ export function createRunRepository(database: TrainingLogDatabase = db) {
           const nextDistance = run.distanceMeters + result.segmentDistanceMeters
           const nextMoving = run.movingSeconds + result.movingSeconds
           const elapsedSeconds = secondsBetween(run.startedAt, timestamp)
-          const acceptedSamples =
-            result.decision === 'accepted'
-              ? [...(await acceptedSamplesForRun(database, runId)), sample]
-              : await acceptedSamplesForRun(database, runId)
+          const acceptedSamples = await acceptedSamplesForRun(database, runId)
           const splits = createCompletedSplits({
             currentDistanceMeters: run.distanceMeters,
             nextDistanceMeters: nextDistance,
@@ -500,15 +504,20 @@ async function activeRunSeconds(
   return Math.max(0, secondsBetween(startedAt, endedAt) - pausedSeconds)
 }
 
-async function latestAcceptedSample(
+async function latestTrackingAnchor(
   database: TrainingLogDatabase,
   runId: string,
 ): Promise<RunSample | null> {
+  const samples = await database.runSamples
+    .where({ runId })
+    .filter(
+      (sample) => sample.decision === 'accepted' || sample.decision === 'gap',
+    )
+    .toArray()
   return (
-    (await database.runSamples
-      .where({ runId })
-      .filter((sample) => sample.decision === 'accepted')
-      .last()) ?? null
+    samples
+      .sort((first, second) => first.timestamp.localeCompare(second.timestamp))
+      .at(-1) ?? null
   )
 }
 
@@ -516,10 +525,13 @@ async function acceptedSamplesForRun(
   database: TrainingLogDatabase,
   runId: string,
 ) {
-  return database.runSamples
+  const samples = await database.runSamples
     .where({ runId })
     .filter((sample) => sample.decision === 'accepted')
     .toArray()
+  return samples.sort((first, second) =>
+    first.timestamp.localeCompare(second.timestamp),
+  )
 }
 
 function responseToClassification(

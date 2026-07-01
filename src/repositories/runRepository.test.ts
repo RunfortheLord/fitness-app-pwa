@@ -88,6 +88,61 @@ describe('runRepository', () => {
     expect(structure.run.distanceMeters).toBe(0)
   })
 
+  it('uses the newest GPS anchor without compounding distance or moving time', async () => {
+    const repository = createRunRepository(database)
+    const run = await repository.startRun(new Date('2026-06-19T12:00:00.000Z'))
+
+    await repository.addSample(run.id, {
+      latitude: 41.88,
+      longitude: -87.63,
+      timestamp: '2026-06-19T12:00:00.000Z',
+      accuracyMeters: 3,
+    })
+    await repository.addSample(run.id, {
+      latitude: 41.8801,
+      longitude: -87.63,
+      timestamp: '2026-06-19T12:00:05.000Z',
+      accuracyMeters: 3,
+    })
+    await repository.addSample(run.id, {
+      latitude: 41.8802,
+      longitude: -87.63,
+      timestamp: '2026-06-19T12:00:10.000Z',
+      accuracyMeters: 3,
+    })
+
+    const { run: updated } = await repository.getRunStructure(run.id)
+    expect(updated.distanceMeters).toBeGreaterThan(20)
+    expect(updated.distanceMeters).toBeLessThan(25)
+    expect(updated.movingSeconds).toBe(10)
+    expect(updated.currentPaceSecondsPerMile).toBe(
+      updated.averageMovingPaceSecondsPerMile,
+    )
+  })
+
+  it('stores but does not use a cached pre-run GPS fix', async () => {
+    const repository = createRunRepository(database)
+    const run = await repository.startRun(new Date('2026-06-19T12:00:10.000Z'))
+
+    await repository.addSample(run.id, {
+      latitude: 41.88,
+      longitude: -87.63,
+      timestamp: '2026-06-19T12:00:00.000Z',
+      accuracyMeters: 3,
+    })
+
+    const structure = await repository.getRunStructure(run.id)
+    expect(structure.samples[0]).toMatchObject({
+      decision: 'rejected',
+      rejectionReason: 'stale',
+      segmentDistanceMeters: 0,
+    })
+    expect(structure.run).toMatchObject({
+      distanceMeters: 0,
+      movingSeconds: 0,
+    })
+  })
+
   it('records low-pace classifications separately from samples', async () => {
     const repository = createRunRepository(database)
     const run = await repository.startRun(new Date('2026-06-19T12:00:00.000Z'))

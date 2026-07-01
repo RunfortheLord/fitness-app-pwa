@@ -85,6 +85,31 @@ describe('runTracking', () => {
     ).toBe('unrealistic_speed')
   })
 
+  it('rejects movement that falls within the combined GPS accuracy radius', () => {
+    expect(
+      processRunSample(
+        {
+          latitude: 41.88015,
+          longitude: -87.63,
+          timestamp: '2026-06-19T12:00:10.000Z',
+          accuracyMeters: 10,
+        },
+        {
+          ...baseSample,
+          accuracyMeters: 10,
+        },
+      ).rejectionReason,
+    ).toBe('jitter')
+  })
+
+  it('rejects cached samples from before the run started', () => {
+    expect(
+      processRunSample(baseSample, null, defaultRunProcessingConfig, {
+        notBeforeTimestamp: '2026-06-19T12:00:01.000Z',
+      }).rejectionReason,
+    ).toBe('stale')
+  })
+
   it('marks long outages as gaps without fabricating a segment', () => {
     expect(
       processRunSample(

@@ -317,19 +317,31 @@ describe('HistoryPage', () => {
     expect(screen.queryByText('Local date')).not.toBeInTheDocument()
   })
 
-  it('shows a titleless home history list with a back button', async () => {
+  it('shows runs in home history and returns details to the full history list', async () => {
+    const user = userEvent.setup()
     const repository = createWorkoutRepository(db)
     const program = await seedProgram(db)
     const active = await createProgramRepository(db).activateTemplate(
       program.template.id,
     )
     await completeSeedWorkout(repository, active.cycle.id, active.days[0].id)
+    await createRunRepository(db).logManualRun(
+      {
+        localDate: '2026-06-18',
+        distanceMeters: 5000,
+        elapsedSeconds: 1500,
+        trackingMode: 'manual',
+      },
+      new Date('2026-06-18T18:00:00.000Z'),
+    )
 
     renderHistory('/history?source=home')
 
     expect(
       await screen.findByRole('button', { name: /Upper/ }),
     ).toBeInTheDocument()
+    const run = screen.getByRole('button', { name: /Jun 18, 2026 Run/ })
+    expect(run).toHaveTextContent('Manual run')
     expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'Graphs' }),
@@ -340,6 +352,20 @@ describe('HistoryPage', () => {
     expect(
       screen.queryByRole('heading', { name: 'History' }),
     ).not.toBeInTheDocument()
+
+    await user.click(run)
+    expect(await screen.findByText('Run detail')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    expect(
+      await screen.findByRole('button', { name: /Jun 18, 2026 Run/ }),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Upper/ }))
+    expect(await screen.findByText('Date completed')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    expect(
+      await screen.findByRole('button', { name: /Upper/ }),
+    ).toBeInTheDocument()
   })
 
   it('shows completed runs with dedicated run detail', async () => {

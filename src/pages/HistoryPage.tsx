@@ -286,6 +286,14 @@ export function HistoryPage() {
 
   const selectedWorkout = state.selected
   const isHomeHistory = searchParams.get('source') === 'home'
+  const showAllHomeHistory = () => {
+    if (selectedWorkout || state.selectedRun) {
+      setSearchParams({ source: 'home' })
+      return
+    }
+
+    void navigate('/')
+  }
   const setHistoryParams = (params: Record<string, string>) => {
     setSearchParams(isHomeHistory ? { ...params, source: 'home' } : params)
   }
@@ -294,7 +302,7 @@ export function HistoryPage() {
     <PageContainer>
       {isHomeHistory ? (
         <div className="button-row">
-          <SecondaryButton type="button" onClick={() => void navigate('/')}>
+          <SecondaryButton type="button" onClick={showAllHomeHistory}>
             Back
           </SecondaryButton>
         </div>
@@ -328,6 +336,12 @@ export function HistoryPage() {
         />
       )}
       {editError ? <ValidationMessage message={editError} /> : null}
+      {searchParams.get('changeSave') === 'failed' ? (
+        <StatusMessage tone="warning">
+          Workout saved, but live workout changes could not be saved to your
+          program.
+        </StatusMessage>
+      ) : null}
       <div className="history-layout">
         {!selectedWorkout && !state.selectedRun ? (
           <section aria-label="History" className="history-card-section">

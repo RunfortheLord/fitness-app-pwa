@@ -301,7 +301,6 @@ test('starts, resumes, edits, and cancels a live workout', async ({
   )
 
   await page.getByLabel('Workout options').click()
-  await page.getByRole('button', { name: 'Discard Workout' }).click()
   await page
     .getByRole('dialog', { name: 'Discard workout?' })
     .getByRole('button', { name: 'Discard Workout' })
@@ -323,11 +322,17 @@ test('manually logs a treadmill run as an individual History card', async ({
   await page.getByRole('button', { name: 'Save Run' }).click()
   await expect(page.getByText('Run saved to History.')).toBeVisible()
 
-  await page.goto('/history')
+  await page.getByRole('link', { name: 'Home' }).click()
+  await page.getByRole('button', { name: 'View all history' }).click()
+  await expect(page).toHaveURL(/\/history\?source=home/)
   const runCard = page.getByRole('button', { name: /Run$/ })
   await expect(runCard).toHaveClass(/history-run-card/)
   await expect(runCard).toContainText('Treadmill run')
   await expect(runCard).toContainText('3.10 mi')
+  await runCard.click()
+  await expect(page.getByText('Run detail')).toBeVisible()
+  await page.getByRole('button', { name: 'Back' }).click()
+  await expect(runCard).toBeVisible()
 })
 
 test('creates, logs, edits, deletes, and persists nutrition entries', async ({

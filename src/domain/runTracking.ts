@@ -19,6 +19,7 @@ export type RawRunSample = {
 export type RunProcessingConfig = {
   maxAccuracyMeters: number
   minDistanceMeters: number
+  accuracyDistanceMultiplier: number
   maxSpeedMetersPerSecond: number
   staleSampleSeconds: number
   maxGapSeconds: number
@@ -30,8 +31,9 @@ export type RunProcessingConfig = {
 }
 
 export const defaultRunProcessingConfig: RunProcessingConfig = {
-  maxAccuracyMeters: 35,
+  maxAccuracyMeters: 25,
   minDistanceMeters: 7,
+  accuracyDistanceMultiplier: 1,
   maxSpeedMetersPerSecond: 8.5,
   staleSampleSeconds: 1,
   maxGapSeconds: 30,
@@ -54,7 +56,23 @@ export function processRunSample(
   sample: RawRunSample,
   previousAccepted: RunSample | null,
   config = defaultRunProcessingConfig,
+  bounds?: {
+    notBeforeTimestamp?: string
+  },
 ): ProcessRunSampleResult {
+  const sampleTime = Date.parse(sample.timestamp)
+  const notBeforeTime = bounds?.notBeforeTimestamp
+    ? Date.parse(bounds.notBeforeTimestamp)
+    : null
+  if (
+    !Number.isFinite(sampleTime) ||
+    (notBeforeTime !== null &&
+      Number.isFinite(notBeforeTime) &&
+      sampleTime < notBeforeTime)
+  ) {
+    return reject('stale')
+  }
+
   if (sample.accuracyMeters > config.maxAccuracyMeters) {
     return reject('poor_accuracy')
   }
@@ -92,7 +110,12 @@ export function processRunSample(
     }
   }
 
-  if (distance < config.minDistanceMeters) {
+  const minimumReliableDistance = Math.max(
+    config.minDistanceMeters,
+    (previousAccepted.accuracyMeters + sample.accuracyMeters) *
+      config.accuracyDistanceMultiplier,
+  )
+  if (distance < minimumReliableDistance) {
     return reject('jitter')
   }
 
