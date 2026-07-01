@@ -186,6 +186,11 @@ describe('HomePage', () => {
       screen.getByRole('button', { name: 'Resume workout' }),
     ).toBeInTheDocument()
     expect(
+      screen.queryByRole('button', {
+        name: 'Active Workout - Tap to Resume',
+      }),
+    ).not.toBeInTheDocument()
+    expect(
       screen.queryByRole('button', { name: 'Start workout' }),
     ).not.toBeInTheDocument()
     expect(

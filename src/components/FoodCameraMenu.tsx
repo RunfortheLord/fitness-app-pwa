@@ -2,6 +2,7 @@ import { Camera, ScanBarcode } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { IconButton } from '@components/ui'
+import { useLanguage } from '@components/languageContextValue'
 
 export function FoodCameraMenu({
   onOpenAiCamera,
@@ -10,6 +11,7 @@ export function FoodCameraMenu({
   onOpenAiCamera: () => void
   onOpenScanner: () => void
 }) {
+  const { t } = useLanguage()
   const [isOpen, setIsOpen] = useState(false)
 
   useEffect(() => {
@@ -47,27 +49,36 @@ export function FoodCameraMenu({
         inert={!isOpen}
         role="menu"
       >
-        <IconButton
+        <button
           aria-label="Scan barcode"
+          className="camera-menu-item"
           onClick={() => {
             setIsOpen(false)
             onOpenScanner()
           }}
           role="menuitem"
+          type="button"
         >
-          <ScanBarcode aria-hidden="true" size={25} />
-        </IconButton>
-        <IconButton
+          <span className="camera-menu-item-icon">
+            <ScanBarcode aria-hidden="true" size={20} />
+          </span>
+          <span>{t('Scan barcode')}</span>
+        </button>
+        <button
           aria-label="Analyze meal photo"
-          className="camera-ai-button"
+          className="camera-menu-item"
           onClick={() => {
             setIsOpen(false)
             onOpenAiCamera()
           }}
           role="menuitem"
+          type="button"
         >
-          <span aria-hidden="true">AI</span>
-        </IconButton>
+          <span aria-hidden="true" className="camera-menu-item-icon camera-ai">
+            AI
+          </span>
+          <span>{t('Analyze meal photo')}</span>
+        </button>
       </div>
     </div>
   )

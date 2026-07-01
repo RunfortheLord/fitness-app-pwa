@@ -7,6 +7,7 @@ import {
   Minus,
   MoreHorizontal,
   Pause,
+  Pencil,
   Play,
   Plus,
   RefreshCcw,
@@ -122,12 +123,15 @@ export function LiveWorkoutPage() {
   const [confirmFinish, setConfirmFinish] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
   const [picker, setPicker] = useState<ExercisePickerState>(null)
+  const [isFinishing, setIsFinishing] = useState(false)
+  const [saveAllChanges, setSaveAllChanges] = useState(false)
   const [timerSound, setTimerSound] = useState({
     bannersEnabled: true,
     enabled: true,
     soundId: DEFAULT_TIMER_SOUND_ID,
   })
   const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null)
+  const pendingWorkoutMutations = useRef(new Set<Promise<unknown>>())
 
   useEffect(() => {
     let isCurrent = true
@@ -211,15 +215,75 @@ export function LiveWorkoutPage() {
     setRevision((current) => current + 1)
   }
 
-  function run(action: Promise<unknown>, failure = 'Workout change failed.') {
-    void action
-      .then(() => {
+  function trackWorkoutMutation<T>(
+    action: Promise<T>,
+    failure = 'Workout change failed.',
+  ) {
+    const tracked = action
+      .then((result) => {
         setError(null)
         reload()
+        return result
       })
       .catch((caught: unknown) => {
-        setError(caught instanceof Error ? caught.message : failure)
+        const error = caught instanceof Error ? caught : new Error(failure)
+        setError(error.message)
+        throw error
       })
+      .finally(() => pendingWorkoutMutations.current.delete(tracked))
+    pendingWorkoutMutations.current.add(tracked)
+    return tracked
+  }
+
+  function run(action: Promise<unknown>, failure = 'Workout change failed.') {
+    void trackWorkoutMutation(action, failure).catch(() => undefined)
+  }
+
+  async function waitForPendingWorkoutMutations() {
+    while (pendingWorkoutMutations.current.size > 0) {
+      await Promise.all([...pendingWorkoutMutations.current])
+    }
+  }
+
+  async function finishActiveWorkout(workout: Workout) {
+    setConfirmFinish(false)
+    setIsFinishing(true)
+    try {
+      await waitForPendingWorkoutMutations()
+      const completed = await workoutRepository.completeWorkout({
+        workoutId: workout.id,
+      })
+      let changeSaveFailed = false
+      if (completed.detectedChanges.length > 0) {
+        const destination = saveAllChanges
+          ? workout.sourceTemplateId
+            ? 'both'
+            : 'cycle_only'
+          : 'neither'
+        try {
+          await workoutRepository.applyDetectedChanges(
+            completed.detectedChanges.map((change) => ({
+              changeId: change.id,
+              destination,
+            })),
+          )
+        } catch {
+          changeSaveFailed = true
+        }
+      }
+      await cancelNativeRestTimer()
+      const params = new URLSearchParams({ workout: completed.history.id })
+      if (changeSaveFailed) {
+        params.set('changeSave', 'failed')
+      }
+      navigate(`/history?${params.toString()}`)
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : 'Workout could not finish.',
+      )
+    } finally {
+      setIsFinishing(false)
+    }
   }
 
   async function syncNativeRestTimer(
@@ -454,25 +518,22 @@ export function LiveWorkoutPage() {
           <div className="live-workout-header-actions">
             <PrimaryButton
               className="live-workout-finish"
+              disabled={isFinishing}
               type="button"
-              onClick={() => setConfirmFinish(true)}
+              onClick={() => {
+                setSaveAllChanges(false)
+                setConfirmFinish(true)
+              }}
             >
-              Finish
+              {isFinishing ? t('Saving...') : t('Finish')}
             </PrimaryButton>
-            <details className="live-workout-options">
-              <summary aria-label={t('Workout options')}>
-                <MoreHorizontal aria-hidden="true" size={20} />
-              </summary>
-              <div className="live-workout-options-menu">
-                <button
-                  className="button-danger"
-                  type="button"
-                  onClick={() => setConfirmDiscard(true)}
-                >
-                  {t('Discard Workout')}
-                </button>
-              </div>
-            </details>
+            <IconButton
+              aria-label={t('Workout options')}
+              className="live-workout-options"
+              onClick={() => setConfirmDiscard(true)}
+            >
+              <MoreHorizontal aria-hidden="true" size={20} />
+            </IconButton>
           </div>
         </div>
         <div className="live-workout-stats">
@@ -504,21 +565,23 @@ export function LiveWorkoutPage() {
         </div>
       ) : null}
 
-      <Card className="exercise-navigator" title="Exercises">
-        <div className="exercise-tab-list">
-          {state.exercises.map((exercise, index) => (
-            <button
-              aria-current={exercise.id === activeExercise?.id}
-              key={exercise.id}
-              onClick={() => selectExercise(index)}
-              type="button"
-            >
-              <span>{index + 1}</span>
-              <small>{exercise.exerciseSnapshot.exerciseName}</small>
-            </button>
-          ))}
-        </div>
-      </Card>
+      {state.exercises.length > 1 ? (
+        <Card className="exercise-navigator" title="Exercises">
+          <div className="exercise-tab-list">
+            {state.exercises.map((exercise, index) => (
+              <button
+                aria-current={exercise.id === activeExercise?.id}
+                key={exercise.id}
+                onClick={() => selectExercise(index)}
+                type="button"
+              >
+                <span>{index + 1}</span>
+                <small>{exercise.exerciseSnapshot.exerciseName}</small>
+              </button>
+            ))}
+          </div>
+        </Card>
+      ) : null}
 
       {activeExercise ? (
         <ExerciseWorkspace
@@ -527,6 +590,7 @@ export function LiveWorkoutPage() {
           exercise={activeExercise}
           exerciseCount={state.exercises.length}
           exerciseIndex={activeIndex}
+          key={activeExercise.id}
           onAddExercise={() => setPicker({ mode: 'add' })}
           onAddSet={() => run(workoutRepository.addSet(activeExercise.id))}
           onCompleteSet={(set, completed) => {
@@ -594,6 +658,15 @@ export function LiveWorkoutPage() {
           }}
           onSetRir={(set, rir) =>
             run(workoutRepository.updateWorkoutSet(set.id, { rir }))
+          }
+          onSaveNotes={(notes) =>
+            trackWorkoutMutation(
+              workoutRepository.updateWorkoutExerciseNotes(
+                activeExercise.id,
+                notes,
+              ),
+              'Exercise notes could not be saved.',
+            )
           }
           onSkip={(skipped) =>
             run(workoutRepository.skipExercise(activeExercise.id, skipped))
@@ -696,24 +769,34 @@ export function LiveWorkoutPage() {
         cancelLabel="Keep working out"
         confirmLabel="Finish Workout"
         isOpen={confirmFinish}
-        onCancel={() => setConfirmFinish(false)}
-        onConfirm={() => {
+        onCancel={() => {
           setConfirmFinish(false)
-          run(
-            workoutRepository
-              .completeWorkout({ workoutId: state.workout.id })
-              .then(async (completed) => {
-                await cancelNativeRestTimer()
-                navigate(`/history?workout=${completed.history.id}`)
-              }),
-            'Workout could not finish.',
-          )
+          setSaveAllChanges(false)
         }}
+        onConfirm={() => void finishActiveWorkout(state.workout)}
         title="Finish workout?"
       >
-        {t(
-          'This saves the completed workout to your history and ends the active session.',
-        )}
+        <p>
+          {t(
+            'This saves the completed workout to your history and ends the active session.',
+          )}
+        </p>
+        <label className="checkbox-row finish-save-changes">
+          <input
+            aria-label={t('Save all live workout changes to my program')}
+            checked={saveAllChanges}
+            onChange={(event) => setSaveAllChanges(event.currentTarget.checked)}
+            type="checkbox"
+          />
+          <span>
+            <strong>{t('Save all live workout changes to my program')}</strong>
+            <small>
+              {t(
+                'Leave unchecked to keep those changes in this completed workout only.',
+              )}
+            </small>
+          </span>
+        </label>
       </ModalConfirmationDialog>
 
       <ModalConfirmationDialog
@@ -794,6 +877,7 @@ function ExerciseWorkspace({
   onRemoveExercise,
   onSetMetric,
   onSetRir,
+  onSaveNotes,
   onSkip,
   prescription,
   restTimerPanel,
@@ -817,6 +901,7 @@ function ExerciseWorkspace({
     value: { key: string; value: WorkoutSetMetricValue },
   ) => void
   onSetRir: (set: WorkoutSet, rir: number | null) => void
+  onSaveNotes: (notes: string) => Promise<unknown>
   onSkip: (skipped: boolean) => void
   prescription: ActiveCycleWorkoutExercise | undefined
   restTimerPanel: ReactNode
@@ -827,7 +912,22 @@ function ExerciseWorkspace({
   const swipe = useSwipeNavigation({ onNext, onPrevious })
   const weightUnit = useWeightUnit()
   const finalProgrammedSetId = getFinalProgrammedSetId(sets)
-  const exerciseNotes = prescription?.notes.trim() ?? ''
+  const exerciseNotes = exercise.notes.trim()
+  const [isEditingNotes, setIsEditingNotes] = useState(false)
+  const [isSavingNotes, setIsSavingNotes] = useState(false)
+  const [notesDraft, setNotesDraft] = useState(exercise.notes)
+
+  async function saveNotes() {
+    setIsSavingNotes(true)
+    try {
+      await onSaveNotes(notesDraft.trim())
+      setIsEditingNotes(false)
+    } catch {
+      // The page-level mutation handler keeps the editor open and shows error.
+    } finally {
+      setIsSavingNotes(false)
+    }
+  }
 
   return (
     <Card
@@ -867,20 +967,22 @@ function ExerciseWorkspace({
         {restTimerPanel}
       </div>
 
-      <div className="exercise-stepper" aria-label={t('Exercise navigation')}>
-        <SecondaryButton
-          disabled={!canGoPrevious}
-          type="button"
-          onClick={onPrevious}
-        >
-          <ChevronLeft aria-hidden="true" size={18} />
-          {t('Previous')}
-        </SecondaryButton>
-        <SecondaryButton disabled={!canGoNext} type="button" onClick={onNext}>
-          {t('Next')}
-          <ChevronRight aria-hidden="true" size={18} />
-        </SecondaryButton>
-      </div>
+      {exerciseCount > 1 ? (
+        <div className="exercise-stepper" aria-label={t('Exercise navigation')}>
+          <SecondaryButton
+            disabled={!canGoPrevious}
+            type="button"
+            onClick={onPrevious}
+          >
+            <ChevronLeft aria-hidden="true" size={18} />
+            {t('Previous')}
+          </SecondaryButton>
+          <SecondaryButton disabled={!canGoNext} type="button" onClick={onNext}>
+            {t('Next')}
+            <ChevronRight aria-hidden="true" size={18} />
+          </SecondaryButton>
+        </div>
+      ) : null}
 
       <div className="set-list">
         {sets.map((set) => (
@@ -933,8 +1035,48 @@ function ExerciseWorkspace({
       </div>
 
       <aside aria-label={t('Exercise notes')} className="live-exercise-notes">
-        <p className="eyebrow">{t('Exercise notes')}</p>
-        <p>{exerciseNotes || t('No exercise notes.')}</p>
+        <div className="live-exercise-notes-header">
+          <p className="eyebrow">{t('Exercise notes')}</p>
+          {!isEditingNotes ? (
+            <IconButton
+              aria-label={t('Edit exercise notes')}
+              onClick={() => setIsEditingNotes(true)}
+            >
+              <Pencil aria-hidden="true" size={16} />
+            </IconButton>
+          ) : null}
+        </div>
+        {isEditingNotes ? (
+          <>
+            <textarea
+              aria-label={t('Exercise notes')}
+              onChange={(event) => setNotesDraft(event.currentTarget.value)}
+              rows={3}
+              value={notesDraft}
+            />
+            <div className="live-exercise-notes-actions">
+              <SecondaryButton
+                disabled={isSavingNotes}
+                type="button"
+                onClick={() => {
+                  setNotesDraft(exercise.notes)
+                  setIsEditingNotes(false)
+                }}
+              >
+                {t('Cancel')}
+              </SecondaryButton>
+              <PrimaryButton
+                disabled={isSavingNotes}
+                type="button"
+                onClick={() => void saveNotes()}
+              >
+                {isSavingNotes ? t('Saving...') : t('Save notes')}
+              </PrimaryButton>
+            </div>
+          </>
+        ) : (
+          <p>{exerciseNotes || t('No exercise notes.')}</p>
+        )}
       </aside>
     </Card>
   )

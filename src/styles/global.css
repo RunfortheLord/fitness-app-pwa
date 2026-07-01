@@ -116,6 +116,10 @@ textarea:focus-visible {
   margin-left: auto;
 }
 
+.route-transition {
+  min-width: 0;
+}
+
 .app-header {
   display: flex;
   align-items: center;
@@ -180,6 +184,7 @@ textarea:focus-visible {
 }
 
 .metric-grid {
+  order: 2;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
@@ -225,9 +230,19 @@ textarea:focus-visible {
 }
 
 .home-action-grid {
+  order: 4;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
+}
+
+.home-workout-card {
+  order: 1;
+  min-height: 0;
+}
+
+.home-calories-card {
+  order: 3;
 }
 
 .home-action-card {
@@ -812,8 +827,19 @@ textarea:focus-visible {
   gap: var(--space-2);
   margin: var(--space-3) calc(var(--space-3) * -1) var(--space-2);
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   padding: 0 var(--space-3) var(--space-1);
+  scroll-padding-inline: var(--space-3);
+  scroll-snap-type: x proximity;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  mask-image: linear-gradient(
+    90deg,
+    transparent,
+    #000 var(--space-3),
+    #000 calc(100% - var(--space-3)),
+    transparent
+  );
 }
 
 .program-day-tabs::-webkit-scrollbar {
@@ -833,11 +859,13 @@ textarea:focus-visible {
   background: var(--color-surface-strong);
   color: var(--color-text);
   text-align: left;
+  scroll-snap-align: start;
 }
 
 .program-day-tabs button[aria-current='true'] {
   border-color: var(--color-accent);
-  background: var(--color-surface-raised);
+  background: var(--color-accent-soft);
+  box-shadow: inset 0 0 0 1px rgb(143 124 255 / 28%);
 }
 
 .program-day-tabs span,
@@ -1049,46 +1077,7 @@ textarea:focus-visible {
 }
 
 .live-workout-options {
-  position: relative;
-}
-
-.live-workout-options summary {
-  display: inline-flex;
-  width: 44px;
-  height: 44px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
   background: var(--color-surface-strong);
-  cursor: pointer;
-  list-style: none;
-}
-
-.live-workout-options summary::-webkit-details-marker {
-  display: none;
-}
-
-.live-workout-options-menu {
-  position: absolute;
-  top: calc(100% + var(--space-2));
-  right: 0;
-  z-index: 12;
-  width: 190px;
-  padding: var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-sheet);
-  box-shadow: 0 16px 40px rgb(0 0 0 / 40%);
-}
-
-.live-workout-options-menu button {
-  width: 100%;
-  min-height: 44px;
-  padding: 0 var(--space-3);
-  border: 1px solid rgb(255 111 134 / 45%);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-strong);
-  font-weight: 800;
 }
 
 .live-timer-notice {
@@ -1126,11 +1115,33 @@ textarea:focus-visible {
 
 .live-exercise-notes {
   display: grid;
-  gap: var(--space-1);
+  gap: var(--space-2);
   padding: var(--space-3);
   border: 1px solid var(--color-border-soft);
   border-radius: var(--radius-sm);
   background: var(--color-surface-strong);
+}
+
+.live-exercise-notes-header,
+.live-exercise-notes-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.live-exercise-notes-header .icon-button {
+  width: 44px;
+  height: 44px;
+}
+
+.live-exercise-notes textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.live-exercise-notes-actions {
+  justify-content: flex-end;
 }
 
 .live-exercise-notes p {
@@ -1155,6 +1166,7 @@ textarea:focus-visible {
   gap: var(--space-2);
   overflow-x: auto;
   overscroll-behavior-x: contain;
+  scroll-padding-inline: var(--space-1);
   scroll-snap-type: x proximity;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
@@ -1184,6 +1196,7 @@ textarea:focus-visible {
 .exercise-tab-list button[aria-current='true'] {
   border-color: var(--color-accent);
   background: var(--color-accent-soft);
+  box-shadow: inset 0 0 0 1px rgb(143 124 255 / 28%);
 }
 
 .exercise-tab-list span {
@@ -1324,6 +1337,10 @@ textarea:focus-visible {
   align-items: center;
   justify-content: flex-end;
   gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-strong);
 }
 
 .rest-timer-toolbar .icon-button {
@@ -1336,14 +1353,14 @@ textarea:focus-visible {
 
 .rest-timer-readout {
   display: inline-flex;
-  min-width: 62px;
+  min-width: 72px;
   min-height: 44px;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 5px;
   color: var(--color-text);
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 850;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1363,6 +1380,27 @@ textarea:focus-visible {
 .checkbox-row input {
   width: 22px;
   min-height: 22px;
+}
+
+.finish-save-changes {
+  align-items: flex-start;
+  margin-top: var(--space-4);
+  margin-bottom: 0;
+}
+
+.finish-save-changes input {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.finish-save-changes span {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.finish-save-changes small {
+  color: var(--color-text-muted);
+  line-height: 1.4;
 }
 
 .inline-editor {
@@ -1436,53 +1474,69 @@ textarea:focus-visible {
 
 .camera-action-popover {
   position: absolute;
-  top: calc(100% - 12px);
+  top: calc(100% + 6px);
   right: 0;
-  z-index: 1;
-  display: flex;
-  width: 56px;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 18px 2px 2px;
+  z-index: 20;
+  display: grid;
+  width: min(220px, calc(100vw - (var(--space-4) * 2)));
+  gap: 4px;
+  padding: 6px;
   border: 1px solid var(--color-border);
-  border-radius: 28px;
+  border-radius: var(--radius-sm);
   background: var(--color-sheet);
   box-shadow: 0 12px 28px rgb(0 0 0 / 38%);
   opacity: 0;
   pointer-events: none;
-  clip-path: inset(0 0 100% 0 round 28px);
-  transform: translateY(-10px);
-  transform-origin: top center;
+  transform: translateY(-6px) scale(0.98);
+  transform-origin: top right;
   transition:
-    clip-path 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    opacity 140ms ease;
-  will-change: clip-path, transform;
+    transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 120ms ease;
+  will-change: transform;
 }
 
 .camera-action-popover.is-open {
   opacity: 1;
   pointer-events: auto;
-  clip-path: inset(0 round 28px);
-  transform: translateY(0);
+  transform: translateY(0) scale(1);
   transition:
-    clip-path 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    opacity 140ms ease;
+    transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 120ms ease;
 }
 
-.camera-action-popover .icon-button {
-  width: 52px;
-  height: 52px;
-  flex: 0 0 52px;
-  border: 1px solid var(--color-border);
+.camera-menu-item {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  min-height: 48px;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px var(--space-2);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.camera-menu-item:hover,
+.camera-menu-item:focus-visible {
   background: var(--color-surface-strong);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 4%);
 }
 
-.camera-ai-button span {
-  font-size: 13px;
+.camera-menu-item-icon {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 999px;
+  background: var(--color-surface-strong);
+}
+
+.camera-menu-item-icon.camera-ai {
+  font-size: 11px;
   font-weight: 900;
   letter-spacing: 0;
 }
@@ -1492,11 +1546,15 @@ textarea:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  margin-bottom: var(--space-3);
 }
 
 .food-search-heading h2 {
   margin: 0;
+}
+
+.food-search-card {
+  display: grid;
+  gap: var(--space-3);
 }
 
 /* Day/Foods tabs: a tappable field that opens the full search subpage. */
@@ -1516,6 +1574,38 @@ textarea:focus-visible {
 
 .food-search-trigger svg {
   color: var(--color-muted);
+}
+
+.food-search-action-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(68px, auto);
+  gap: var(--space-2);
+  align-items: stretch;
+}
+
+.food-search-action-strip .button {
+  width: 100%;
+  justify-content: center;
+  min-width: 0;
+}
+
+.food-camera-action {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  min-width: 68px;
+}
+
+.food-camera-action > span {
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.custom-goal-card .button {
+  margin-top: var(--space-2);
 }
 
 /* Full-screen food search subpage. */
@@ -2593,8 +2683,8 @@ input::placeholder {
 .active-activity-banner {
   display: block;
   min-height: 44px;
-  margin-bottom: var(--space-4);
-  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border: 1px solid rgb(126 231 135 / 45%);
   border-radius: var(--radius-md);
   background: rgb(22 54 34 / 92%);
@@ -2759,6 +2849,8 @@ body.food-search-open .bottom-nav {
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   background: var(--color-sheet);
   overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
 }
 
 .sheet-handle {
@@ -3779,13 +3871,22 @@ body.food-search-open .bottom-nav {
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  .route-transition {
+    animation: route-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
   .loading-state span {
     animation: spin 0.9s linear infinite;
   }
 
+  .sheet-backdrop,
+  .modal-backdrop {
+    animation: backdrop-enter 140ms ease-out;
+  }
+
   .bottom-sheet,
   .confirmation-dialog {
-    animation: surface-enter 0.16s ease-out;
+    animation: surface-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 
   .bottom-sheet--page,
@@ -3793,28 +3894,67 @@ body.food-search-open .bottom-nav {
     animation: subpage-enter 0.24s cubic-bezier(0.22, 0.8, 0.32, 1);
   }
 
+  .sheet-backdrop.is-closing {
+    animation: backdrop-exit 160ms ease-in forwards;
+  }
+
+  .bottom-sheet.is-closing {
+    animation: surface-exit 180ms cubic-bezier(0.4, 0, 0.8, 0.2) forwards;
+  }
+
+  .bottom-sheet--page.is-closing {
+    animation: subpage-exit 180ms cubic-bezier(0.4, 0, 0.8, 0.2) forwards;
+  }
+
   .button,
   .icon-button,
   .icon-link,
+  .metric-card-button,
+  .home-bodyweight-summary-trigger,
+  .food-search-trigger,
+  .history-list button,
+  .quick-action-list button,
+  .program-day-tabs button,
+  .exercise-tab-list button,
   .bottom-nav-add,
   .bottom-nav-link,
   .segmented-control button,
+  .settings-section-nav button,
   .date-selector-current {
     transition:
       transform 120ms ease,
+      box-shadow 160ms ease,
       background-color 160ms ease,
       color 160ms ease,
       border-color 160ms ease;
+    will-change: transform;
   }
 
   .button:active:not(:disabled),
   .icon-button:active:not(:disabled),
   .icon-link:active,
+  .metric-card-button:active,
+  .home-bodyweight-summary-trigger:active,
+  .food-search-trigger:active,
+  .history-list button:active,
+  .quick-action-list button:active,
+  .program-day-tabs button:active,
+  .exercise-tab-list button:active,
   .bottom-nav-add:active,
   .bottom-nav-link:active,
   .segmented-control button:active,
+  .settings-section-nav button:active,
   .date-selector-current:active {
     transform: scale(0.97);
+  }
+
+  .metric-card-button:active,
+  .food-search-trigger:active,
+  .history-list button:active,
+  .quick-action-list button:active,
+  .program-day-tabs button:active,
+  .exercise-tab-list button:active {
+    transform: translateY(1px) scale(0.985);
   }
 }
 
@@ -3835,9 +3975,50 @@ body.food-search-open .bottom-nav {
   }
 }
 
+@keyframes route-enter {
+  from {
+    opacity: 0.72;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes backdrop-enter {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes backdrop-exit {
+  to {
+    opacity: 0;
+  }
+}
+
 @keyframes surface-enter {
   from {
     opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes surface-exit {
+  to {
+    opacity: 0;
+    transform: translateY(24px);
   }
 }
 
@@ -3850,5 +4031,12 @@ body.food-search-open .bottom-nav {
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+@keyframes subpage-exit {
+  to {
+    opacity: 0;
+    transform: translateX(18%);
   }
 }

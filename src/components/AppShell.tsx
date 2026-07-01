@@ -151,6 +151,10 @@ function AppShellContent({ children }: AppShellProps) {
 
   const routeTitle = getRouteTitle(location.pathname)
   const hasUpdateReady = pendingUpdate !== null
+  const isHomeRoute = location.pathname === '/'
+  const latestChangelogEntry = LATEST_CHANGELOG_ENTRY
+  const showWhatsNewBanner =
+    showWhatsNew && latestChangelogEntry && isHomeRoute && !activeActivity
 
   function dismissWhatsNew() {
     markChangelogSeen()
@@ -211,11 +215,11 @@ function AppShellContent({ children }: AppShellProps) {
         </StatusMessage>
       ) : null}
 
-      {showWhatsNew && LATEST_CHANGELOG_ENTRY ? (
+      {showWhatsNewBanner ? (
         <div className="whats-new-banner">
           <Sparkles aria-hidden="true" size={18} />
           <span className="whats-new-banner-text">
-            {t('New')}: {LATEST_CHANGELOG_ENTRY.title}
+            {t('New')}: {latestChangelogEntry.title}
           </span>
           <Link
             className="whats-new-banner-link"
@@ -234,7 +238,9 @@ function AppShellContent({ children }: AppShellProps) {
         </div>
       ) : null}
 
-      {activeActivity && !isActiveActivityRoute(location.pathname) ? (
+      {activeActivity &&
+      !isHomeRoute &&
+      !isActiveActivityRoute(location.pathname) ? (
         <button
           className="active-activity-banner"
           type="button"
@@ -250,7 +256,11 @@ function AppShellContent({ children }: AppShellProps) {
         </button>
       ) : null}
 
-      <main className="app-main">{children}</main>
+      <main className="app-main">
+        <div className="route-transition" key={location.pathname}>
+          {children}
+        </div>
+      </main>
       <BottomNavigation onAdd={() => setIsQuickActionOpen(true)} />
       <BottomSheet
         isOpen={isQuickActionOpen}

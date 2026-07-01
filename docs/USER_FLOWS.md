@@ -195,30 +195,20 @@
 
 1. User taps Finish Workout.
 2. App validates that at least one set or explicit skipped exercise exists.
-3. User confirms completion.
-4. App saves a historical workout with start time, completion time, duration, exercises, sets, skipped exercises, and source references.
-5. App compares the performed workout to the source active-cycle day.
-6. If no structural changes are detected, app closes the active workout and shows workout history detail.
-7. If changes are detected, app opens detected-change review.
-
-## Reviewing Detected Changes
-
-1. App shows a checklist titled Changes Detected.
-2. Each structural change appears as an individual item.
-3. User reviews set added, set removed, exercise added, exercise skipped or removed, exercise replaced, or exercise order changed items.
-4. Performed weight, reps, RIR, completion status, and duration are not listed as structural changes.
-5. User may leave every item unselected.
-6. User proceeds to destination selection or finishes without applying changes.
-
-## Applying a Change to Cycle, Template, Both, or Neither
-
-1. User selects one detected structural change.
-2. User chooses one destination: current active cycle only, reusable program template only, both active cycle and template, or neither.
-3. User repeats this for each change they want to apply.
-4. User confirms.
-5. App applies selected changes in a transaction.
-6. If any update fails, app rolls back all related cycle/template updates and keeps the saved workout intact.
-7. App records which changes were applied or rejected in workout history.
+3. The confirmation shows an unchecked Save all live workout changes option.
+4. User optionally checks the option, then confirms completion.
+5. App waits for pending live edits and saves a historical workout with start
+   time, completion time, duration, exercises, sets, skipped exercises, and
+   source references.
+6. App compares the performed workout to the source active-cycle day.
+7. When the option remains unchecked, app records all detected changes as not
+   applied and leaves the active cycle and reusable template unchanged.
+8. When the option is checked, app applies every detected structural change and
+   progression recommendation to both available program sources in one
+   transaction.
+9. If applying changes fails, app keeps the saved workout, shows a warning, and
+   rolls back the related cycle/template updates.
+10. App closes the active workout and shows workout history detail.
 
 ## Viewing Workout History
 

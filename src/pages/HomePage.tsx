@@ -131,6 +131,56 @@ export function HomePage() {
         </StatusMessage>
       ) : null}
 
+      <Card
+        className="home-action-card home-workout-card"
+        title={
+          dashboard?.activeWorkout
+            ? 'Workout in progress'
+            : (dashboard?.activeProgram?.cycle.name ?? 'No active program')
+        }
+      >
+        <div className="dashboard-shortcuts">
+          {dashboard?.activeWorkout ? (
+            <>
+              <PrimaryButton
+                type="button"
+                onClick={() => void navigate('/workout')}
+              >
+                Resume workout
+              </PrimaryButton>
+              <p className="home-action-meta">
+                {dashboard.activeWorkout.name} -{' '}
+                {t('Started {date}', {
+                  date: dashboard.activeWorkout.localDate,
+                })}
+              </p>
+            </>
+          ) : dashboard?.activeProgram?.days.length ? (
+            <>
+              <PrimaryButton
+                type="button"
+                onClick={() => void navigate('/training')}
+              >
+                Start workout
+              </PrimaryButton>
+              <p className="home-action-meta">
+                {`${t('Next')}: ${
+                  dashboard.activeProgram.nextDay?.name ??
+                  dashboard.activeProgram.days[0]?.name
+                }`}
+              </p>
+            </>
+          ) : (
+            <PrimaryButton
+              type="button"
+              onClick={() => void navigate('/training?createProgram=1')}
+            >
+              Create program
+            </PrimaryButton>
+          )}
+        </div>
+      </Card>
+
       <section className="home-action-grid" aria-label="Home shortcuts">
         <Card className="home-action-card">
           <div className="dashboard-shortcuts">
@@ -154,56 +204,6 @@ export function HomePage() {
               <Scale aria-hidden="true" size={18} />
               {t('Bodyweight')}
             </SecondaryButton>
-          </div>
-        </Card>
-
-        <Card
-          className="home-action-card"
-          title={
-            dashboard?.activeWorkout
-              ? 'Workout in progress'
-              : (dashboard?.activeProgram?.cycle.name ?? 'No active program')
-          }
-        >
-          <div className="dashboard-shortcuts">
-            {dashboard?.activeWorkout ? (
-              <>
-                <PrimaryButton
-                  type="button"
-                  onClick={() => void navigate('/workout')}
-                >
-                  Resume workout
-                </PrimaryButton>
-                <p className="home-action-meta">
-                  {dashboard.activeWorkout.name} ·{' '}
-                  {t('Started {date}', {
-                    date: dashboard.activeWorkout.localDate,
-                  })}
-                </p>
-              </>
-            ) : dashboard?.activeProgram?.days.length ? (
-              <>
-                <PrimaryButton
-                  type="button"
-                  onClick={() => void navigate('/training')}
-                >
-                  Start workout
-                </PrimaryButton>
-                <p className="home-action-meta">
-                  {`${t('Next')}: ${
-                    dashboard.activeProgram.nextDay?.name ??
-                    dashboard.activeProgram.days[0]?.name
-                  }`}
-                </p>
-              </>
-            ) : (
-              <PrimaryButton
-                type="button"
-                onClick={() => void navigate('/training?createProgram=1')}
-              >
-                Create program
-              </PrimaryButton>
-            )}
           </div>
         </Card>
       </section>
@@ -235,7 +235,7 @@ export function HomePage() {
         />
       </section>
 
-      <Card title="Calories">
+      <Card className="home-calories-card" title="Calories">
         <CalorieHistoryChart
           compact
           history={dashboard?.calorieHistory ?? []}

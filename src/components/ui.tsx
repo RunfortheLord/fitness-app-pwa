@@ -129,6 +129,20 @@ type BottomSheetProps = {
   variant?: 'sheet' | 'page'
 }
 
+const SHEET_EXIT_ANIMATION_MS = 180
+
+function getSheetExitAnimationMs() {
+  if (import.meta.env.MODE === 'test') {
+    return 0
+  }
+
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    return 0
+  }
+
+  return SHEET_EXIT_ANIMATION_MS
+}
+
 export function BottomSheet({
   children,
   isOpen,
@@ -139,29 +153,78 @@ export function BottomSheet({
   const { language, t } = useLanguage()
   const titleId = useId()
   const sheetRef = useRef<HTMLElement>(null)
+  const [isPresent, setIsPresent] = useState(isOpen)
+  const [isClosing, setIsClosing] = useState(false)
+
+  /* eslint-disable react-hooks/set-state-in-effect --
+   * This component mirrors `isOpen` into transient presence state so close
+   * animations can finish before the dialog unmounts.
+   */
+  useEffect(() => {
+    if (isOpen) {
+      setIsPresent(true)
+      setIsClosing(false)
+      return
+    }
+
+    if (!isPresent) {
+      return
+    }
+
+    setIsClosing(true)
+    const exitAnimationMs = getSheetExitAnimationMs()
+    if (exitAnimationMs === 0) {
+      setIsPresent(false)
+      setIsClosing(false)
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setIsPresent(false)
+      setIsClosing(false)
+    }, exitAnimationMs)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [isOpen, isPresent])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useDialogFocusManagement({
     containerRef: sheetRef,
-    isOpen,
+    isOpen: isOpen && isPresent && !isClosing,
     onClose,
   })
 
-  if (!isOpen) {
+  if (!isPresent) {
     return null
   }
 
   const isPage = variant === 'page'
+  const backdropClassName = [
+    'sheet-backdrop',
+    isPage ? 'sheet-backdrop--page' : '',
+    isClosing ? 'is-closing' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+  const sheetClassName = [
+    'bottom-sheet',
+    isPage ? 'bottom-sheet--page' : '',
+    isClosing ? 'is-closing' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   return (
     <div
-      className={`sheet-backdrop${isPage ? ' sheet-backdrop--page' : ''}`}
+      className={backdropClassName}
       role="presentation"
-      onMouseDown={isPage ? undefined : onClose}
+      onMouseDown={isPage || isClosing ? undefined : onClose}
     >
       <section
+        aria-hidden={isClosing ? true : undefined}
         aria-modal="true"
         aria-labelledby={titleId}
-        className={isPage ? 'bottom-sheet bottom-sheet--page' : 'bottom-sheet'}
+        className={sheetClassName}
         ref={sheetRef}
         role="dialog"
         tabIndex={-1}

@@ -8,7 +8,7 @@ import {
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { App } from '@app/App'
 import { db } from '@db/database'
@@ -30,6 +30,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   cleanup()
+  vi.restoreAllMocks()
   await db.delete()
 })
 
@@ -628,6 +629,225 @@ describe('TrainingPage', () => {
       const workout = await db.workouts.toCollection().first()
       expect(workout?.activeRestTimer?.durationSeconds).toBe(60)
     })
+  })
+
+  it('waits for live exercise notes to save before finishing the workout', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await workoutRepository.updateWorkoutSet(started.sets[0].id, {
+      metricValues: { weight: 185, reps: 8 },
+      completed: true,
+    })
+
+    const updateNotes =
+      workoutRepository.updateWorkoutExerciseNotes.bind(workoutRepository)
+    const releaseSave = { current: null as (() => void) | null }
+    let markSaveStarted: (() => void) | null = null
+    const saveStarted = new Promise<void>((resolve) => {
+      markSaveStarted = resolve
+    })
+    vi.spyOn(
+      workoutRepository,
+      'updateWorkoutExerciseNotes',
+    ).mockImplementation(
+      (workoutExerciseId, notes) =>
+        new Promise<void>((resolve, reject) => {
+          markSaveStarted?.()
+          releaseSave.current = () => {
+            void updateNotes(workoutExerciseId, notes).then(
+              () => resolve(),
+              reject,
+            )
+          }
+        }),
+    )
+    const completeWorkout = vi.spyOn(workoutRepository, 'completeWorkout')
+
+    renderTraining(['/workout'])
+
+    const notes = await screen.findByLabelText('Exercise notes')
+    await user.click(
+      within(notes).getByRole('button', { name: 'Edit exercise notes' }),
+    )
+    const notesInput = within(notes).getByRole('textbox', {
+      name: 'Exercise notes',
+    })
+    await user.clear(notesInput)
+    await user.type(notesInput, 'Pause every first rep.')
+    await user.click(within(notes).getByRole('button', { name: 'Save notes' }))
+    await saveStarted
+
+    await user.click(screen.getByRole('button', { name: 'Finish' }))
+    expect(
+      within(screen.getByRole('dialog', { name: 'Finish workout?' })).getByRole(
+        'checkbox',
+        {
+          name: 'Save all live workout changes to my program',
+        },
+      ),
+    ).not.toBeChecked()
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Finish workout?' })).getByRole(
+        'button',
+        { name: 'Finish Workout' },
+      ),
+    )
+    expect(completeWorkout).not.toHaveBeenCalled()
+
+    expect(releaseSave.current).not.toBeNull()
+    releaseSave.current?.()
+
+    expect(await screen.findByText('Date completed')).toBeInTheDocument()
+    await expect(
+      db.workoutHistoryExercises.get(started.exercises[0].id),
+    ).resolves.toMatchObject({
+      notes: 'Pause every first rep.',
+    })
+  })
+
+  it('does not save live workout changes to the program by default', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await workoutRepository.updateWorkoutSet(started.sets[0].id, {
+      completed: true,
+    })
+    await workoutRepository.addSet(started.exercises[0].id)
+    renderTraining(['/workout'])
+
+    await user.click(await screen.findByRole('button', { name: 'Finish' }))
+    const finishDialog = screen.getByRole('dialog', {
+      name: 'Finish workout?',
+    })
+    expect(
+      within(finishDialog).getByRole('checkbox', {
+        name: 'Save all live workout changes to my program',
+      }),
+    ).not.toBeChecked()
+    await user.click(
+      within(finishDialog).getByRole('button', { name: 'Finish Workout' }),
+    )
+
+    expect(await screen.findByText('Date completed')).toBeInTheDocument()
+    await expect(
+      db.activeCycleWorkoutExercises.get(active.exercises[0].id),
+    ).resolves.toMatchObject({ targetSetCount: 2 })
+    await expect(
+      db.templateWorkoutExercises.get(program.exercises[0].id),
+    ).resolves.toMatchObject({ targetSetCount: 2 })
+    await expect(db.detectedWorkoutChanges.toArray()).resolves.toMatchObject([
+      {
+        type: 'set_added',
+        status: 'rejected',
+        selectedDestination: 'neither',
+      },
+    ])
+  })
+
+  it('saves all live workout changes when selected at finish', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await workoutRepository.updateWorkoutSet(started.sets[0].id, {
+      completed: true,
+    })
+    await workoutRepository.addSet(started.exercises[0].id)
+    renderTraining(['/workout'])
+
+    await user.click(await screen.findByRole('button', { name: 'Finish' }))
+    const finishDialog = screen.getByRole('dialog', {
+      name: 'Finish workout?',
+    })
+    await user.click(
+      within(finishDialog).getByRole('checkbox', {
+        name: 'Save all live workout changes to my program',
+      }),
+    )
+    await user.click(
+      within(finishDialog).getByRole('button', { name: 'Finish Workout' }),
+    )
+
+    expect(await screen.findByText('Date completed')).toBeInTheDocument()
+    await expect(
+      db.activeCycleWorkoutExercises.get(active.exercises[0].id),
+    ).resolves.toMatchObject({ targetSetCount: 3 })
+    await expect(
+      db.templateWorkoutExercises.get(program.exercises[0].id),
+    ).resolves.toMatchObject({ targetSetCount: 3 })
+    await expect(db.detectedWorkoutChanges.toArray()).resolves.toMatchObject([
+      {
+        type: 'set_added',
+        status: 'applied',
+        selectedDestination: 'both',
+      },
+    ])
+  })
+
+  it('keeps completed history when saving program changes fails', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await workoutRepository.updateWorkoutSet(started.sets[0].id, {
+      completed: true,
+    })
+    await workoutRepository.addSet(started.exercises[0].id)
+    vi.spyOn(workoutRepository, 'applyDetectedChanges').mockRejectedValue(
+      new Error('Program update failed.'),
+    )
+    renderTraining(['/workout'])
+
+    await user.click(await screen.findByRole('button', { name: 'Finish' }))
+    const finishDialog = screen.getByRole('dialog', {
+      name: 'Finish workout?',
+    })
+    await user.click(
+      within(finishDialog).getByRole('checkbox', {
+        name: 'Save all live workout changes to my program',
+      }),
+    )
+    await user.click(
+      within(finishDialog).getByRole('button', { name: 'Finish Workout' }),
+    )
+
+    expect(
+      await screen.findByText(
+        'Workout saved, but live workout changes could not be saved to your program.',
+      ),
+    ).toBeInTheDocument()
+    await expect(db.workoutHistoryEntries.toArray()).resolves.toHaveLength(1)
+    await expect(db.workouts.toArray()).resolves.toEqual([])
+    await expect(
+      db.activeCycleWorkoutExercises.get(active.exercises[0].id),
+    ).resolves.toMatchObject({ targetSetCount: 2 })
   })
 
   it('shows start workout controls beside active cycle days and at the top of day detail', async () => {

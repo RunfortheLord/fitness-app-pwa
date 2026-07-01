@@ -185,8 +185,10 @@
   reps, and remain editable.
 - Users must be able to add sets, delete sets, edit completed sets, complete
   sets, skip exercises, replace exercises, add exercises, reorder exercises
-  where practical, change session rest time, and discard the active workout
-  with confirmation.
+  where practical, edit session exercise notes, change session rest time, and
+  discard the active workout with confirmation.
+- Finishing must wait for pending active-workout edits to persist before the
+  completed history snapshot is created.
 - The rest timer must be timestamp-based so remaining time is correct after backgrounding or resuming.
 - In the installed Home Screen PWA, every rest-timer mutation must cancel or
   reschedule the optional server-delayed Web Push completion alert from the
@@ -204,11 +206,15 @@
 - After completion, the app must compare the performed workout to its source active-cycle day.
 - The app must detect set added, set removed, exercise added, exercise skipped or removed, exercise replaced, and exercise order changed.
 - The app must not treat performed weight, reps, RIR, set completion status, or duration as template changes.
-- Detected changes must be displayed as an individual review checklist.
-- Every change must be reviewed individually.
-- Each selected structural or progression recommendation change must support
-  destination choices: active cycle only, reusable template only, or both.
-  Unchecked items are not applied.
+- The finish confirmation must offer one checkbox to save all detected live
+  workout changes to the source program. The checkbox must be unchecked by
+  default.
+- When the checkbox is unchecked, the completed workout keeps its performed
+  structure while the source active cycle and reusable template remain
+  unchanged.
+- When the checkbox is checked, all detected structural changes and progression
+  recommendations must be applied to both the source active cycle and reusable
+  template when both are available.
 - Applying changes must be transactional.
 - The user must be able to finish and save the workout without applying changes.
 

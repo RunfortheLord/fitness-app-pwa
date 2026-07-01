@@ -1135,7 +1135,7 @@ export function NutritionPage() {
                     }}
                   />
                 ) : null}
-                <Card title="Custom goal">
+                <Card className="custom-goal-card" title="Custom goal">
                   <p className="muted">
                     {t(
                       'Build calorie and macro targets from your bodyweight, height, activity, and goal weight.',
@@ -1373,26 +1373,39 @@ function FoodSearchTrigger({
 }) {
   const { t } = useLanguage()
   return (
-    <Card>
+    <Card className="food-search-card">
       <div className="food-search-heading">
-        <h2>{t('Food search')}</h2>
-        <div className="row-actions">
-          <IconButton aria-label="Quick add nutrition" onClick={onOpenQuickAdd}>
-            <Flame aria-hidden="true" size={20} />
-          </IconButton>
-          <IconButton aria-label="New recipe" onClick={onOpenRecipe}>
-            <BookmarkPlus aria-hidden="true" size={20} />
-          </IconButton>
-          <FoodCameraMenu
-            onOpenAiCamera={onOpenAiCamera}
-            onOpenScanner={onOpenScanner}
-          />
-        </div>
+        <h2>{t('Log food')}</h2>
       </div>
       <button className="food-search-trigger" type="button" onClick={onOpen}>
         <Search aria-hidden="true" size={18} />
         <span>{t('Search foods')}</span>
       </button>
+      <div className="food-search-action-strip" aria-label={t('Food actions')}>
+        <SecondaryButton
+          aria-label="Quick add nutrition"
+          type="button"
+          onClick={onOpenQuickAdd}
+        >
+          <Flame aria-hidden="true" size={18} />
+          {t('Quick add')}
+        </SecondaryButton>
+        <SecondaryButton
+          aria-label="New recipe"
+          type="button"
+          onClick={onOpenRecipe}
+        >
+          <BookmarkPlus aria-hidden="true" size={18} />
+          {t('Recipe')}
+        </SecondaryButton>
+        <div className="food-camera-action">
+          <FoodCameraMenu
+            onOpenAiCamera={onOpenAiCamera}
+            onOpenScanner={onOpenScanner}
+          />
+          <span>{t('Scan / AI')}</span>
+        </div>
+      </div>
     </Card>
   )
 }

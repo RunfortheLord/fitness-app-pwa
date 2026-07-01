@@ -153,10 +153,8 @@
 ### Barcode Scanner
 
 - The Nutrition camera action opens a compact vertical menu directly below the
-  camera button. It animates downward from behind the camera circle, remains
-  visually connected to it, and ends tightly around the AI action without an
-  empty semicircular extension. It contains two large, contrasted circular
-  actions: barcode and AI.
+  camera button. It stays within the viewport and uses two clearly labeled,
+  44-pixel-or-larger actions for barcode scanning and AI meal-photo analysis.
 - Scrolling or pressing outside the open camera menu does not dismiss it. The
   camera toggle and Escape can dismiss it explicitly, and navigating away
   resets it before the user returns.
@@ -268,6 +266,8 @@
 - Replace exercise action.
 - Add set action.
 - Delete set action.
+- Session exercise notes can be edited and saved without changing the source
+  program prescription.
 - Reorder exercise action where practical.
 
 ### Set Rows
@@ -340,11 +340,14 @@
 
 ## Completion and Change Review
 
-- Finish Workout saves the historical workout first.
-- If structural changes are detected, show a compact checklist.
-- Each selected item has a destination selector: active cycle only, template
-  only, or both. Unchecked items are saved as not applied.
-- User can finish without applying any changes.
+- Finish Workout waits for pending live edits, then saves the historical
+  workout first.
+- The confirmation includes one "Save all live workout changes to my program"
+  checkbox. It is unchecked every time the confirmation opens.
+- Leaving the checkbox unchecked saves the completed workout but rejects all
+  detected program changes, preserving the source cycle and template.
+- Checking it applies every detected structural change and progression
+  recommendation to both available program sources in one transaction.
 - Failed apply operation shows an error and leaves saved workout intact.
 
 ## History Screen

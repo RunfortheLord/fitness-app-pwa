@@ -411,7 +411,9 @@
 - Run moving time is the sum of accepted GPS sample intervals whose implied
   speed meets the configured moving threshold. Paused, rejected, stale, jitter,
   impossible-speed, and long-gap intervals do not add moving time.
-- Detected structural changes are reviewed individually and are never applied automatically.
+- Finish confirmation offers one unchecked-by-default option to apply all
+  detected workout changes; without explicit opt-in, the source program remains
+  unchanged.
 - Applying detected changes to active cycle/template/both is transactional.
 - Weights are stored canonically in pounds; the `weightUnit` preference (lb/kg)
   only changes display and how freshly entered values are interpreted, so
