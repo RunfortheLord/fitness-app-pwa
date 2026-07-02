@@ -54,6 +54,7 @@ import { currentTrendWeight } from '@domain/bodyweightTrend'
 import {
   GOAL_FORMULA_VERSION,
   GOAL_RATE_RANGES,
+  MIN_GOAL_CALORIES,
   computeGoalPlan,
   estimateGoalDate,
   goalDirection,
@@ -125,6 +126,7 @@ import {
   nutritionSummaryService,
   type DailyNutritionSummary,
 } from '@services/nutritionSummaryService'
+import { calorieHistoryService } from '@services/calorieHistoryService'
 import { AiMealCameraSubpage } from '@pages/AiMealCameraSubpage'
 import type {
   BodyweightEntry,
@@ -3413,6 +3415,8 @@ type GoalFormState = {
   sex: GoalSex
 }
 
+type GoalMaintenanceMode = 'calculated' | 'manual'
+
 function SetGoalSubpage({
   entries,
   existingGoal,
@@ -3426,7 +3430,17 @@ function SetGoalSubpage({
 }) {
   const weightUnit = useWeightUnit()
   const unitSuffix = weightUnitSuffix(weightUnit)
-  const [step, setStep] = useState<'basics' | 'rate'>('basics')
+  const [step, setStep] = useState<
+    'maintenanceChoice' | 'manualMaintenance' | 'basics' | 'rate'
+  >('maintenanceChoice')
+  const [maintenanceMode, setMaintenanceMode] = useState<GoalMaintenanceMode>(
+    existingGoal?.maintenanceCalorieSource ?? 'calculated',
+  )
+  const [manualMaintenanceCalories, setManualMaintenanceCalories] = useState(
+    existingGoal?.maintenanceCalorieSource === 'manual'
+      ? String(existingGoal.maintenanceCalories)
+      : '',
+  )
   const [form, setForm] = useState<GoalFormState>(() => {
     const prefillWeight = goalCurrentWeight(entries)
     return {
@@ -3464,7 +3478,12 @@ function SetGoalSubpage({
     )
   })
   const [error, setError] = useState<string | null>(null)
-  const parsed = parseGoalForm(form, weightUnit)
+  const parsed = parseGoalForm(
+    form,
+    weightUnit,
+    maintenanceMode,
+    manualMaintenanceCalories,
+  )
 
   function update<Field extends keyof GoalFormState>(
     field: Field,
@@ -3490,6 +3509,24 @@ function SetGoalSubpage({
     )
     setError(null)
     setStep('rate')
+  }
+
+  function chooseMaintenanceMode(mode: GoalMaintenanceMode) {
+    setMaintenanceMode(mode)
+    setError(null)
+    setStep(mode === 'manual' ? 'manualMaintenance' : 'basics')
+  }
+
+  function continueFromManualMaintenance() {
+    const parsedMaintenance = parseMaintenanceCalories(
+      manualMaintenanceCalories,
+    )
+    if (parsedMaintenance === null) {
+      setError('Enter realistic maintenance calories.')
+      return
+    }
+    setError(null)
+    setStep('basics')
   }
 
   function calculate() {
@@ -3524,6 +3561,7 @@ function SetGoalSubpage({
       activityLevel: input.activityLevel,
       direction: plan.direction,
       weeklyRateLb: plan.weeklyRateLb,
+      maintenanceCalorieSource: maintenanceMode,
       maintenanceCalories: plan.maintenanceCalories,
       targets: plan.targets,
       estimatedFinishDate: finish ? formatLocalDate(finish) : null,
@@ -3671,16 +3709,103 @@ function SetGoalSubpage({
     )
   }
 
+  if (step === 'maintenanceChoice') {
+    return (
+      <Card className="subpage-enter">
+        <div className="set-goal-header">
+          <IconButton aria-label="Back to targets" onClick={onBack}>
+            <ArrowLeft aria-hidden="true" size={20} />
+          </IconButton>
+          <h2 className="set-goal-title">
+            Do you know your maintenance calories?
+          </h2>
+        </div>
+        <div className="button-row">
+          <PrimaryButton
+            type="button"
+            onClick={() => chooseMaintenanceMode('manual')}
+          >
+            Yes
+          </PrimaryButton>
+          <SecondaryButton
+            type="button"
+            onClick={() => chooseMaintenanceMode('calculated')}
+          >
+            Calculate my maintenance calories
+          </SecondaryButton>
+        </div>
+      </Card>
+    )
+  }
+
+  if (step === 'manualMaintenance') {
+    const parsedMaintenance = parseMaintenanceCalories(
+      manualMaintenanceCalories,
+    )
+    return (
+      <Card className="subpage-enter">
+        <div className="set-goal-header">
+          <IconButton
+            aria-label="Back to maintenance question"
+            onClick={() => {
+              setError(null)
+              setStep('maintenanceChoice')
+            }}
+          >
+            <ArrowLeft aria-hidden="true" size={20} />
+          </IconButton>
+          <h2 className="set-goal-title">Maintenance calories</h2>
+        </div>
+        <p className="muted">
+          Enter the calories you believe maintain your current bodyweight.
+        </p>
+        {error ? <ValidationMessage message={error} /> : null}
+        <FormField id="goal-maintenance-calories" label="Maintenance calories">
+          <NumericInput
+            id="goal-maintenance-calories"
+            onChange={(event) =>
+              setManualMaintenanceCalories(event.target.value)
+            }
+            value={manualMaintenanceCalories}
+          />
+        </FormField>
+        <PrimaryButton
+          disabled={parsedMaintenance === null}
+          type="button"
+          onClick={continueFromManualMaintenance}
+        >
+          Continue
+        </PrimaryButton>
+      </Card>
+    )
+  }
+
   return (
     <Card className="subpage-enter">
       <div className="set-goal-header">
-        <IconButton aria-label="Back to targets" onClick={onBack}>
+        <IconButton
+          aria-label={
+            maintenanceMode === 'manual'
+              ? 'Back to maintenance calories'
+              : 'Back to maintenance question'
+          }
+          onClick={() => {
+            setError(null)
+            setStep(
+              maintenanceMode === 'manual'
+                ? 'manualMaintenance'
+                : 'maintenanceChoice',
+            )
+          }}
+        >
           <ArrowLeft aria-hidden="true" size={20} />
         </IconButton>
         <h2 className="set-goal-title">Set goal</h2>
       </div>
       <p className="muted">
-        Enter your basic information and the weight you want to reach.
+        {maintenanceMode === 'manual'
+          ? 'Enter your current bodyweight and the weight you want to reach.'
+          : 'Enter your basic information and the weight you want to reach.'}
       </p>
       {error ? <ValidationMessage message={error} /> : null}
       <FormField
@@ -3693,39 +3818,43 @@ function SetGoalSubpage({
           value={form.bodyweight}
         />
       </FormField>
-      <FormField id="goal-height-feet" label="Height (feet)">
-        <NumericInput
-          id="goal-height-feet"
-          onChange={(event) => update('heightFeet', event.target.value)}
-          value={form.heightFeet}
-        />
-      </FormField>
-      <FormField id="goal-height-inches" label="Height (inches)">
-        <NumericInput
-          id="goal-height-inches"
-          onChange={(event) => update('heightInches', event.target.value)}
-          value={form.heightInches}
-        />
-      </FormField>
-      <FormField
-        id="goal-activity"
-        label="How active are you outside of exercise?"
-      >
-        <select
-          className="select-input"
-          id="goal-activity"
-          onChange={(event) =>
-            update('activityLevel', event.target.value as GoalActivityLevel)
-          }
-          value={form.activityLevel}
-        >
-          {ACTIVITY_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </FormField>
+      {maintenanceMode === 'calculated' ? (
+        <>
+          <FormField id="goal-height-feet" label="Height (feet)">
+            <NumericInput
+              id="goal-height-feet"
+              onChange={(event) => update('heightFeet', event.target.value)}
+              value={form.heightFeet}
+            />
+          </FormField>
+          <FormField id="goal-height-inches" label="Height (inches)">
+            <NumericInput
+              id="goal-height-inches"
+              onChange={(event) => update('heightInches', event.target.value)}
+              value={form.heightInches}
+            />
+          </FormField>
+          <FormField
+            id="goal-activity"
+            label="How active are you outside of exercise?"
+          >
+            <select
+              className="select-input"
+              id="goal-activity"
+              onChange={(event) =>
+                update('activityLevel', event.target.value as GoalActivityLevel)
+              }
+              value={form.activityLevel}
+            >
+              {ACTIVITY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </FormField>
+        </>
+      ) : null}
       <FormField id="goal-target-weight" label={`Goal weight (${unitSuffix})`}>
         <NumericInput
           id="goal-target-weight"
@@ -3733,24 +3862,28 @@ function SetGoalSubpage({
           value={form.goalWeight}
         />
       </FormField>
-      <FormField id="goal-age" label="Age">
-        <NumericInput
-          id="goal-age"
-          onChange={(event) => update('age', event.target.value)}
-          value={form.age}
-        />
-      </FormField>
-      <FormField id="goal-sex" label="Sex">
-        <select
-          className="select-input"
-          id="goal-sex"
-          onChange={(event) => update('sex', event.target.value as GoalSex)}
-          value={form.sex}
-        >
-          <option value="male">Male</option>
-          <option value="female">Female</option>
-        </select>
-      </FormField>
+      {maintenanceMode === 'calculated' ? (
+        <>
+          <FormField id="goal-age" label="Age">
+            <NumericInput
+              id="goal-age"
+              onChange={(event) => update('age', event.target.value)}
+              value={form.age}
+            />
+          </FormField>
+          <FormField id="goal-sex" label="Sex">
+            <select
+              className="select-input"
+              id="goal-sex"
+              onChange={(event) => update('sex', event.target.value as GoalSex)}
+              value={form.sex}
+            >
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+            </select>
+          </FormField>
+        </>
+      ) : null}
       <PrimaryButton
         disabled={!parsed.ok}
         type="button"
@@ -3791,7 +3924,6 @@ function GoalProgressCard({
     setUpdating(true)
     setError(null)
     const today = formatLocalDate(new Date())
-    const evaluation = evaluateCalorieUpdate({ goal, entries, asOf: today })
     const refreshedFinish = (trendWeightLb: number) =>
       estimateGoalDate({
         currentWeightLb: trendWeightLb,
@@ -3802,6 +3934,16 @@ function GoalProgressCard({
 
     void (async () => {
       try {
+        const dailyCalories = await calorieHistoryService.getHistory(
+          today,
+          '1m',
+        )
+        const evaluation = evaluateCalorieUpdate({
+          goal,
+          entries,
+          dailyCalories,
+          asOf: today,
+        })
         if (evaluation.status === 'insufficient_data') {
           onUpdated(
             'More body-weight data is needed before calories can be updated.',
@@ -3838,6 +3980,7 @@ function GoalProgressCard({
         await settingsRepository.saveNutritionGoal({
           ...goal,
           targets: evaluation.newTargets,
+          maintenanceCalories: evaluation.newMaintenanceCalories,
           estimatedFinishDate,
           lastCalorieUpdate: {
             appliedAt: new Date().toISOString(),
@@ -4155,6 +4298,8 @@ function goalCurrentWeight(entries: BodyweightEntry[]): number | null {
 function parseGoalForm(
   form: GoalFormState,
   unit: WeightUnit = 'lb',
+  maintenanceMode: GoalMaintenanceMode = 'calculated',
+  manualMaintenanceCalories = '',
 ): { ok: true; value: GoalPlanInput } | { ok: false; error: string } {
   // Bodyweight and goal weight are entered in the display unit; the macro math
   // works in canonical pounds, so convert before validating and computing.
@@ -4167,21 +4312,41 @@ function parseGoalForm(
   const goalWeightLb =
     goalWeightInput === null ? null : weightInputToLb(goalWeightInput, unit)
   const ageYears = parsePositiveNumber(form.age)
+  const maintenanceCalories =
+    maintenanceMode === 'manual'
+      ? parseMaintenanceCalories(manualMaintenanceCalories)
+      : null
 
   if (bodyweightLb === null || bodyweightLb > 1500) {
     return { ok: false, error: 'Enter a realistic current body weight.' }
   }
-  if (heightFeet === null || heightInches === null) {
+  if (maintenanceMode === 'manual' && maintenanceCalories === null) {
+    return { ok: false, error: 'Enter realistic maintenance calories.' }
+  }
+  if (
+    maintenanceMode === 'calculated' &&
+    (heightFeet === null || heightInches === null)
+  ) {
     return { ok: false, error: 'Enter your height in feet and inches.' }
   }
-  if (heightInches >= 12) {
+  if (
+    maintenanceMode === 'calculated' &&
+    heightInches !== null &&
+    heightInches >= 12
+  ) {
     return { ok: false, error: 'Height inches must be between 0 and 11.' }
   }
-  const totalInches = heightFeet * 12 + heightInches
-  if (totalInches <= 0 || totalInches > 96) {
+  const totalInches = (heightFeet ?? 0) * 12 + (heightInches ?? 0)
+  if (
+    maintenanceMode === 'calculated' &&
+    (totalInches <= 0 || totalInches > 96)
+  ) {
     return { ok: false, error: 'Enter a realistic height.' }
   }
-  if (ageYears === null || ageYears < 13 || ageYears > 120) {
+  if (
+    maintenanceMode === 'calculated' &&
+    (ageYears === null || ageYears < 13 || ageYears > 120)
+  ) {
     return { ok: false, error: 'Enter an age between 13 and 120.' }
   }
   if (goalWeightLb === null || goalWeightLb > 1500) {
@@ -4193,13 +4358,22 @@ function parseGoalForm(
     value: {
       sex: form.sex,
       bodyweightLb,
-      heightFeet,
-      heightInches,
-      ageYears,
+      heightFeet: heightFeet ?? 5,
+      heightInches: heightInches ?? 10,
+      ageYears: ageYears ?? 30,
       activityLevel: form.activityLevel,
       goalWeightLb,
+      maintenanceCalories: maintenanceCalories ?? undefined,
     },
   }
+}
+
+function parseMaintenanceCalories(value: string): number | null {
+  const parsed = parsePositiveNumber(value)
+  if (parsed === null || parsed < MIN_GOAL_CALORIES || parsed > 10000) {
+    return null
+  }
+  return Math.round(parsed)
 }
 
 function calculateMacroCalories(form: typeof emptyTargets) {

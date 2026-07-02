@@ -114,6 +114,7 @@ export type GoalActivityLevel =
   | 'heavily_active'
 
 export type GoalDirection = 'cut' | 'bulk' | 'maintain'
+export type GoalMaintenanceCalorieSource = 'calculated' | 'manual'
 
 export type GoalCalorieUpdate = {
   appliedAt: IsoTimestamp
@@ -143,6 +144,7 @@ export type NutritionGoal = {
   direction: GoalDirection
   /** Intended weekly bodyweight change in pounds (negative for a cut). */
   weeklyRateLb: number
+  maintenanceCalorieSource?: GoalMaintenanceCalorieSource
   maintenanceCalories: number
   targets: NutritionTargetValues
   estimatedFinishDate: LocalDateString | null

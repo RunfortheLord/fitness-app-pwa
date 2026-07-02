@@ -4,6 +4,7 @@ import type { LocalDateString } from '@domain/dates'
 import type { BodyweightEntry, NutritionGoal } from '@shared-types/app'
 
 import {
+  type DailyCalorieAdjustmentData,
   evaluateCalorieUpdate,
   roundCalorieAdjustment,
 } from './calorieAdjustment'
@@ -28,6 +29,28 @@ function entry(offset: number, weight: number): BodyweightEntry {
     createdAt: `${localDate}T08:00:00.000Z`,
     updatedAt: `${localDate}T08:00:00.000Z`,
   }
+}
+
+function intakeDay(
+  offset: number,
+  loggedCalories: number,
+  targetCalories = 2300,
+): DailyCalorieAdjustmentData {
+  return {
+    localDate: dayString(offset),
+    loggedCalories,
+    targetCalories,
+  }
+}
+
+function intakeDays(
+  offsets: number[],
+  loggedCalories: number,
+  targetCalories = 2300,
+): DailyCalorieAdjustmentData[] {
+  return offsets.map((offset) =>
+    intakeDay(offset, loggedCalories, targetCalories),
+  )
 }
 
 function makeGoal(overrides: Partial<NutritionGoal> = {}): NutritionGoal {
@@ -70,22 +93,44 @@ describe('calorieAdjustment', () => {
     const result = evaluateCalorieUpdate({
       goal: makeGoal(),
       entries: [entry(0, 180), entry(14, 180)],
+      dailyCalories: intakeDays([7, 8, 9, 10, 11, 12, 13], 2300),
       asOf: dayString(14),
     })
     expect(result.status).toBe('insufficient_data')
   })
 
-  it('decreases calories when a cut stalls and clamps the change', () => {
+  it('reports insufficient data without enough complete intake days', () => {
     const result = evaluateCalorieUpdate({
       goal: makeGoal(),
       entries: [entry(0, 180), entry(7, 180), entry(14, 180)],
+      dailyCalories: intakeDays([10, 11, 12], 2300),
+      asOf: dayString(14),
+    })
+    expect(result.status).toBe('insufficient_data')
+  })
+
+  it('decreases calories from recent complete intake days when a cut stalls', () => {
+    const result = evaluateCalorieUpdate({
+      goal: makeGoal(),
+      entries: [entry(0, 180), entry(7, 180), entry(14, 180)],
+      dailyCalories: [
+        ...intakeDays([6, 7, 8, 9, 10, 11, 12, 13], 2300),
+        intakeDay(14, 1200),
+      ],
       asOf: dayString(14),
     })
     expect(result.status).toBe('changed')
     if (result.status === 'changed') {
-      // desired -0.9/wk vs observed 0 -> -450 kcal/day, clamped to -200.
+      // Today is excluded; 2300 kcal average intake and stable weight estimate
+      // maintenance at 2300. Desired -0.9 lb/wk gives a 1850 kcal target, then
+      // the practical update clamps the change to -200.
+      expect(result.averageLoggedCalories).toBe(2300)
+      expect(result.averageTargetCalories).toBe(2300)
+      expect(result.intakeDayCount).toBe(8)
+      expect(result.estimatedMaintenanceCalories).toBe(2300)
       expect(result.deltaKcal).toBe(-200)
       expect(result.newCalories).toBe(2100)
+      expect(result.newMaintenanceCalories).toBe(2563)
       expect(result.newTargets.calories).toBe(2100)
     }
   })
@@ -94,6 +139,7 @@ describe('calorieAdjustment', () => {
     const result = evaluateCalorieUpdate({
       goal: makeGoal({ direction: 'maintain', weeklyRateLb: 0 }),
       entries: [entry(0, 180), entry(7, 180), entry(14, 180)],
+      dailyCalories: intakeDays([6, 7, 8, 9, 10, 11, 12, 13], 2300),
       asOf: dayString(14),
     })
     expect(result.status).toBe('no_change')
@@ -102,7 +148,13 @@ describe('calorieAdjustment', () => {
   it('does not reapply the same adjustment from unchanged trend data', () => {
     const entries = [entry(0, 180), entry(7, 180), entry(14, 180)]
     const asOf = dayString(14)
-    const first = evaluateCalorieUpdate({ goal: makeGoal(), entries, asOf })
+    const dailyCalories = intakeDays([6, 7, 8, 9, 10, 11, 12, 13], 2300)
+    const first = evaluateCalorieUpdate({
+      goal: makeGoal(),
+      entries,
+      dailyCalories,
+      asOf,
+    })
     expect(first.status).toBe('changed')
     if (first.status !== 'changed') {
       return
@@ -118,6 +170,7 @@ describe('calorieAdjustment', () => {
         },
       }),
       entries,
+      dailyCalories,
       asOf,
     })
     expect(repeat.status).toBe('already_applied')

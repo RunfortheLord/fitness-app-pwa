@@ -618,13 +618,18 @@ describe('NutritionPage', () => {
 
     // Open the Set Goal subpage and confirm the back arrow escapes it.
     await user.click(screen.getByRole('button', { name: 'Set Goal' }))
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: 'Continue' }).closest('section'),
-    ).toHaveClass('subpage-enter')
-    expect(
-      screen.getByRole('option', { name: 'Heavily active' }),
+      screen.getByRole('heading', {
+        name: 'Do you know your maintenance calories?',
+      }),
     ).toBeInTheDocument()
+    expect(
+      screen
+        .getByRole('heading', {
+          name: 'Do you know your maintenance calories?',
+        })
+        .closest('section'),
+    ).toHaveClass('subpage-enter')
     await user.click(screen.getByRole('button', { name: 'Back to targets' }))
     expect(
       screen.getByRole('button', { name: 'Save targets' }),
@@ -632,6 +637,12 @@ describe('NutritionPage', () => {
 
     // Fill the seven inputs and calculate.
     await user.click(screen.getByRole('button', { name: 'Set Goal' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Calculate my maintenance calories' }),
+    )
+    expect(
+      screen.getByRole('option', { name: 'Heavily active' }),
+    ).toBeInTheDocument()
     await user.type(screen.getByLabelText('Current body weight (lb)'), '180')
     await user.type(screen.getByLabelText('Height (feet)'), '5')
     await user.type(screen.getByLabelText('Height (inches)'), '10')
@@ -691,6 +702,7 @@ describe('NutritionPage', () => {
       direction: 'cut',
       goalWeightLb: 170,
       calculationWeightLb: 180,
+      maintenanceCalorieSource: 'calculated',
       formulaVersion: 1,
     })
     expect(settings?.nutritionGoal?.weeklyRateLb).toBeCloseTo(-1.35)
@@ -714,7 +726,11 @@ describe('NutritionPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Targets' }))
     await user.click(screen.getByRole('button', { name: 'Set Goal' }))
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', {
+        name: 'Do you know your maintenance calories?',
+      }),
+    ).toBeInTheDocument()
 
     await user.keyboard('{Escape}')
 
@@ -729,6 +745,9 @@ describe('NutritionPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Targets' }))
     await user.click(screen.getByRole('button', { name: 'Set Goal' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Calculate my maintenance calories' }),
+    )
     await user.type(screen.getByLabelText('Current body weight (lb)'), '180')
     await user.type(screen.getByLabelText('Height (feet)'), '5')
     await user.type(screen.getByLabelText('Height (inches)'), '10')
@@ -741,6 +760,41 @@ describe('NutritionPage', () => {
     ).toBeInTheDocument()
     expect(screen.queryByRole('slider')).not.toBeInTheDocument()
     expect(screen.getByText('Ongoing maintenance')).toBeInTheDocument()
+  })
+
+  it('sets a goal from manually entered maintenance calories', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await user.click(screen.getByRole('button', { name: 'Targets' }))
+    await user.click(screen.getByRole('button', { name: 'Set Goal' }))
+    await user.click(screen.getByRole('button', { name: 'Yes' }))
+
+    expect(
+      screen.getByRole('heading', { name: 'Maintenance calories' }),
+    ).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Maintenance calories'), '2500')
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    expect(screen.queryByLabelText('Height (feet)')).not.toBeInTheDocument()
+    await user.type(screen.getByLabelText('Current body weight (lb)'), '180')
+    await user.type(screen.getByLabelText('Goal weight (lb)'), '170')
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    expect(screen.getByText('2050 kcal')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Done' }))
+
+    expect(
+      await screen.findByText('Macros calculated and targets saved.'),
+    ).toBeInTheDocument()
+
+    const settings = await db.userSettings.get('settings')
+    expect(settings?.nutritionGoal).toMatchObject({
+      maintenanceCalorieSource: 'manual',
+      maintenanceCalories: 2500,
+      direction: 'cut',
+    })
+    expect(settings?.nutritionTargets.calories).toBe(2050)
   })
 
   it('shows the calorie equation and keeps Save food at the top of the form', async () => {

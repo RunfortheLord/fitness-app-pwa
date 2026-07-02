@@ -223,6 +223,7 @@ const nutritionGoalSchema = z.object({
   ]),
   direction: z.enum(['cut', 'bulk', 'maintain']),
   weeklyRateLb: z.number().finite(),
+  maintenanceCalorieSource: z.enum(['calculated', 'manual']).optional(),
   maintenanceCalories: nonNegativeNumber,
   targets: nutritionTargetValuesSchema,
   estimatedFinishDate: localDateSchema.nullable(),

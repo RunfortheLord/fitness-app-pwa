@@ -94,6 +94,9 @@ test('sets a weight goal through the recommended-rate step', async ({
 
   await page.getByRole('button', { name: 'Targets' }).click()
   await page.getByRole('button', { name: 'Set Goal' }).click()
+  await page
+    .getByRole('button', { name: 'Calculate my maintenance calories' })
+    .click()
   await page.getByLabel('Current body weight (lb)').fill('180')
   await page.getByLabel('Height (feet)').fill('5')
   await page.getByLabel('Height (inches)').fill('10')

@@ -99,6 +99,23 @@ describe('goalMacros', () => {
     expect(plan.goalCalories).toBe(2088)
   })
 
+  it('uses manually entered maintenance calories when supplied', () => {
+    const plan = computeGoalPlan({
+      sex: 'male',
+      bodyweightLb: 180,
+      heightFeet: 5,
+      heightInches: 10,
+      ageYears: 30,
+      activityLevel: 'moderately_active',
+      goalWeightLb: 170,
+      maintenanceCalories: 2500,
+    })
+
+    expect(plan.maintenanceCalories).toBe(2500)
+    expect(plan.goalCalories).toBe(2050)
+    expect(plan.dailyCalorieDelta).toBe(-450)
+  })
+
   it('never produces negative macros or sub-floor calories', () => {
     const targets = computeMacroTargets(1000, 220)
     expect(targets.proteinGrams).toBeGreaterThanOrEqual(0)

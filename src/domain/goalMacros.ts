@@ -163,6 +163,7 @@ export type GoalPlanInput = {
   ageYears: number
   activityLevel: GoalActivityLevel
   goalWeightLb: number
+  maintenanceCalories?: number
   direction?: GoalDirection
   weeklyRateLb?: number
 }
@@ -183,13 +184,16 @@ export type GoalPlan = {
  */
 export function computeGoalPlan(input: GoalPlanInput): GoalPlan {
   const heightInches = input.heightFeet * 12 + input.heightInches
-  const bmr = mifflinStJeorBmr({
-    sex: input.sex,
-    weightLb: input.bodyweightLb,
-    heightInches,
-    ageYears: input.ageYears,
-  })
-  const maintenanceCalories = bmr * activityMultiplier(input.activityLevel)
+  const maintenanceCalories =
+    typeof input.maintenanceCalories === 'number' &&
+    Number.isFinite(input.maintenanceCalories)
+      ? input.maintenanceCalories
+      : mifflinStJeorBmr({
+          sex: input.sex,
+          weightLb: input.bodyweightLb,
+          heightInches,
+          ageYears: input.ageYears,
+        }) * activityMultiplier(input.activityLevel)
   const direction =
     input.direction ?? goalDirection(input.bodyweightLb, input.goalWeightLb)
   const rateLb =
