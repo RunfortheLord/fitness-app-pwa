@@ -111,18 +111,85 @@ describe('AiMealCameraSubpage', () => {
       new File(['photo'], 'meal.png', { type: 'image/png' }),
     )
 
+    await user.click(
+      await screen.findByRole('button', { name: 'Analyze meal' }),
+    )
+
     await waitFor(() =>
       expect(mockAnalyzeMealPhoto).toHaveBeenCalledWith({
         apiKey: 'test-key',
-        image: {
-          base64: 'photo-bytes',
-          dataUrl: 'data:image/jpeg;base64,photo-bytes',
-          mimeType: 'image/jpeg',
-        },
+        images: [
+          {
+            base64: 'photo-bytes',
+            dataUrl: 'data:image/jpeg;base64,photo-bytes',
+            mimeType: 'image/jpeg',
+          },
+        ],
+        note: undefined,
       }),
     )
     await waitFor(() => expect(onAnalyzed).toHaveBeenCalledTimes(1))
     expect(closeBitmap).toHaveBeenCalledTimes(1)
+  })
+
+  it('analyzes multiple angles together with the optional details note', async () => {
+    const user = userEvent.setup()
+    const onAnalyzed = vi.fn()
+    mockAnalyzeMealPhoto.mockResolvedValue({
+      recipeName: 'Steak plate',
+      confidence: 'high',
+      assumptions: [],
+      ingredients: [
+        {
+          name: 'Ribeye',
+          servingQuantity: 8,
+          servingUnit: 'oz',
+          calories: 616,
+          proteinGrams: 54,
+          carbohydrateGrams: 0,
+          fatGrams: 43,
+        },
+      ],
+    })
+
+    render(
+      <AiMealCameraSubpage
+        apiKey="test-key"
+        onAnalyzed={onAnalyzed}
+        onBack={vi.fn()}
+      />,
+    )
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Take meal photo' }),
+    )
+    await user.click(
+      await screen.findByRole('button', { name: 'Add another angle' }),
+    )
+    await user.click(
+      await screen.findByRole('button', { name: 'Take meal photo' }),
+    )
+    expect(
+      screen.getByRole('list', { name: 'Captured meal photos' }).children,
+    ).toHaveLength(2)
+
+    await user.type(
+      screen.getByLabelText('Details for the AI (optional)'),
+      '8 oz ribeye cooked in butter',
+    )
+    await user.click(screen.getByRole('button', { name: 'Analyze meal' }))
+
+    await waitFor(() =>
+      expect(mockAnalyzeMealPhoto).toHaveBeenCalledWith({
+        apiKey: 'test-key',
+        images: [
+          expect.objectContaining({ base64: 'photo-bytes' }),
+          expect.objectContaining({ base64: 'photo-bytes' }),
+        ],
+        note: '8 oz ribeye cooked in butter',
+      }),
+    )
+    await waitFor(() => expect(onAnalyzed).toHaveBeenCalledTimes(1))
   })
 
   it('shows the robot calculation state while analysis is running', async () => {
@@ -139,6 +206,9 @@ describe('AiMealCameraSubpage', () => {
 
     await user.click(
       await screen.findByRole('button', { name: 'Take meal photo' }),
+    )
+    await user.click(
+      await screen.findByRole('button', { name: 'Analyze meal' }),
     )
 
     expect(
@@ -167,6 +237,9 @@ describe('AiMealCameraSubpage', () => {
 
     await user.click(
       await screen.findByRole('button', { name: 'Take meal photo' }),
+    )
+    await user.click(
+      await screen.findByRole('button', { name: 'Analyze meal' }),
     )
 
     expect(await screen.findByRole('alert')).toHaveTextContent('AI failed')

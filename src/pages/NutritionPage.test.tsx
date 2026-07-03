@@ -217,6 +217,9 @@ describe('NutritionPage', () => {
       await user.click(
         await screen.findByRole('button', { name: 'Take meal photo' }),
       )
+      await user.click(
+        await screen.findByRole('button', { name: 'Analyze meal' }),
+      )
 
       expect(
         await screen.findByDisplayValue('Photo chicken bowl'),
@@ -283,6 +286,9 @@ describe('NutritionPage', () => {
       )
       await user.click(
         await screen.findByRole('button', { name: 'Take meal photo' }),
+      )
+      await user.click(
+        await screen.findByRole('button', { name: 'Analyze meal' }),
       )
       const saveRecipeOnSecondScan = await screen.findByRole('checkbox', {
         name: 'Save as recipe',

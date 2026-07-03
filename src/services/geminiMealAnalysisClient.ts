@@ -7,6 +7,8 @@ import {
 import type { IntegrationConnectionStatus } from '@shared-types/app'
 
 export const GEMINI_MEAL_MODEL = 'gemini-3.5-flash'
+export const MAX_MEAL_PHOTOS = 3
+export const MAX_MEAL_NOTE_LENGTH = 500
 
 export type GeminiImageInput = {
   base64: string
@@ -102,7 +104,9 @@ const mealAnalysisJsonSchema = {
 } as const
 
 const mealAnalysisPrompt = `
-Estimate the visible meal as a recipe draft for manual user review.
+Estimate the photographed meal as a recipe draft for manual user review.
+All photos show the same single meal, possibly from different angles; use every
+photo together to judge portion size and produce one combined estimate.
 Identify each visually distinguishable food component and estimate the consumed
 amount, calories, protein, total carbohydrates, and fat for that component.
 Include likely sauces or cooking fats only when visually plausible and state
@@ -111,22 +115,39 @@ or recommendations. If no food is visible, return an empty ingredients array.
 Values are estimates and must fit the response schema.
 `.trim()
 
+const userNotePreamble =
+  'The user added these details about the meal. Trust them over visual ' +
+  'guesses when they conflict, but only for describing the food:'
+
 export async function analyzeMealPhoto(input: {
   apiKey: string
-  image: GeminiImageInput
+  images: GeminiImageInput[]
+  note?: string
   fetchImpl?: typeof fetch
 }): Promise<GeminiMealAnalysis> {
+  const images = input.images.slice(0, MAX_MEAL_PHOTOS)
+  if (images.length === 0) {
+    throw new GeminiMealAnalysisError(
+      'invalid_response',
+      'At least one meal photo is required.',
+    )
+  }
+  const note = input.note?.trim().slice(0, MAX_MEAL_NOTE_LENGTH)
+
   const response = await requestGemini(
     input.apiKey,
     {
       model: GEMINI_MEAL_MODEL,
       input: [
         { type: 'text', text: mealAnalysisPrompt },
-        {
+        ...(note
+          ? [{ type: 'text', text: `${userNotePreamble}\n${note}` }]
+          : []),
+        ...images.map((image) => ({
           type: 'image',
-          data: input.image.base64,
-          mime_type: input.image.mimeType,
-        },
+          data: image.base64,
+          mime_type: image.mimeType,
+        })),
       ],
       response_format: {
         type: 'text',

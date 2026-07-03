@@ -1,5 +1,17 @@
 # Decisions
 
+## 2026-07-02: AI Meal Scan Context — Review Step, Note, Multiple Photos
+
+- Capturing or importing a meal photo now lands on a review step instead of
+  analyzing immediately. The extra tap buys user control: an optional free-text
+  note and up to three photos of the same meal (different angles) per analysis.
+- The note is sent to Gemini as user-trusted context that overrides visual
+  guesses about the food (portions, hidden ingredients, cooking fats). It is
+  capped at 500 characters, task-scoped in the prompt, and never stored.
+- Multiple photos are always treated as one meal, never summed per photo.
+- This stays within the user-initiated meal-photo estimate workflow; it adds
+  no coaching, recommendations, or automatic logging.
+
 ## 2026-06-29: Optional Gemini Meal Photos And Isolated Developer Stable
 
 - The direct request for AI meal-photo analysis supersedes the earlier

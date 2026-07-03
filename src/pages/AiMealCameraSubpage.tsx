@@ -4,7 +4,9 @@ import {
   Camera,
   ImagePlus,
   RefreshCw,
+  RotateCcw,
   Settings,
+  Sparkles,
 } from 'lucide-react'
 import {
   type ChangeEvent,
@@ -27,10 +29,14 @@ import type { GeminiMealAnalysis } from '@domain/geminiMealAnalysis'
 import {
   analyzeMealPhoto,
   GeminiMealAnalysisError,
+  MAX_MEAL_NOTE_LENGTH,
+  MAX_MEAL_PHOTOS,
   type GeminiImageInput,
 } from '@services/geminiMealAnalysisClient'
 
 type CameraStatus = 'starting' | 'ready' | 'error'
+
+type CapturedPhoto = GeminiImageInput & { dataUrl: string }
 
 export function AiMealCameraSubpage({
   apiKey,
@@ -49,12 +55,9 @@ export function AiMealCameraSubpage({
   const mountedRef = useRef(true)
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>('starting')
   const [cameraError, setCameraError] = useState<string | null>(null)
-  const [capturedPhoto, setCapturedPhoto] = useState<
-    | (GeminiImageInput & {
-        dataUrl: string
-      })
-    | null
-  >(null)
+  const [photos, setPhotos] = useState<CapturedPhoto[]>([])
+  const [note, setNote] = useState('')
+  const [capturing, setCapturing] = useState(true)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [analysisFailed, setAnalysisFailed] = useState(false)
@@ -70,7 +73,7 @@ export function AiMealCameraSubpage({
   const startCamera = useCallback(async () => {
     const attemptId = ++cameraAttemptRef.current
     stopCamera()
-    setCapturedPhoto(null)
+    setCapturing(true)
     setAnalysisError(null)
     setCameraError(null)
     setCameraStatus('starting')
@@ -109,6 +112,11 @@ export function AiMealCameraSubpage({
     }
   }, [stopCamera])
 
+  const startOver = useCallback(() => {
+    setPhotos([])
+    void startCamera()
+  }, [startCamera])
+
   useEffect(() => {
     mountedRef.current = true
     const startupId = apiKey
@@ -132,35 +140,37 @@ export function AiMealCameraSubpage({
     return () => window.clearTimeout(returnId)
   }, [analysisFailed, onBack])
 
-  const analyze = useCallback(
-    async (photo: GeminiImageInput) => {
-      if (!apiKey) {
-        return
+  const analyze = useCallback(async () => {
+    if (!apiKey || photos.length === 0) {
+      return
+    }
+    setAnalyzing(true)
+    setAnalysisError(null)
+    setAnalysisFailed(false)
+    try {
+      const trimmedNote = note.trim()
+      const result = await analyzeMealPhoto({
+        apiKey,
+        images: photos,
+        note: trimmedNote ? trimmedNote : undefined,
+      })
+      if (mountedRef.current) {
+        onAnalyzed(result)
       }
-      setAnalyzing(true)
-      setAnalysisError(null)
-      setAnalysisFailed(false)
-      try {
-        const result = await analyzeMealPhoto({ apiKey, image: photo })
-        if (mountedRef.current) {
-          onAnalyzed(result)
+    } catch (error) {
+      if (mountedRef.current) {
+        if (
+          error instanceof GeminiMealAnalysisError &&
+          error.code === 'no_food_detected'
+        ) {
+          setAnalysisFailed(true)
+        } else {
+          setAnalysisError(analysisErrorMessage(error))
         }
-      } catch (error) {
-        if (mountedRef.current) {
-          if (
-            error instanceof GeminiMealAnalysisError &&
-            error.code === 'no_food_detected'
-          ) {
-            setAnalysisFailed(true)
-          } else {
-            setAnalysisError(analysisErrorMessage(error))
-          }
-          setAnalyzing(false)
-        }
+        setAnalyzing(false)
       }
-    },
-    [apiKey, onAnalyzed],
-  )
+    }
+  }, [apiKey, note, onAnalyzed, photos])
 
   function capturePhoto() {
     const video = videoRef.current
@@ -176,9 +186,9 @@ export function AiMealCameraSubpage({
       setCameraError('The photo could not be prepared.')
       return
     }
-    setCapturedPhoto(photo)
+    setPhotos((current) => [...current, photo].slice(0, MAX_MEAL_PHOTOS))
+    setCapturing(false)
     stopCamera()
-    void analyze(photo)
   }
 
   async function importPhoto(event: ChangeEvent<HTMLInputElement>) {
@@ -197,14 +207,17 @@ export function AiMealCameraSubpage({
       if (!mountedRef.current) {
         return
       }
-      setCapturedPhoto(photo)
-      void analyze(photo)
+      setPhotos((current) => [...current, photo].slice(0, MAX_MEAL_PHOTOS))
+      setCapturing(false)
     } catch {
       if (mountedRef.current) {
         setCameraError('The selected photo could not be prepared.')
       }
     }
   }
+
+  const reviewing = !capturing && photos.length > 0
+  const lastPhoto = photos.at(-1) ?? null
 
   return (
     <section className="ai-meal-camera-subpage subpage-enter">
@@ -232,8 +245,8 @@ export function AiMealCameraSubpage({
       ) : (
         <>
           <div className="ai-camera-viewfinder">
-            {capturedPhoto ? (
-              <img alt={t('Captured meal')} src={capturedPhoto.dataUrl} />
+            {reviewing && lastPhoto ? (
+              <img alt={t('Captured meal')} src={lastPhoto.dataUrl} />
             ) : (
               <video
                 aria-label="AI meal camera preview"
@@ -270,7 +283,25 @@ export function AiMealCameraSubpage({
             ) : null}
           </div>
 
-          {cameraStatus === 'starting' && !capturedPhoto ? (
+          {reviewing && photos.length > 1 ? (
+            <div
+              aria-label={t('Captured meal photos')}
+              className="ai-camera-thumbs"
+              role="list"
+            >
+              {photos.map((photo, index) => (
+                <img
+                  alt={`${t('Captured meal')} ${index + 1}`}
+                  className="ai-camera-thumb"
+                  key={index}
+                  role="listitem"
+                  src={photo.dataUrl}
+                />
+              ))}
+            </div>
+          ) : null}
+
+          {cameraStatus === 'starting' && capturing ? (
             <LoadingState label="Starting camera" />
           ) : null}
           {cameraError ? (
@@ -278,6 +309,29 @@ export function AiMealCameraSubpage({
           ) : null}
           {analysisError ? (
             <StatusMessage tone="warning">{t(analysisError)}</StatusMessage>
+          ) : null}
+
+          {reviewing && !analyzing && !analysisFailed ? (
+            <div className="form-field ai-camera-note">
+              <label htmlFor="ai-meal-note">
+                {t('Details for the AI (optional)')}
+              </label>
+              <textarea
+                id="ai-meal-note"
+                maxLength={MAX_MEAL_NOTE_LENGTH}
+                onChange={(event) => setNote(event.currentTarget.value)}
+                placeholder={t(
+                  'e.g. 8 oz ribeye, rice cooked in butter, 12-inch plate',
+                )}
+                rows={2}
+                value={note}
+              />
+              <p className="muted">
+                {t(
+                  'Portion sizes, hidden ingredients, and cooking fats make the estimate more accurate.',
+                )}
+              </p>
+            </div>
           ) : null}
 
           <div className="ai-camera-controls">
@@ -289,7 +343,7 @@ export function AiMealCameraSubpage({
               ref={fileInputRef}
               type="file"
             />
-            {cameraStatus === 'ready' && !capturedPhoto ? (
+            {capturing && cameraStatus === 'ready' ? (
               <IconButton
                 aria-label="Take meal photo"
                 className="ai-camera-shutter"
@@ -298,13 +352,13 @@ export function AiMealCameraSubpage({
                 <Camera aria-hidden="true" size={28} />
               </IconButton>
             ) : null}
-            {cameraStatus === 'error' && !capturedPhoto ? (
+            {capturing && cameraStatus === 'error' ? (
               <PrimaryButton onClick={() => void startCamera()} type="button">
                 <RefreshCw aria-hidden="true" size={18} />
                 Retry camera
               </PrimaryButton>
             ) : null}
-            {!analyzing ? (
+            {!analyzing && photos.length < MAX_MEAL_PHOTOS ? (
               <SecondaryButton
                 onClick={() => fileInputRef.current?.click()}
                 type="button"
@@ -313,19 +367,21 @@ export function AiMealCameraSubpage({
                 {t('Choose from photos')}
               </SecondaryButton>
             ) : null}
-            {capturedPhoto && analysisError && !analyzing ? (
+            {reviewing && !analyzing && photos.length < MAX_MEAL_PHOTOS ? (
+              <SecondaryButton onClick={() => void startCamera()} type="button">
+                <Camera aria-hidden="true" size={18} />
+                {t('Add another angle')}
+              </SecondaryButton>
+            ) : null}
+            {reviewing && !analyzing ? (
               <>
-                <SecondaryButton
-                  onClick={() => void startCamera()}
-                  type="button"
-                >
-                  {t('Retake')}
+                <SecondaryButton onClick={startOver} type="button">
+                  <RotateCcw aria-hidden="true" size={18} />
+                  {t('Start over')}
                 </SecondaryButton>
-                <PrimaryButton
-                  onClick={() => void analyze(capturedPhoto)}
-                  type="button"
-                >
-                  {t('Retry analysis')}
+                <PrimaryButton onClick={() => void analyze()} type="button">
+                  <Sparkles aria-hidden="true" size={18} />
+                  {t('Analyze meal')}
                 </PrimaryButton>
               </>
             ) : null}

@@ -275,6 +275,15 @@ const spanishTranslations: Record<string, string> = {
   'Retry camera': 'Reintentar cámara',
   Retake: 'Volver a tomar',
   'Retry analysis': 'Reintentar análisis',
+  'Analyze meal': 'Analizar comida',
+  'Add another angle': 'Añadir otro ángulo',
+  'Start over': 'Empezar de nuevo',
+  'Captured meal photos': 'Fotos de comida capturadas',
+  'Details for the AI (optional)': 'Detalles para la IA (opcional)',
+  'e.g. 8 oz ribeye, rice cooked in butter, 12-inch plate':
+    'p. ej., bistec de 8 oz, arroz cocinado con mantequilla, plato de 30 cm',
+  'Portion sizes, hidden ingredients, and cooking fats make the estimate more accurate.':
+    'Los tamaños de las porciones, los ingredientes ocultos y las grasas de cocción hacen la estimación más precisa.',
   'Photo nutrition is an estimate. Review every ingredient before saving the recipe.':
     'La nutrición de la foto es una estimación. Revisa cada ingrediente antes de guardar la receta.',
   'Photo nutrition is an estimate. Review every ingredient before logging food.':

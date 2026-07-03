@@ -10,6 +10,15 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-07-02-ai-meal-photo-context',
+    date: '2026-07-02',
+    title: 'Smarter AI meal scans',
+    items: [
+      'Review your meal photo before analyzing and add optional details — portion sizes, hidden ingredients, cooking fats — that the AI trusts over visual guesses.',
+      'Capture up to three photos of the same meal from different angles so the AI can judge portion size better.',
+    ],
+  },
+  {
     id: '2026-06-29-ai-meal-camera',
     date: '2026-06-29',
     title: 'Optional AI meal camera',

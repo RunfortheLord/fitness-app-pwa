@@ -48,7 +48,7 @@ describe('geminiMealAnalysisClient', () => {
     await expect(
       analyzeMealPhoto({
         apiKey: 'local-test-key',
-        image: { base64: 'image-bytes', mimeType: 'image/jpeg' },
+        images: [{ base64: 'image-bytes', mimeType: 'image/jpeg' }],
         fetchImpl,
       }),
     ).resolves.toMatchObject({
@@ -72,6 +72,59 @@ describe('geminiMealAnalysisClient', () => {
     })
   })
 
+  it('sends every photo plus the trimmed user note as extra context', async () => {
+    let requestBody: { input?: unknown[] } | null = null
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body)) as { input?: unknown[] }
+      return jsonResponse({
+        status: 'completed',
+        steps: [
+          {
+            type: 'model_output',
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  recipeName: 'Steak plate',
+                  confidence: 'medium',
+                  assumptions: [],
+                  ingredients: [
+                    {
+                      name: 'Ribeye',
+                      servingQuantity: 8,
+                      servingUnit: 'oz',
+                      calories: 616,
+                      proteinGrams: 54,
+                      carbohydrateGrams: 0,
+                      fatGrams: 43,
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+        ],
+      })
+    }
+
+    await analyzeMealPhoto({
+      apiKey: 'test-key',
+      images: [
+        { base64: 'angle-one', mimeType: 'image/jpeg' },
+        { base64: 'angle-two', mimeType: 'image/jpeg' },
+      ],
+      note: '  8 oz ribeye, cooked in butter  ',
+      fetchImpl,
+    })
+
+    const input = requestBody!.input!
+    expect(input).toHaveLength(4)
+    expect(input[1]).toMatchObject({ type: 'text' })
+    expect(JSON.stringify(input[1])).toContain('8 oz ribeye, cooked in butter')
+    expect(input[2]).toMatchObject({ type: 'image', data: 'angle-one' })
+    expect(input[3]).toMatchObject({ type: 'image', data: 'angle-two' })
+  })
+
   it('maps free-tier rate limits to an actionable error', async () => {
     const fetchImpl: typeof fetch = async () =>
       new Response('quota exceeded', { status: 429 })
@@ -79,7 +132,7 @@ describe('geminiMealAnalysisClient', () => {
     await expect(
       analyzeMealPhoto({
         apiKey: 'test-key',
-        image: { base64: 'image-bytes', mimeType: 'image/jpeg' },
+        images: [{ base64: 'image-bytes', mimeType: 'image/jpeg' }],
         fetchImpl,
       }),
     ).rejects.toMatchObject({
@@ -112,7 +165,7 @@ describe('geminiMealAnalysisClient', () => {
     await expect(
       analyzeMealPhoto({
         apiKey: 'test-key',
-        image: { base64: 'image-bytes', mimeType: 'image/jpeg' },
+        images: [{ base64: 'image-bytes', mimeType: 'image/jpeg' }],
         fetchImpl,
       }),
     ).rejects.toMatchObject({

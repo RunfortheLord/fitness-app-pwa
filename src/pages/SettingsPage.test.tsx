@@ -426,7 +426,7 @@ describe('SettingsPage', () => {
     await user.click(await screen.findByRole('button', { name: 'About' }))
     expect(
       await screen.findByRole('heading', {
-        name: 'Optional AI meal camera',
+        name: 'Smarter AI meal scans',
       }),
     ).toBeInTheDocument()
     expect(screen.queryByText('Pounds or kilograms')).not.toBeInTheDocument()
@@ -441,6 +441,9 @@ describe('SettingsPage', () => {
     ).toBeInTheDocument()
     expect(
       screen.getByRole('heading', { name: 'Run tracking upgrades' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Optional AI meal camera' }),
     ).toBeInTheDocument()
     expect(screen.getByText('Faster, smarter food logging')).toBeInTheDocument()
   })
