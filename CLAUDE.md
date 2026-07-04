@@ -51,15 +51,15 @@ Dexie migration version (never rename/drop persisted fields without one); dates 
 
 ## Pages → routes (src/app/router.tsx)
 
-| Route                  | Page file           | Notes                                                                 |
-| ---------------------- | ------------------- | --------------------------------------------------------------------- |
-| `/`                    | HomePage.tsx        | dashboard                                                             |
-| `/nutrition`           | NutritionPage.tsx   | food log, recipes, saved meals, goals, macros — components in `features/nutrition/` |
-| `/run`                 | RunPage.tsx         | GPS run tracking                                                      |
+| Route                  | Page file           | Notes                                                                                     |
+| ---------------------- | ------------------- | ----------------------------------------------------------------------------------------- |
+| `/`                    | HomePage.tsx        | dashboard                                                                                 |
+| `/nutrition`           | NutritionPage.tsx   | food log, recipes, saved meals, goals, macros — components in `features/nutrition/`       |
+| `/run`                 | RunPage.tsx         | GPS run tracking                                                                          |
 | `/training`            | TrainingPage.tsx    | programs, program library, templates, days/exercises — components in `features/training/` |
-| `/workout`             | LiveWorkoutPage.tsx | active live workout, rest timer, sets                                 |
-| `/graphs` + `/history` | HistoryPage.tsx     | strength/bodyweight graphs + workout history                          |
-| `/settings`            | SettingsPage.tsx    | units, timer sound, goals, backup, integrations                       |
+| `/workout`             | LiveWorkoutPage.tsx | active live workout, rest timer, sets                                                     |
+| `/graphs` + `/history` | HistoryPage.tsx     | strength/bodyweight graphs + workout history                                              |
+| `/settings`            | SettingsPage.tsx    | units, timer sound, goals, backup, integrations                                           |
 
 Bottom nav: `components/BottomNavigation.tsx`; shell: `components/AppShell.tsx`.
 
