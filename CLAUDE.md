@@ -31,6 +31,7 @@ icons, `date-fns`. npm. Mobile-first CSS. Deploy target: Vercel.
 
 ```
 pages/ (React screens)  ── UI only, compose components + call repositories/services
+features/               ── feature-scoped components + helpers (nutrition/, training/) used by their page
 components/              ── reusable presentational + UI primitives (ui.tsx)
 hooks/                  ── React hooks
 services/               ── app-level orchestration (init, dashboard, backup, nutrition summary, food provider client)
@@ -53,9 +54,9 @@ Dexie migration version (never rename/drop persisted fields without one); dates 
 | Route                  | Page file           | Notes                                                                 |
 | ---------------------- | ------------------- | --------------------------------------------------------------------- |
 | `/`                    | HomePage.tsx        | dashboard                                                             |
-| `/nutrition`           | NutritionPage.tsx   | **3300 lines** — food log, recipes, saved meals, goals, macros        |
+| `/nutrition`           | NutritionPage.tsx   | food log, recipes, saved meals, goals, macros — components in `features/nutrition/` |
 | `/run`                 | RunPage.tsx         | GPS run tracking                                                      |
-| `/training`            | TrainingPage.tsx    | **3200 lines** — programs, program library, templates, days/exercises |
+| `/training`            | TrainingPage.tsx    | programs, program library, templates, days/exercises — components in `features/training/` |
 | `/workout`             | LiveWorkoutPage.tsx | active live workout, rest timer, sets                                 |
 | `/graphs` + `/history` | HistoryPage.tsx     | strength/bodyweight graphs + workout history                          |
 | `/settings`            | SettingsPage.tsx    | units, timer sound, goals, backup, integrations                       |
