@@ -953,6 +953,10 @@ export function createProgramRepository(
       return this.getActiveCycleStructure(cycle.id)
     },
 
+    async listAllActiveCycleDayChecks(activeCycleId: string) {
+      return database.activeCycleDayChecks.where({ activeCycleId }).toArray()
+    },
+
     async listActiveCycleDayChecks(activeCycleId: string, weekNumber: number) {
       return database.activeCycleDayChecks
         .where('[activeCycleId+weekNumber]')

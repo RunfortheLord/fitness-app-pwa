@@ -8,7 +8,6 @@ import {
   SecondaryButton,
 } from '@components/ui'
 import { useLanguage } from '@components/languageContextValue'
-import { formatProgramWeek } from '@domain/programWeeks'
 import type {
   ActiveCycleWorkoutDay,
   ActiveCycleWorkoutExercise,
@@ -20,6 +19,7 @@ import type { CurrentCycleStructure, LoadStatus } from './types'
 export function ProgramOverview({
   currentCycle,
   checkedDayIds,
+  weekNumber,
   onToggleDayCheck,
   loadStatus,
   onBrowse,
@@ -31,6 +31,7 @@ export function ProgramOverview({
 }: {
   currentCycle: CurrentCycleStructure | undefined
   checkedDayIds: string[]
+  weekNumber: number
   onToggleDayCheck: (
     cycle: ActiveProgramCycle,
     dayId: string,
@@ -93,15 +94,16 @@ export function ProgramOverview({
               Deactivate
             </SecondaryButton>
           </div>
-          <p className="program-week-indicator">
-            {formatProgramWeek(currentCycle.cycle.activatedAt)}
-          </p>
+          <p className="program-week-indicator">{`Week ${weekNumber}`}</p>
           {currentCycle.days.length ? (
             <div className="program-day-grid" aria-label={t('Workout days')}>
               {currentCycle.days.map((day) => {
                 const isChecked = checkedSet.has(day.id)
                 return (
-                  <div className="program-day-card" key={day.id}>
+                  <div
+                    className={`program-day-card${isChecked ? ' is-done' : ''}`}
+                    key={day.id}
+                  >
                     <div className="program-day-card-head">
                       <button
                         className={`program-day-check${

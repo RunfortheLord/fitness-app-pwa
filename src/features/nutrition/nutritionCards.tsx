@@ -36,12 +36,22 @@ export function DailyTotalsCard({
 
   return (
     <Card title="Daily nutrition totals">
-      <p className="metric-value">{Math.round(totals?.calories ?? 0)} kcal</p>
-      <p className="muted">
-        {t('{calories} kcal remaining', {
-          calories: Math.round(summary?.remainingCalories ?? 0),
-        })}
-      </p>
+      {targets?.calories ? (
+        <>
+          <p className="metric-value">
+            {t('{calories} kcal remaining', {
+              calories: Math.round(summary?.remainingCalories ?? 0),
+            })}
+          </p>
+          <p className="muted">
+            {t('{calories} kcal eaten', {
+              calories: Math.round(totals?.calories ?? 0),
+            })}
+          </p>
+        </>
+      ) : (
+        <p className="metric-value">{Math.round(totals?.calories ?? 0)} kcal</p>
+      )}
       <div className="macro-row nutrition-row">
         <span>
           {t('Protein')} {roundMacro(totals?.proteinGrams)} /{' '}
@@ -152,6 +162,7 @@ export function FoodShortcutCard({
   emptyTitle,
   emptyMessage,
   onSelect,
+  onAdd,
   onQuickLog,
   onToggleFavorite,
 }: {
@@ -161,6 +172,7 @@ export function FoodShortcutCard({
   emptyTitle: string
   emptyMessage: string
   onSelect: (food: Food) => void
+  onAdd: (food: Food) => void
   onQuickLog: (food: Food) => void
   onToggleFavorite: (food: Food) => void
 }) {
@@ -180,6 +192,7 @@ export function FoodShortcutCard({
               rememberedServing={foodUnitPreferences[food.id]}
               onEdit={null}
               onSelect={() => onSelect(food)}
+              onAdd={() => onAdd(food)}
               isFavorite={Boolean(food.isFavorite)}
               onToggleFavorite={() => onToggleFavorite(food)}
               onQuickLog={() => onQuickLog(food)}

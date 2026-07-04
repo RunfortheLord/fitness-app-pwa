@@ -971,6 +971,9 @@ export function NutritionPage() {
                       result: { type: 'local', food, section: 'recent' },
                     })
                   }
+                  onAdd={(food) =>
+                    quickAddResult({ type: 'local', food, section: 'recent' })
+                  }
                   onQuickLog={quickLog}
                   onToggleFavorite={toggleFavorite}
                 />
@@ -986,6 +989,9 @@ export function NutritionPage() {
                     type: 'select',
                     result: { type: 'local', food, section: 'recent' },
                   })
+                }
+                onAdd={(food) =>
+                  quickAddResult({ type: 'local', food, section: 'recent' })
                 }
                 onQuickLog={quickLog}
                 onToggleFavorite={toggleFavorite}

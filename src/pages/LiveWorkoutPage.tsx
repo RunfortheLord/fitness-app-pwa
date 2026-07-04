@@ -3,6 +3,8 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Clock,
   Minus,
   MoreHorizontal,
@@ -638,6 +640,18 @@ export function LiveWorkoutPage() {
             )
           }}
           onDeleteSet={(setId) => run(workoutRepository.deleteSet(setId))}
+          onMoveExercise={(offset) => {
+            const ids = state.exercises.map((entry) => entry.id)
+            const target = activeIndex + offset
+            if (target < 0 || target >= ids.length) {
+              return
+            }
+            ;[ids[activeIndex], ids[target]] = [ids[target], ids[activeIndex]]
+            run(
+              workoutRepository.reorderWorkoutExercises(state.workout.id, ids),
+              'Exercise order could not be changed.',
+            )
+          }}
           onNext={() => selectExercise(activeIndex + 1)}
           onPrevious={() => selectExercise(activeIndex - 1)}
           onReplaceExercise={() =>
@@ -871,6 +885,7 @@ function ExerciseWorkspace({
   onAddSet,
   onCompleteSet,
   onDeleteSet,
+  onMoveExercise,
   onNext,
   onPrevious,
   onReplaceExercise,
@@ -892,6 +907,7 @@ function ExerciseWorkspace({
   onAddSet: () => void
   onCompleteSet: (set: WorkoutSet, completed: boolean) => void
   onDeleteSet: (setId: string) => void
+  onMoveExercise: (offset: 1 | -1) => void
   onNext: () => void
   onPrevious: () => void
   onReplaceExercise: () => void
@@ -1017,6 +1033,22 @@ function ExerciseWorkspace({
         <SecondaryButton type="button" onClick={onReplaceExercise}>
           <RefreshCcw aria-hidden="true" size={16} />
           {t('Replace Exercise')}
+        </SecondaryButton>
+        <SecondaryButton
+          type="button"
+          disabled={exerciseIndex === 0}
+          onClick={() => onMoveExercise(-1)}
+        >
+          <ChevronsLeft aria-hidden="true" size={16} />
+          {t('Move Earlier')}
+        </SecondaryButton>
+        <SecondaryButton
+          type="button"
+          disabled={exerciseIndex >= exerciseCount - 1}
+          onClick={() => onMoveExercise(1)}
+        >
+          {t('Move Later')}
+          <ChevronsRight aria-hidden="true" size={16} />
         </SecondaryButton>
         <SecondaryButton
           className="button-danger"
@@ -1199,6 +1231,11 @@ function SetRow({
                 typeof rir === 'number' && Number.isFinite(rir) && rir >= 0,
               )
               onRirChange(rir)
+            }}
+            onFocus={(event) => {
+              if (event.currentTarget.value) {
+                event.currentTarget.select()
+              }
             }}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {

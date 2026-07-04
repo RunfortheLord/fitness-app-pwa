@@ -2,60 +2,69 @@ import { describe, expect, it } from 'vitest'
 
 import {
   clampProgramDurationWeeks,
-  currentProgramWeek,
+  completionProgramWeek,
   DEFAULT_PROGRAM_DURATION_WEEKS,
-  formatProgramWeek,
   MAX_PROGRAM_DURATION_WEEKS,
   MIN_PROGRAM_DURATION_WEEKS,
   nextUpDayId,
+  type ProgramWeekCheck,
 } from './programWeeks'
 
-describe('currentProgramWeek', () => {
-  const activatedAt = '2026-01-01T08:00:00.000Z'
+describe('completionProgramWeek', () => {
+  const dayIds = ['a', 'b', 'c']
 
-  it('treats the activation day as week 1', () => {
-    expect(
-      currentProgramWeek(activatedAt, new Date('2026-01-01T20:00:00Z')),
-    ).toBe(1)
+  function check(
+    weekNumber: number,
+    dayId: string,
+    checked = true,
+  ): ProgramWeekCheck {
+    return { weekNumber, dayId, checked }
+  }
+
+  it('starts at week 1 with no checks', () => {
+    expect(completionProgramWeek([], dayIds)).toBe(1)
   })
 
-  it('stays in week 1 through the first six days', () => {
-    expect(
-      currentProgramWeek(activatedAt, new Date('2026-01-07T08:00:00Z')),
-    ).toBe(1)
+  it('stays in the latest partially checked week', () => {
+    expect(completionProgramWeek([check(1, 'a')], dayIds)).toBe(1)
+    expect(completionProgramWeek([check(1, 'a'), check(1, 'b')], dayIds)).toBe(
+      1,
+    )
   })
 
-  it('rolls to week 2 on the seventh day', () => {
+  it('rolls into the next week once every day is checked', () => {
     expect(
-      currentProgramWeek(activatedAt, new Date('2026-01-08T08:00:00Z')),
+      completionProgramWeek(
+        [check(1, 'a'), check(1, 'b'), check(1, 'c')],
+        dayIds,
+      ),
     ).toBe(2)
   })
 
-  it('counts further weeks', () => {
-    // Jan 1 -> Feb 12 is 42 days = exactly six full weeks, i.e. week 7.
-    expect(
-      currentProgramWeek(activatedAt, new Date('2026-02-12T08:00:00Z')),
-    ).toBe(7)
+  it('tracks the latest week with checks, ignoring earlier gaps', () => {
+    // Legacy calendar-based data can leave week 1 incomplete while week 3
+    // already has checks; the current week is driven by the latest activity.
+    expect(completionProgramWeek([check(1, 'a'), check(3, 'b')], dayIds)).toBe(
+      3,
+    )
   })
 
-  it('returns week 1 for a future activation or invalid date', () => {
+  it('ignores unchecked records and unknown days', () => {
     expect(
-      currentProgramWeek(activatedAt, new Date('2025-12-01T08:00:00Z')),
-    ).toBe(1)
-    expect(
-      currentProgramWeek('not-a-date', new Date('2026-02-01T08:00:00Z')),
-    ).toBe(1)
-  })
-})
-
-describe('formatProgramWeek', () => {
-  it('labels the current week', () => {
-    expect(
-      formatProgramWeek(
-        '2026-01-01T08:00:00Z',
-        new Date('2026-01-15T08:00:00Z'),
+      completionProgramWeek(
+        [
+          check(1, 'a'),
+          check(1, 'b'),
+          check(1, 'c', false),
+          check(1, 'deleted-day'),
+        ],
+        dayIds,
       ),
-    ).toBe('Week 3')
+    ).toBe(1)
+  })
+
+  it('returns week 1 when the cycle has no days', () => {
+    expect(completionProgramWeek([check(1, 'a')], [])).toBe(1)
   })
 })
 

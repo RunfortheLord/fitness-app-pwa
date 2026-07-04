@@ -1,5 +1,33 @@
 # Decisions
 
+## 2026-07-04: Completion-Based Program Weeks (Tester Feedback)
+
+- Program weeks now advance from day check-offs, not the calendar: the current
+  week is the latest week holding a checked day, and it rolls into the next
+  week the moment every day of the cycle is checked
+  (`completionProgramWeek` in `domain/programWeeks.ts`). Checked day cards
+  darken (`.program-day-card.is-done`) and all reset together at rollover.
+- Rationale: alpha feedback — training cadence rarely matches calendar weeks,
+  and testers wanted "complete the week when the workouts are done".
+- Legacy calendar-keyed check records stay valid: the derivation uses the
+  latest week with any checked day, so nobody regresses to week 1. The
+  calendar helpers `currentProgramWeek`/`formatProgramWeek` were removed.
+- Not automatic program advancement (still a first-release exclusion): nothing
+  changes prescriptions or completes the cycle; only the week counter and the
+  weekly check-off reset are driven by completion.
+
+## 2026-07-04: Live Workout Set/Order Edits Follow Live Behavior
+
+- Sets added mid-workout inherit the previous set's current values with
+  source `auto`, so live rep/weight propagation keeps flowing into them until
+  the lifter edits them manually. Add/delete also recompute target
+  recommendations.
+- Exercises can be reordered mid-workout (Move Earlier / Move Later), reusing
+  `reorderWorkoutExercises`; the active exercise follows its id to the new slot.
+- The nutrition daily totals card leads with calories remaining when a calorie
+  target exists (calories eaten shown beneath); without a target it keeps the
+  eaten headline since "remaining" is meaningless.
+
 ## 2026-07-02: AI Meal Scan Context — Review Step, Note, Multiple Photos
 
 - Capturing or importing a meal photo now lands on a review step instead of

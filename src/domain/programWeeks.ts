@@ -1,5 +1,3 @@
-import { differenceInCalendarDays } from 'date-fns'
-
 /** Built-in programs (and the create-program form) default to a 10-week plan. */
 export const DEFAULT_PROGRAM_DURATION_WEEKS = 10
 
@@ -7,32 +5,46 @@ export const DEFAULT_PROGRAM_DURATION_WEEKS = 10
 export const MIN_PROGRAM_DURATION_WEEKS = 1
 export const MAX_PROGRAM_DURATION_WEEKS = 104
 
-/**
- * 1-based current week of a program cycle, counted in calendar weeks from the
- * activation date — the activation day itself is week 1. Returns 1 for an
- * unparseable date or a future activation.
- */
-export function currentProgramWeek(
-  activatedAt: string,
-  now: Date = new Date(),
-): number {
-  const start = new Date(activatedAt)
-  if (Number.isNaN(start.getTime())) {
-    return 1
-  }
-  const days = differenceInCalendarDays(now, start)
-  if (days <= 0) {
-    return 1
-  }
-  return Math.floor(days / 7) + 1
+/** The subset of an ActiveCycleDayCheck that week derivation needs. */
+export type ProgramWeekCheck = {
+  weekNumber: number
+  dayId: string
+  checked: boolean
 }
 
-/** Short label for the active-cycle card, e.g. "Week 3". */
-export function formatProgramWeek(
-  activatedAt: string,
-  now: Date = new Date(),
-): string {
-  return `Week ${currentProgramWeek(activatedAt, now)}`
+/**
+ * 1-based current week of a cycle, driven by day check-offs instead of the
+ * calendar. The current week is the latest week holding a checked day; once
+ * every day of that week is checked the cycle rolls into the next week (so
+ * the fresh week starts with no checks). Weeks complete when the training is
+ * done, not when seven calendar days pass. Returns 1 when nothing is checked
+ * or the cycle has no days.
+ */
+export function completionProgramWeek(
+  checks: readonly ProgramWeekCheck[],
+  dayIds: readonly string[],
+): number {
+  const dayIdSet = new Set(dayIds)
+  if (dayIdSet.size === 0) {
+    return 1
+  }
+  const checkedByWeek = new Map<number, Set<string>>()
+  for (const check of checks) {
+    if (!check.checked || !dayIdSet.has(check.dayId)) {
+      continue
+    }
+    const days = checkedByWeek.get(check.weekNumber) ?? new Set<string>()
+    days.add(check.dayId)
+    checkedByWeek.set(check.weekNumber, days)
+  }
+  if (checkedByWeek.size === 0) {
+    return 1
+  }
+  const latestWeek = Math.max(...checkedByWeek.keys())
+  const latestCheckedDays = checkedByWeek.get(latestWeek)
+  return latestCheckedDays && latestCheckedDays.size >= dayIdSet.size
+    ? latestWeek + 1
+    : latestWeek
 }
 
 /**

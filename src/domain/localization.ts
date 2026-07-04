@@ -402,6 +402,7 @@ const spanishTranslations: Record<string, string> = {
     'Esto elimina el alimento registrado del {date}.',
   'Daily nutrition totals': 'Totales diarios de nutrición',
   '{calories} kcal remaining': '{calories} kcal restantes',
+  '{calories} kcal eaten': '{calories} kcal consumidas',
   Carbs: 'Carbohidratos',
   'Set manual targets when you are ready.':
     'Establece objetivos manuales cuando quieras.',
@@ -572,6 +573,10 @@ const spanishTranslations: Record<string, string> = {
   'this exercise': 'este ejercicio',
   'Exercise {current} of {total}': 'Ejercicio {current} de {total}',
   'Replace Exercise': 'Reemplazar ejercicio',
+  'Move Earlier': 'Mover antes',
+  'Move Later': 'Mover después',
+  'Exercise order could not be changed.':
+    'No se pudo cambiar el orden de los ejercicios.',
   Unskip: 'Desmarcar omisión',
   'Skip Exercise': 'Omitir ejercicio',
   'Add Set': 'Añadir serie',

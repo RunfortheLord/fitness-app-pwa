@@ -1176,6 +1176,51 @@ describe('NutritionPage', () => {
     // Quick Add entries log to the day only; they are not reusable recent foods.
     expect(within(recentCard).queryByText('Snack')).not.toBeInTheDocument()
   })
+
+  it('logs immediately from the Recent foods "+" without opening a sheet', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await user.click(screen.getByRole('button', { name: /Create custom food/ }))
+    await expectSaveFoodAvailable()
+    await fillFoodForm(user, {
+      name: 'Yogurt',
+      calories: '120',
+      protein: '10',
+      carbs: '9',
+      fat: '4',
+    })
+    await user.click(screen.getByRole('button', { name: 'Save food' }))
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: 'Create food' }),
+      ).not.toBeInTheDocument(),
+    )
+    await user.type(await openFoodSearch(user), 'Yogurt')
+    await user.click(await screen.findByRole('button', { name: 'Add Yogurt' }))
+    await closeFoodSearch(user)
+
+    await user.click(screen.getByRole('button', { name: 'Foods' }))
+    const recentCard = await screen.findByRole('region', {
+      name: 'Recent foods',
+    })
+    await user.click(
+      within(recentCard).getByRole('button', { name: 'Add Yogurt' }),
+    )
+
+    // No serving sheet — the food logs straight to the selected day.
+    expect(
+      screen.queryByRole('button', { name: 'Log food' }),
+    ).not.toBeInTheDocument()
+    await waitFor(async () => {
+      const entries = await db.foodLogEntries.toArray()
+      expect(entries).toHaveLength(2)
+      expect(entries[1]).toMatchObject({
+        computedCalories: 120,
+        foodSnapshot: { foodName: 'Yogurt' },
+      })
+    })
+  })
 })
 
 function renderNutrition(initialEntry = '/nutrition') {

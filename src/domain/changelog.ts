@@ -10,6 +10,19 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-07-04-live-workout-and-week-checkoffs',
+    date: '2026-07-04',
+    title: 'Live workout polish and check-off weeks',
+    items: [
+      'Added sets now start from your previous set’s weight and reps and keep updating live until you edit them.',
+      'Reorder exercises mid-workout with the new Move Earlier / Move Later buttons.',
+      'Tapping the Final RIR field selects the existing number, so typing replaces it instead of appending.',
+      'Program weeks now advance when you check off every workout day — not on a calendar timer. Checked-off day cards dim, then all reset when the new week starts.',
+      'The + button on Recent foods and Favorites logs the food immediately at its usual serving.',
+      'The daily nutrition card now leads with calories remaining, with calories eaten below.',
+    ],
+  },
+  {
     id: '2026-07-02-ai-meal-photo-context',
     date: '2026-07-02',
     title: 'Smarter AI meal scans',

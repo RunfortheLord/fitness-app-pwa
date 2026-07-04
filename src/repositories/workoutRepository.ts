@@ -12,7 +12,7 @@ import {
   type NextWorkoutPerformance,
 } from '@domain/progressionRecommendations'
 import { snapshotExercise } from '@domain/snapshots'
-import { currentProgramWeek } from '@domain/programWeeks'
+import { completionProgramWeek } from '@domain/programWeeks'
 import { suggestedWeightForReps } from '@domain/workoutPrefill'
 import { detectWorkoutStructuralChanges } from '@domain/workoutChanges'
 import { canSkipWorkoutExercise } from '@domain/workoutSkip'
@@ -577,7 +577,13 @@ export function createWorkoutRepository(
       const now = new Date().toISOString()
       return database.transaction(
         'rw',
-        [database.workouts, database.workoutExercises, database.workoutSets],
+        [
+          database.workouts,
+          database.workoutExercises,
+          database.workoutSets,
+          database.activeCycleWorkoutExercises,
+          database.exercises,
+        ],
         async () => {
           const exercise =
             await database.workoutExercises.get(workoutExerciseId)
@@ -588,7 +594,22 @@ export function createWorkoutRepository(
           }
           const existing = await database.workoutSets
             .where({ workoutExerciseId })
-            .toArray()
+            .sortBy('setNumber')
+          // Inherit the previous set's current values as "auto" so the new set
+          // keeps receiving live rep/weight propagation until edited manually.
+          const previous = existing.at(-1)
+          const inheritedValues: WorkoutSet['metricValues'] = {}
+          const inheritedSources: NonNullable<
+            WorkoutSet['metricValueSources']
+          > = {}
+          if (previous) {
+            for (const [key, value] of Object.entries(previous.metricValues)) {
+              if (value !== null && value !== undefined) {
+                inheritedValues[key] = value
+                inheritedSources[key] = 'auto'
+              }
+            }
+          }
           const set: WorkoutSet = {
             id: createId(),
             workoutId: exercise.workoutId,
@@ -596,8 +617,8 @@ export function createWorkoutRepository(
             setNumber: existing.length + 1,
             targetSnapshot: null,
             targetRecommendation: null,
-            metricValues: {},
-            metricValueSources: {},
+            metricValues: inheritedValues,
+            metricValueSources: inheritedSources,
             rir: null,
             completed: false,
             completedAt: null,
@@ -606,6 +627,11 @@ export function createWorkoutRepository(
             updatedAt: now,
           }
           await database.workoutSets.add(set)
+          await recomputeWorkoutExerciseRecommendations(
+            database,
+            workoutExerciseId,
+            now,
+          )
           await database.workouts.update(exercise.workoutId, { updatedAt: now })
           return set
         },
@@ -616,7 +642,13 @@ export function createWorkoutRepository(
       const now = new Date().toISOString()
       await database.transaction(
         'rw',
-        [database.workouts, database.workoutSets],
+        [
+          database.workouts,
+          database.workoutExercises,
+          database.workoutSets,
+          database.activeCycleWorkoutExercises,
+          database.exercises,
+        ],
         async () => {
           const set = await database.workoutSets.get(setId)
           if (!set) {
@@ -633,6 +665,11 @@ export function createWorkoutRepository(
                 updatedAt: now,
               }),
             ),
+          )
+          await recomputeWorkoutExerciseRecommendations(
+            database,
+            set.workoutExerciseId,
+            now,
           )
           await database.workouts.update(set.workoutId, { updatedAt: now })
         },
@@ -952,6 +989,7 @@ export function createWorkoutRepository(
           database.workoutHistoryExercises,
           database.workoutHistorySets,
           database.detectedWorkoutChanges,
+          database.activeCycleWorkoutDays,
           database.activeCycleWorkoutExercises,
           database.activeProgramCycles,
           database.activeCycleDayChecks,
@@ -1058,16 +1096,22 @@ export function createWorkoutRepository(
           await database.detectedWorkoutChanges.bulkAdd(changes)
 
           // Check the program day off for the current week so the dashboard can
-          // surface which day is next. Records are keyed by week, so they reset
-          // automatically each week.
+          // surface which day is next. The current week is derived from the
+          // check-offs themselves: it rolls over once every day is checked.
           if (workout.sourceActiveCycleId && workout.sourceDayId) {
             const cycle = await database.activeProgramCycles.get(
               workout.sourceActiveCycleId,
             )
             if (cycle && cycle.status === 'active') {
-              const weekNumber = currentProgramWeek(
-                cycle.activatedAt,
-                new Date(completedAt),
+              const cycleDays = await database.activeCycleWorkoutDays
+                .where({ activeCycleId: cycle.id })
+                .toArray()
+              const cycleChecks = await database.activeCycleDayChecks
+                .where({ activeCycleId: cycle.id })
+                .toArray()
+              const weekNumber = completionProgramWeek(
+                cycleChecks,
+                cycleDays.map((day) => day.id),
               )
               const existing = await database.activeCycleDayChecks
                 .where('[activeCycleId+dayId+weekNumber]')

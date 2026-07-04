@@ -897,6 +897,14 @@ textarea:focus-visible {
   background: var(--color-surface-strong);
 }
 
+/* Checked-off days darken until every day is checked; the week then rolls
+   over with no checks, so all cards return to full brightness at once. */
+.program-day-card.is-done {
+  background: var(--color-surface);
+  border-color: var(--color-border-soft);
+  opacity: 0.55;
+}
+
 .program-day-card-head {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);

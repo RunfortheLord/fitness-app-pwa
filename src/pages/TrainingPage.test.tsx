@@ -892,7 +892,7 @@ describe('TrainingPage', () => {
 
   it('checks off and unchecks a workout day for the current week with no confirmation', async () => {
     const user = userEvent.setup()
-    const program = await seedProgram(db)
+    const program = await seedTwoDayProgram(db)
     await createProgramRepository(db).activateTemplate(program.template.id)
     renderTraining()
 
@@ -905,6 +905,8 @@ describe('TrainingPage', () => {
       name: 'Mark Upper not done this week',
     })
     expect(checked).toHaveAttribute('aria-pressed', 'true')
+    // Checked-off days darken until the whole week is done.
+    expect(checked.closest('.program-day-card')).toHaveClass('is-done')
 
     // Unchecking is also a single tap (no "are you sure" dialog).
     await user.click(checked)
@@ -916,6 +918,97 @@ describe('TrainingPage', () => {
     expect(
       screen.queryByRole('dialog', { name: /sure/i }),
     ).not.toBeInTheDocument()
+  })
+
+  it('completes the week and resets the check-offs once every day is checked', async () => {
+    const user = userEvent.setup()
+    const program = await seedTwoDayProgram(db)
+    await createProgramRepository(db).activateTemplate(program.template.id)
+    renderTraining()
+
+    expect(await screen.findByText('Week 1')).toBeInTheDocument()
+    await user.click(
+      await screen.findByRole('button', { name: 'Mark Upper done this week' }),
+    )
+    await user.click(
+      await screen.findByRole('button', { name: 'Mark Lower done this week' }),
+    )
+
+    // Checking the final day rolls the cycle into week 2 with a clean slate.
+    expect(await screen.findByText('Week 2')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: 'Mark Upper done this week' }),
+    ).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: 'Mark Lower done this week' }),
+    ).toBeInTheDocument()
+  })
+
+  it('reorders exercises during a live workout with the move buttons', async () => {
+    const user = userEvent.setup()
+    const exerciseRepository = createExerciseRepository(db)
+    const press = await exerciseRepository.createExercise({
+      name: 'Order press',
+      defaultRestSeconds: 60,
+      trackingMethodId: 'weight_reps',
+      notes: '',
+    })
+    const row = await exerciseRepository.createExercise({
+      name: 'Order row',
+      defaultRestSeconds: 60,
+      trackingMethodId: 'weight_reps',
+      notes: '',
+    })
+    const template = {
+      targetSetCount: 1,
+      targetRepsMin: 6,
+      targetRepsMax: 8,
+      targetRir: 1,
+      restSecondsOverride: null,
+    }
+    const program = await createProgramRepository(db).createProgramTemplate({
+      name: 'Order split',
+      days: [
+        {
+          name: 'Day',
+          exercises: [
+            { exerciseId: press.id, ...template },
+            { exerciseId: row.id, ...template },
+          ],
+        },
+      ],
+    })
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    renderTraining(['/workout'])
+
+    expect(await screen.findByText('Exercise 1 of 2')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Order press' }),
+    ).toBeInTheDocument()
+    // The first exercise cannot move further forward.
+    expect(screen.getByRole('button', { name: 'Move Earlier' })).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: 'Move Later' }))
+
+    // The moved exercise stays active in its new slot.
+    expect(await screen.findByText('Exercise 2 of 2')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Order press' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Move Later' })).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: 'Previous' }))
+    expect(await screen.findByText('Exercise 1 of 2')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Order row' }),
+    ).toBeInTheDocument()
   })
 
   it('shows one live exercise workspace and keeps the active exercise stable after edits, swipes, and reload', async () => {
@@ -1239,6 +1332,28 @@ describe('TrainingPage', () => {
     expect(activeCycle?.notes).toBe('')
   })
 })
+
+// Two days so a single check-off leaves the week (and its checks) in place.
+async function seedTwoDayProgram(database: typeof db) {
+  const exercise = await seedExercise(database)
+  const dayExercises = [
+    {
+      exerciseId: exercise.id,
+      targetSetCount: 2,
+      targetRepsMin: 8,
+      targetRepsMax: 10,
+      targetRir: 2,
+      restSecondsOverride: 90,
+    },
+  ]
+  return createProgramRepository(database).createProgramTemplate({
+    name: 'Upper Lower Split',
+    days: [
+      { name: 'Upper', exercises: dayExercises },
+      { name: 'Lower', exercises: dayExercises },
+    ],
+  })
+}
 
 function renderTraining(initialEntries = ['/training']) {
   const router = createMemoryRouter(

@@ -300,6 +300,45 @@ describe('workoutRepository', () => {
     ])
   })
 
+  it('added sets inherit the previous set values as auto so propagation stays live', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    const repository = createWorkoutRepository(database)
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+
+    const lastSet = started.sets
+      .filter((set) => set.workoutExerciseId === started.exercises[0].id)
+      .at(-1)
+    await repository.updateWorkoutSet(lastSet!.id, {
+      metricValues: { weight: 200, reps: 6 },
+    })
+    const added = await repository.addSet(started.exercises[0].id)
+
+    expect(added.metricValues).toMatchObject({ weight: 200, reps: 6 })
+    expect(added.metricValueSources).toMatchObject({
+      weight: 'auto',
+      reps: 'auto',
+    })
+
+    // A live edit on the previous set still flows into the added set.
+    await repository.updateWorkoutSetMetricAndPropagate(
+      lastSet!.id,
+      'weight',
+      210,
+    )
+    const reloaded = await repository.getActiveWorkoutStructure()
+    const reloadedAdded = reloaded?.setsByExercise[
+      started.exercises[0].id
+    ].find((set) => set.id === added.id)
+    expect(reloadedAdded?.metricValues.weight).toBe(210)
+  })
+
   it('merges partial live metric edits with stored set values', async () => {
     const program = await seedProgram(database)
     const active = await createProgramRepository(database).activateTemplate(
