@@ -2,11 +2,12 @@ import { Edit2, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import {
+  SortableArea,
   SortableDragHandle,
-  SortableList,
   SortableListItem,
+  SortableZone,
 } from '@components/SortableList'
-import { pointerActivatorProps } from '@components/sortableDrag'
+import { pointerActivatorProps, reorderIds } from '@components/sortableDrag'
 import {
   BottomSheet,
   EmptyState,
@@ -15,6 +16,7 @@ import {
   LoadingState,
   ModalConfirmationDialog,
   SecondaryButton,
+  Toast,
   ValidationMessage,
 } from '@components/ui'
 import type { ExerciseUsageSummary } from '@domain/exerciseSearch'
@@ -69,10 +71,12 @@ export function ProgramBuilderSheet({
     dayId: string
     exercise: TemplateWorkoutExercise | ActiveCycleWorkoutExercise | null
   } | null>(null)
-  const [removeConfirmation, setRemoveConfirmation] = useState<
-    | { type: 'day'; id: string; name: string }
-    | { type: 'exercise'; id: string; name: string }
-    | null
+  const [removeDayConfirmation, setRemoveDayConfirmation] = useState<{
+    id: string
+    name: string
+  } | null>(null)
+  const [removedExercise, setRemovedExercise] = useState<
+    TemplateWorkoutExercise | ActiveCycleWorkoutExercise | null
   >(null)
   const [selectedDayId, setSelectedDayId] = useState('')
 
@@ -264,26 +268,152 @@ export function ProgramBuilderSheet({
     )
   }
 
-  function removeConfirmed() {
-    if (!removeConfirmation) {
+  function removeDayConfirmed() {
+    if (!removeDayConfirmation) {
       return
     }
 
-    const target = removeConfirmation
-    setRemoveConfirmation(null)
-    if (target.type === 'day') {
-      run(
-        mode === 'template'
-          ? programRepository.removeTemplateDay(target.id)
-          : programRepository.removeActiveCycleDay(target.id),
-      )
-      return
-    }
-
+    const target = removeDayConfirmation
+    setRemoveDayConfirmation(null)
     run(
       mode === 'template'
-        ? programRepository.removeTemplateExercise(target.id)
-        : programRepository.removeActiveCycleExercise(target.id),
+        ? programRepository.removeTemplateDay(target.id)
+        : programRepository.removeActiveCycleDay(target.id),
+    )
+  }
+
+  function removeExerciseWithUndo(
+    exercise: TemplateWorkoutExercise | ActiveCycleWorkoutExercise,
+  ) {
+    setStructure((current) =>
+      current
+        ? {
+            ...current,
+            exercisesByDay: {
+              ...current.exercisesByDay,
+              [exercise.dayId]: (current.exercisesByDay[exercise.dayId] ?? [])
+                .filter((entry) => entry.id !== exercise.id)
+                .map((entry, orderIndex) => ({ ...entry, orderIndex })),
+            },
+          }
+        : current,
+    )
+    setRemovedExercise(exercise)
+    persistOptimistically(
+      mode === 'template'
+        ? programRepository.removeTemplateExercise(exercise.id)
+        : programRepository.removeActiveCycleExercise(exercise.id),
+    )
+  }
+
+  function undoRemoveExercise() {
+    const exercise = removedExercise
+    setRemovedExercise(null)
+    if (!exercise) {
+      return
+    }
+    const action =
+      'activeCycleId' in exercise
+        ? programRepository.restoreActiveCycleExercise(exercise)
+        : programRepository.restoreTemplateExercise(exercise)
+    void action
+      .then(() => {
+        setError(null)
+        refresh()
+      })
+      .catch((caught: unknown) => {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : 'Exercise could not be restored.',
+        )
+      })
+  }
+
+  function moveExerciseToDay(exerciseId: string, targetDayId: string) {
+    if (!structure || !selectedDay) {
+      return
+    }
+    const sourceDayId = selectedDay.id
+    const exercise = (structure.exercisesByDay[sourceDayId] ?? []).find(
+      (entry) => entry.id === exerciseId,
+    )
+    if (!exercise) {
+      return
+    }
+    setStructure((current) => {
+      if (!current) {
+        return current
+      }
+      const targetExercises = current.exercisesByDay[targetDayId] ?? []
+      return {
+        ...current,
+        exercisesByDay: {
+          ...current.exercisesByDay,
+          [sourceDayId]: (current.exercisesByDay[sourceDayId] ?? [])
+            .filter((entry) => entry.id !== exerciseId)
+            .map((entry, orderIndex) => ({ ...entry, orderIndex })),
+          [targetDayId]: [
+            ...targetExercises,
+            {
+              ...exercise,
+              dayId: targetDayId,
+              orderIndex: targetExercises.length,
+            },
+          ],
+        },
+      }
+    })
+    persistOptimistically(
+      mode === 'template'
+        ? programRepository.moveTemplateExercise(exerciseId, targetDayId)
+        : programRepository.moveActiveCycleExercise(exerciseId, targetDayId),
+    )
+  }
+
+  function handleBuilderDragEnd(activeId: string, overId: string | null) {
+    if (!structure || !overId || activeId === overId) {
+      return
+    }
+    const dayIds = structure.days.map((day) => day.id)
+    const activeIsDay = dayIds.includes(activeId)
+    const overIsDay = dayIds.includes(overId)
+    if (activeIsDay && overIsDay) {
+      const next = reorderIds(dayIds, activeId, overId)
+      if (next) {
+        reorderDays(next)
+      }
+      return
+    }
+    if (!activeIsDay && overIsDay) {
+      if (selectedDay && overId !== selectedDay.id) {
+        moveExerciseToDay(activeId, overId)
+      }
+      return
+    }
+    if (!activeIsDay && selectedDay) {
+      const ids = (structure.exercisesByDay[selectedDay.id] ?? []).map(
+        (exercise) => exercise.id,
+      )
+      const next = reorderIds(ids, activeId, overId)
+      if (next) {
+        reorderExercises(selectedDay.id, next)
+      }
+    }
+  }
+
+  function builderItemLabel(id: string) {
+    const day = structure?.days.find((entry) => entry.id === id)
+    if (day) {
+      return day.name
+    }
+    const exercises =
+      structure && selectedDay
+        ? (structure.exercisesByDay[selectedDay.id] ?? [])
+        : []
+    return (
+      exercises.find((entry) => entry.id === id)?.exerciseSnapshot
+        .exerciseName ?? 'Item'
     )
   }
 
@@ -345,7 +475,8 @@ export function ProgramBuilderSheet({
             ...current,
             days: orderedIds
               .map((id) => current.days.find((day) => day.id === id))
-              .filter((day) => day !== undefined),
+              .filter((day) => day !== undefined)
+              .map((day, orderIndex) => ({ ...day, orderIndex })),
           }
         : current,
     )
@@ -387,7 +518,8 @@ export function ProgramBuilderSheet({
           ...current.exercisesByDay,
           [dayId]: orderedIds
             .map((id) => dayExercises.find((exercise) => exercise.id === id))
-            .filter((exercise) => exercise !== undefined),
+            .filter((exercise) => exercise !== undefined)
+            .map((exercise, orderIndex) => ({ ...exercise, orderIndex })),
         },
       }
     })
@@ -495,237 +627,231 @@ export function ProgramBuilderSheet({
               </SecondaryButton>
             </div>
 
-            {structure.days.length ? (
-              <SortableList
-                direction="horizontal"
-                getItemLabel={(id) =>
-                  structure.days.find((day) => day.id === id)?.name ?? 'Day'
-                }
-                itemIds={structure.days.map((day) => day.id)}
-                onReorder={reorderDays}
-              >
-                <div className="program-day-tabs" aria-label="Program days">
-                  {structure.days.map((day) => (
-                    <SortableListItem id={day.id} key={day.id}>
-                      {(drag) => (
-                        <button
-                          aria-current={day.id === selectedDay?.id}
-                          onClick={() => selectDay(day.id)}
-                          type="button"
-                          {...pointerActivatorProps(drag)}
-                        >
-                          <span>{day.name}</span>
-                          <small>
-                            {(structure.exercisesByDay[day.id] ?? []).length}
-                          </small>
-                        </button>
-                      )}
-                    </SortableListItem>
-                  ))}
-                </div>
-              </SortableList>
-            ) : null}
-
-            <div className="program-builder-days">
-              {selectedDay ? (
-                <div
-                  className="program-builder-day"
-                  key={selectedDay.id}
-                  {...daySwipe}
+            <SortableArea
+              getItemLabel={builderItemLabel}
+              onDragEnd={handleBuilderDragEnd}
+            >
+              {structure.days.length ? (
+                <SortableZone
+                  direction="horizontal"
+                  itemIds={structure.days.map((day) => day.id)}
                 >
-                  <div className="program-builder-day-head">
-                    <FormField id="builder-day-name" label="Workout day name">
-                      <div className="rename-field">
-                        <input
-                          className="rename-field-input"
-                          defaultValue={selectedDay.name}
-                          id="builder-day-name"
-                          key={selectedDay.id}
-                          onBlur={(event) =>
-                            saveDayName(selectedDay.id, event.target.value)
-                          }
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter') {
-                              event.currentTarget.blur()
-                            }
-                          }}
-                        />
-                        <Edit2
-                          aria-hidden="true"
-                          className="rename-field-icon"
-                          size={16}
-                        />
-                      </div>
-                      <small className="rename-field-hint">Tap to rename</small>
-                    </FormField>
-                    {selectedDay.notes ? (
-                      <small>{selectedDay.notes}</small>
-                    ) : null}
+                  <div className="program-day-tabs" aria-label="Program days">
+                    {structure.days.map((day) => (
+                      <SortableListItem id={day.id} key={day.id}>
+                        {(drag) => (
+                          <button
+                            aria-current={day.id === selectedDay?.id}
+                            onClick={() => selectDay(day.id)}
+                            type="button"
+                            {...pointerActivatorProps(drag)}
+                          >
+                            <span>{day.name}</span>
+                            <small>
+                              {(structure.exercisesByDay[day.id] ?? []).length}
+                            </small>
+                          </button>
+                        )}
+                      </SortableListItem>
+                    ))}
                   </div>
-                  <div className="button-row">
-                    <SecondaryButton
-                      disabled={selectedDayIndex === 0}
-                      type="button"
-                      onClick={() => moveDay(selectedDay.id, -1)}
-                    >
-                      Up
-                    </SecondaryButton>
-                    <SecondaryButton
-                      disabled={selectedDayIndex === structure.days.length - 1}
-                      type="button"
-                      onClick={() => moveDay(selectedDay.id, 1)}
-                    >
-                      Down
-                    </SecondaryButton>
+                </SortableZone>
+              ) : null}
+
+              <div className="program-builder-days">
+                {selectedDay ? (
+                  <div
+                    className="program-builder-day"
+                    key={selectedDay.id}
+                    {...daySwipe}
+                  >
+                    <div className="program-builder-day-head">
+                      <FormField id="builder-day-name" label="Workout day name">
+                        <div className="rename-field">
+                          <input
+                            className="rename-field-input"
+                            defaultValue={selectedDay.name}
+                            id="builder-day-name"
+                            key={selectedDay.id}
+                            onBlur={(event) =>
+                              saveDayName(selectedDay.id, event.target.value)
+                            }
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.currentTarget.blur()
+                              }
+                            }}
+                          />
+                          <Edit2
+                            aria-hidden="true"
+                            className="rename-field-icon"
+                            size={16}
+                          />
+                        </div>
+                        <small className="rename-field-hint">
+                          Tap to rename
+                        </small>
+                      </FormField>
+                      {selectedDay.notes ? (
+                        <small>{selectedDay.notes}</small>
+                      ) : null}
+                    </div>
+                    <div className="button-row">
+                      <SecondaryButton
+                        disabled={selectedDayIndex === 0}
+                        type="button"
+                        onClick={() => moveDay(selectedDay.id, -1)}
+                      >
+                        Up
+                      </SecondaryButton>
+                      <SecondaryButton
+                        disabled={
+                          selectedDayIndex === structure.days.length - 1
+                        }
+                        type="button"
+                        onClick={() => moveDay(selectedDay.id, 1)}
+                      >
+                        Down
+                      </SecondaryButton>
+                      <SecondaryButton
+                        type="button"
+                        onClick={() =>
+                          run(
+                            mode === 'template'
+                              ? programRepository.duplicateTemplateDay(
+                                  selectedDay.id,
+                                )
+                              : programRepository.duplicateActiveCycleDay(
+                                  selectedDay.id,
+                                ),
+                          )
+                        }
+                      >
+                        Duplicate
+                      </SecondaryButton>
+                      <SecondaryButton
+                        className="button-danger"
+                        type="button"
+                        onClick={() =>
+                          setRemoveDayConfirmation({
+                            id: selectedDay.id,
+                            name: selectedDay.name,
+                          })
+                        }
+                      >
+                        <Trash2 aria-hidden="true" size={16} />
+                        Remove
+                      </SecondaryButton>
+                    </div>
+
                     <SecondaryButton
                       type="button"
                       onClick={() =>
-                        run(
-                          mode === 'template'
-                            ? programRepository.duplicateTemplateDay(
-                                selectedDay.id,
-                              )
-                            : programRepository.duplicateActiveCycleDay(
-                                selectedDay.id,
-                              ),
-                        )
-                      }
-                    >
-                      Duplicate
-                    </SecondaryButton>
-                    <SecondaryButton
-                      className="button-danger"
-                      type="button"
-                      onClick={() =>
-                        setRemoveConfirmation({
-                          type: 'day',
-                          id: selectedDay.id,
-                          name: selectedDay.name,
+                        setEditingPrescription({
+                          dayId: selectedDay.id,
+                          exercise: null,
                         })
                       }
                     >
-                      <Trash2 aria-hidden="true" size={16} />
-                      Remove
+                      Add exercise
                     </SecondaryButton>
-                  </div>
-
-                  <SecondaryButton
-                    type="button"
-                    onClick={() =>
-                      setEditingPrescription({
-                        dayId: selectedDay.id,
-                        exercise: null,
-                      })
-                    }
-                  >
-                    Add exercise
-                  </SecondaryButton>
-                  <SortableList
-                    getItemLabel={(id) =>
-                      (structure.exercisesByDay[selectedDay.id] ?? []).find(
-                        (exercise) => exercise.id === id,
-                      )?.exerciseSnapshot.exerciseName ?? 'Exercise'
-                    }
-                    itemIds={(
-                      structure.exercisesByDay[selectedDay.id] ?? []
-                    ).map((exercise) => exercise.id)}
-                    onReorder={(orderedIds) =>
-                      reorderExercises(selectedDay.id, orderedIds)
-                    }
-                  >
-                    <div className="program-prescription-list">
-                      {(structure.exercisesByDay[selectedDay.id] ?? []).map(
-                        (prescribed) => (
-                          <SortableListItem
-                            className="program-prescription-row sortable-row"
-                            id={prescribed.id}
-                            key={prescribed.id}
-                          >
-                            {(drag) => (
-                              <>
-                                <SortableDragHandle
-                                  drag={drag}
-                                  label={`Reorder ${prescribed.exerciseSnapshot.exerciseName}`}
-                                />
-                                <div>
-                                  <strong>
-                                    {prescribed.exerciseSnapshot.exerciseName}
-                                  </strong>
-                                  <small>
-                                    <PrescriptionSummaryText
-                                      prescribed={prescribed}
-                                    />
-                                  </small>
-                                  {prescribed.notes ? (
-                                    <small>{prescribed.notes}</small>
-                                  ) : null}
-                                </div>
-                                <div className="row-actions">
-                                  <IconButton
+                    <SortableZone
+                      itemIds={(
+                        structure.exercisesByDay[selectedDay.id] ?? []
+                      ).map((exercise) => exercise.id)}
+                    >
+                      <div className="program-prescription-list">
+                        {(structure.exercisesByDay[selectedDay.id] ?? []).map(
+                          (prescribed) => (
+                            <SortableListItem
+                              className="program-prescription-row sortable-row"
+                              id={prescribed.id}
+                              key={prescribed.id}
+                            >
+                              {(drag) => (
+                                <>
+                                  <SortableDragHandle
+                                    drag={drag}
+                                    label={`Reorder ${prescribed.exerciseSnapshot.exerciseName}`}
+                                  />
+                                  <button
                                     aria-label={`Edit ${prescribed.exerciseSnapshot.exerciseName} prescription`}
+                                    className="program-prescription-body"
                                     onClick={() =>
                                       setEditingPrescription({
                                         dayId: selectedDay.id,
                                         exercise: prescribed,
                                       })
                                     }
+                                    type="button"
                                   >
-                                    <Edit2 aria-hidden="true" size={18} />
-                                  </IconButton>
-                                  <IconButton
-                                    aria-label={`Remove ${prescribed.exerciseSnapshot.exerciseName} prescription`}
-                                    onClick={() =>
-                                      setRemoveConfirmation({
-                                        type: 'exercise',
-                                        id: prescribed.id,
-                                        name: prescribed.exerciseSnapshot
-                                          .exerciseName,
-                                      })
-                                    }
-                                  >
-                                    <Trash2 aria-hidden="true" size={18} />
-                                  </IconButton>
-                                </div>
-                              </>
-                            )}
-                          </SortableListItem>
-                        ),
-                      )}
-                      {!(structure.exercisesByDay[selectedDay.id] ?? [])
-                        .length ? (
-                        <p className="muted">No prescribed exercises.</p>
-                      ) : null}
-                    </div>
-                  </SortableList>
-                </div>
-              ) : (
-                <EmptyState
-                  title="No workout days"
-                  message="Add a workout day to begin programming exercises."
-                />
-              )}
-            </div>
+                                    <strong>
+                                      {prescribed.exerciseSnapshot.exerciseName}
+                                    </strong>
+                                    <small>
+                                      <PrescriptionSummaryText
+                                        prescribed={prescribed}
+                                      />
+                                    </small>
+                                    {prescribed.notes ? (
+                                      <small>{prescribed.notes}</small>
+                                    ) : null}
+                                  </button>
+                                  <div className="row-actions">
+                                    <IconButton
+                                      aria-label={`Remove ${prescribed.exerciseSnapshot.exerciseName} prescription`}
+                                      onClick={() =>
+                                        removeExerciseWithUndo(prescribed)
+                                      }
+                                    >
+                                      <Trash2 aria-hidden="true" size={18} />
+                                    </IconButton>
+                                  </div>
+                                </>
+                              )}
+                            </SortableListItem>
+                          ),
+                        )}
+                        {!(structure.exercisesByDay[selectedDay.id] ?? [])
+                          .length ? (
+                          <p className="muted">No prescribed exercises.</p>
+                        ) : null}
+                      </div>
+                    </SortableZone>
+                  </div>
+                ) : (
+                  <EmptyState
+                    title="No workout days"
+                    message="Add a workout day to begin programming exercises."
+                  />
+                )}
+              </div>
+            </SortableArea>
           </>
         ) : null}
         {error ? <ValidationMessage message={error} /> : null}
       </BottomSheet>
+      <Toast
+        actionLabel="Undo"
+        durationMs={6000}
+        message={
+          removedExercise
+            ? `Removed ${removedExercise.exerciseSnapshot.exerciseName}`
+            : null
+        }
+        onAction={undoRemoveExercise}
+        onDismiss={() => setRemovedExercise(null)}
+        tone="neutral"
+      />
       <ModalConfirmationDialog
-        confirmLabel={
-          removeConfirmation?.type === 'day' ? 'Delete Day' : 'Remove'
-        }
-        isOpen={removeConfirmation !== null}
-        onCancel={() => setRemoveConfirmation(null)}
-        onConfirm={removeConfirmed}
-        title={
-          removeConfirmation?.type === 'day'
-            ? 'Remove workout day?'
-            : 'Remove exercise?'
-        }
+        confirmLabel="Delete Day"
+        isOpen={removeDayConfirmation !== null}
+        onCancel={() => setRemoveDayConfirmation(null)}
+        onConfirm={removeDayConfirmed}
+        title="Remove workout day?"
       >
         <p>
-          {removeConfirmation?.type === 'day'
-            ? `${removeConfirmation.name} and its programmed exercises will be permanently deleted. Completed workout history is preserved.`
-            : `Remove ${removeConfirmation?.name ?? 'this exercise'} from this workout day.`}
+          {`${removeDayConfirmation?.name ?? 'This day'} and its programmed exercises will be permanently deleted. Completed workout history is preserved.`}
         </p>
       </ModalConfirmationDialog>
     </>

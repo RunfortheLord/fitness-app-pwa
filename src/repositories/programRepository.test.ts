@@ -434,4 +434,135 @@ describe('programRepository', () => {
       repository.deleteProgramTemplate(program.template.id),
     ).rejects.toThrow('The active program cannot be deleted')
   })
+
+  it('moves a template exercise to another day and reindexes both days', async () => {
+    const program = await seedProgram(database)
+    const repository = createProgramRepository(database)
+    const exerciseRepository = createExerciseRepository(database)
+    const row = await exerciseRepository.createExercise({
+      name: 'Row',
+      defaultRestSeconds: 90,
+      trackingMethodId: 'weight_reps',
+      notes: '',
+    })
+    const second = await repository.addTemplateExercise(program.days[0].id, {
+      exerciseId: row.id,
+      targetSetCount: 3,
+    })
+    const lower = await repository.addTemplateDay(program.template.id, {
+      name: 'Lower',
+    })
+
+    const moved = await repository.moveTemplateExercise(
+      program.exercises[0].id,
+      lower.id,
+    )
+
+    expect(moved).toMatchObject({ dayId: lower.id, orderIndex: 0 })
+    const structure = await repository.getTemplateStructure(program.template.id)
+    expect(structure.exercisesByDay[program.days[0].id]).toEqual([
+      expect.objectContaining({ id: second.id, orderIndex: 0 }),
+    ])
+    expect(structure.exercisesByDay[lower.id]).toEqual([
+      expect.objectContaining({ id: program.exercises[0].id, orderIndex: 0 }),
+    ])
+
+    // Moving to the day it is already on is a no-op.
+    const unchanged = await repository.moveTemplateExercise(
+      program.exercises[0].id,
+      lower.id,
+    )
+    expect(unchanged).toMatchObject({ dayId: lower.id, orderIndex: 0 })
+
+    // Days of a different program are rejected.
+    const other = await repository.createProgramTemplate({
+      name: 'Other program',
+      days: [{ name: 'Solo', exercises: [] }],
+    })
+    await expect(
+      repository.moveTemplateExercise(
+        program.exercises[0].id,
+        other.days[0].id,
+      ),
+    ).rejects.toThrow('same program')
+  })
+
+  it('restores a removed template exercise at its original position', async () => {
+    const program = await seedProgram(database)
+    const repository = createProgramRepository(database)
+    const exerciseRepository = createExerciseRepository(database)
+    const row = await exerciseRepository.createExercise({
+      name: 'Row',
+      defaultRestSeconds: 90,
+      trackingMethodId: 'weight_reps',
+      notes: '',
+    })
+    const middle = await repository.addTemplateExercise(program.days[0].id, {
+      exerciseId: row.id,
+      targetSetCount: 3,
+    })
+    const last = await repository.addTemplateExercise(program.days[0].id, {
+      exerciseId: row.id,
+      targetSetCount: 4,
+    })
+
+    const removed = await database.templateWorkoutExercises.get(middle.id)
+    await repository.removeTemplateExercise(middle.id)
+    if (!removed) {
+      throw new Error('Removed exercise was not captured.')
+    }
+
+    const restored = await repository.restoreTemplateExercise(removed)
+
+    expect(restored.id).toBe(middle.id)
+    const structure = await repository.getTemplateStructure(program.template.id)
+    expect(
+      structure.exercisesByDay[program.days[0].id].map((exercise) => [
+        exercise.id,
+        exercise.orderIndex,
+      ]),
+    ).toEqual([
+      [program.exercises[0].id, 0],
+      [middle.id, 1],
+      [last.id, 2],
+    ])
+
+    // Restoring twice is idempotent.
+    await repository.restoreTemplateExercise(removed)
+    await expect(
+      database.templateWorkoutExercises
+        .where({ dayId: program.days[0].id })
+        .count(),
+    ).resolves.toBe(3)
+  })
+
+  it('moves and restores active-cycle exercises across cycle days', async () => {
+    const program = await seedProgram(database)
+    const repository = createProgramRepository(database)
+    const active = await repository.activateTemplate(program.template.id)
+    const lower = await repository.addActiveCycleDay(active.cycle.id, {
+      name: 'Lower',
+    })
+
+    const moved = await repository.moveActiveCycleExercise(
+      active.exercises[0].id,
+      lower.id,
+    )
+    expect(moved).toMatchObject({ dayId: lower.id, orderIndex: 0 })
+
+    const removed = await database.activeCycleWorkoutExercises.get(moved.id)
+    await repository.removeActiveCycleExercise(moved.id)
+    if (!removed) {
+      throw new Error('Removed exercise was not captured.')
+    }
+
+    const restored = await repository.restoreActiveCycleExercise(removed)
+
+    expect(restored.id).toBe(moved.id)
+    const structure = await repository.getActiveCycleStructure(active.cycle.id)
+    expect(structure.exercisesByDay[lower.id]).toEqual([
+      expect.objectContaining({ id: moved.id, orderIndex: 0 }),
+    ])
+    expect(structure.exercisesByDay[active.days[0].id] ?? []).toHaveLength(0)
+  })
 })

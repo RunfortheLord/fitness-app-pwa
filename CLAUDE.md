@@ -69,7 +69,8 @@ Bottom nav: `components/BottomNavigation.tsx`; shell: `components/AppShell.tsx`.
 ModalConfirmationDialog, SegmentedControl, DateSelector, PrimaryButton,
 SecondaryButton, IconButton, FormField, NumericInput, EmptyState,
 ValidationMessage, OfflineIndicator, LoadingState, StatusMessage, Toast`.
-Touch drag-reorder lists: `SortableList/SortableListItem/SortableDragHandle`
+Touch drag-reorder lists: `SortableList/SortableListItem/SortableDragHandle`,
+plus `SortableArea/SortableZone` for multi-list drag (e.g. cross-day drops)
 (`components/SortableList.tsx`, dnd-kit; helpers in `components/sortableDrag.ts`).
 Reuse these before hand-rolling. Theming via CSS vars in `global.css` (`--color-*`,
 `--space-*`, `--radius-*`, `--bottom-nav-height`).

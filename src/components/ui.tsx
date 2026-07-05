@@ -640,12 +640,16 @@ export function StatusMessage({
  * so success messages do not pile up or shift page layout.
  */
 export function Toast({
+  actionLabel,
   message,
+  onAction,
   onDismiss,
   tone = 'success',
   durationMs = 3500,
 }: {
+  actionLabel?: string
   message: string | null
+  onAction?: () => void
   onDismiss: () => void
   tone?: 'neutral' | 'success' | 'warning'
   durationMs?: number
@@ -675,6 +679,11 @@ export function Toast({
     <div className="toast-region" aria-live="polite">
       <div className={`toast toast-${tone}`} role="status">
         <span>{t(message)}</span>
+        {actionLabel && onAction ? (
+          <button className="toast-action" onClick={onAction} type="button">
+            {t(actionLabel)}
+          </button>
+        ) : null}
         <IconButton aria-label={t('Dismiss notification')} onClick={onDismiss}>
           <X aria-hidden="true" size={16} />
         </IconButton>

@@ -1,5 +1,26 @@
 # Decisions
 
+## 2026-07-05: Cross-Day Drag, Tap-To-Edit Rows, And Undo Delete In The Builder
+
+- Builder exercise rows and day tabs now share one drag context
+  (`SortableArea`/`SortableZone` in `components/SortableList.tsx`): dragging an
+  exercise onto a day tab moves it to the end of that day
+  (`moveTemplateExercise`/`moveActiveCycleExercise`), with the hovered tab
+  highlighted. Collision detection prefers what the pointer is inside, so
+  in-list reorders and tab drops coexist.
+- Removing an exercise no longer asks for confirmation; it removes immediately
+  and offers a 6-second Undo toast (Toast gained an optional action button).
+  Undo restores the exact prescription at its original position via
+  `restoreTemplateExercise`/`restoreActiveCycleExercise`. Day removal keeps
+  the confirmation dialog because it deletes multiple records.
+- Exercise rows slimmed to grip + tappable body + delete: tapping the row body
+  opens the prescription editor (the pencil button is gone).
+- Optimistic builder updates renumber `orderIndex` locally so captured records
+  (e.g. for undo) never carry stale positions.
+- Live workout exercise reordering intentionally keeps its Move Earlier/Later
+  buttons: the live page shows one exercise at a time (no list to drag) and
+  that flow shipped from alpha feedback on 2026-07-04.
+
 ## 2026-07-04: Touch Drag-And-Drop Reordering In The Program Builder
 
 - Program builder exercise rows and day tabs reorder by drag using a shared

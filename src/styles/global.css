@@ -660,6 +660,42 @@ textarea:focus-visible {
   opacity: 0.94;
 }
 
+.program-day-tabs .sortable-item-over button {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.program-prescription-body {
+  display: block;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.program-prescription-body strong,
+.program-prescription-body small {
+  display: block;
+}
+
+.program-prescription-body strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.program-prescription-body small {
+  margin-top: 2px;
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 .drag-handle {
   touch-action: none;
   cursor: grab;
@@ -2730,6 +2766,17 @@ input::placeholder {
   box-shadow: 0 10px 30px rgb(0 0 0 / 35%);
   pointer-events: auto;
   animation: toast-in 160ms ease-out;
+}
+
+.toast-action {
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--color-accent);
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .toast-success {

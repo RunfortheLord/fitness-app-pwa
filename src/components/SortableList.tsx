@@ -4,15 +4,16 @@ import {
   MouseSensor,
   TouchSensor,
   closestCenter,
+  pointerWithin,
   useSensor,
   useSensors,
   type Announcements,
+  type CollisionDetection,
   type DragEndEvent,
   type UniqueIdentifier,
 } from '@dnd-kit/core'
 import {
   SortableContext,
-  arrayMove,
   horizontalListSortingStrategy,
   sortableKeyboardCoordinates,
   useSortable,
@@ -22,7 +23,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { GripVertical } from 'lucide-react'
 import type { CSSProperties, ReactNode } from 'react'
 
-import type { SortableDragState } from '@components/sortableDrag'
+import { reorderIds, type SortableDragState } from '@components/sortableDrag'
 
 function vibrate() {
   if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
@@ -30,18 +31,29 @@ function vibrate() {
   }
 }
 
-export function SortableList({
+/**
+ * Prefer whatever the pointer is physically inside (lets items drop onto
+ * targets outside their own list, like day tabs); fall back to proximity for
+ * keyboard drags and pointers between droppables.
+ */
+const collisionDetection: CollisionDetection = (args) => {
+  const withinPointer = pointerWithin(args)
+  return withinPointer.length ? withinPointer : closestCenter(args)
+}
+
+/**
+ * One drag context. Wrap one or more SortableZones (or use SortableList for
+ * the single-list case). onDragEnd receives the active and over ids; the
+ * consumer decides whether that means a reorder or a cross-zone move.
+ */
+export function SortableArea({
   children,
-  direction = 'vertical',
   getItemLabel,
-  itemIds,
-  onReorder,
+  onDragEnd,
 }: {
   children: ReactNode
-  direction?: 'horizontal' | 'vertical'
   getItemLabel?: (id: string) => string
-  itemIds: string[]
-  onReorder: (orderedIds: string[]) => void
+  onDragEnd: (activeId: string, overId: string | null) => void
 }) {
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
@@ -55,56 +67,92 @@ export function SortableList({
 
   const label = (id: UniqueIdentifier) =>
     getItemLabel?.(String(id)) ?? String(id)
-  const position = (id: UniqueIdentifier) => itemIds.indexOf(String(id)) + 1
 
   const announcements: Announcements = {
-    onDragStart: ({ active }) =>
-      `Picked up ${label(active.id)}, position ${position(active.id)} of ${itemIds.length}.`,
+    onDragStart: ({ active }) => `Picked up ${label(active.id)}.`,
     onDragOver: ({ active, over }) =>
-      over
-        ? `${label(active.id)} is over position ${position(over.id)} of ${itemIds.length}.`
-        : undefined,
+      over ? `${label(active.id)} is over ${label(over.id)}.` : undefined,
     onDragEnd: ({ active, over }) =>
       over
-        ? `${label(active.id)} dropped at position ${position(over.id)} of ${itemIds.length}.`
+        ? `${label(active.id)} dropped on ${label(over.id)}.`
         : `${label(active.id)} dropped.`,
     onDragCancel: ({ active }) =>
-      `Reordering cancelled. ${label(active.id)} returned to position ${position(active.id)}.`,
+      `Reordering cancelled. ${label(active.id)} returned to its position.`,
   }
 
   function handleDragEnd(event: DragEndEvent) {
     vibrate()
     const { active, over } = event
-    if (!over || active.id === over.id) {
-      return
-    }
-    const fromIndex = itemIds.indexOf(String(active.id))
-    const toIndex = itemIds.indexOf(String(over.id))
-    if (fromIndex < 0 || toIndex < 0) {
-      return
-    }
-    onReorder(arrayMove(itemIds, fromIndex, toIndex))
+    onDragEnd(String(active.id), over ? String(over.id) : null)
   }
 
   return (
     <DndContext
       accessibility={{ announcements }}
-      collisionDetection={closestCenter}
+      collisionDetection={collisionDetection}
       onDragEnd={handleDragEnd}
       onDragStart={vibrate}
       sensors={sensors}
     >
-      <SortableContext
-        items={itemIds}
-        strategy={
-          direction === 'horizontal'
-            ? horizontalListSortingStrategy
-            : verticalListSortingStrategy
-        }
-      >
-        {children}
-      </SortableContext>
+      {children}
     </DndContext>
+  )
+}
+
+export function SortableZone({
+  children,
+  direction = 'vertical',
+  itemIds,
+}: {
+  children: ReactNode
+  direction?: 'horizontal' | 'vertical'
+  itemIds: string[]
+}) {
+  return (
+    <SortableContext
+      items={itemIds}
+      strategy={
+        direction === 'horizontal'
+          ? horizontalListSortingStrategy
+          : verticalListSortingStrategy
+      }
+    >
+      {children}
+    </SortableContext>
+  )
+}
+
+/** Single sortable list: one SortableArea around one SortableZone. */
+export function SortableList({
+  children,
+  direction = 'vertical',
+  getItemLabel,
+  itemIds,
+  onReorder,
+}: {
+  children: ReactNode
+  direction?: 'horizontal' | 'vertical'
+  getItemLabel?: (id: string) => string
+  itemIds: string[]
+  onReorder: (orderedIds: string[]) => void
+}) {
+  return (
+    <SortableArea
+      getItemLabel={getItemLabel}
+      onDragEnd={(activeId, overId) => {
+        if (!overId) {
+          return
+        }
+        const next = reorderIds(itemIds, activeId, overId)
+        if (next) {
+          onReorder(next)
+        }
+      }}
+    >
+      <SortableZone direction={direction} itemIds={itemIds}>
+        {children}
+      </SortableZone>
+    </SortableArea>
   )
 }
 
@@ -120,6 +168,7 @@ export function SortableListItem({
   const {
     attributes,
     isDragging,
+    isOver,
     listeners,
     setActivatorNodeRef,
     setNodeRef,
@@ -130,9 +179,12 @@ export function SortableListItem({
     transform: CSS.Transform.toString(transform),
     transition,
   }
+  const stateClasses = `${isDragging ? ' sortable-item-dragging' : ''}${
+    isOver && !isDragging ? ' sortable-item-over' : ''
+  }`
   return (
     <div
-      className={`sortable-item ${isDragging ? 'sortable-item-dragging' : ''} ${className}`.trim()}
+      className={`sortable-item${stateClasses} ${className}`.trim()}
       ref={setNodeRef}
       style={style}
     >

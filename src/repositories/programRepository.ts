@@ -851,6 +851,109 @@ export function createProgramRepository(
       )
     },
 
+    async moveTemplateExercise(
+      prescribedExerciseId: string,
+      targetDayId: string,
+    ) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        database.programTemplates,
+        database.templateWorkoutDays,
+        database.templateWorkoutExercises,
+        async () => {
+          const prescribed =
+            await database.templateWorkoutExercises.get(prescribedExerciseId)
+          if (!prescribed) {
+            throw new Error(
+              `Template exercise ${prescribedExerciseId} was not found.`,
+            )
+          }
+          await assertTemplateEditable(prescribed.templateId)
+          if (prescribed.dayId === targetDayId) {
+            return prescribed
+          }
+          const targetDay = await database.templateWorkoutDays.get(targetDayId)
+          if (!targetDay) {
+            throw new Error(
+              `Program template day ${targetDayId} was not found.`,
+            )
+          }
+          if (targetDay.templateId !== prescribed.templateId) {
+            throw new Error(
+              'Exercises can only move between days of the same program.',
+            )
+          }
+          const sourceDayId = prescribed.dayId
+          const targetCount = await database.templateWorkoutExercises
+            .where({ dayId: targetDayId })
+            .count()
+          const moved: TemplateWorkoutExercise = {
+            ...prescribed,
+            dayId: targetDayId,
+            orderIndex: targetCount,
+            updatedAt: now,
+          }
+          await database.templateWorkoutExercises.put(moved)
+          await reindexTemplateExercises(database, sourceDayId, now)
+          await database.programTemplates.update(prescribed.templateId, {
+            updatedAt: now,
+          })
+          return moved
+        },
+      )
+    },
+
+    async restoreTemplateExercise(exercise: TemplateWorkoutExercise) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        database.programTemplates,
+        database.templateWorkoutDays,
+        database.templateWorkoutExercises,
+        async () => {
+          await assertTemplateEditable(exercise.templateId)
+          const day = await database.templateWorkoutDays.get(exercise.dayId)
+          if (!day || day.templateId !== exercise.templateId) {
+            throw new Error(
+              'The workout day for this exercise no longer exists.',
+            )
+          }
+          const alreadyPresent = await database.templateWorkoutExercises.get(
+            exercise.id,
+          )
+          if (alreadyPresent) {
+            return alreadyPresent
+          }
+          const existing = await database.templateWorkoutExercises
+            .where({ dayId: exercise.dayId })
+            .sortBy('orderIndex')
+          const restored: TemplateWorkoutExercise = {
+            ...exercise,
+            updatedAt: now,
+          }
+          const insertAt = Math.min(
+            Math.max(exercise.orderIndex, 0),
+            existing.length,
+          )
+          existing.splice(insertAt, 0, restored)
+          await database.templateWorkoutExercises.put(restored)
+          await Promise.all(
+            existing.map((entry, orderIndex) =>
+              database.templateWorkoutExercises.update(entry.id, {
+                orderIndex,
+                updatedAt: now,
+              }),
+            ),
+          )
+          await database.programTemplates.update(exercise.templateId, {
+            updatedAt: now,
+          })
+          return restored
+        },
+      )
+    },
+
     async reorderTemplateExercises(
       dayId: string,
       orderedExerciseIds: string[],
@@ -1387,6 +1490,106 @@ export function createProgramRepository(
           await database.activeProgramCycles.update(prescribed.activeCycleId, {
             updatedAt: now,
           })
+        },
+      )
+    },
+
+    async moveActiveCycleExercise(
+      prescribedExerciseId: string,
+      targetDayId: string,
+    ) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        database.activeProgramCycles,
+        database.activeCycleWorkoutDays,
+        database.activeCycleWorkoutExercises,
+        async () => {
+          const prescribed =
+            await database.activeCycleWorkoutExercises.get(prescribedExerciseId)
+          if (!prescribed) {
+            throw new Error(
+              `Active cycle exercise ${prescribedExerciseId} was not found.`,
+            )
+          }
+          if (prescribed.dayId === targetDayId) {
+            return prescribed
+          }
+          const targetDay =
+            await database.activeCycleWorkoutDays.get(targetDayId)
+          if (!targetDay) {
+            throw new Error(`Active cycle day ${targetDayId} was not found.`)
+          }
+          if (targetDay.activeCycleId !== prescribed.activeCycleId) {
+            throw new Error(
+              'Exercises can only move between days of the same program.',
+            )
+          }
+          const sourceDayId = prescribed.dayId
+          const targetCount = await database.activeCycleWorkoutExercises
+            .where({ dayId: targetDayId })
+            .count()
+          const moved: ActiveCycleWorkoutExercise = {
+            ...prescribed,
+            dayId: targetDayId,
+            orderIndex: targetCount,
+            updatedAt: now,
+          }
+          await database.activeCycleWorkoutExercises.put(moved)
+          await reindexActiveExercises(database, sourceDayId, now)
+          await database.activeProgramCycles.update(prescribed.activeCycleId, {
+            updatedAt: now,
+          })
+          return moved
+        },
+      )
+    },
+
+    async restoreActiveCycleExercise(exercise: ActiveCycleWorkoutExercise) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        database.activeProgramCycles,
+        database.activeCycleWorkoutDays,
+        database.activeCycleWorkoutExercises,
+        async () => {
+          const day = await database.activeCycleWorkoutDays.get(exercise.dayId)
+          if (!day || day.activeCycleId !== exercise.activeCycleId) {
+            throw new Error(
+              'The workout day for this exercise no longer exists.',
+            )
+          }
+          const alreadyPresent = await database.activeCycleWorkoutExercises.get(
+            exercise.id,
+          )
+          if (alreadyPresent) {
+            return alreadyPresent
+          }
+          const existing = await database.activeCycleWorkoutExercises
+            .where({ dayId: exercise.dayId })
+            .sortBy('orderIndex')
+          const restored: ActiveCycleWorkoutExercise = {
+            ...exercise,
+            updatedAt: now,
+          }
+          const insertAt = Math.min(
+            Math.max(exercise.orderIndex, 0),
+            existing.length,
+          )
+          existing.splice(insertAt, 0, restored)
+          await database.activeCycleWorkoutExercises.put(restored)
+          await Promise.all(
+            existing.map((entry, orderIndex) =>
+              database.activeCycleWorkoutExercises.update(entry.id, {
+                orderIndex,
+                updatedAt: now,
+              }),
+            ),
+          )
+          await database.activeProgramCycles.update(exercise.activeCycleId, {
+            updatedAt: now,
+          })
+          return restored
         },
       )
     },
