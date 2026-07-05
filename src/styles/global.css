@@ -1256,6 +1256,11 @@ textarea:focus-visible {
   color: var(--color-text);
 }
 
+.save-blocked-hint {
+  margin: 0;
+  font-size: 13px;
+}
+
 .sheet-bottom-actions {
   position: sticky;
   bottom: 0;

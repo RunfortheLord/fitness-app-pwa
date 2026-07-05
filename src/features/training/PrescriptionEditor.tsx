@@ -260,6 +260,12 @@ export function PrescriptionEditor({
 
         {step === 'search' ? (
           <div className="exercise-picker">
+            {target.exercise ? (
+              <SecondaryButton type="button" onClick={() => setStep('edit')}>
+                <ArrowLeft aria-hidden="true" size={18} />
+                Back to prescription
+              </SecondaryButton>
+            ) : null}
             <FormField
               id="prescription-exercise-search"
               label="Search exercises"
@@ -305,7 +311,16 @@ export function PrescriptionEditor({
                 message="Create a custom exercise if this movement is not in the library."
               />
             ) : null}
-            <SecondaryButton type="button" onClick={() => setStep('create')}>
+            <SecondaryButton
+              type="button"
+              onClick={() => {
+                setCreateForm((current) => ({
+                  ...current,
+                  name: current.name || searchQuery.trim(),
+                }))
+                setStep('create')
+              }}
+            >
               <Plus aria-hidden="true" size={18} />
               Create custom exercise
             </SecondaryButton>
@@ -391,12 +406,16 @@ export function PrescriptionEditor({
 
         {step === 'edit' && selectedExercise ? (
           <div className="compact-prescription-form">
-            {!target.exercise ? (
-              <SecondaryButton type="button" onClick={() => setStep('search')}>
-                <ArrowLeft aria-hidden="true" size={18} />
-                Back to search
-              </SecondaryButton>
-            ) : null}
+            <SecondaryButton type="button" onClick={() => setStep('search')}>
+              {target.exercise ? (
+                'Change exercise'
+              ) : (
+                <>
+                  <ArrowLeft aria-hidden="true" size={18} />
+                  Back to search
+                </>
+              )}
+            </SecondaryButton>
             <div className="selected-exercise-summary">
               <strong>{selectedExercise.name}</strong>
               <small>{exerciseMetadata(selectedExercise)}</small>
@@ -554,6 +573,11 @@ export function PrescriptionEditor({
               />
             </FormField>
             {error ? <ValidationMessage message={error} /> : null}
+            {!parsed.ok && isDirty && !error ? (
+              <p className="muted save-blocked-hint" role="status">
+                {parsed.error}
+              </p>
+            ) : null}
             <div className="sheet-bottom-actions">
               <SecondaryButton type="button" onClick={requestClose}>
                 Cancel

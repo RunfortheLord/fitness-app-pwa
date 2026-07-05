@@ -1,5 +1,17 @@
 # Decisions
 
+## 2026-07-05: Prescription Editor Capability (Phase 2)
+
+- Existing prescriptions can swap their exercise ("Change exercise" returns to
+  the search step; `updateTemplateExercise` already re-snapshots on
+  `exerciseId` change, so no repository work was needed). Search offers "Back
+  to prescription" so browsing does not lose entered targets; entered targets
+  carry over and re-validate against the new exercise's tracking method.
+- When Save is disabled and the form is dirty, the blocking validation message
+  shows live above the action bar instead of leaving a silently dead button.
+- "Create custom exercise" prefills the name from the search query that found
+  no results.
+
 ## 2026-07-05: Prescription Editor Ergonomics (Phase 1)
 
 - Numeric prescription fields (sets, min/max reps, RIR, weight) use a new
