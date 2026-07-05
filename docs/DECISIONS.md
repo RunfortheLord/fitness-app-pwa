@@ -1,5 +1,23 @@
 # Decisions
 
+## 2026-07-04: Touch Drag-And-Drop Reordering In The Program Builder
+
+- Program builder exercise rows and day tabs reorder by drag using a shared
+  `SortableList` primitive (`components/SortableList.tsx`) built on dnd-kit —
+  the first UI runtime dependency beyond lucide-react. Chosen over a custom
+  pointer-events hook because keyboard sortability, screen-reader
+  announcements, and drag auto-scroll are hard to get right by hand; the
+  previous HTML5 `draggable` day tabs never worked on touch at all.
+- Touch lifts after a 200 ms long-press (quick swipes still scroll), mouse
+  after 6 px of movement, and drops vibrate where supported. Reorders apply
+  optimistically to local state and persist once on drop; failures surface the
+  error and reload from the repository.
+- Exercise rows dropped their Move up/down arrow buttons — the grip handle is
+  keyboard-operable (Space to lift, arrows to move) with live announcements.
+  Day tabs keep their Up/Down buttons as the accessible path because the tab's
+  Enter/Space must keep selecting the day, so tabs drag with pointer only
+  (`pointerActivatorProps` in `components/sortableDrag.ts`).
+
 ## 2026-07-04: Completion-Based Program Weeks (Tester Feedback)
 
 - Program weeks now advance from day check-offs, not the calendar: the current
