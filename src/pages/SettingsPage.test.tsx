@@ -426,7 +426,7 @@ describe('SettingsPage', () => {
     await user.click(await screen.findByRole('button', { name: 'About' }))
     expect(
       await screen.findByRole('heading', {
-        name: 'Smarter AI meal scans',
+        name: 'Live workout polish and check-off weeks',
       }),
     ).toBeInTheDocument()
     expect(screen.queryByText('Pounds or kilograms')).not.toBeInTheDocument()
