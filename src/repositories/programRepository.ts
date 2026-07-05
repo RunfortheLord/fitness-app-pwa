@@ -851,6 +851,51 @@ export function createProgramRepository(
       )
     },
 
+    async duplicateTemplateExercise(prescribedExerciseId: string) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        database.programTemplates,
+        database.templateWorkoutExercises,
+        async () => {
+          const prescribed =
+            await database.templateWorkoutExercises.get(prescribedExerciseId)
+          if (!prescribed) {
+            throw new Error(
+              `Template exercise ${prescribedExerciseId} was not found.`,
+            )
+          }
+          await assertTemplateEditable(prescribed.templateId)
+          const dayExercises = await database.templateWorkoutExercises
+            .where({ dayId: prescribed.dayId })
+            .sortBy('orderIndex')
+          const copy: TemplateWorkoutExercise = {
+            ...prescribed,
+            id: createId(),
+            createdAt: now,
+            updatedAt: now,
+          }
+          const index = dayExercises.findIndex(
+            (entry) => entry.id === prescribedExerciseId,
+          )
+          dayExercises.splice(index + 1, 0, copy)
+          await database.templateWorkoutExercises.add(copy)
+          await Promise.all(
+            dayExercises.map((entry, orderIndex) =>
+              database.templateWorkoutExercises.update(entry.id, {
+                orderIndex,
+                updatedAt: now,
+              }),
+            ),
+          )
+          await database.programTemplates.update(prescribed.templateId, {
+            updatedAt: now,
+          })
+          return copy
+        },
+      )
+    },
+
     async moveTemplateExercise(
       prescribedExerciseId: string,
       targetDayId: string,
@@ -1490,6 +1535,53 @@ export function createProgramRepository(
           await database.activeProgramCycles.update(prescribed.activeCycleId, {
             updatedAt: now,
           })
+        },
+      )
+    },
+
+    async duplicateActiveCycleExercise(prescribedExerciseId: string) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        database.activeProgramCycles,
+        database.activeCycleWorkoutExercises,
+        async () => {
+          const prescribed =
+            await database.activeCycleWorkoutExercises.get(prescribedExerciseId)
+          if (!prescribed) {
+            throw new Error(
+              `Active cycle exercise ${prescribedExerciseId} was not found.`,
+            )
+          }
+          const dayExercises = await database.activeCycleWorkoutExercises
+            .where({ dayId: prescribed.dayId })
+            .sortBy('orderIndex')
+          const copy: ActiveCycleWorkoutExercise = {
+            ...prescribed,
+            id: createId(),
+            // A duplicate has no counterpart in the source template, so it
+            // must not participate in template change detection.
+            sourceTemplateExerciseId: null,
+            createdAt: now,
+            updatedAt: now,
+          }
+          const index = dayExercises.findIndex(
+            (entry) => entry.id === prescribedExerciseId,
+          )
+          dayExercises.splice(index + 1, 0, copy)
+          await database.activeCycleWorkoutExercises.add(copy)
+          await Promise.all(
+            dayExercises.map((entry, orderIndex) =>
+              database.activeCycleWorkoutExercises.update(entry.id, {
+                orderIndex,
+                updatedAt: now,
+              }),
+            ),
+          )
+          await database.activeProgramCycles.update(prescribed.activeCycleId, {
+            updatedAt: now,
+          })
+          return copy
         },
       )
     },

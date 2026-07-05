@@ -1,4 +1,4 @@
-import { Edit2, Trash2 } from 'lucide-react'
+import { Copy, Edit2, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import {
@@ -19,7 +19,11 @@ import {
   Toast,
   ValidationMessage,
 } from '@components/ui'
-import type { ExerciseUsageSummary } from '@domain/exerciseSearch'
+import {
+  hasSearchableQuery,
+  searchExercises,
+  type ExerciseUsageSummary,
+} from '@domain/exerciseSearch'
 import { programRepository } from '@repositories/programRepository'
 import type {
   ActiveCycleWorkoutDay,
@@ -31,6 +35,7 @@ import type {
   TemplateWorkoutExercise,
 } from '@shared-types/app'
 
+import { formatEquipment } from './exerciseMetadata'
 import { PrescriptionEditor } from './PrescriptionEditor'
 import { PrescriptionSummaryText } from './prescriptionSummary'
 import {
@@ -79,6 +84,12 @@ export function ProgramBuilderSheet({
     TemplateWorkoutExercise | ActiveCycleWorkoutExercise | null
   >(null)
   const [selectedDayId, setSelectedDayId] = useState('')
+  const [quickAddQuery, setQuickAddQuery] = useState('')
+  const [isSelecting, setIsSelecting] = useState(false)
+  const [selectedExerciseIds, setSelectedExerciseIds] = useState<Set<string>>(
+    () => new Set(),
+  )
+  const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false)
 
   const mode: BuilderMode = target.mode
 
@@ -148,6 +159,9 @@ export function ProgramBuilderSheet({
     onNext: () => switchDayByOffset(1),
     onPrevious: () => switchDayByOffset(-1),
   })
+  const quickAddResults = hasSearchableQuery(quickAddQuery)
+    ? searchExercises(exercises, quickAddQuery, exerciseUsage, 5)
+    : []
 
   function refresh() {
     if (target.mode === 'template') {
@@ -437,6 +451,90 @@ export function ProgramBuilderSheet({
   function selectDay(dayId: string) {
     saveName()
     setSelectedDayId(dayId)
+    setQuickAddQuery('')
+    setIsSelecting(false)
+    setSelectedExerciseIds(new Set())
+  }
+
+  function quickAddExercise(exerciseId: string) {
+    if (!selectedDay) {
+      return
+    }
+    setQuickAddQuery('')
+    // Same default the prescription form starts from; everything is editable
+    // afterwards by tapping the row.
+    const input = { exerciseId, targetSetCount: 3 }
+    run(
+      mode === 'template'
+        ? programRepository.addTemplateExercise(selectedDay.id, input)
+        : programRepository.addActiveCycleExercise(selectedDay.id, input),
+    )
+  }
+
+  function duplicateExercise(exerciseId: string) {
+    run(
+      mode === 'template'
+        ? programRepository.duplicateTemplateExercise(exerciseId)
+        : programRepository.duplicateActiveCycleExercise(exerciseId),
+    )
+  }
+
+  function toggleExerciseSelected(exerciseId: string) {
+    setSelectedExerciseIds((current) => {
+      const next = new Set(current)
+      if (next.has(exerciseId)) {
+        next.delete(exerciseId)
+      } else {
+        next.add(exerciseId)
+      }
+      return next
+    })
+  }
+
+  function selectedIdsInDisplayOrder() {
+    if (!structure || !selectedDay) {
+      return []
+    }
+    return (structure.exercisesByDay[selectedDay.id] ?? [])
+      .map((exercise) => exercise.id)
+      .filter((id) => selectedExerciseIds.has(id))
+  }
+
+  function bulkMoveSelected(targetDayId: string) {
+    const ids = selectedIdsInDisplayOrder()
+    if (!ids.length) {
+      return
+    }
+    setIsSelecting(false)
+    setSelectedExerciseIds(new Set())
+    run(
+      (async () => {
+        for (const id of ids) {
+          await (mode === 'template'
+            ? programRepository.moveTemplateExercise(id, targetDayId)
+            : programRepository.moveActiveCycleExercise(id, targetDayId))
+        }
+      })(),
+    )
+  }
+
+  function bulkDeleteSelected() {
+    const ids = selectedIdsInDisplayOrder()
+    setIsBulkDeleteConfirmOpen(false)
+    if (!ids.length) {
+      return
+    }
+    setIsSelecting(false)
+    setSelectedExerciseIds(new Set())
+    run(
+      (async () => {
+        for (const id of ids) {
+          await (mode === 'template'
+            ? programRepository.removeTemplateExercise(id)
+            : programRepository.removeActiveCycleExercise(id))
+        }
+      })(),
+    )
   }
 
   function switchDayByOffset(offset: -1 | 1) {
@@ -744,17 +842,66 @@ export function ProgramBuilderSheet({
                       </SecondaryButton>
                     </div>
 
-                    <SecondaryButton
-                      type="button"
-                      onClick={() =>
-                        setEditingPrescription({
-                          dayId: selectedDay.id,
-                          exercise: null,
-                        })
-                      }
-                    >
-                      Add exercise
-                    </SecondaryButton>
+                    <div className="button-row">
+                      <SecondaryButton
+                        type="button"
+                        onClick={() =>
+                          setEditingPrescription({
+                            dayId: selectedDay.id,
+                            exercise: null,
+                          })
+                        }
+                      >
+                        Add exercise
+                      </SecondaryButton>
+                      <SecondaryButton
+                        disabled={
+                          !(structure.exercisesByDay[selectedDay.id] ?? [])
+                            .length
+                        }
+                        type="button"
+                        onClick={() => {
+                          setIsSelecting((current) => !current)
+                          setSelectedExerciseIds(new Set())
+                        }}
+                      >
+                        {isSelecting ? 'Done' : 'Select'}
+                      </SecondaryButton>
+                    </div>
+                    {isSelecting ? (
+                      <div className="bulk-actions">
+                        <span className="bulk-actions-count">
+                          {selectedExerciseIds.size} selected
+                        </span>
+                        <select
+                          aria-label="Move selected exercises to day"
+                          disabled={!selectedExerciseIds.size}
+                          onChange={(event) => {
+                            if (event.target.value) {
+                              bulkMoveSelected(event.target.value)
+                            }
+                          }}
+                          value=""
+                        >
+                          <option value="">Move to…</option>
+                          {structure.days
+                            .filter((day) => day.id !== selectedDay.id)
+                            .map((day) => (
+                              <option key={day.id} value={day.id}>
+                                {day.name}
+                              </option>
+                            ))}
+                        </select>
+                        <SecondaryButton
+                          className="button-danger"
+                          disabled={!selectedExerciseIds.size}
+                          type="button"
+                          onClick={() => setIsBulkDeleteConfirmOpen(true)}
+                        >
+                          Delete
+                        </SecondaryButton>
+                      </div>
+                    ) : null}
                     <SortableZone
                       itemIds={(
                         structure.exercisesByDay[selectedDay.id] ?? []
@@ -762,55 +909,121 @@ export function ProgramBuilderSheet({
                     >
                       <div className="program-prescription-list">
                         {(structure.exercisesByDay[selectedDay.id] ?? []).map(
-                          (prescribed) => (
-                            <SortableListItem
-                              className="program-prescription-row sortable-row"
-                              id={prescribed.id}
-                              key={prescribed.id}
-                            >
-                              {(drag) => (
-                                <>
-                                  <SortableDragHandle
-                                    drag={drag}
-                                    label={`Reorder ${prescribed.exerciseSnapshot.exerciseName}`}
-                                  />
-                                  <button
-                                    aria-label={`Edit ${prescribed.exerciseSnapshot.exerciseName} prescription`}
-                                    className="program-prescription-body"
-                                    onClick={() =>
-                                      setEditingPrescription({
-                                        dayId: selectedDay.id,
-                                        exercise: prescribed,
-                                      })
-                                    }
-                                    type="button"
-                                  >
-                                    <strong>
-                                      {prescribed.exerciseSnapshot.exerciseName}
-                                    </strong>
-                                    <small>
-                                      <PrescriptionSummaryText
-                                        prescribed={prescribed}
+                          (prescribed) => {
+                            const exerciseName =
+                              prescribed.exerciseSnapshot.exerciseName
+                            const exerciseRecord = exercises.find(
+                              (entry) => entry.id === prescribed.exerciseId,
+                            )
+                            const isSelected = selectedExerciseIds.has(
+                              prescribed.id,
+                            )
+                            return (
+                              <SortableListItem
+                                className={`program-prescription-row sortable-row${
+                                  isSelected ? ' is-selected' : ''
+                                }`}
+                                disabled={isSelecting}
+                                id={prescribed.id}
+                                key={prescribed.id}
+                              >
+                                {(drag) => (
+                                  <>
+                                    {isSelecting ? (
+                                      <span className="program-prescription-check">
+                                        <input
+                                          aria-label={`Select ${exerciseName}`}
+                                          checked={isSelected}
+                                          onChange={() =>
+                                            toggleExerciseSelected(
+                                              prescribed.id,
+                                            )
+                                          }
+                                          type="checkbox"
+                                        />
+                                      </span>
+                                    ) : (
+                                      <SortableDragHandle
+                                        drag={drag}
+                                        label={`Reorder ${exerciseName}`}
                                       />
-                                    </small>
-                                    {prescribed.notes ? (
-                                      <small>{prescribed.notes}</small>
-                                    ) : null}
-                                  </button>
-                                  <div className="row-actions">
-                                    <IconButton
-                                      aria-label={`Remove ${prescribed.exerciseSnapshot.exerciseName} prescription`}
-                                      onClick={() =>
-                                        removeExerciseWithUndo(prescribed)
+                                    )}
+                                    <button
+                                      aria-label={
+                                        isSelecting
+                                          ? `Select ${exerciseName}`
+                                          : `Edit ${exerciseName} prescription`
                                       }
+                                      className="program-prescription-body"
+                                      onClick={() => {
+                                        if (isSelecting) {
+                                          toggleExerciseSelected(prescribed.id)
+                                          return
+                                        }
+                                        setEditingPrescription({
+                                          dayId: selectedDay.id,
+                                          exercise: prescribed,
+                                        })
+                                      }}
+                                      type="button"
                                     >
-                                      <Trash2 aria-hidden="true" size={18} />
-                                    </IconButton>
-                                  </div>
-                                </>
-                              )}
-                            </SortableListItem>
-                          ),
+                                      <strong>{exerciseName}</strong>
+                                      <small>
+                                        <PrescriptionSummaryText
+                                          prescribed={prescribed}
+                                        />
+                                      </small>
+                                      {exerciseRecord ? (
+                                        <span className="exercise-chip-row">
+                                          <span className="exercise-chip">
+                                            {formatEquipment(
+                                              exerciseRecord.equipmentType,
+                                            )}
+                                          </span>
+                                          {exerciseRecord.primaryMuscleGroups
+                                            .slice(0, 2)
+                                            .map((muscle) => (
+                                              <span
+                                                className="exercise-chip"
+                                                key={muscle}
+                                              >
+                                                {muscle}
+                                              </span>
+                                            ))}
+                                        </span>
+                                      ) : null}
+                                      {prescribed.notes ? (
+                                        <small>{prescribed.notes}</small>
+                                      ) : null}
+                                    </button>
+                                    {!isSelecting ? (
+                                      <div className="row-actions">
+                                        <IconButton
+                                          aria-label={`Duplicate ${exerciseName} prescription`}
+                                          onClick={() =>
+                                            duplicateExercise(prescribed.id)
+                                          }
+                                        >
+                                          <Copy aria-hidden="true" size={18} />
+                                        </IconButton>
+                                        <IconButton
+                                          aria-label={`Remove ${exerciseName} prescription`}
+                                          onClick={() =>
+                                            removeExerciseWithUndo(prescribed)
+                                          }
+                                        >
+                                          <Trash2
+                                            aria-hidden="true"
+                                            size={18}
+                                          />
+                                        </IconButton>
+                                      </div>
+                                    ) : null}
+                                  </>
+                                )}
+                              </SortableListItem>
+                            )
+                          },
                         )}
                         {!(structure.exercisesByDay[selectedDay.id] ?? [])
                           .length ? (
@@ -818,6 +1031,47 @@ export function ProgramBuilderSheet({
                         ) : null}
                       </div>
                     </SortableZone>
+                    {!isSelecting ? (
+                      <div className="quick-add">
+                        <FormField
+                          id="quick-add-exercise"
+                          label="Quick add exercise"
+                        >
+                          <input
+                            autoComplete="off"
+                            id="quick-add-exercise"
+                            onChange={(event) =>
+                              setQuickAddQuery(event.target.value)
+                            }
+                            placeholder="Search to add with 3 sets"
+                            value={quickAddQuery}
+                          />
+                        </FormField>
+                        {hasSearchableQuery(quickAddQuery) ? (
+                          <div className="quick-add-results">
+                            {quickAddResults.map(({ exercise }) => (
+                              <button
+                                className="quick-add-result"
+                                key={exercise.id}
+                                onClick={() => quickAddExercise(exercise.id)}
+                                type="button"
+                              >
+                                <Plus aria-hidden="true" size={16} />
+                                <span>
+                                  <strong>{exercise.name}</strong>
+                                  <small>
+                                    {formatEquipment(exercise.equipmentType)}
+                                  </small>
+                                </span>
+                              </button>
+                            ))}
+                            {!quickAddResults.length ? (
+                              <p className="muted">No matching exercises.</p>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
                   <EmptyState
@@ -852,6 +1106,19 @@ export function ProgramBuilderSheet({
       >
         <p>
           {`${removeDayConfirmation?.name ?? 'This day'} and its programmed exercises will be permanently deleted. Completed workout history is preserved.`}
+        </p>
+      </ModalConfirmationDialog>
+      <ModalConfirmationDialog
+        confirmLabel="Remove Exercises"
+        isOpen={isBulkDeleteConfirmOpen}
+        onCancel={() => setIsBulkDeleteConfirmOpen(false)}
+        onConfirm={bulkDeleteSelected}
+        title="Remove selected exercises?"
+      >
+        <p>
+          {`${selectedExerciseIds.size} selected ${
+            selectedExerciseIds.size === 1 ? 'exercise' : 'exercises'
+          } will be removed from this workout day.`}
         </p>
       </ModalConfirmationDialog>
     </>

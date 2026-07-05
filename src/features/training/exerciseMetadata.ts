@@ -37,7 +37,7 @@ export function showsWeightTarget(exercise: Exercise) {
   )
 }
 
-function formatEquipment(equipment: Exercise['equipmentType']) {
+export function formatEquipment(equipment: Exercise['equipmentType']) {
   return equipment
     .split('_')
     .map((part) => part.charAt(0).toLocaleUpperCase() + part.slice(1))

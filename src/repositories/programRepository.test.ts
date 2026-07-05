@@ -536,6 +536,66 @@ describe('programRepository', () => {
     ).resolves.toBe(3)
   })
 
+  it('duplicates a template exercise directly after the original', async () => {
+    const program = await seedProgram(database)
+    const repository = createProgramRepository(database)
+    const exerciseRepository = createExerciseRepository(database)
+    const row = await exerciseRepository.createExercise({
+      name: 'Row',
+      defaultRestSeconds: 90,
+      trackingMethodId: 'weight_reps',
+      notes: '',
+    })
+    const last = await repository.addTemplateExercise(program.days[0].id, {
+      exerciseId: row.id,
+      targetSetCount: 4,
+    })
+
+    const copy = await repository.duplicateTemplateExercise(
+      program.exercises[0].id,
+    )
+
+    expect(copy.id).not.toBe(program.exercises[0].id)
+    expect(copy).toMatchObject({
+      dayId: program.days[0].id,
+      exerciseId: program.exercises[0].exerciseId,
+      targetSetCount: program.exercises[0].targetSetCount,
+    })
+    const structure = await repository.getTemplateStructure(program.template.id)
+    expect(
+      structure.exercisesByDay[program.days[0].id].map((exercise) => [
+        exercise.id,
+        exercise.orderIndex,
+      ]),
+    ).toEqual([
+      [program.exercises[0].id, 0],
+      [copy.id, 1],
+      [last.id, 2],
+    ])
+  })
+
+  it('duplicates an active-cycle exercise without a template source link', async () => {
+    const program = await seedProgram(database)
+    const repository = createProgramRepository(database)
+    const active = await repository.activateTemplate(program.template.id)
+
+    const copy = await repository.duplicateActiveCycleExercise(
+      active.exercises[0].id,
+    )
+
+    expect(copy.sourceTemplateExerciseId).toBeNull()
+    const structure = await repository.getActiveCycleStructure(active.cycle.id)
+    expect(
+      structure.exercisesByDay[active.days[0].id].map((exercise) => [
+        exercise.id,
+        exercise.orderIndex,
+      ]),
+    ).toEqual([
+      [active.exercises[0].id, 0],
+      [copy.id, 1],
+    ])
+  })
+
   it('moves and restores active-cycle exercises across cycle days', async () => {
     const program = await seedProgram(database)
     const repository = createProgramRepository(database)

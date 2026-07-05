@@ -159,10 +159,12 @@ export function SortableList({
 export function SortableListItem({
   children,
   className = '',
+  disabled = false,
   id,
 }: {
   children: (drag: SortableDragState) => ReactNode
   className?: string
+  disabled?: boolean
   id: string
 }) {
   const {
@@ -174,7 +176,7 @@ export function SortableListItem({
     setNodeRef,
     transform,
     transition,
-  } = useSortable({ id })
+  } = useSortable({ disabled, id })
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,

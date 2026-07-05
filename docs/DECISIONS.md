@@ -1,5 +1,27 @@
 # Decisions
 
+## 2026-07-05: Builder Quick-Add, Duplicate Exercise, Chips, And Bulk Edit
+
+- Exercise rows show equipment and up to two primary-muscle chips looked up
+  from the live `Exercise` record (`ExerciseSnapshot` does not carry them);
+  rows for deleted exercises simply omit the chips.
+- Each row gained a Duplicate action:
+  `duplicateTemplateExercise`/`duplicateActiveCycleExercise` insert the copy
+  directly after the original. An active-cycle duplicate gets
+  `sourceTemplateExerciseId: null` so template change detection never pairs it
+  with a template exercise it did not come from.
+- A quick-add search sits under the exercise list; picking a result adds the
+  exercise with the prescription form's default (3 sets, exercise default
+  rest) for later editing by tapping the row. The full Add exercise flow
+  remains for setting targets up front.
+- Select mode replaces drag handles with checkboxes (drag disabled while
+  selecting) and offers bulk "Move to day" (a select of the other days) and
+  bulk delete behind a confirmation dialog — bulk delete spans records, so it
+  confirms instead of offering single-exercise Undo.
+- Superset grouping stayed out of scope: it needs a data-model addition, a
+  Dexie migration, and live-workout semantics, so it belongs in a product
+  spec (ROADMAP) rather than piggybacking on builder UI work.
+
 ## 2026-07-05: Cross-Day Drag, Tap-To-Edit Rows, And Undo Delete In The Builder
 
 - Builder exercise rows and day tabs now share one drag context

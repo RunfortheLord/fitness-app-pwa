@@ -665,6 +665,99 @@ textarea:focus-visible {
   background: var(--color-accent-soft);
 }
 
+.exercise-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.exercise-chip {
+  padding: 1px 8px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 999px;
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.program-prescription-row.is-selected {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.program-prescription-check {
+  display: inline-flex;
+  min-width: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+}
+
+.program-prescription-check input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--color-accent);
+}
+
+.bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.bulk-actions-count {
+  flex: 1 1 auto;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.bulk-actions select {
+  max-width: 40%;
+}
+
+.quick-add {
+  margin-top: var(--space-3);
+}
+
+.quick-add-results {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: calc(-1 * var(--space-2));
+}
+
+.quick-add-result {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 48px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-strong);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.quick-add-result svg {
+  flex: 0 0 auto;
+  color: var(--color-accent);
+}
+
+.quick-add-result strong,
+.quick-add-result small {
+  display: block;
+}
+
+.quick-add-result small {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
 .program-prescription-body {
   display: block;
   min-width: 0;
