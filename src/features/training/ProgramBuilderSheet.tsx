@@ -585,25 +585,6 @@ export function ProgramBuilderSheet({
     )
   }
 
-  function moveDay(dayId: string, direction: -1 | 1) {
-    if (!structure) {
-      return
-    }
-    const currentIndex = structure.days.findIndex((day) => day.id === dayId)
-    const nextIndex = currentIndex + direction
-    if (
-      currentIndex < 0 ||
-      nextIndex < 0 ||
-      nextIndex >= structure.days.length
-    ) {
-      return
-    }
-    const ordered = structure.days.map((day) => day.id)
-    const [id] = ordered.splice(currentIndex, 1)
-    ordered.splice(nextIndex, 0, id)
-    reorderDays(ordered)
-  }
-
   function reorderExercises(dayId: string, orderedIds: string[]) {
     setStructure((current) => {
       if (!current) {
@@ -796,38 +777,6 @@ export function ProgramBuilderSheet({
                     </div>
                     <div className="button-row">
                       <SecondaryButton
-                        disabled={selectedDayIndex === 0}
-                        type="button"
-                        onClick={() => moveDay(selectedDay.id, -1)}
-                      >
-                        Up
-                      </SecondaryButton>
-                      <SecondaryButton
-                        disabled={
-                          selectedDayIndex === structure.days.length - 1
-                        }
-                        type="button"
-                        onClick={() => moveDay(selectedDay.id, 1)}
-                      >
-                        Down
-                      </SecondaryButton>
-                      <SecondaryButton
-                        type="button"
-                        onClick={() =>
-                          run(
-                            mode === 'template'
-                              ? programRepository.duplicateTemplateDay(
-                                  selectedDay.id,
-                                )
-                              : programRepository.duplicateActiveCycleDay(
-                                  selectedDay.id,
-                                ),
-                          )
-                        }
-                      >
-                        Duplicate
-                      </SecondaryButton>
-                      <SecondaryButton
                         className="button-danger"
                         type="button"
                         onClick={() =>
@@ -838,7 +787,7 @@ export function ProgramBuilderSheet({
                         }
                       >
                         <Trash2 aria-hidden="true" size={16} />
-                        Remove
+                        Remove day
                       </SecondaryButton>
                     </div>
 

@@ -426,7 +426,7 @@ describe('SettingsPage', () => {
     await user.click(await screen.findByRole('button', { name: 'About' }))
     expect(
       await screen.findByRole('heading', {
-        name: 'Live workout polish and check-off weeks',
+        name: 'RIR your way and simpler program editing',
       }),
     ).toBeInTheDocument()
     expect(screen.queryByText('Pounds or kilograms')).not.toBeInTheDocument()
@@ -435,6 +435,11 @@ describe('SettingsPage', () => {
 
     expect(
       screen.getByRole('button', { name: 'Back to settings' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', {
+        name: 'Live workout polish and check-off weeks',
+      }),
     ).toBeInTheDocument()
     expect(
       screen.getByRole('heading', { name: 'Timer is finally fixed!' }),

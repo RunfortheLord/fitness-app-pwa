@@ -257,6 +257,25 @@ describe('workoutRepository', () => {
     ).rejects.toThrow('Active cycle workout day was not found.')
   })
 
+  it('prefills the prescribed RIR target on the final set only', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    const repository = createWorkoutRepository(database)
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+
+    const sets = started.sets
+      .filter((set) => set.workoutExerciseId === started.exercises[0].id)
+      .sort((first, second) => first.setNumber - second.setNumber)
+    // seedProgram prescribes two sets with a target RIR of 2.
+    expect(sets.map((set) => set.rir)).toEqual([null, 2])
+  })
+
   it('persists live metric edits, notes, set completion, add set, and delete set', async () => {
     const program = await seedProgram(database)
     const active = await createProgramRepository(database).activateTemplate(

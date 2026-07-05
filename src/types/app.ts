@@ -80,6 +80,8 @@ export type UserSettings = {
   timerSoundEnabled?: boolean
   selectedTimerSoundId?: string
   timerBannersEnabled?: boolean
+  /** RIR fields and prompts hide everywhere when false. Defaults to true. */
+  rirTrackingEnabled?: boolean
   /**
    * Legacy user-wide rest-timer preference retained for older local data. New
    * rest default edits are stored on each exercise.

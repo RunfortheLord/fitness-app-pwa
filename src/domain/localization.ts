@@ -354,6 +354,13 @@ const spanishTranslations: Record<string, string> = {
   Skipped: 'Omitido',
   'Exercise navigation': 'Navegación de ejercicios',
   'Final RIR': 'RIR final',
+  'Track RIR (reps in reserve)': 'Registrar RIR (repeticiones en reserva)',
+  'When off, RIR inputs and targets are hidden during workouts and in prescriptions.':
+    'Al desactivarlo, los campos y objetivos de RIR se ocultan durante los entrenamientos y en las prescripciones.',
+  'RIR fields are shown during workouts and in prescriptions.':
+    'Los campos de RIR se muestran durante los entrenamientos y en las prescripciones.',
+  'RIR fields are hidden. Recorded RIR history is kept.':
+    'Los campos de RIR están ocultos. El historial de RIR registrado se conserva.',
   'Rest timer settings': 'Configuración del temporizador de descanso',
   'Timer adjustment': 'Ajuste del temporizador',
   'Subtract 30 seconds': 'Restar 30 segundos',

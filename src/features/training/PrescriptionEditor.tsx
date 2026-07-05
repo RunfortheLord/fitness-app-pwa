@@ -22,8 +22,8 @@ import {
 import {
   formatWeight as formatWeightWithUnit,
   weightInputValue,
-  weightUnitSuffix,
 } from '@domain/weightUnits'
+import { useRirTracking } from '@hooks/useRirTracking'
 import { useWeightUnit } from '@hooks/useWeightUnit'
 import { exerciseRepository } from '@repositories/exerciseRepository'
 import { programRepository } from '@repositories/programRepository'
@@ -38,7 +38,6 @@ import {
   formatEquipment,
   isRepetitionBased,
   parseTrackingMethodId,
-  showsWeightTarget,
 } from './exerciseMetadata'
 import { PrescriptionInputSummaryText } from './prescriptionSummary'
 import {
@@ -133,24 +132,7 @@ export function PrescriptionEditor({
     step === 'create'
   const parsedRest = parseRestDuration(form.restMinutes, form.restSeconds)
   const currentRestSeconds = parsedRest.ok ? parsedRest.value : null
-  const weightStep = (() => {
-    if (
-      selectedExercise?.defaultWeightIncrement !== null &&
-      selectedExercise?.defaultWeightIncrement !== undefined
-    ) {
-      const converted = Number(
-        weightInputValue(
-          selectedExercise.defaultWeightIncrement,
-          weightUnit,
-          'lifting',
-        ),
-      )
-      if (Number.isFinite(converted) && converted > 0) {
-        return converted
-      }
-    }
-    return weightUnit === 'kg' ? 2.5 : 5
-  })()
+  const rirEnabled = useRirTracking()
 
   function update(field: keyof PrescriptionFormState, value: string) {
     setForm((current) => ({ ...current, [field]: value }))
@@ -505,40 +487,24 @@ export function PrescriptionEditor({
                 </FormField>
               </div>
             ) : null}
-            <div className="compact-field-grid">
-              {showsWeightTarget(selectedExercise) ? (
+            {rirEnabled ? (
+              <div className="compact-field-grid">
                 <FormField
-                  id="target-weight"
-                  label={`${
-                    selectedExercise.trackingMethodId === 'assisted_weight_reps'
-                      ? 'Assistance target'
-                      : selectedExercise.trackingMethodId ===
-                          'added_weight_reps'
-                        ? 'Added-weight target'
-                        : 'Weight target'
-                  } (${weightUnitSuffix(weightUnit)})`}
+                  helpText="Applies to the exercise's last set only."
+                  id="target-rir"
+                  label="Final-set RIR"
                 >
                   <StepperInput
-                    decrementLabel="Decrease weight target"
-                    id="target-weight"
-                    incrementLabel="Increase weight target"
-                    onValueChange={(value) => update('targetWeight', value)}
-                    step={weightStep}
-                    value={form.targetWeight}
+                    decrementLabel="One RIR fewer"
+                    id="target-rir"
+                    incrementLabel="One RIR more"
+                    max={10}
+                    onValueChange={(value) => update('targetRir', value)}
+                    value={form.targetRir}
                   />
                 </FormField>
-              ) : null}
-              <FormField id="target-rir" label="RIR">
-                <StepperInput
-                  decrementLabel="One RIR fewer"
-                  id="target-rir"
-                  incrementLabel="One RIR more"
-                  max={10}
-                  onValueChange={(value) => update('targetRir', value)}
-                  value={form.targetRir}
-                />
-              </FormField>
-            </div>
+              </div>
+            ) : null}
             <FormField
               helpText="Applies as this exercise's default rest."
               id="prescription-rest-minutes"

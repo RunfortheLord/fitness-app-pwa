@@ -251,6 +251,7 @@ const userSettingsSchema = z.object({
   timerSoundEnabled: z.boolean().optional().default(true),
   selectedTimerSoundId: z.string().optional().default('rest-complete-chime'),
   timerBannersEnabled: z.boolean().optional().default(true),
+  rirTrackingEnabled: z.boolean().optional().default(true),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })

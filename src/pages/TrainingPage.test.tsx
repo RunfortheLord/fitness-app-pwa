@@ -199,7 +199,7 @@ describe('TrainingPage', () => {
     ).toBeInTheDocument()
   })
 
-  it('creates a program, edits day and exercise ordering, activates it, and manually selects a day', async () => {
+  it('creates a program, adds days and an exercise, activates it, and manually selects a day', async () => {
     const user = userEvent.setup()
     await seedExercise(db)
     renderTraining()
@@ -242,14 +242,15 @@ describe('TrainingPage', () => {
       ).toBeGreaterThan(0)
     })
 
-    await user.click(screen.getAllByRole('button', { name: 'Down' })[0])
+    // Day reordering is drag-only (covered by SortableList tests); the builder
+    // exposes no Up/Down buttons.
     const builder = screen.getByRole('dialog', { name: 'Edit template' })
-    await waitFor(() => {
-      const names = within(builder)
-        .getAllByText(/Push|Pull/)
-        .map((node) => node.textContent)
-      expect(names.indexOf('Pull')).toBeLessThan(names.indexOf('Push'))
-    })
+    expect(
+      within(builder).queryByRole('button', { name: 'Down' }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(builder).queryByRole('button', { name: 'Up' }),
+    ).not.toBeInTheDocument()
 
     await user.click(screen.getAllByRole('button', { name: 'Add exercise' })[0])
     const picker = screen.getByRole('dialog', { name: 'Edit template' })
@@ -1075,12 +1076,16 @@ describe('TrainingPage', () => {
     expect(
       screen.queryByRole('heading', { name: 'Live pull-up' }),
     ).not.toBeInTheDocument()
-    expect(
-      screen.getByRole('textbox', { name: 'Set 2 final RIR' }),
-    ).toBeInTheDocument()
+    const finalRir = screen.getByRole('textbox', { name: 'Set 2 final RIR' })
+    expect(finalRir).toBeInTheDocument()
+    // The prescribed RIR target applies to the last set only.
+    expect(finalRir).toHaveAttribute('placeholder', '1')
     expect(
       screen.queryByRole('textbox', { name: 'Set 1 final RIR' }),
     ).not.toBeInTheDocument()
+    // Earlier sets accept an optional RIR without a target.
+    const firstSetRir = screen.getByRole('textbox', { name: 'Set 1 RIR' })
+    expect(firstSetRir).not.toHaveAttribute('placeholder')
     const firstWorkspace = rendered.container.querySelector(
       '.exercise-workspace',
     )

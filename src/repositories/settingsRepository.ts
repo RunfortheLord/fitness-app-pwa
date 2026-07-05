@@ -51,6 +51,7 @@ export type SettingsRepository = {
   }): Promise<UserSettings>
   saveDefaultRestSeconds(seconds: number | null): Promise<UserSettings>
   saveWeightUnit(unit: WeightUnit): Promise<UserSettings>
+  saveRirTrackingEnabled(enabled: boolean): Promise<UserSettings>
   saveLanguage(language: AppLanguage): Promise<UserSettings>
 }
 
@@ -112,7 +113,8 @@ export function createSettingsRepository(
         existing.timerSoundEnabled !== undefined &&
         existing.selectedTimerSoundId &&
         existing.language &&
-        existing.timerBannersEnabled !== undefined
+        existing.timerBannersEnabled !== undefined &&
+        existing.rirTrackingEnabled !== undefined
       ) {
         return existing
       }
@@ -124,6 +126,7 @@ export function createSettingsRepository(
         selectedTimerSoundId:
           existing.selectedTimerSoundId ?? 'rest-complete-chime',
         timerBannersEnabled: existing.timerBannersEnabled ?? true,
+        rirTrackingEnabled: existing.rirTrackingEnabled ?? true,
         updatedAt: now,
       }
       await database.userSettings.put(upgraded)
@@ -140,6 +143,7 @@ export function createSettingsRepository(
       timerSoundEnabled: true,
       selectedTimerSoundId: 'rest-complete-chime',
       timerBannersEnabled: true,
+      rirTrackingEnabled: true,
       createdAt: now,
       updatedAt: now,
     }
@@ -274,6 +278,18 @@ export function createSettingsRepository(
       const updated: UserSettings = {
         ...settings,
         weightUnit: unit,
+        updatedAt: now,
+      }
+      await database.userSettings.put(updated)
+      return updated
+    },
+
+    async saveRirTrackingEnabled(enabled) {
+      const settings = await ensureSettings()
+      const now = new Date().toISOString()
+      const updated: UserSettings = {
+        ...settings,
+        rirTrackingEnabled: enabled,
         updatedAt: now,
       }
       await database.userSettings.put(updated)

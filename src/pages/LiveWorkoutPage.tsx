@@ -61,6 +61,7 @@ import {
   weightInputToLb,
   weightInputValue,
 } from '@domain/weightUnits'
+import { useRirTracking } from '@hooks/useRirTracking'
 import { useWeightUnit } from '@hooks/useWeightUnit'
 import { exerciseRepository } from '@repositories/exerciseRepository'
 import { settingsRepository } from '@repositories/settingsRepository'
@@ -1142,14 +1143,21 @@ function SetRow({
     () => new Set<string>(),
   )
   const [rirDraftValid, setRirDraftValid] = useState(false)
-  const showRir = supportsRir(metrics) && set.id === finalProgrammedSetId
+  const rirEnabled = useRirTracking()
+  const isFinalProgrammedSet = set.id === finalProgrammedSetId
+  // RIR is recordable on any set; only the final programmed set requires it
+  // (and carries the prescribed target) when RIR tracking is enabled.
+  const showRir = supportsRir(metrics) && rirEnabled
   const repsPerSide = exerciseRecordsRepsPerSide(exercise)
   const invalidMetricKeys = invalidRequiredMetricKeys(set, metrics)
   const effectiveInvalidMetricKeys = new Set(
     [...invalidMetricKeys].filter((key) => !locallyValidMetricKeys.has(key)),
   )
   const isRirInvalid =
-    showRir && (set.rir === null || set.rir === undefined) && !rirDraftValid
+    showRir &&
+    isFinalProgrammedSet &&
+    (set.rir === null || set.rir === undefined) &&
+    !rirDraftValid
   const weightUnit = useWeightUnit()
   return (
     <div className={set.completed ? 'set-row completed' : 'set-row'}>
@@ -1219,11 +1227,20 @@ function SetRow({
       })}
       {showRir ? (
         <label>
-          <span>{t('Final RIR')}</span>
+          <span>{isFinalProgrammedSet ? t('Final RIR') : t('RIR')}</span>
           <NumericInput
-            aria-label={`Set ${set.setNumber} final RIR`}
+            aria-label={
+              isFinalProgrammedSet
+                ? `Set ${set.setNumber} final RIR`
+                : `Set ${set.setNumber} RIR`
+            }
             disabled={set.completed}
             aria-invalid={(validationRequested || rirTouched) && isRirInvalid}
+            placeholder={
+              isFinalProgrammedSet && prescription?.targetRir != null
+                ? String(prescription.targetRir)
+                : undefined
+            }
             onBlur={(event) => {
               setRirTouched(true)
               const rir = parseNullableNumber(event.currentTarget.value)

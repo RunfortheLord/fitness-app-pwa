@@ -1,5 +1,29 @@
 # Decisions
 
+## 2026-07-05: RIR Recording Options And Program-Editor Trims
+
+- RIR can be recorded on any set during a live workout, not only the final
+  programmed set. Only the final programmed set still requires an RIR value to
+  complete (when tracking is on) and shows the prescribed target as its
+  placeholder; earlier sets take an optional value with no target. At workout
+  start the prescribed `targetRir` is prefilled onto the final set only (was
+  every set), so earlier sets begin blank.
+- New `rirTrackingEnabled` UserSettings flag (defaults true, backfilled in
+  `ensureSettings`, added to the backup schema and a live `useRirTracking`
+  hook). When off, RIR inputs disappear from the live workout and the
+  prescription editor and no RIR is required to complete a set. Previously
+  recorded RIR values are preserved in storage and backups.
+- The prescription editor no longer has a weight-target field. Weight is
+  logged during the workout, and prescriptions carry set/rep/RIR/rest targets
+  only. The target-RIR field is relabeled "Final-set RIR" to match where it
+  applies. (`targetWeight` remains in the data model and is untouched on
+  existing records; new prescription saves persist `targetWeight: null` as
+  before when no value is entered.)
+- The program day header drops its Up / Down / Duplicate buttons, leaving only
+  "Remove day". Day reordering is drag-only via the day tabs. Accessibility
+  tradeoff accepted per explicit request: dragging tabs has no keyboard
+  equivalent now that the Up/Down buttons are gone.
+
 ## 2026-07-05: Prescription Editor Polish (Phase 3)
 
 - The selected-exercise card swaps its metadata sentence for the same

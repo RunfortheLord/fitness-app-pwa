@@ -10,6 +10,17 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-07-05-rir-controls-and-program-editing',
+    date: '2026-07-05',
+    title: 'RIR your way and simpler program editing',
+    items: [
+      'Record RIR (reps in reserve) on any set during a workout — not just the last one.',
+      'Prefer not to use RIR? Turn it off in Settings and RIR fields disappear from workouts and prescriptions. Your recorded history is kept.',
+      'A prescription’s target RIR now clearly applies to the exercise’s last set only, and the weight-target field is gone — log the weight you actually lift during the workout.',
+      'Reorder workout days by dragging their tabs; the old Up, Down, and Duplicate buttons are gone for a cleaner day header.',
+    ],
+  },
+  {
     id: '2026-07-04-live-workout-and-week-checkoffs',
     date: '2026-07-04',
     title: 'Live workout polish and check-off weeks',

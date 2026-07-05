@@ -125,6 +125,10 @@ export function SettingsPage() {
   const [weightUnitMessage, setWeightUnitMessage] = useState<string | null>(
     null,
   )
+  const [rirTrackingEnabled, setRirTrackingEnabled] = useState(true)
+  const [rirTrackingMessage, setRirTrackingMessage] = useState<string | null>(
+    null,
+  )
   const [languageMessage, setLanguageMessage] = useState<string | null>(null)
   const [buildInfo, setBuildInfo] = useState<BuildInfo | null>(null)
   const [feedbackText, setFeedbackText] = useState('')
@@ -192,6 +196,7 @@ export function SettingsPage() {
         settings.selectedTimerSoundId ?? DEFAULT_TIMER_SOUND_ID,
       )
       setWeightUnit(settings.weightUnit ?? 'lb')
+      setRirTrackingEnabled(settings.rirTrackingEnabled ?? true)
     })
 
     return () => {
@@ -323,6 +328,17 @@ export function SettingsPage() {
         unit === 'kg'
           ? 'Weights now shown in kilograms. Existing history is converted automatically.'
           : 'Weights now shown in pounds. Existing history is converted automatically.',
+      )
+    })
+  }
+
+  function saveRirTracking(enabled: boolean) {
+    setRirTrackingEnabled(enabled)
+    void settingsRepository.saveRirTrackingEnabled(enabled).then(() => {
+      setRirTrackingMessage(
+        enabled
+          ? 'RIR fields are shown during workouts and in prescriptions.'
+          : 'RIR fields are hidden. Recorded RIR history is kept.',
       )
     })
   }
@@ -731,6 +747,24 @@ export function SettingsPage() {
             </FormField>
             {weightUnitMessage ? (
               <StatusMessage tone="success">{weightUnitMessage}</StatusMessage>
+            ) : null}
+            <label className="checkbox-row">
+              <input
+                checked={rirTrackingEnabled}
+                onChange={(event) =>
+                  saveRirTracking(event.currentTarget.checked)
+                }
+                type="checkbox"
+              />
+              {t('Track RIR (reps in reserve)')}
+            </label>
+            <p className="muted">
+              {t(
+                'When off, RIR inputs and targets are hidden during workouts and in prescriptions.',
+              )}
+            </p>
+            {rirTrackingMessage ? (
+              <StatusMessage tone="success">{rirTrackingMessage}</StatusMessage>
             ) : null}
           </Card>
         </>

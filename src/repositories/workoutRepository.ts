@@ -274,7 +274,12 @@ export function createWorkoutRepository(
                       ]),
                     )
                   : {},
-                rir: sourceForWorkout.targetRir,
+                // The prescribed RIR target applies to the final set only; the
+                // earlier sets start blank and accept an optional value.
+                rir:
+                  setNumber === sourceForWorkout.targetSetCount
+                    ? sourceForWorkout.targetRir
+                    : null,
                 completed: false,
                 completedAt: null,
                 restSecondsUsed: sourceForWorkout.restSecondsOverride,

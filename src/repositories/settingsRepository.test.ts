@@ -39,6 +39,30 @@ describe('settingsRepository', () => {
     })
   })
 
+  it('defaults, persists, and backfills the RIR tracking preference', async () => {
+    const repository = createSettingsRepository(database)
+
+    await expect(repository.ensureSettings()).resolves.toMatchObject({
+      rirTrackingEnabled: true,
+    })
+
+    await repository.saveRirTrackingEnabled(false)
+    await expect(database.userSettings.get('settings')).resolves.toMatchObject({
+      rirTrackingEnabled: false,
+    })
+
+    // Older local data without the flag is backfilled to enabled.
+    const stored = await database.userSettings.get('settings')
+    expect(stored).toBeDefined()
+    await database.userSettings.put({
+      ...stored!,
+      rirTrackingEnabled: undefined,
+    })
+    await expect(repository.ensureSettings()).resolves.toMatchObject({
+      rirTrackingEnabled: true,
+    })
+  })
+
   it('rolls back nutrition target saves when the transaction fails', async () => {
     const repository = createSettingsRepository(database, {
       afterNutritionTargetAdded: () => {
