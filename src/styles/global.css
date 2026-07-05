@@ -1261,6 +1261,19 @@ textarea:focus-visible {
   font-size: 13px;
 }
 
+.exercise-picker-section-label {
+  margin: 0 0 var(--space-2);
+  color: var(--color-muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.compact-prescription-form textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
 .sheet-bottom-actions {
   position: sticky;
   bottom: 0;

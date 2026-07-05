@@ -1,5 +1,12 @@
 # Decisions
 
+## 2026-07-05: Prescription Editor Polish (Phase 3)
+
+- The selected-exercise card swaps its metadata sentence for the same
+  equipment/muscle chips used on builder rows, plus a tracking-method chip.
+- Default search results carry a "Recent & common" section label, and the
+  notes field grew to three rows with vertical resize.
+
 ## 2026-07-05: Prescription Editor Capability (Phase 2)
 
 - Existing prescriptions can swap their exercise ("Change exercise" returns to

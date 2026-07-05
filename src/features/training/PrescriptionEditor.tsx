@@ -35,6 +35,7 @@ import type {
 
 import {
   exerciseMetadata,
+  formatEquipment,
   isRepetitionBased,
   parseTrackingMethodId,
   showsWeightTarget,
@@ -287,6 +288,11 @@ export function PrescriptionEditor({
                 ? `${results.length} exercise results`
                 : 'Enter at least two characters to search exercises'}
             </p>
+            {!searchable && defaultResults.length ? (
+              <h4 className="exercise-picker-section-label">
+                Recent &amp; common
+              </h4>
+            ) : null}
             <div className="exercise-result-list">
               {(searchable
                 ? results.map((result) => result.exercise)
@@ -418,7 +424,23 @@ export function PrescriptionEditor({
             </SecondaryButton>
             <div className="selected-exercise-summary">
               <strong>{selectedExercise.name}</strong>
-              <small>{exerciseMetadata(selectedExercise)}</small>
+              <span className="exercise-chip-row">
+                <span className="exercise-chip">
+                  {formatEquipment(selectedExercise.equipmentType)}
+                </span>
+                {selectedExercise.primaryMuscleGroups
+                  .slice(0, 2)
+                  .map((muscle) => (
+                    <span className="exercise-chip" key={muscle}>
+                      {muscle}
+                    </span>
+                  ))}
+                <span className="exercise-chip">
+                  {TRACKING_METHODS.find(
+                    (method) => method.id === selectedExercise.trackingMethodId,
+                  )?.name ?? selectedExercise.trackingMethodId}
+                </span>
+              </span>
               <small>
                 {selectedExercise.defaultRestSeconds}s rest
                 {selectedExercise.defaultWeightIncrement !== null
@@ -569,6 +591,7 @@ export function PrescriptionEditor({
               <textarea
                 id="prescription-notes"
                 onChange={(event) => update('notes', event.target.value)}
+                rows={3}
                 value={form.notes}
               />
             </FormField>
