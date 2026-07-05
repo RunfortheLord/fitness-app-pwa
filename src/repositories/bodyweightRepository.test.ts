@@ -16,39 +16,56 @@ afterEach(async () => {
 })
 
 describe('bodyweightRepository', () => {
-  it('preserves same-day entries and returns the latest timestamped entry for a local date', async () => {
+  it('rejects a second bodyweight entry for the same local date', async () => {
     const repository = createBodyweightRepository(database)
 
     const first = await repository.saveBodyweight({
       localDate: testLocalDate,
       weight: 190,
     })
-    const second = await repository.saveBodyweight({
-      localDate: testLocalDate,
-      weight: 191,
-      notes: 'updated',
-    })
 
-    expect(second.id).not.toBe(first.id)
-    await expect(database.bodyweightEntries.toArray()).resolves.toHaveLength(2)
+    await expect(
+      repository.saveBodyweight({
+        localDate: testLocalDate,
+        weight: 191,
+      }),
+    ).rejects.toThrow('already exists for this date')
+
+    await expect(database.bodyweightEntries.toArray()).resolves.toEqual([first])
     await expect(
       repository.getBodyweightForDate(testLocalDate),
-    ).resolves.toMatchObject({
-      weight: 191,
-      notes: 'updated',
-    })
+    ).resolves.toEqual(first)
   })
 
-  it('updates a selected bodyweight entry without rewriting other same-day entries', async () => {
+  it('allows only one of two concurrent saves for the same date', async () => {
+    const repository = createBodyweightRepository(database)
+
+    const results = await Promise.allSettled([
+      repository.saveBodyweight({
+        localDate: testLocalDate,
+        weight: 190,
+      }),
+      repository.saveBodyweight({
+        localDate: testLocalDate,
+        weight: 191,
+      }),
+    ])
+
+    expect(
+      results.filter((result) => result.status === 'fulfilled'),
+    ).toHaveLength(1)
+    expect(
+      results.filter((result) => result.status === 'rejected'),
+    ).toHaveLength(1)
+    await expect(database.bodyweightEntries.count()).resolves.toBe(1)
+  })
+
+  it('updates a bodyweight entry on its existing date', async () => {
     const repository = createBodyweightRepository(database)
 
     const first = await repository.saveBodyweight({
       localDate: testLocalDate,
       weight: 190,
-    })
-    const second = await repository.saveBodyweight({
-      localDate: testLocalDate,
-      weight: 191,
     })
 
     await repository.updateBodyweight({
@@ -57,18 +74,38 @@ describe('bodyweightRepository', () => {
       notes: 'corrected',
     })
 
-    await expect(database.bodyweightEntries.toArray()).resolves.toHaveLength(2)
+    await expect(database.bodyweightEntries.toArray()).resolves.toHaveLength(1)
     await expect(
       repository.getBodyweightEntry(first.id),
     ).resolves.toMatchObject({
+      localDate: testLocalDate,
       weight: 189.5,
       notes: 'corrected',
     })
-    await expect(
-      repository.getBodyweightEntry(second.id),
-    ).resolves.toMatchObject({
+  })
+
+  it('rejects moving a bodyweight entry onto an occupied date', async () => {
+    const repository = createBodyweightRepository(database)
+    const first = await repository.saveBodyweight({
+      localDate: testLocalDate,
+      weight: 190,
+    })
+    const second = await repository.saveBodyweight({
+      localDate: '2026-06-19',
       weight: 191,
     })
+
+    await expect(
+      repository.updateBodyweight({
+        id: first.id,
+        localDate: second.localDate,
+        weight: 189.5,
+      }),
+    ).rejects.toThrow('already exists for this date')
+
+    await expect(database.bodyweightEntries.toArray()).resolves.toEqual(
+      expect.arrayContaining([first, second]),
+    )
   })
 
   it('rolls back bodyweight saves when the transaction fails', async () => {

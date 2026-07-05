@@ -8,6 +8,7 @@ import {
   type NormalizedFoodResult,
 } from '@domain/foodProviderModels'
 import { createTestDatabase, destroyTestDatabase } from '@test/database'
+import { snapshotFood } from '@domain/snapshots'
 import { seedFood, testLocalDate } from '@test/seedFactories'
 import type { TrainingLogDatabase } from '@db/database'
 
@@ -84,6 +85,289 @@ describe('foodRepository', () => {
     await expect(repository.listFoodLogsByDate(testLocalDate)).resolves.toEqual(
       [],
     )
+  })
+
+  it('stores the chosen meal and can move an entry to another meal', async () => {
+    const repository = createFoodRepository(database)
+    const food = await seedFood(database)
+
+    const log = await repository.logFood({
+      foodId: food.id,
+      localDate: testLocalDate,
+      servingMultiplier: 1,
+      mealType: 'breakfast',
+    })
+    expect(log.mealType).toBe('breakfast')
+
+    const moved = await repository.updateFoodLogEntry(log.id, {
+      servingMultiplier: 1,
+      mealType: 'dinner',
+    })
+    expect(moved.mealType).toBe('dinner')
+
+    const retained = await repository.updateFoodLogEntry(log.id, {
+      servingMultiplier: 2,
+    })
+    expect(retained.mealType).toBe('dinner')
+  })
+
+  it('defaults a logged meal from the time of day when none is given', async () => {
+    const repository = createFoodRepository(database)
+    const food = await seedFood(database)
+
+    const log = await repository.logFood({
+      foodId: food.id,
+      localDate: testLocalDate,
+      servingMultiplier: 1,
+    })
+
+    expect(['breakfast', 'lunch', 'dinner', 'snack']).toContain(log.mealType)
+  })
+
+  it('creates a saved meal and logs it as separate dated entries', async () => {
+    const repository = createFoodRepository(database)
+    const oats = await repository.createFood({
+      name: 'Oats',
+      servingQuantity: 1,
+      servingUnit: 'cup',
+      servingDescription: '',
+      caloriesPerServing: 150,
+      proteinGramsPerServing: 5,
+      carbohydrateGramsPerServing: 27,
+      fatGramsPerServing: 3,
+      notes: '',
+    })
+    const milk = await repository.createFood({
+      name: 'Milk',
+      servingQuantity: 1,
+      servingUnit: 'cup',
+      servingDescription: '',
+      caloriesPerServing: 100,
+      proteinGramsPerServing: 8,
+      carbohydrateGramsPerServing: 12,
+      fatGramsPerServing: 2,
+      notes: '',
+    })
+
+    const meal = await repository.createSavedMeal({
+      name: 'Oatmeal bowl',
+      components: [
+        {
+          foodId: oats.id,
+          foodSnapshot: snapshotFood(oats),
+          servingMultiplier: 2,
+        },
+        {
+          foodId: milk.id,
+          foodSnapshot: snapshotFood(milk),
+          servingMultiplier: 1,
+        },
+      ],
+    })
+
+    await expect(
+      repository.listSavedMeals().then((meals) => meals.map((m) => m.name)),
+    ).resolves.toEqual(['Oatmeal bowl'])
+
+    const logged = await repository.logSavedMeal({
+      savedMealId: meal.id,
+      localDate: testLocalDate,
+      mealType: 'breakfast',
+    })
+    expect(logged).toHaveLength(2)
+
+    const logs = await repository.listFoodLogsByDate(testLocalDate)
+    expect(logs).toHaveLength(2)
+    expect(logs.every((log) => log.mealType === 'breakfast')).toBe(true)
+    expect(logs.map((log) => log.foodSnapshot.foodName).sort()).toEqual([
+      'Milk',
+      'Oats',
+    ])
+    const oatsLog = logs.find((log) => log.foodSnapshot.foodName === 'Oats')
+    expect(oatsLog?.computedCalories).toBe(300)
+  })
+
+  it('rejects an empty saved meal and archives saved meals', async () => {
+    const repository = createFoodRepository(database)
+    const food = await seedFood(database)
+
+    await expect(
+      repository.createSavedMeal({ name: 'Empty', components: [] }),
+    ).rejects.toThrow('at least one food')
+
+    const meal = await repository.createSavedMeal({
+      name: 'Just rice',
+      components: [
+        {
+          foodId: food.id,
+          foodSnapshot: snapshotFood(food),
+          servingMultiplier: 1,
+        },
+      ],
+    })
+    await repository.archiveSavedMeal(meal.id)
+    await expect(repository.listSavedMeals()).resolves.toEqual([])
+  })
+
+  it('logs a draft meal and saves it only when requested', async () => {
+    const repository = createFoodRepository(database)
+    const food = await seedFood(database)
+    const components = [
+      {
+        foodId: food.id,
+        foodSnapshot: snapshotFood(food),
+        servingMultiplier: 1.5,
+      },
+    ]
+
+    const loggedOnly = await repository.logMealDraft({
+      name: 'Photo meal',
+      components,
+      localDate: testLocalDate,
+      saveAsRecipe: false,
+    })
+
+    expect(loggedOnly.savedMeal).toBeNull()
+    expect(loggedOnly.entries).toHaveLength(1)
+    expect(loggedOnly.entries[0].computedCalories).toBe(300)
+    await expect(database.savedMeals.count()).resolves.toBe(0)
+
+    const loggedAndSaved = await repository.logMealDraft({
+      name: 'Photo meal',
+      components,
+      localDate: testLocalDate,
+      saveAsRecipe: true,
+    })
+
+    expect(loggedAndSaved.savedMeal?.name).toBe('Photo meal')
+    await expect(database.savedMeals.count()).resolves.toBe(1)
+    await expect(database.foodLogEntries.count()).resolves.toBe(2)
+  })
+
+  it('rolls back AI recipe saving when ingredient logging fails', async () => {
+    const food = await seedFood(database)
+    const repository = createFoodRepository(database, {
+      afterFoodLogAdded: () => {
+        throw new Error('forced draft log failure')
+      },
+    })
+
+    await expect(
+      repository.logMealDraft({
+        name: 'Photo meal',
+        components: [
+          {
+            foodId: food.id,
+            foodSnapshot: snapshotFood(food),
+            servingMultiplier: 1,
+          },
+        ],
+        localDate: testLocalDate,
+        saveAsRecipe: true,
+      }),
+    ).rejects.toThrow('forced draft log failure')
+
+    await expect(database.savedMeals.count()).resolves.toBe(0)
+    await expect(database.foodLogEntries.count()).resolves.toBe(0)
+  })
+
+  it('edits a saved meal name and components', async () => {
+    const repository = createFoodRepository(database)
+    const makeFood = (name: string, calories: number) =>
+      repository.createFood({
+        name,
+        servingQuantity: 1,
+        servingUnit: 'serving',
+        servingDescription: '',
+        caloriesPerServing: calories,
+        proteinGramsPerServing: 10,
+        carbohydrateGramsPerServing: 20,
+        fatGramsPerServing: 5,
+        notes: '',
+      })
+    const rice = await makeFood('Rice', 205)
+    const chicken = await makeFood('Chicken', 165)
+
+    const meal = await repository.createSavedMeal({
+      name: 'Chicken bowl',
+      components: [
+        {
+          foodId: chicken.id,
+          foodSnapshot: snapshotFood(chicken),
+          servingMultiplier: 1,
+        },
+      ],
+    })
+
+    const updated = await repository.updateSavedMeal(meal.id, {
+      name: 'Chicken & rice',
+      components: [
+        {
+          foodId: chicken.id,
+          foodSnapshot: snapshotFood(chicken),
+          servingMultiplier: 2,
+        },
+        {
+          foodId: rice.id,
+          foodSnapshot: snapshotFood(rice),
+          servingMultiplier: 1,
+        },
+      ],
+    })
+
+    expect(updated.name).toBe('Chicken & rice')
+    expect(updated.components).toHaveLength(2)
+    expect(updated.components[0].servingMultiplier).toBe(2)
+
+    const reloaded = await repository.listSavedMeals()
+    expect(reloaded).toHaveLength(1)
+    expect(reloaded[0].components.map((c) => c.foodSnapshot.foodName)).toEqual([
+      'Chicken',
+      'Rice',
+    ])
+
+    await expect(
+      repository.updateSavedMeal(meal.id, { components: [] }),
+    ).rejects.toThrow('at least one food')
+  })
+
+  it('stars and unstars foods and lists favorites alphabetically', async () => {
+    const repository = createFoodRepository(database)
+    const apple = await repository.createFood({
+      name: 'Apple',
+      servingQuantity: 1,
+      servingUnit: 'medium',
+      servingDescription: '',
+      caloriesPerServing: 95,
+      proteinGramsPerServing: 0,
+      carbohydrateGramsPerServing: 25,
+      fatGramsPerServing: 0,
+      notes: '',
+    })
+    const banana = await repository.createFood({
+      name: 'Banana',
+      servingQuantity: 1,
+      servingUnit: 'medium',
+      servingDescription: '',
+      caloriesPerServing: 105,
+      proteinGramsPerServing: 1,
+      carbohydrateGramsPerServing: 27,
+      fatGramsPerServing: 0,
+      notes: '',
+    })
+
+    await expect(repository.listFavoriteFoods()).resolves.toEqual([])
+
+    await repository.setFoodFavorite(banana.id, true)
+    await repository.setFoodFavorite(apple.id, true)
+    await expect(
+      repository.listFavoriteFoods().then((foods) => foods.map((f) => f.name)),
+    ).resolves.toEqual(['Apple', 'Banana'])
+
+    await repository.setFoodFavorite(banana.id, false)
+    await expect(
+      repository.listFavoriteFoods().then((foods) => foods.map((f) => f.name)),
+    ).resolves.toEqual(['Apple'])
   })
 
   it('multiplies calories and macros for quantity two custom foods', async () => {

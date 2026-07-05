@@ -118,5 +118,8 @@
 - No backend requirement.
 - No cloud sync.
 - No subscriptions or ads.
-- No barcode scanner, AI food-photo analysis, external food database, micronutrients, or meal recommendations.
+- Barcode and AI camera actions remain separate. AI photo analysis requires a
+  user-supplied key and never saves or logs without explicit confirmation.
+- No AI coaching, meal recommendations, bundled external food database, or
+  micronutrients.
 - No automatic calorie adjustment, training progression, program advancement, estimated 1RM, trend weight, adherence percentage, or graphs.

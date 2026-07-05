@@ -11,8 +11,15 @@ import {
   PrimaryButton,
   SecondaryButton,
 } from '@components/ui'
-import { type LocalDateString } from '@domain/dates'
+import { useLanguage } from '@components/languageContextValue'
+import { formatLocalDate, type LocalDateString } from '@domain/dates'
+import {
+  weightInputToLb,
+  weightInputValue,
+  weightUnitSuffix,
+} from '@domain/weightUnits'
 import { useDashboardContext } from '@hooks/useDashboardContext'
+import { useWeightUnit } from '@hooks/useWeightUnit'
 import { bodyweightRepository } from '@repositories/bodyweightRepository'
 
 type BodyweightEntrySheetProps = {
@@ -28,10 +35,13 @@ export function BodyweightEntrySheet({
   localDate,
   onClose,
 }: BodyweightEntrySheetProps) {
+  const { t } = useLanguage()
   const inputId = useId()
+  const dateInputId = useId()
   const [error, setError] = useState('')
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
   const { refreshDashboard } = useDashboardContext()
+  const weightUnit = useWeightUnit()
   const existingEntry = useLiveQuery(async () => {
     if (!localDate) {
       return undefined
@@ -39,7 +49,7 @@ export function BodyweightEntrySheet({
 
     return entryId
       ? bodyweightRepository.getBodyweightEntry(entryId)
-      : undefined
+      : bodyweightRepository.getBodyweightForDate(localDate)
   }, [entryId, localDate])
 
   if (!localDate) {
@@ -54,12 +64,20 @@ export function BodyweightEntrySheet({
 
     const formData = new FormData(event.currentTarget)
     const weight = String(formData.get('weight') ?? '')
+    const selectedDate = String(formData.get('localDate') ?? '')
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) {
+      setError('Choose a valid date.')
+      return
+    }
     const parsed = Number(weight)
     if (!Number.isFinite(parsed) || parsed <= 0) {
       setError('Enter a positive bodyweight.')
       return
     }
-    if (parsed > 1500) {
+    // Weights persist in canonical pounds; convert from the displayed unit
+    // before validating against the realistic-weight ceiling and saving.
+    const weightLb = weightInputToLb(parsed, weightUnit)
+    if (weightLb > 1500) {
       setError('Enter a realistic bodyweight.')
       return
     }
@@ -69,12 +87,13 @@ export function BodyweightEntrySheet({
       if (existingEntry) {
         await bodyweightRepository.updateBodyweight({
           id: existingEntry.id,
-          weight: parsed,
+          localDate: selectedDate as LocalDateString,
+          weight: weightLb,
         })
       } else {
         await bodyweightRepository.saveBodyweight({
-          localDate,
-          weight: parsed,
+          localDate: selectedDate as LocalDateString,
+          weight: weightLb,
         })
       }
       refreshDashboard()
@@ -116,10 +135,25 @@ export function BodyweightEntrySheet({
     <>
       <BottomSheet isOpen={isOpen} onClose={onClose} title="Log bodyweight">
         <form onSubmit={saveBodyweight}>
-          <p className="muted sheet-context">{localDate}</p>
+          <FormField id={dateInputId} label="Date">
+            <input
+              className="bodyweight-date-input"
+              defaultValue={existingEntry?.localDate ?? localDate}
+              id={dateInputId}
+              key={`${existingEntry?.id ?? `${localDate}-new`}-date`}
+              max={formatLocalDate(new Date())}
+              name="localDate"
+              onChange={() => setError('')}
+              type="date"
+            />
+          </FormField>
           <FormField
             error={error}
-            helpText="Pounds are the default unit."
+            helpText={
+              weightUnit === 'kg'
+                ? 'Entered in kilograms.'
+                : 'Entered in pounds.'
+            }
             id={inputId}
             label="Bodyweight"
           >
@@ -129,14 +163,22 @@ export function BodyweightEntrySheet({
                   error ? `${inputId}-error` : `${inputId}-help`
                 }
                 autoComplete="off"
-                defaultValue={existingEntry ? String(existingEntry.weight) : ''}
+                defaultValue={
+                  existingEntry
+                    ? weightInputValue(
+                        existingEntry.weight,
+                        weightUnit,
+                        'bodyweight',
+                      )
+                    : ''
+                }
                 id={inputId}
-                key={existingEntry?.id ?? `${localDate}-new`}
+                key={`${existingEntry?.id ?? `${localDate}-new`}-${weightUnit}`}
                 name="weight"
                 onChange={() => setError('')}
-                placeholder="185"
+                placeholder={weightUnit === 'kg' ? '84' : '185'}
               />
-              <span>lb</span>
+              <span>{weightUnitSuffix(weightUnit)}</span>
             </div>
           </FormField>
           <div className="dialog-actions">
@@ -147,7 +189,7 @@ export function BodyweightEntrySheet({
                 onClick={() => setIsConfirmingDelete(true)}
               >
                 <Trash2 aria-hidden="true" size={18} />
-                Delete
+                {t('Delete')}
               </SecondaryButton>
             ) : null}
             <SecondaryButton type="button" onClick={onClose}>
@@ -165,7 +207,9 @@ export function BodyweightEntrySheet({
         onConfirm={() => void deleteBodyweight()}
         title="Delete bodyweight?"
       >
-        This removes the selected bodyweight entry for {localDate}.
+        {t('This removes the selected bodyweight entry for {date}.', {
+          date: localDate,
+        })}
       </ModalConfirmationDialog>
     </>
   )

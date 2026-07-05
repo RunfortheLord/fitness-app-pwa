@@ -44,17 +44,19 @@ foreign-key ID fields and sort indexes.
 ### UserSettings
 
 - `id`
+- `language`: `en` by default; supports `en` and `es`
 - `weightUnit`: default `lb`
 - `energyUnit`: default `kcal`
 - `nutritionTargets`
 - `timerSoundEnabled`
 - `selectedTimerSoundId`
+- `timerBannersEnabled`
 - `createdAt`
 - `updatedAt`
 
 ### ApiKeyIntegrationSettings
 
-- `id`: currently `usda_fooddata_central`
+- `id`: `usda_fooddata_central` or `google_gemini`
 - `apiKey`: user-supplied key stored only in device-local IndexedDB
 - `status`: `not_configured`, `testing`, `connected`, `invalid_key`,
   `rate_limited`, `network_unavailable`, or `service_unavailable`
@@ -73,6 +75,9 @@ and restore payloads.
 - `fatGrams`
 - Targets are manually entered and may be stored as current settings first.
 - Future dated target history may be added without changing food log records.
+- Calorie graphs derive one row per local calendar date from immutable food-log
+  calories and the latest target created by the end of that date. Dates before
+  the first stored target have a zero target.
 
 ### Food
 
@@ -86,7 +91,8 @@ and restore payloads.
 - `proteinGramsPerServing`
 - `carbohydrateGramsPerServing`
 - `fatGramsPerServing`
-- Optional `brandName` for private custom foods.
+- Optional `brandName` for private custom foods. The current custom-food form
+  writes `null`.
 - Optional provider metadata: `brandName`, `sourceType`, `provider`,
   `providerRecordId`, `providerDataType`, `sourceName`, `sourceUrl`, `barcode`,
   `barcodeSource`, `sourceUpdatedAt`, `providerIngestedAt`, and
@@ -94,7 +100,8 @@ and restore payloads.
 - Optional serving conversion metadata: `gramsPerServing`, `ouncesPerServing`,
   `servingConversionReliable`, and `servingConversionSource`
 - Optional classification metadata: `macroBasis` and `rawCookedStatus`
-- `notes`
+- `notes`: retained for backups and older data; the current custom-food form
+  writes an empty string.
 - `status`: `active` or `archived`
 - `createdAt`
 - `updatedAt`
@@ -105,8 +112,9 @@ Previously used provider foods may be retained in this table for offline recent
 or previously used search results.
 
 Private custom food creation requires name, serving quantity, serving unit, and
-calories. Optional macros default to zero when left blank. Active private custom
-food names are unique after trimming and case folding.
+calories. Optional macros default to zero when left blank. The current form does
+not collect brand or notes. Active private custom food names are unique after
+trimming and case folding.
 
 ### FoodUnitPreference
 
@@ -346,6 +354,9 @@ Provider snapshot metadata is optional so old local food logs remain readable.
 - Remaining time is derived from timestamps.
 - Live workout completion alerts are keyed by the timer record and completed
   status so alerts are not duplicated by rerenders or reloads.
+- Native iOS local notifications are derived from this state and are not stored
+  as an additional database record. One stable native notification identifier
+  is canceled or replaced after each timer mutation.
 
 ### WorkoutHistoryEntry
 
@@ -426,6 +437,10 @@ not rewrite completed `WorkoutHistorySet` values.
 - `distanceMeters`
 - `currentPaceSecondsPerMile`
 - `averageMovingPaceSecondsPerMile`
+- `trackingMode`: `gps`, `treadmill`, or `manual`; legacy records migrate to
+  `gps`
+- `treadmillStepCount`
+- `treadmillStrideMeters`: nullable
 - `hasGpsGap`
 - `lowPaceAlertedAt`
 - `notes`
@@ -549,6 +564,9 @@ not add distance or moving time.
   history, historical program/day snapshots, nutrition logs, bodyweight data,
   custom foods, custom exercises, settings, API-key settings, barcode settings,
   and existing database/storage identifiers.
+- Schema version 13 adds run tracking mode, treadmill step count, and treadmill
+  stride metadata. Existing runs migrate to GPS mode without changing recorded
+  distance, time, samples, splits, pauses, or classifications.
 
 ## Transaction Boundaries
 

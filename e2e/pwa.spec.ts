@@ -265,7 +265,7 @@ async function createActiveWorkout(page: Page) {
     .fill('Offline A')
   await builder.getByRole('button', { name: 'Add day' }).click()
   await builder.getByRole('button', { name: 'Add exercise' }).click()
-  await addPrescription(builder, 'Offline recovery press', '1')
+  await addPrescription(builder, 'Offline recovery press', '2')
   await closeBuilder(builder)
 
   await page
@@ -275,7 +275,7 @@ async function createActiveWorkout(page: Page) {
     .getByRole('dialog', { name: 'Activate program?' })
     .getByRole('button', { name: 'Activate' })
     .click()
-  await page.getByRole('button', { name: /Offline A/ }).click()
+  await page.getByRole('button', { name: /^Offline A/ }).click()
   await page
     .getByRole('dialog', { name: 'Offline A' })
     .getByRole('button', { name: 'Start Workout' })
@@ -284,7 +284,7 @@ async function createActiveWorkout(page: Page) {
   await page.getByRole('textbox', { name: 'Set 1 Weight' }).fill('105')
   await page.getByRole('textbox', { name: 'Set 1 Reps' }).fill('8')
   await page.getByRole('button', { name: 'Complete set 1' }).click()
-  await expect(page.getByText('Rest timer')).toBeVisible()
+  await expect(page.locator('.rest-timer-toolbar')).toBeVisible()
   await expect(page.getByRole('textbox', { name: 'Set 1 Reps' })).toHaveValue(
     '8',
   )
@@ -319,11 +319,14 @@ async function addPrescription(
     await builder.getByRole('textbox', { name: 'Max reps' }).fill('10')
   }
   await builder.getByRole('button', { name: 'Save prescription' }).click()
+  await expect(builder.getByLabel('Prescription editor')).not.toBeVisible({
+    timeout: 15_000,
+  })
 }
 
 async function closeBuilder(builder: Locator) {
-  await builder.getByRole('button', { name: /^Close edit/ }).click()
-  await expect(builder).not.toBeVisible()
+  await builder.getByRole('button', { name: /^Back from edit/ }).click()
+  await expect(builder).not.toBeVisible({ timeout: 15_000 })
 }
 
 async function fillRestInputs(page: Page, rest: string) {

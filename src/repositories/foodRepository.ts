@@ -1,7 +1,12 @@
 import { db, type TrainingLogDatabase } from '@db/database'
-import type { NormalizedFoodResult } from '@domain/foodProviderModels'
+import {
+  queryRelevanceScore,
+  MIN_QUERY_RELEVANCE,
+  type NormalizedFoodResult,
+} from '@domain/foodProviderModels'
 import type { LocalDateString } from '@domain/dates'
 import { createId } from '@domain/ids'
+import { mealTypeForDate } from '@domain/meals'
 import { snapshotFood } from '@domain/snapshots'
 import type {
   BarcodeProductCache,
@@ -9,6 +14,9 @@ import type {
   FoodLogEntry,
   FoodProviderId,
   FoodUnitPreference,
+  MealType,
+  SavedMeal,
+  SavedMealComponent,
 } from '@shared-types/app'
 
 export type CreateFoodInput = Omit<
@@ -21,6 +29,7 @@ export type LogFoodInput = {
   foodId: string
   localDate: LocalDateString
   servingMultiplier: number
+  mealType?: MealType
   notes?: string
 }
 
@@ -28,11 +37,24 @@ export type LogExternalFoodInput = {
   food: NormalizedFoodResult
   localDate: LocalDateString
   servingMultiplier: number
+  mealType?: MealType
   notes?: string
 }
 
 export type UpdateFoodLogInput = {
   servingMultiplier: number
+  mealType?: MealType
+  notes?: string
+}
+
+export type LogQuickAddInput = {
+  localDate: LocalDateString
+  name?: string
+  calories: number
+  proteinGrams: number
+  carbohydrateGrams: number
+  fatGrams: number
+  mealType?: MealType
   notes?: string
 }
 
@@ -40,6 +62,33 @@ export type RememberFoodUnitInput = {
   foodId: string
   unitKey: string
   amount: number
+}
+
+export type SaveMealInput = {
+  name: string
+  components: SavedMealComponent[]
+  notes?: string
+}
+
+export type UpdateSavedMealInput = {
+  name?: string
+  notes?: string
+  components?: SavedMealComponent[]
+}
+
+export type LogSavedMealInput = {
+  savedMealId: string
+  localDate: LocalDateString
+  mealType?: MealType
+}
+
+export type LogMealDraftInput = {
+  name: string
+  components: SavedMealComponent[]
+  localDate: LocalDateString
+  mealType?: MealType
+  notes?: string
+  saveAsRecipe: boolean
 }
 
 export type FoodRepositoryTestHooks = {
@@ -235,6 +284,7 @@ export function createFoodRepository(
         foodId: food.id,
         localDate: input.localDate,
         servingMultiplier: input.servingMultiplier,
+        mealType: input.mealType,
         notes: input.notes,
       })
     },
@@ -261,6 +311,10 @@ export function createFoodRepository(
 
     getRememberedFoodUnit(foodId: string) {
       return database.foodUnitPreferences.get(foodId)
+    },
+
+    listRememberedFoodUnits() {
+      return database.foodUnitPreferences.toArray()
     },
 
     async cacheBarcodeProduct(input: {
@@ -306,6 +360,24 @@ export function createFoodRepository(
       })
     },
 
+    async setFoodFavorite(id: string, isFavorite: boolean) {
+      await database.foods.update(id, {
+        isFavorite,
+        updatedAt: new Date().toISOString(),
+      })
+    },
+
+    async listFavoriteFoods(limit = 20) {
+      const foods = await database.foods
+        .where('status')
+        .equals('active')
+        .toArray()
+      return foods
+        .filter((food) => food.isFavorite)
+        .sort((left, right) => left.name.localeCompare(right.name))
+        .slice(0, limit)
+    },
+
     async logFood(input: LogFoodInput) {
       validateServingMultiplier(input.servingMultiplier)
       const now = createMonotonicTimestamp()
@@ -325,6 +397,7 @@ export function createFoodRepository(
             localDate: input.localDate,
             foodId: food.id,
             foodSnapshot,
+            mealType: input.mealType ?? mealTypeForDate(new Date()),
             servingMultiplier: input.servingMultiplier,
             ...computeLogTotals(foodSnapshot, input.servingMultiplier),
             notes: input.notes ?? '',
@@ -339,6 +412,53 @@ export function createFoodRepository(
       )
     },
 
+    async logQuickAddEntry(input: LogQuickAddInput) {
+      for (const [label, value] of [
+        ['Calories', input.calories],
+        ['Protein', input.proteinGrams],
+        ['Carbohydrates', input.carbohydrateGrams],
+        ['Fat', input.fatGrams],
+      ] as const) {
+        if (value < 0 || !Number.isFinite(value)) {
+          throw new Error(`${label} must be zero or greater.`)
+        }
+      }
+
+      const now = createMonotonicTimestamp()
+      const trimmedName = input.name?.trim()
+      // Quick Add logs straight to the day with no reusable Food record, so it
+      // never pollutes the food library or search results (foodId stays null).
+      const foodSnapshot: FoodLogEntry['foodSnapshot'] = {
+        foodName: trimmedName || `Quick add ${Math.round(input.calories)} kcal`,
+        servingQuantity: 1,
+        servingUnit: 'entry',
+        servingDescription: '',
+        caloriesPerServing: input.calories,
+        proteinGramsPerServing: input.proteinGrams,
+        carbohydrateGramsPerServing: input.carbohydrateGrams,
+        fatGramsPerServing: input.fatGrams,
+        notes: 'Quick add',
+      }
+      const entry: FoodLogEntry = {
+        id: createId(),
+        localDate: input.localDate,
+        foodId: null,
+        foodSnapshot,
+        mealType: input.mealType ?? mealTypeForDate(new Date()),
+        servingMultiplier: 1,
+        ...computeLogTotals(foodSnapshot, 1),
+        notes: input.notes ?? '',
+        createdAt: now,
+        updatedAt: now,
+      }
+
+      return database.transaction('rw', database.foodLogEntries, async () => {
+        await database.foodLogEntries.add(entry)
+        await testHooks.afterFoodLogAdded?.()
+        return entry
+      })
+    },
+
     async updateFoodLogEntry(id: string, input: UpdateFoodLogInput) {
       validateServingMultiplier(input.servingMultiplier)
       const existing = await database.foodLogEntries.get(id)
@@ -349,6 +469,7 @@ export function createFoodRepository(
       const updated: FoodLogEntry = {
         ...existing,
         servingMultiplier: input.servingMultiplier,
+        mealType: input.mealType ?? existing.mealType,
         ...computeLogTotals(existing.foodSnapshot, input.servingMultiplier),
         notes: input.notes ?? existing.notes,
         updatedAt: new Date().toISOString(),
@@ -359,6 +480,182 @@ export function createFoodRepository(
 
     async deleteFoodLogEntry(id: string) {
       await database.foodLogEntries.delete(id)
+    },
+
+    async createSavedMeal(input: SaveMealInput) {
+      const name = input.name.trim()
+      if (!name) {
+        throw new Error('Saved meal name is required.')
+      }
+      if (input.components.length === 0) {
+        throw new Error('A saved meal needs at least one food.')
+      }
+      for (const component of input.components) {
+        if (
+          component.servingMultiplier <= 0 ||
+          !Number.isFinite(component.servingMultiplier)
+        ) {
+          throw new Error('Saved meal servings must be greater than zero.')
+        }
+      }
+      const now = new Date().toISOString()
+      const meal: SavedMeal = {
+        id: createId(),
+        name,
+        components: input.components,
+        notes: input.notes ?? '',
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+      }
+      await database.savedMeals.add(meal)
+      return meal
+    },
+
+    async updateSavedMeal(id: string, input: UpdateSavedMealInput) {
+      const meal = await database.savedMeals.get(id)
+      if (!meal) {
+        throw new Error(`Saved meal ${id} was not found.`)
+      }
+      const name = (input.name ?? meal.name).trim()
+      if (!name) {
+        throw new Error('Saved meal name is required.')
+      }
+      const components = input.components ?? meal.components
+      if (input.components) {
+        if (input.components.length === 0) {
+          throw new Error('A saved meal needs at least one food.')
+        }
+        for (const component of input.components) {
+          if (
+            component.servingMultiplier <= 0 ||
+            !Number.isFinite(component.servingMultiplier)
+          ) {
+            throw new Error('Saved meal servings must be greater than zero.')
+          }
+        }
+      }
+      const updated: SavedMeal = {
+        ...meal,
+        name,
+        components,
+        notes: input.notes ?? meal.notes,
+        updatedAt: new Date().toISOString(),
+      }
+      await database.savedMeals.put(updated)
+      return updated
+    },
+
+    async archiveSavedMeal(id: string) {
+      await database.savedMeals.update(id, {
+        status: 'archived',
+        updatedAt: new Date().toISOString(),
+      })
+    },
+
+    getSavedMeal(id: string) {
+      return database.savedMeals.get(id)
+    },
+
+    listSavedMeals() {
+      return database.savedMeals.where('status').equals('active').sortBy('name')
+    },
+
+    // Expands a saved meal into individual food log entries for the chosen day
+    // and meal, snapshotting from the stored components so the result is stable
+    // even if the source foods changed or were removed.
+    async logSavedMeal(input: LogSavedMealInput) {
+      const meal = await database.savedMeals.get(input.savedMealId)
+      if (!meal) {
+        throw new Error(`Saved meal ${input.savedMealId} was not found.`)
+      }
+      const mealType = input.mealType ?? mealTypeForDate(new Date())
+      return database.transaction('rw', database.foodLogEntries, async () => {
+        const entries: FoodLogEntry[] = []
+        for (const component of meal.components) {
+          const now = createMonotonicTimestamp()
+          const entry: FoodLogEntry = {
+            id: createId(),
+            localDate: input.localDate,
+            foodId: component.foodId,
+            foodSnapshot: component.foodSnapshot,
+            mealType,
+            servingMultiplier: component.servingMultiplier,
+            ...computeLogTotals(
+              component.foodSnapshot,
+              component.servingMultiplier,
+            ),
+            notes: '',
+            createdAt: now,
+            updatedAt: now,
+          }
+          await database.foodLogEntries.add(entry)
+          entries.push(entry)
+        }
+        await testHooks.afterFoodLogAdded?.()
+        return entries
+      })
+    },
+
+    async logMealDraft(input: LogMealDraftInput) {
+      const name = input.name.trim()
+      if (input.saveAsRecipe && !name) {
+        throw new Error('Saved meal name is required.')
+      }
+      if (input.components.length === 0) {
+        throw new Error('A meal needs at least one food.')
+      }
+      for (const component of input.components) {
+        validateServingMultiplier(component.servingMultiplier)
+      }
+
+      const mealType = input.mealType ?? mealTypeForDate(new Date())
+      return database.transaction(
+        'rw',
+        database.savedMeals,
+        database.foodLogEntries,
+        async () => {
+          const now = new Date().toISOString()
+          const savedMeal: SavedMeal | null = input.saveAsRecipe
+            ? {
+                id: createId(),
+                name,
+                components: input.components,
+                notes: input.notes ?? '',
+                status: 'active',
+                createdAt: now,
+                updatedAt: now,
+              }
+            : null
+          if (savedMeal) {
+            await database.savedMeals.add(savedMeal)
+          }
+
+          const entries: FoodLogEntry[] = []
+          for (const component of input.components) {
+            const entryTimestamp = createMonotonicTimestamp()
+            const entry: FoodLogEntry = {
+              id: createId(),
+              localDate: input.localDate,
+              foodId: component.foodId,
+              foodSnapshot: component.foodSnapshot,
+              mealType,
+              servingMultiplier: component.servingMultiplier,
+              ...computeLogTotals(
+                component.foodSnapshot,
+                component.servingMultiplier,
+              ),
+              notes: '',
+              createdAt: entryTimestamp,
+              updatedAt: entryTimestamp,
+            }
+            await database.foodLogEntries.add(entry)
+            entries.push(entry)
+          }
+          await testHooks.afterFoodLogAdded?.()
+          return { entries, savedMeal }
+        },
+      )
     },
 
     getFood(id: string) {
@@ -400,6 +697,18 @@ export function createFoodRepository(
               queryWords.every((word) => normalizedName.includes(word))
             ) {
               rank = 3
+            } else {
+              // Conservative typo/token fallback so a misspelled query (e.g.
+              // "chiken") still finds a custom food. Ranked below all literal
+              // matches above.
+              const relevance = queryRelevanceScore(
+                food.name,
+                food.brandName ?? null,
+                normalizedQuery,
+              )
+              if (relevance >= MIN_QUERY_RELEVANCE) {
+                rank = 4 + 1 / (1 + relevance)
+              }
             }
           }
 
@@ -417,6 +726,10 @@ export function createFoodRepository(
 
     listFoodLogsByDate(localDate: LocalDateString) {
       return database.foodLogEntries.where({ localDate }).sortBy('createdAt')
+    },
+
+    getFoodLogEntry(id: string) {
+      return database.foodLogEntries.get(id)
     },
 
     listRecentFoodLogs(limit = 5) {

@@ -2,7 +2,9 @@ import { db, type TrainingLogDatabase } from '@db/database'
 import {
   BUILT_IN_EXERCISES,
   BUILT_IN_EXERCISE_SEED_VERSION,
+  CORE_BUILT_IN_EXERCISES,
   normalizeBuiltInExerciseName,
+  type BuiltInExerciseSeed,
   validateBuiltInExercises,
 } from '@domain/exerciseLibrary'
 import { createId } from '@domain/ids'
@@ -28,6 +30,11 @@ export type ExerciseSearchOptions = {
   includeArchived?: boolean
   query?: string
   limit?: number
+}
+
+type SeedBuiltInExerciseOptions = {
+  deferExpanded?: boolean
+  signal?: AbortSignal
 }
 
 export function createExerciseRepository(database: TrainingLogDatabase = db) {
@@ -70,6 +77,16 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
     }
   }
 
+  function validateDefaultRestSeconds(seconds: number) {
+    if (
+      seconds < 0 ||
+      !Number.isFinite(seconds) ||
+      !Number.isInteger(seconds)
+    ) {
+      throw new Error('Default rest time must be a whole number of seconds.')
+    }
+  }
+
   async function hasExerciseReferences(id: string) {
     const [
       templateReference,
@@ -92,8 +109,34 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
   }
 
   return {
-    async seedBuiltInExercises() {
-      await seedBuiltInExerciseRecords(database)
+    async seedBuiltInExercises(options: SeedBuiltInExerciseOptions = {}) {
+      validateBuiltInExercises()
+      await seedBuiltInExerciseRecords(
+        database,
+        CORE_BUILT_IN_EXERCISES,
+        options.signal,
+        CORE_BUILT_IN_EXERCISES.length,
+      )
+      const expandedExercises = BUILT_IN_EXERCISES.slice(
+        CORE_BUILT_IN_EXERCISES.length,
+      )
+      if (options.deferExpanded) {
+        setTimeout(() => {
+          if (!options.signal?.aborted) {
+            void seedBuiltInExerciseRecords(
+              database,
+              expandedExercises,
+              options.signal,
+            ).catch(() => undefined)
+          }
+        }, 0)
+        return
+      }
+      await seedBuiltInExerciseRecords(
+        database,
+        expandedExercises,
+        options.signal,
+      )
     },
 
     async createExercise(input: CreateExerciseInput) {
@@ -169,6 +212,21 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
       return updated
     },
 
+    async updateExerciseDefaultRest(id: string, defaultRestSeconds: number) {
+      validateDefaultRestSeconds(defaultRestSeconds)
+      const exercise = await database.exercises.get(id)
+      if (!exercise) {
+        throw new Error(`Exercise ${id} was not found.`)
+      }
+      const updated: Exercise = {
+        ...exercise,
+        defaultRestSeconds,
+        updatedAt: new Date().toISOString(),
+      }
+      await database.exercises.put(updated)
+      return updated
+    },
+
     async archiveExercise(id: string) {
       const exercise = await database.exercises.get(id)
       if (!exercise) {
@@ -230,7 +288,13 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
     },
 
     async searchExercises(options: ExerciseSearchOptions = {}) {
-      const { includeArchived = false, query = '', limit = 300 } = options
+      // Callers that need a compact list pass an explicit limit. The default
+      // must include the entire built-in library plus every custom exercise.
+      const {
+        includeArchived = false,
+        query = '',
+        limit = Number.POSITIVE_INFINITY,
+      } = options
       const normalizedQuery = query.trim().toLocaleLowerCase()
       const exercises = includeArchived
         ? await database.exercises.toArray()
@@ -303,43 +367,88 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
 
 export const exerciseRepository = createExerciseRepository()
 
-async function seedBuiltInExerciseRecords(database: TrainingLogDatabase) {
-  validateBuiltInExercises()
-  await database.transaction('rw', database.exercises, async () => {
-    const existingBuiltInsByName = new Map(
-      (await database.exercises.where({ origin: 'built_in' }).toArray()).map(
-        (exercise) => [normalizeBuiltInExerciseName(exercise.name), exercise],
-      ),
-    )
-    const existingRecords = await database.exercises.bulkGet(
-      BUILT_IN_EXERCISES.map((seed) => seed.id),
-    )
-    const recordsToPut: Exercise[] = []
+async function seedBuiltInExerciseRecords(
+  database: TrainingLogDatabase,
+  seeds: BuiltInExerciseSeed[],
+  signal?: AbortSignal,
+  chunkSize = 10,
+) {
+  if (signal?.aborted) {
+    return
+  }
+  const [builtIns, existingRecords] = await Promise.all([
+    database.exercises.where({ origin: 'built_in' }).toArray(),
+    database.exercises.bulkGet(seeds.map((seed) => seed.id)),
+  ])
+  const existingBuiltInsByName = new Map(
+    builtIns.map((exercise) => [
+      normalizeBuiltInExerciseName(exercise.name),
+      exercise,
+    ]),
+  )
 
-    for (const [index, seed] of BUILT_IN_EXERCISES.entries()) {
-      const existing =
-        existingRecords[index] ??
-        existingBuiltInsByName.get(normalizeBuiltInExerciseName(seed.name))
-      if (!existing) {
-        recordsToPut.push(seed)
-        continue
+  if (builtIns.length === 0) {
+    // Fresh installs can use IndexedDB's add path, which is substantially faster
+    // than update-capable puts for a large seed set on iOS/WebKit. Short
+    // transactions also allow a custom exercise save to run between chunks.
+    for (let index = 0; index < seeds.length; index += chunkSize) {
+      if (signal?.aborted) {
+        return
       }
-      if (existing.origin !== 'built_in') {
-        continue
+      const chunk = seeds.slice(index, index + chunkSize)
+      try {
+        await database.exercises.bulkAdd(chunk)
+      } catch {
+        // A reset/reload can start a second idempotent seed after this pass has
+        // read the table but before its add transaction runs. Upsert the same
+        // stable built-in IDs so concurrent seeders converge instead of
+        // surfacing a constraint error.
+        await database.exercises.bulkPut(chunk)
       }
-      if ((existing.seedDataVersion ?? 0) < BUILT_IN_EXERCISE_SEED_VERSION) {
-        recordsToPut.push({
-          ...seed,
-          id: existing.id,
-          createdAt: existing.createdAt,
-          status: 'active',
-        })
-      }
+      await yieldToMainThread()
     }
+    return
+  }
 
-    if (recordsToPut.length) {
-      await database.exercises.bulkPut(recordsToPut)
+  const recordsToPut: Exercise[] = []
+
+  for (const [index, seed] of seeds.entries()) {
+    const existing =
+      existingRecords[index] ??
+      existingBuiltInsByName.get(normalizeBuiltInExerciseName(seed.name))
+    if (!existing) {
+      recordsToPut.push(seed)
+      continue
     }
+    if (existing.origin !== 'built_in') {
+      continue
+    }
+    if ((existing.seedDataVersion ?? 0) < BUILT_IN_EXERCISE_SEED_VERSION) {
+      recordsToPut.push({
+        ...seed,
+        id: existing.id,
+        createdAt: existing.createdAt,
+        status: 'active',
+      })
+    }
+  }
+
+  // Short transactions keep custom exercise saves responsive while a large
+  // first-run library is being installed, especially on iOS/WebKit.
+  for (let index = 0; index < recordsToPut.length; index += chunkSize) {
+    if (signal?.aborted) {
+      return
+    }
+    await database.exercises.bulkPut(
+      recordsToPut.slice(index, index + chunkSize),
+    )
+    await yieldToMainThread()
+  }
+}
+
+function yieldToMainThread() {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, 0)
   })
 }
 

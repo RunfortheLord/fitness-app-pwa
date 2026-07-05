@@ -18,7 +18,16 @@ import type {
   RunPause,
   RunSample,
   RunSplit,
+  RunTrackingMode,
 } from '@shared-types/app'
+
+export type ManualRunInput = {
+  localDate: Run['localDate']
+  distanceMeters: number
+  elapsedSeconds: number
+  notes?: string
+  trackingMode: Extract<RunTrackingMode, 'manual' | 'treadmill'>
+}
 
 export type RunStructure = {
   run: Run
@@ -30,7 +39,19 @@ export type RunStructure = {
 
 export function createRunRepository(database: TrainingLogDatabase = db) {
   return {
-    async startRun(now = new Date()) {
+    async startRun(
+      now = new Date(),
+      trackingMode: Extract<RunTrackingMode, 'gps' | 'treadmill'> = 'gps',
+      treadmillStrideMeters: number | null = null,
+    ) {
+      if (
+        trackingMode === 'treadmill' &&
+        (typeof treadmillStrideMeters !== 'number' ||
+          !Number.isFinite(treadmillStrideMeters) ||
+          treadmillStrideMeters <= 0)
+      ) {
+        throw new Error('Treadmill stride length must be greater than zero.')
+      }
       const timestamp = now.toISOString()
       return database.transaction(
         'rw',
@@ -60,6 +81,10 @@ export function createRunRepository(database: TrainingLogDatabase = db) {
             distanceMeters: 0,
             currentPaceSecondsPerMile: null,
             averageMovingPaceSecondsPerMile: null,
+            trackingMode,
+            treadmillStepCount: 0,
+            treadmillStrideMeters:
+              trackingMode === 'treadmill' ? treadmillStrideMeters : null,
             hasGpsGap: false,
             lowPaceAlertedAt: null,
             notes: '',
@@ -99,8 +124,15 @@ export function createRunRepository(database: TrainingLogDatabase = db) {
           if (!run || run.status !== 'active') {
             throw new Error(`Active run ${runId} was not found.`)
           }
-          const previousAccepted = await latestAcceptedSample(database, runId)
-          const result = processRunSample(rawSample, previousAccepted)
+          const previousAccepted = await latestTrackingAnchor(database, runId)
+          const result = processRunSample(
+            rawSample,
+            previousAccepted,
+            undefined,
+            {
+              notBeforeTimestamp: run.startedAt,
+            },
+          )
           const timestamp = rawSample.timestamp
           const sample: RunSample = {
             id: createId(),
@@ -120,10 +152,7 @@ export function createRunRepository(database: TrainingLogDatabase = db) {
           const nextDistance = run.distanceMeters + result.segmentDistanceMeters
           const nextMoving = run.movingSeconds + result.movingSeconds
           const elapsedSeconds = secondsBetween(run.startedAt, timestamp)
-          const acceptedSamples =
-            result.decision === 'accepted'
-              ? [...(await acceptedSamplesForRun(database, runId)), sample]
-              : await acceptedSamplesForRun(database, runId)
+          const acceptedSamples = await acceptedSamplesForRun(database, runId)
           const splits = createCompletedSplits({
             currentDistanceMeters: run.distanceMeters,
             nextDistanceMeters: nextDistance,
@@ -166,6 +195,127 @@ export function createRunRepository(database: TrainingLogDatabase = db) {
           }
         },
       )
+    },
+
+    async recordTreadmillSteps(
+      runId: string,
+      treadmillStepCount: number,
+      now = new Date(),
+    ) {
+      if (!Number.isInteger(treadmillStepCount) || treadmillStepCount < 0) {
+        throw new Error('Treadmill steps must be a non-negative whole number.')
+      }
+      const timestamp = now.toISOString()
+      return database.transaction(
+        'rw',
+        [database.runs, database.runPauses, database.runSplits],
+        async () => {
+          const run = await database.runs.get(runId)
+          if (
+            !run ||
+            run.status !== 'active' ||
+            run.trackingMode !== 'treadmill'
+          ) {
+            throw new Error(`Active treadmill run ${runId} was not found.`)
+          }
+          const strideMeters = run.treadmillStrideMeters
+          if (
+            typeof strideMeters !== 'number' ||
+            !Number.isFinite(strideMeters) ||
+            strideMeters <= 0
+          ) {
+            throw new Error('Treadmill stride length is invalid.')
+          }
+          const nextStepCount = Math.max(
+            run.treadmillStepCount ?? 0,
+            treadmillStepCount,
+          )
+          const elapsedSeconds = secondsBetween(run.startedAt, timestamp)
+          const movingSeconds = await activeRunSeconds(
+            database,
+            runId,
+            run.startedAt,
+            timestamp,
+          )
+          const distanceMeters = nextStepCount * strideMeters
+          const splits = createCompletedSplits({
+            currentDistanceMeters: run.distanceMeters,
+            nextDistanceMeters: distanceMeters,
+            previousMovingSeconds: run.movingSeconds,
+            movingSeconds,
+            elapsedSeconds,
+            completedAt: timestamp,
+            runId,
+            createId,
+          })
+          if (splits.length) {
+            await database.runSplits.bulkAdd(splits)
+          }
+          const updated: Run = {
+            ...run,
+            treadmillStepCount: nextStepCount,
+            elapsedSeconds,
+            movingSeconds,
+            distanceMeters,
+            currentPaceSecondsPerMile: calculatePaceSecondsPerMile(
+              distanceMeters,
+              movingSeconds,
+            ),
+            averageMovingPaceSecondsPerMile: calculatePaceSecondsPerMile(
+              distanceMeters,
+              movingSeconds,
+            ),
+            updatedAt: timestamp,
+          }
+          await database.runs.put(updated)
+          return updated
+        },
+      )
+    },
+
+    async logManualRun(input: ManualRunInput, now = new Date()) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(input.localDate)) {
+        throw new Error('Run date is invalid.')
+      }
+      if (!Number.isFinite(input.distanceMeters) || input.distanceMeters <= 0) {
+        throw new Error('Distance must be greater than zero.')
+      }
+      if (
+        !Number.isInteger(input.elapsedSeconds) ||
+        input.elapsedSeconds <= 0
+      ) {
+        throw new Error('Duration must be at least one second.')
+      }
+      const completedAt = now.toISOString()
+      const startedAt = new Date(
+        now.getTime() - input.elapsedSeconds * 1000,
+      ).toISOString()
+      const pace = calculatePaceSecondsPerMile(
+        input.distanceMeters,
+        input.elapsedSeconds,
+      )
+      const run: Run = {
+        id: createId(),
+        localDate: input.localDate,
+        status: 'completed',
+        startedAt,
+        completedAt,
+        elapsedSeconds: input.elapsedSeconds,
+        movingSeconds: input.elapsedSeconds,
+        distanceMeters: input.distanceMeters,
+        currentPaceSecondsPerMile: null,
+        averageMovingPaceSecondsPerMile: pace,
+        trackingMode: input.trackingMode,
+        treadmillStepCount: 0,
+        treadmillStrideMeters: null,
+        hasGpsGap: false,
+        lowPaceAlertedAt: null,
+        notes: input.notes?.trim() ?? '',
+        createdAt: completedAt,
+        updatedAt: completedAt,
+      }
+      await database.runs.add(run)
+      return run
     },
 
     async pauseRun(runId: string, now = new Date()) {
@@ -251,6 +401,15 @@ export function createRunRepository(database: TrainingLogDatabase = db) {
             status: 'completed',
             completedAt: timestamp,
             elapsedSeconds: secondsBetween(run.startedAt, timestamp),
+            movingSeconds:
+              run.trackingMode === 'treadmill'
+                ? await activeRunSeconds(
+                    database,
+                    runId,
+                    run.startedAt,
+                    timestamp,
+                  )
+                : run.movingSeconds,
             updatedAt: timestamp,
           }
           await database.runs.put(completed)
@@ -330,15 +489,35 @@ export function createRunRepository(database: TrainingLogDatabase = db) {
   }
 }
 
-async function latestAcceptedSample(
+async function activeRunSeconds(
+  database: TrainingLogDatabase,
+  runId: string,
+  startedAt: string,
+  endedAt: string,
+) {
+  const pauses = await database.runPauses.where({ runId }).toArray()
+  const pausedSeconds = pauses.reduce(
+    (total, pause) =>
+      total + secondsBetween(pause.startedAt, pause.endedAt ?? endedAt),
+    0,
+  )
+  return Math.max(0, secondsBetween(startedAt, endedAt) - pausedSeconds)
+}
+
+async function latestTrackingAnchor(
   database: TrainingLogDatabase,
   runId: string,
 ): Promise<RunSample | null> {
+  const samples = await database.runSamples
+    .where({ runId })
+    .filter(
+      (sample) => sample.decision === 'accepted' || sample.decision === 'gap',
+    )
+    .toArray()
   return (
-    (await database.runSamples
-      .where({ runId })
-      .filter((sample) => sample.decision === 'accepted')
-      .last()) ?? null
+    samples
+      .sort((first, second) => first.timestamp.localeCompare(second.timestamp))
+      .at(-1) ?? null
   )
 }
 
@@ -346,10 +525,13 @@ async function acceptedSamplesForRun(
   database: TrainingLogDatabase,
   runId: string,
 ) {
-  return database.runSamples
+  const samples = await database.runSamples
     .where({ runId })
     .filter((sample) => sample.decision === 'accepted')
     .toArray()
+  return samples.sort((first, second) =>
+    first.timestamp.localeCompare(second.timestamp),
+  )
 }
 
 function responseToClassification(

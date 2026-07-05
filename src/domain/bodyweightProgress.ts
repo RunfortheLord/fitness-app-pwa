@@ -5,7 +5,13 @@ import {
   parseLocalDate,
   type LocalDateString,
 } from '@domain/dates'
-import type { BodyweightEntry } from '@shared-types/app'
+import {
+  formatWeight as formatWeightWithUnit,
+  weightDisplayNumber,
+  weightUnitSuffix,
+} from '@domain/weightUnits'
+import { weeklyTimeAwareTrendChange } from '@domain/bodyweightTrend'
+import type { BodyweightEntry, WeightUnit } from '@shared-types/app'
 
 export type BodyweightRange = '1m' | '3m' | '6m' | 'all'
 
@@ -20,7 +26,7 @@ export type BodyweightTrendSummary =
       status: 'ready'
       first: BodyweightEntry
       latest: BodyweightEntry
-      change: number
+      weeklyChange: number
       direction: 'up' | 'down' | 'flat'
       text: string
     }
@@ -43,6 +49,8 @@ export type BodyweightChartModel =
       points: BodyweightChartPoint[]
       minWeight: number
       maxWeight: number
+      chartMin: number
+      chartMax: number
       summary: BodyweightTrendSummary
     }
 
@@ -93,6 +101,7 @@ export function filterBodyweightEntriesForRange({
 
 export function summarizeBodyweightTrend(
   entries: BodyweightEntry[],
+  unit: WeightUnit = 'lb',
 ): BodyweightTrendSummary {
   const sorted = sortBodyweightEntries(entries)
   const latest = sorted.at(-1)
@@ -105,33 +114,45 @@ export function summarizeBodyweightTrend(
     return {
       status: 'single',
       latest,
-      text: `Current bodyweight is ${formatWeight(latest.weight)} ${latest.unit}. Add another entry to show a trend.`,
+      text: `Current bodyweight is ${formatWeightWithUnit(latest.weight, unit, 'bodyweight')}. Add another entry to show a trend.`,
     }
   }
 
-  const change = latest.weight - first.weight
+  const weeklyTrendChange = weeklyTimeAwareTrendChange(sorted)
+  if (!weeklyTrendChange) {
+    return {
+      status: 'single',
+      latest,
+      text: `Current bodyweight is ${formatWeightWithUnit(latest.weight, unit, 'bodyweight')}. Add another entry to show a trend.`,
+    }
+  }
+
+  // Stored weights are canonical pounds; the weekly change is a pounds delta
+  // that we convert into the display unit for human-readable summary text.
+  const weeklyChange = weeklyTrendChange.weeklyChangeLb
   const direction =
-    Math.abs(change) < 0.05 ? 'flat' : change > 0 ? 'up' : 'down'
+    Math.abs(weeklyChange) < 0.05 ? 'flat' : weeklyChange > 0 ? 'up' : 'down'
   const directionText =
     direction === 'flat'
-      ? 'no meaningful change'
-      : `${change > 0 ? 'up' : 'down'} ${formatWeight(Math.abs(change))} ${latest.unit}`
+      ? `0 ${weightUnitSuffix(unit)} per week`
+      : `${weeklyChange > 0 ? 'up' : 'down'} ${weightDisplayNumber(Math.abs(weeklyChange), unit, 'bodyweight')} ${weightUnitSuffix(unit)} per week`
 
   return {
     status: 'ready',
     first,
     latest,
-    change,
+    weeklyChange,
     direction,
-    text: `From ${first.localDate} to ${latest.localDate}, bodyweight is ${directionText}, from ${formatWeight(first.weight)} to ${formatWeight(latest.weight)} ${latest.unit}.`,
+    text: `Trend weight is changing ${directionText}.`,
   }
 }
 
 export function createBodyweightChartModel(
   entries: BodyweightEntry[],
+  unit: WeightUnit = 'lb',
 ): BodyweightChartModel {
   const sorted = sortBodyweightEntries(entries)
-  const summary = summarizeBodyweightTrend(sorted)
+  const summary = summarizeBodyweightTrend(sorted, unit)
   if (!sorted.length) {
     return { status: 'empty', entries: [], summary }
   }
@@ -147,17 +168,24 @@ export function createBodyweightChartModel(
   const chartMin = minWeight - yPadding
   const chartMax = maxWeight + yPadding
   const chartSpread = Math.max(1, chartMax - chartMin)
+  // A lone entry has no time spread to position against; center it so it floats
+  // in the plot area instead of sitting at x=0, on top of the y-axis labels.
+  const isSingleEntry = sorted.length === 1
 
   return {
     status: sorted.length === 1 ? 'single' : 'ready',
     entries: sorted,
     points: sorted.map((entry) => ({
       entry,
-      x: ((chartTime(entry) - firstTime) / timeSpread) * 100,
+      x: isSingleEntry
+        ? 50
+        : ((chartTime(entry) - firstTime) / timeSpread) * 100,
       y: 100 - ((entry.weight - chartMin) / chartSpread) * 100,
     })),
     minWeight,
     maxWeight,
+    chartMin,
+    chartMax,
     summary,
   }
 }
@@ -166,11 +194,27 @@ export function formatWeight(weight: number) {
   return Number.isInteger(weight) ? String(weight) : weight.toFixed(1)
 }
 
-export function formatBodyweightChange(change: number) {
+export function formatBodyweightChange(
+  change: number,
+  unit: WeightUnit = 'lb',
+) {
+  const suffix = weightUnitSuffix(unit)
   if (Math.abs(change) < 0.05) {
-    return '0 lb'
+    return `0 ${suffix}`
   }
-  return `${change > 0 ? '+' : '-'}${formatWeight(Math.abs(change))} lb`
+  const sign = change > 0 ? '+' : '-'
+  const displayChange =
+    unit === 'lb'
+      ? formatWeight(Math.abs(change))
+      : weightDisplayNumber(Math.abs(change), unit, 'bodyweight')
+  return `${sign}${displayChange} ${suffix}`
+}
+
+export function formatBodyweightWeeklyChange(
+  change: number,
+  unit: WeightUnit = 'lb',
+) {
+  return `${formatBodyweightChange(change, unit)}/week`
 }
 
 function chartTime(entry: BodyweightEntry) {

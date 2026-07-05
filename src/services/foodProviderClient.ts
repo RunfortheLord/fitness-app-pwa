@@ -2,7 +2,7 @@ import type {
   GroupedFoodResult,
   NormalizedFoodResult,
 } from '@domain/foodProviderModels'
-import type { FoodProviderId } from '@shared-types/app'
+import type { AppLanguage, FoodProviderId } from '@shared-types/app'
 
 export type FoodProviderClientErrorCode =
   | 'invalid_request'
@@ -50,6 +50,7 @@ export type SearchFoodsInput = {
   page?: number
   pageSize?: number
   allowFallback?: boolean
+  language?: AppLanguage
   signal?: AbortSignal
 }
 
@@ -69,6 +70,7 @@ export async function searchProviderFoods(input: SearchFoodsInput) {
         page: input.page,
         pageSize: input.pageSize,
         allowFallback: input.allowFallback,
+        language: input.language,
       }),
     }),
   )

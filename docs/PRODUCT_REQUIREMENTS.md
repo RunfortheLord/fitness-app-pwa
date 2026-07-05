@@ -5,6 +5,11 @@
 - Build a single-user, local-first, mobile-first fitness tracking Progressive Web App.
 - Support manual nutrition logging, bodyweight logging, custom exercise management, program creation, active workout logging, GPS run tracking, and workout history.
 - Target iPhone users who install the app through Safari using Add to Home Screen.
+- Provide an optional native iOS wrapper for device-scheduled rest-timer
+  notifications when the app is backgrounded, closed, or the phone is locked.
+- Provide optional Web Push rest-timer completion alerts for an installed
+  iPhone Home Screen PWA when the native wrapper is unavailable. This alert path
+  may require internet access and separately configured free-tier services.
 - Work after installation without a user account, cloud sync, subscription, internet connection, bundled external food database, or push-notification dependency.
 - Store all primary user data locally in IndexedDB with exportable, restorable records.
 - Use a dark, dense, card-based interface inspired by the reference recording without copying branding, names, proprietary assets, or exact iconography.
@@ -21,8 +26,8 @@
 
 - Tracks calories and macros using personally entered foods.
 - Needs recent foods, decimal serving multipliers, editable logs, and daily totals.
-- Wants manual food entry first, with optional user-configured USDA FoodData
-  Central lookup when they provide their own API key.
+- Wants manual food entry first, with optional USDA FoodData Central lookup
+  through the configured provider route.
 
 ### Privacy-First User
 
@@ -35,10 +40,17 @@
 ### Core Platform
 
 - The app must be installable as a PWA from Safari on iPhone.
+- The native iOS wrapper must reuse the same React application and local-first
+  data model without introducing a required backend or account.
 - The app must use standalone display mode when installed.
 - The app must cache the application shell for offline use.
 - User records must be stored in IndexedDB, not in the service-worker cache.
 - The app must provide deliberate service-worker update handling and notify the user when a new app version is ready.
+- Settings must allow the interface language to switch between English and
+  Spanish. The preference must persist locally across reloads and installed-PWA
+  restarts; user-entered names and notes must not be modified. Spanish-language
+  Nutrition searches must use Open Food Facts multilingual data and prefer
+  Spanish product names and categories when supplied by the provider.
 
 ### Navigation
 
@@ -57,7 +69,9 @@
 
 - Home must include selected-date control, previous-day button, next-day button, and return-to-today action.
 - Home must show calories consumed, calorie target, and calories remaining.
-- Home must show protein, carbohydrate, and fat consumed and target values.
+- Home must replace the prior Nutrition card with a similarly sized seven-day
+  calorie graph: separated bars show calories logged per day and a contrasting
+  line shows the target applicable to each day.
 - Home must include quick bodyweight entry, the latest current bodyweight,
   selected-date bodyweight status, and a compact bodyweight trend summary when
   enough data exists.
@@ -68,43 +82,71 @@
 ### Nutrition
 
 - Users must be able to set calorie and macro targets manually.
+- Set Goal must collect current bodyweight, desired weight, height, age, sex,
+  and activity level (including a heavily active option) before showing a
+  second step. The desired weight determines Maintenance, Bulking, or Cutting.
+  Bulking and Cutting show an adjustable weekly-rate slider, initialized at a
+  visibly marked recommended rate, with live rate and estimated end-date
+  feedback. Done saves the calculated targets and returns to Targets.
 - Users must be able to create, search, edit, and archive or delete custom foods.
 - A custom food must include name, serving quantity, serving unit, calories per
-  serving, and optional protein, carbohydrate, fat, brand, and notes. Blank
-  optional macros are stored as zero; invalid or negative nutrition values are
-  rejected.
+  serving, and optional protein, carbohydrate, and fat. Blank optional macros
+  are stored as zero; invalid or negative nutrition values are rejected. The
+  current custom-food form does not collect brand or notes.
 - Users must be able to log foods by local calendar date with decimal serving multipliers.
 - A food log entry must snapshot food nutrition values at the time of logging.
 - Users must be able to edit and delete logged foods.
 - The app must show daily nutrition totals and recent foods.
-- External food data must use USDA FoodData Central as the primary provider and
-  Open Food Facts only as a controlled branded-product fallback.
+- History Graphs must include calorie views for one week, one month, and three
+  months. Each calendar day retains its logged calorie total and the target
+  applicable on that day.
+- English external-food search must use USDA FoodData Central as the primary
+  provider. Spanish external-food search must use Open Food Facts multilingual
+  data and prefer its Spanish product names and categories.
 - Users must be able to search recent, custom, previously used, and eligible
   provider foods from the Nutrition screen.
+- A strong saved-recipe match must appear in its own Recipes section before
+  food results. Typo-only recipe matches must not create a separate recipe
+  section.
 - External provider foods are eligible only when calories, protein, total
   carbohydrates, and fat are all present and usable. Numeric zero is valid.
 - Logging an external provider food must store an immutable nutrition snapshot
   so historical logs work offline and do not change when provider data changes.
 - The app must display calories, protein, total carbohydrates, and fat only.
 - The first release includes local barcode scanning for UPC/EAN lookup through
-  USDA branded foods and Open Food Facts fallback. It must exclude barcode
-  submission, AI food-photo analysis, automatic calorie adjustments, bundled bulk food
-  databases, micronutrients, search-as-you-type Open Food Facts calls, and meal
-  recommendations.
+  USDA branded foods and Open Food Facts fallback.
+- The camera action must expose separate barcode and AI-photo options. AI-photo
+  analysis is optional and requires a device-local, user-supplied Gemini API
+  key. It uses Gemini 3.5 Flash to create an unsaved recipe draft from a meal
+  photo captured in the app or selected from the device photo library. The user
+  must review the estimate and explicitly press Log food before the estimated
+  ingredient snapshots are added to the selected date.
+- Each estimated ingredient must be an editable food-style row. Opening it shows
+  the detected serving amount, detailed calories and macros, and controls for
+  changing that amount before logging. The draft must show its recalculated
+  total calories prominently.
+- AI-photo analysis must not create reusable foods, adjust nutrition targets, or
+  save a recipe automatically. Save as recipe is an off-by-default checkmark
+  option beside the primary Log food action. It must clearly identify generated
+  nutrition as an estimate.
+- The first release must continue to exclude barcode submission, automatic
+  calorie adjustments, bundled bulk food databases, micronutrients,
+  search-as-you-type Open Food Facts calls, and meal recommendations. Spanish
+  Open Food Facts search must require an explicit keyboard or on-screen Search
+  action and remain server-cached.
 
 ### Bodyweight
 
-- Users must be able to add multiple bodyweight entries per local calendar date.
-- Users must be able to edit or delete a selected bodyweight entry for
-  correction.
+- Users must be able to add at most one bodyweight entry per local calendar
+  date and edit or delete that entry for correction.
 - Pounds must be the default unit.
 - Historical values must remain available in a graph-ready record format.
-- The latest timestamped bodyweight entry is the current bodyweight.
-- Home must show the latest entry for the selected date when one exists.
+- The most recent dated bodyweight entry is the current bodyweight.
+- Home must show the entry for the selected date when one exists.
 - History must include a bodyweight graph with one-month, three-month,
   six-month, and all-time ranges.
-- Same-day records must be retained. The graph plots each stored entry by its
-  timestamp; it does not average, delete, or rewrite source records for display.
+- Legacy same-day records restored from an older backup must remain preserved,
+  but only the latest record for that date contributes to trend weight.
 - The first release must exclude trend-weight calculation and weight-change recommendations.
 
 ### Exercise Library
@@ -136,11 +178,23 @@
   workspace, previous performance, set rows, and rest timer.
 - Set rows must display fields appropriate to the exercise tracking method.
 - Typical weighted set rows must show set number, previous performance, weight, reps, RIR, and completed control.
+- Repeating a weighted-repetition exercise must prefill every programmed set
+  from its most recent completed session for the same stable exercise,
+  regardless of program or prescribed rep range. Suggested loads are derived
+  from the prior set's estimated one-repetition maximum and the new target
+  reps, and remain editable.
 - Users must be able to add sets, delete sets, edit completed sets, complete
   sets, skip exercises, replace exercises, add exercises, reorder exercises
-  where practical, change session rest time, and discard the active workout
-  with confirmation.
+  where practical, edit session exercise notes, change session rest time, and
+  discard the active workout with confirmation.
+- Finishing must wait for pending active-workout edits to persist before the
+  completed history snapshot is created.
 - The rest timer must be timestamp-based so remaining time is correct after backgrounding or resuming.
+- In the installed Home Screen PWA, every rest-timer mutation must cancel or
+  reschedule the optional server-delayed Web Push completion alert from the
+  persisted timer timestamp.
+- In the native iOS wrapper, every rest-timer mutation must cancel or reschedule
+  the device-local completion notification from the persisted timer timestamp.
 - The first release excludes coaching, automatic program advancement, and opaque
   recommendation services. Deterministic local progression recommendations may
   suggest future targets, but they must remain explainable, editable, and
@@ -152,18 +206,25 @@
 - After completion, the app must compare the performed workout to its source active-cycle day.
 - The app must detect set added, set removed, exercise added, exercise skipped or removed, exercise replaced, and exercise order changed.
 - The app must not treat performed weight, reps, RIR, set completion status, or duration as template changes.
-- Detected changes must be displayed as an individual review checklist.
-- Every change must be reviewed individually.
-- Each selected structural or progression recommendation change must support
-  destination choices: active cycle only, reusable template only, or both.
-  Unchecked items are not applied.
+- The finish confirmation must offer one checkbox to save all detected live
+  workout changes to the source program. The checkbox must be unchecked by
+  default.
+- When the checkbox is unchecked, the completed workout keeps its performed
+  structure while the source active cycle and reusable template remain
+  unchanged.
+- When the checkbox is checked, all detected structural changes and progression
+  recommendations must be applied to both the source active cycle and reusable
+  template when both are available.
 - Applying changes must be transactional.
 - The user must be able to finish and save the workout without applying changes.
 
-### GPS Runs
+### Runs
 
 - Running must be a separate section and must not force run data into lifting set rows.
-- GPS collection must begin only after the user presses Start Run.
+- Users must be able to start an outdoor GPS run, start a motion-sensed
+  treadmill run with an editable stride length, or manually save a completed
+  outdoor/treadmill run with date, distance, duration, and notes.
+- GPS collection must begin only after the user presses Start Outdoor Run.
 - Active runs must support Start Run, Pause, Resume, Finish, elapsed time,
   moving time, distance, current pace, average moving pace, and per-mile splits.
 - Active runs must persist start time, pause periods, samples, accepted
@@ -183,10 +244,17 @@
 - Splits must be created at every completed mile from accepted distance only.
 - Current pace must use a stable recent accepted-sample window rather than a
   single point. Average pace uses accepted distance and moving time.
+- While an outdoor run is active, elapsed time must refresh from timestamps
+  every second and high-accuracy GPS must be refreshed throughout the run
+  without fabricating distance between missing samples.
+- Treadmill sensing must use foreground device-motion step detection and a
+  user-visible stride estimate. Sensed step count, estimated distance, elapsed
+  time, and pause-adjusted moving time must persist.
 - A conservative low-pace detector may ask whether the user is walking,
   resting, or continuing, with hysteresis/cooldown. It must not automatically
   discard time or distance.
-- Completed runs must appear in History with date, total distance, elapsed
+- Completed runs must appear as individual History cards with date, tracking
+  type, total distance, elapsed
   time, moving time, average moving pace, mile splits, classifications, and
   GPS-gap indication.
 - Foreground browser tracking is supported when permission exists. iOS and
@@ -197,7 +265,8 @@
 
 ### History
 
-- Workout history must open first as a dense date-sorted list of completed workouts and runs, with one compact row per history item.
+- Workout history must open first as a date-sorted list of completed workouts
+  and runs, with one distinct card per history item.
 - Selecting a workout history row must open a detail view that includes local workout date, workout name, program and day source when applicable, start time, completion time, duration, exercises, performed sets, weight, reps, RIR, completion status, notes, skipped exercises, and applied or rejected structural changes.
 - Completed run history must include a dedicated run detail view with distance,
   elapsed time, moving time, average moving pace, mile splits, walking/rest
@@ -239,15 +308,15 @@
 
 ## Out of Scope
 
-- Account creation, login, persistent backend server, cloud sync, social features, friends, followers, public profiles, subscriptions, advertisements, wearable integrations, Apple Health integration, AI coaching, AI food-photo analysis, bundled external food database, barcode submission, micronutrients, automatic calorie adjustment, automated training progression, automatic program advancement, trend-weight calculations, weekly adherence percentage, non-history graphs, route maps or external map tiles, reliable fully backgrounded GPS tracking, public App Store distribution, and push-notification dependency.
+- Account creation, login, persistent database server, required cloud sync, social features, friends, followers, public profiles, subscriptions, advertisements, wearable integrations, Apple Health integration, AI coaching, bundled external food database, barcode submission, micronutrients, automatic calorie adjustment, automated training progression, automatic program advancement, trend-weight calculations, weekly adherence percentage, non-history graphs, route maps or external map tiles, reliable fully backgrounded GPS tracking, public App Store distribution, and required push notifications for core app use. Optional user-initiated Gemini meal-photo estimation, outside-app rest-timer Web Push alerts, and development-signed personal-device installation of the native iOS wrapper are supported.
 
 ## Acceptance Criteria
 
 - A user can install the app to an iPhone home screen and open it in standalone mode.
 - A user can use Home, Nutrition, Add, Training, History, and Settings while offline after installation.
 - A user can set nutrition targets, create foods, log foods with decimal serving multipliers, and see correct daily totals from snapshotted values.
-- A user can add bodyweight for a selected date, preserve multiple same-day
-  records, edit the latest selected-date entry, and view bodyweight progress.
+- A user can add one bodyweight entry per selected date, edit that entry, and
+  view bodyweight progress.
 - A user can create exercises using all required tracking presets.
 - A user can create a program template, activate it into an independent active cycle, manually select a workout day, and start a workout.
 - A user can close and reopen the installed PWA and resume the active workout with preserved set entries and timer state.

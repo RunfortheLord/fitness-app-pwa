@@ -40,7 +40,13 @@ export function servingOptionsForFood(
 ): FoodServingOption[] {
   const parts = servingParts(food)
   const primary = choosePrimaryServing(parts)
-  const options: FoodServingOption[] = [primary]
+  // Expose every real provider household portion (e.g. "1 breast", "1 cup")
+  // with its true gram weight, ordered after the default and before the
+  // weight units. Duplicates of the default collapse in dedupeOptions.
+  const options: FoodServingOption[] = [
+    primary,
+    ...householdPortionOptions(parts),
+  ]
 
   if (parts.reliable && parts.gramsPerServing && parts.ouncesPerServing) {
     options.push({
@@ -109,6 +115,72 @@ export function formatCalories(value: number | undefined | null) {
   return String(Math.round(value ?? 0))
 }
 
+const ONE_THIRD = 1 / 3
+
+// Quick-amount chips offered for the chosen unit. Serving/portion units get the
+// common cooking fractions and small multiples; weight units get sensible
+// gram/ounce steps instead, since "¼ g" is meaningless.
+export function quantityChipsForUnit(unitKey: string): number[] {
+  if (unitKey === 'oz') {
+    return [1, 2, 3, 4, 6, 8]
+  }
+  if (unitKey === 'g' || unitKey === '100g') {
+    return [25, 50, 100, 150, 200]
+  }
+  return [0.25, ONE_THIRD, 0.5, 0.75, 1, 1.5, 2]
+}
+
+const FRACTION_CHIP_LABELS: Array<[number, string]> = [
+  [0.25, '¼'],
+  [ONE_THIRD, '⅓'],
+  [0.5, '½'],
+  [0.75, '¾'],
+  [1.5, '1½'],
+]
+
+export function formatQuantityChipLabel(value: number): string {
+  const fraction = FRACTION_CHIP_LABELS.find(
+    ([candidate]) => Math.abs(candidate - value) < 1e-6,
+  )
+  return fraction ? fraction[1] : formatAmountValue(value)
+}
+
+// Step size for the −/+ stepper, matched to how each unit is usually adjusted.
+export function amountStepForUnit(unitKey: string): number {
+  if (unitKey === 'g' || unitKey === '100g') {
+    return 10
+  }
+  if (unitKey === 'oz') {
+    return 1
+  }
+  return 0.5
+}
+
+// Next amount after a stepper tap, or null when a decrement would reach a
+// non-positive amount (so the − button can be disabled at the bottom).
+export function nextSteppedAmount(
+  current: number,
+  unitKey: string,
+  direction: 1 | -1,
+): number | null {
+  const step = amountStepForUnit(unitKey)
+  const next = Math.round((current + direction * step) * 1000) / 1000
+  return next > 0 ? next : null
+}
+
+// Stringifies a chip/stepper amount for the text input without trailing-zero or
+// long-decimal noise (e.g. ⅓ → "0.333", 1 → "1").
+export function formatAmountValue(value: number): string {
+  return String(Math.round(value * 1000) / 1000)
+}
+
+// Resulting weight for the chosen amount, shown next to the live macros so the
+// logged gram weight is never ambiguous.
+export function formatGrams(value: number): string {
+  const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10
+  return `${rounded} g`
+}
+
 export function formatMacroGram(value: number | undefined | null) {
   return (Math.round((value ?? 0) * 10) / 10).toFixed(1)
 }
@@ -117,10 +189,6 @@ function choosePrimaryServing(parts: ServingParts): FoodServingOption {
   const text = normalizeFoodText(
     `${parts.name} ${parts.description} ${parts.unit}`,
   )
-  const sourcePortion = sourceHouseholdPortion(parts)
-  if (sourcePortion) {
-    return sourcePortion
-  }
 
   const withGrams = (
     amount: number,
@@ -139,16 +207,25 @@ function choosePrimaryServing(parts: ServingParts): FoodServingOption {
         : null,
   })
 
-  if (
-    parts.reliable &&
-    text.includes('chicken breast') &&
-    parts.rawCookedStatus === 'raw'
-  ) {
-    return withGrams(4, 'oz', '4 oz raw', 4 * GRAMS_PER_OUNCE)
-  }
+  // Meat is conventionally logged by weight, so default a plain cut to ounces —
+  // even ahead of a household portion or branded serving label.
   if (parts.reliable && text.includes('chicken breast')) {
-    return withGrams(4, 'oz', '4 oz cooked', 4 * GRAMS_PER_OUNCE)
+    return withGrams(
+      4,
+      'oz',
+      parts.rawCookedStatus === 'raw' ? '4 oz raw' : '4 oz cooked',
+      4 * GRAMS_PER_OUNCE,
+    )
   }
+  if (parts.reliable && isMeatCut(text)) {
+    return withGrams(4, 'oz', '4 oz', 4 * GRAMS_PER_OUNCE)
+  }
+
+  const sourcePortion = sourceHouseholdPortion(parts)
+  if (sourcePortion) {
+    return sourcePortion
+  }
+
   if (
     parts.reliable &&
     text.includes('rice') &&
@@ -171,12 +248,6 @@ function choosePrimaryServing(parts: ServingParts): FoodServingOption {
   if (parts.reliable && /\btortillas?\b/u.test(text)) {
     return withGrams(1, 'tortilla', '1 tortilla', parts.gramsPerServing ?? 45)
   }
-  if (
-    parts.reliable &&
-    /\b(beef|pork|fish|salmon|tuna|turkey|meat|steak)\b/u.test(text)
-  ) {
-    return withGrams(4, 'oz', '4 oz', 4 * GRAMS_PER_OUNCE)
-  }
 
   const label = servingDescription(parts)
   return {
@@ -187,6 +258,74 @@ function choosePrimaryServing(parts: ServingParts): FoodServingOption {
     grams: parts.gramsPerServing,
     toServingMultiplier: (amount) => amount / parts.quantity,
   }
+}
+
+// True for a recognizable cut of meat/fish/poultry, but not for prepared dishes
+// that merely contain meat (a sandwich, soup, nugget, etc.), which keep their
+// own household or label serving.
+function isMeatCut(text: string): boolean {
+  const meat =
+    /\b(chicken|beef|pork|turkey|fish|salmon|tuna|shrimp|steak|lamb|bacon|ham|sausage|veal|bison|venison|cod|tilapia|halibut|meat)\b/u
+  const preparedDish =
+    /\b(sandwich|nugget|nuggets|tender|tenders|wing|wings|soup|salad|wrap|burrito|taco|pizza|bake|casserole|stew|pie|roll|pasta|noodle|rice|curry|bowl|sub|patty|jerky|sauce|gravy|broth|spread|dip|popper|poppers|finger|fingers|stick|sticks|ball|balls|cake|loaf|dog|dumpling|ravioli|lasagna|quesadilla|enchilada|nacho|nachos|chowder|bisque)\b/u
+  return meat.test(text) && !preparedDish.test(text)
+}
+
+// Skipped portion units that carry no useful household meaning.
+const UNUSABLE_PORTION_UNITS = new Set([
+  '',
+  'serving',
+  'undetermined',
+  'quantity not specified',
+  'portion',
+])
+
+// Detailed USDA foods can list a dozen portion variants; keep the dropdown
+// usable by showing only the few most common (the provider already ranks them)
+// and dropping near-identical ones that share a gram weight.
+const MAX_PORTION_OPTIONS = 4
+
+// Turns provider household portions into selectable serving options with their
+// true gram weights. Requires a reliable per-serving gram weight to convert a
+// portion back into a serving multiplier.
+function householdPortionOptions(parts: ServingParts): FoodServingOption[] {
+  const gramsPerServing = parts.gramsPerServing
+  if (!gramsPerServing || gramsPerServing <= 0) {
+    return []
+  }
+  const options: FoodServingOption[] = []
+  const seenGrams = new Set<number>()
+  for (const portion of parts.sourcePortions) {
+    if (options.length >= MAX_PORTION_OPTIONS) {
+      break
+    }
+    if (
+      portion.gramWeight === null ||
+      portion.gramWeight <= 0 ||
+      !portion.unit ||
+      isMassOnly(portion.unit) ||
+      UNUSABLE_PORTION_UNITS.has(normalizeFoodText(portion.unit))
+    ) {
+      continue
+    }
+    const grams = portion.gramWeight
+    const gramsKey = Math.round(grams)
+    if (seenGrams.has(gramsKey)) {
+      continue
+    }
+    seenGrams.add(gramsKey)
+    const amount = portion.amount > 0 ? portion.amount : 1
+    options.push({
+      amount,
+      key: normalizeFoodText(portion.unit),
+      label: `${round(amount)} ${portion.unit.trim()} (${round(grams)} g)`,
+      group: 'primary',
+      grams,
+      toServingMultiplier: (entered: number) =>
+        (entered * grams) / gramsPerServing,
+    })
+  }
+  return options
 }
 
 function sourceHouseholdPortion(parts: ServingParts): FoodServingOption | null {

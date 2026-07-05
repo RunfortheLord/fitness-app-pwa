@@ -1,6 +1,6 @@
 # Food Provider Integration
 
-Verification date: 2026-06-19.
+Verification date: 2026-06-27.
 
 ## Sources Reviewed
 
@@ -13,9 +13,16 @@ Verification date: 2026-06-19.
 
 ## Provider Decisions
 
-USDA FoodData Central is the primary provider. The integration uses the official API through server-side Vercel functions and supports Foundation, SR Legacy, Survey (FNDDS), and Branded search records when they include calories, protein, total carbohydrates, and fat.
+USDA FoodData Central is the primary English-language provider. The integration uses the official API through server-side Vercel functions and supports Foundation, SR Legacy, Survey (FNDDS), and Branded search records when they include calories, protein, total carbohydrates, and fat.
 
 Open Food Facts is a controlled secondary provider for branded-product fallback. It is not called for every typed query and is not used as a search-as-you-type endpoint. Fallback occurs only when explicitly requested or when a server-controlled USDA search with fallback enabled returns no acceptable normalized records. The app does not write to Open Food Facts, upload user-created foods, upload missing barcodes, or depend on product images, nutrition grades, or scores.
+
+When the interface language is Spanish, an explicit keyboard or on-screen
+Search action queries Open Food Facts with `lc=es`. The response requests and
+prefers `product_name_es`, `generic_name_es`, and `categories_es`, falling back
+to the provider's base fields when Spanish text is unavailable. This uses
+provider-supplied multilingual data; it does not machine-translate user data or
+historical snapshots.
 
 No third provider was accepted in this prompt. Restaurant and fast-food coverage is limited to records that USDA or a permitted fallback actually supplies. The app does not scrape menus and does not fabricate restaurant coverage.
 
@@ -39,6 +46,8 @@ Search parameters:
 - `page`: optional integer 1 through 20.
 - `pageSize`: optional integer 1 through 50.
 - `allowFallback`: optional `true`; enables controlled Open Food Facts fallback after no acceptable USDA results.
+- `language`: optional `en` or `es`; defaults to `en` and controls localized
+  Open Food Facts response fields.
 
 Resolve parameters:
 
@@ -64,17 +73,14 @@ API-routing misconfiguration instead of a generic provider failure.
 
 ## API Key Handling
 
-The app no longer uses a Vercel-stored USDA key. The user enters their own USDA
-FoodData Central key under Settings -> Integrations -> USDA FoodData Central.
-The PWA stores that key only in device-local IndexedDB and sends it over HTTPS
-to the same-origin Vercel function for the current request. The function does
-not log, cache, persist, or return the key.
+USDA FoodData Central lookup uses a deployment-configured provider key through
+the same-origin Vercel function. Settings does not expose USDA key management.
+The function does not log, cache, persist, or return provider credentials.
 
-The key is not included in source constants, VITE environment variables,
-deployment settings, backups, CSV exports, diagnostics, console logs, or raw
-errors. Removing or replacing the key deletes or updates only the integration
-settings record. Clearing all local app data or replacing data from backup also
-removes the saved integration key.
+The key is not included in source constants, VITE environment variables exposed
+to browser code, backups, CSV exports, diagnostics, console logs, or raw errors.
+Clearing all local app data or replacing data from backup does not need a
+separate integration-key cleanup step.
 
 ## Normalized Food Schema
 
@@ -146,7 +152,7 @@ Previously used provider foods may be retained in the local IndexedDB `foods` ta
 
 ## Search UI Behavior
 
-The Nutrition screen searches local recent, custom, and previously used foods immediately. Remote USDA search starts only after at least three normalized characters, is debounced, requires a configured key, and cancels stale requests. Broad generic searches rank common generic foods and cooked preparations ahead of branded or restaurant items, and hide uncommon animal parts unless the query asks for them.
+The Nutrition screen searches local recent, custom, and previously used foods immediately. Remote USDA search starts only after at least three normalized characters, is debounced, requires the deployment-configured provider key, and cancels stale requests. Broad generic searches rank common generic foods and cooked preparations ahead of branded or restaurant items, and hide uncommon animal parts unless the query asks for them.
 
 Collapsed search rows show food name, optional brand or restaurant, serving size, and calories. Selecting a row opens details with calories, protein, total carbohydrates, fat, editable serving amount, and available serving units. Gram and mass-ounce options appear only when the normalized record has reliable gram conversion metadata.
 
@@ -162,7 +168,8 @@ in generated assets, service-worker output, manifest, or source maps.
 
 ## Known Limitations
 
-- Live provider verification requires a real USDA key and was not performed unless a key is already configured securely.
+- Live provider verification requires the deployment-configured USDA key to be
+  available.
 - Open Food Facts data is community-contributed and may be incomplete or inaccurate.
 - Restaurant and fast-food coverage is limited to records supplied by allowed providers.
 - Physical-device camera behavior depends on browser permission support.

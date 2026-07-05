@@ -7,7 +7,15 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 export default defineConfig([
-  globalIgnores(['dist', 'coverage', 'playwright-report', 'test-results']),
+  globalIgnores([
+    'dist',
+    'coverage',
+    'playwright-report',
+    'test-results',
+    // Agent worktrees/state contain duplicate copies of the repo (with their own
+    // tsconfig), which otherwise break type-aware linting with multiple roots.
+    '.claude',
+  ]),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

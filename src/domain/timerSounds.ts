@@ -35,21 +35,187 @@ export function getTimerSound(id: string | null | undefined) {
   )
 }
 
+// A rest timer fires from an interval/visibility callback long after the set was
+// completed, so the completion `play()` has no user gesture of its own. Mobile
+// browsers (notably iOS Safari) reject audio that starts outside a gesture and
+// was never unlocked, which is why the selected sound previously stayed silent
+// when the timer went off. We keep a single, reused completion audio element and
+// "unlock" it during the gesture that starts the rest timer (completing a set),
+// so the later programmatic playback is permitted.
+let completionAudio: HTMLAudioElement | null = null
+let completionAudioSrc: string | null = null
 let activePreviewAudio: HTMLAudioElement | null = null
 
-export async function playTimerSoundOnce(id: string | null | undefined) {
-  const sound = getTimerSound(id)
-  const audio = new Audio(sound.src)
-  audio.preload = 'auto'
-  audio.currentTime = 0
+function audioSupported() {
+  return typeof Audio !== 'undefined'
+}
+
+// WebKit maps "transient" to iOS's ambient category, which is silenced by the
+// hardware Silent switch even though HTMLMediaElement.play() resolves. Use it
+// only for the muted priming play. Actual previews and timer completions use
+// "playback" so an enabled timer is audible in Silent Mode.
+type AudioSessionType =
+  | 'auto'
+  | 'playback'
+  | 'transient'
+  | 'transient-solo'
+  | 'ambient'
+  | 'play-and-record'
+
+interface AudioSession {
+  type: AudioSessionType
+}
+
+function getAudioSession(): AudioSession | null {
+  if (typeof navigator === 'undefined') {
+    return null
+  }
+  const candidate = (navigator as Navigator & { audioSession?: AudioSession })
+    .audioSession
+  return candidate ?? null
+}
+
+function setTimerAudioSession(type: AudioSessionType) {
+  const session = getAudioSession()
+  if (session && session.type !== type) {
+    try {
+      session.type = type
+    } catch {
+      // Some engines expose the property read-only; ignore.
+    }
+  }
+}
+
+function releaseTimerAudioSession() {
+  setTimerAudioSession('auto')
+}
+
+/** Configure actual timer playback to remain audible in iPhone Silent Mode. */
+export function configureTimerAudioSession() {
+  setTimerAudioSession('playback')
+}
+
+async function playWithTimerAudioSession(
+  audio: HTMLAudioElement,
+  sessionType: AudioSessionType,
+) {
+  setTimerAudioSession(sessionType)
   await audio.play()
 }
 
-export async function previewTimerSoundOnce(id: string | null | undefined) {
-  activePreviewAudio?.pause()
-  activePreviewAudio = null
+function ensureCompletionAudio(src: string) {
+  if (!completionAudio) {
+    completionAudio = new Audio(src)
+    completionAudio.preload = 'auto'
+  } else if (completionAudioSrc !== src) {
+    completionAudio.src = src
+  }
+  completionAudioSrc = src
+  return completionAudio
+}
+
+/**
+ * Start loading the selected timer sound before it is needed. This is
+ * especially important in an installed PWA, where constructing a cold audio
+ * element during the tap can make the first preview only warm the media cache.
+ */
+export function preloadTimerSound(id: string | null | undefined) {
+  if (!audioSupported()) {
+    return
+  }
+  const audio = ensureCompletionAudio(getTimerSound(id).src)
+  try {
+    audio.load()
+  } catch {
+    // Some test and browser media implementations do not expose load().
+  }
+}
+
+function stopAudio(audio: HTMLAudioElement | null) {
+  if (!audio) {
+    return
+  }
+  audio.pause()
+  try {
+    audio.currentTime = 0
+  } catch {
+    // Resetting currentTime can throw before metadata loads; ignore.
+  }
+}
+
+/**
+ * Unlock and preload the completion sound from within a user gesture (for
+ * example, completing a set that starts a rest timer). Plays the element muted
+ * and immediately pauses it so a later, gesture-less `play()` at completion is
+ * allowed by autoplay policy. Safe to call repeatedly.
+ */
+export function primeTimerSound(id: string | null | undefined) {
+  if (!audioSupported()) {
+    return
+  }
+  setTimerAudioSession('transient')
   const sound = getTimerSound(id)
-  const audio = new Audio(sound.src)
+  const audio = ensureCompletionAudio(sound.src)
+  const wasMuted = audio.muted
+  audio.muted = true
+  const restore = () => {
+    audio.muted = wasMuted
+  }
+  void Promise.resolve(audio.play())
+    .then(() => {
+      audio.pause()
+      try {
+        audio.currentTime = 0
+      } catch {
+        // ignore
+      }
+      restore()
+    })
+    .catch(restore)
+}
+
+/**
+ * Play the selected completion sound exactly once. A transient session lets
+ * iOS mix or briefly duck other audio instead of taking over playback.
+ */
+export async function playTimerSoundOnce(id: string | null | undefined) {
+  if (!audioSupported()) {
+    return
+  }
+  stopAudio(activePreviewAudio)
+  activePreviewAudio = null
+
+  const sound = getTimerSound(id)
+  const audio = ensureCompletionAudio(sound.src)
+  audio.muted = false
+  try {
+    audio.currentTime = 0
+  } catch {
+    // ignore
+  }
+  releaseAudioSessionWhenFinished(audio)
+  try {
+    await playWithTimerAudioSession(audio, 'transient')
+  } catch (caught) {
+    releaseTimerAudioSession()
+    throw caught
+  }
+}
+
+/**
+ * Preview a sound from a settings tap. Never overlaps an active completion
+ * sound and replaces any previous preview.
+ */
+export async function previewTimerSoundOnce(id: string | null | undefined) {
+  if (!audioSupported()) {
+    return
+  }
+  stopAudio(activePreviewAudio)
+  activePreviewAudio = null
+  stopAudio(completionAudio)
+
+  const sound = getTimerSound(id)
+  const audio = ensureCompletionAudio(sound.src)
   activePreviewAudio = audio
   audio.preload = 'auto'
   audio.currentTime = 0
@@ -59,8 +225,35 @@ export async function previewTimerSoundOnce(id: string | null | undefined) {
       if (activePreviewAudio === audio) {
         activePreviewAudio = null
       }
+      releaseTimerAudioSession()
     },
     { once: true },
   )
-  await audio.play()
+  audio.addEventListener('error', releaseTimerAudioSession, { once: true })
+  try {
+    await playWithTimerAudioSession(audio, 'playback')
+  } catch (caught) {
+    releaseTimerAudioSession()
+    throw caught
+  }
+}
+
+/** Stop any preview or completion playback. */
+export function stopTimerSounds() {
+  stopAudio(activePreviewAudio)
+  stopAudio(completionAudio)
+  activePreviewAudio = null
+  releaseTimerAudioSession()
+}
+
+/** Test-only reset of the module audio singletons. */
+export function resetTimerSoundsForTests() {
+  stopTimerSounds()
+  completionAudio = null
+  completionAudioSrc = null
+}
+
+function releaseAudioSessionWhenFinished(audio: HTMLAudioElement) {
+  audio.addEventListener('ended', releaseTimerAudioSession, { once: true })
+  audio.addEventListener('error', releaseTimerAudioSession, { once: true })
 }

@@ -7,6 +7,7 @@ import {
   TrainingLogDatabase,
 } from '@db/database'
 import { diagnoseDatabaseHealth } from '@db/health'
+import { mealTypeForHour } from '@domain/meals'
 import { createAppMetadataRepository } from '@repositories/appMetadataRepository'
 import { createTestDatabase, destroyTestDatabase } from '@test/database'
 
@@ -544,6 +545,294 @@ describe('database', () => {
 
     await destroyTestDatabase(migratedDatabase)
   })
+
+  it('exposes the saved meals store at the current schema version', async () => {
+    const database = createTestDatabase()
+    expect(database.tables.map((table) => table.name)).toContain('savedMeals')
+    await destroyTestDatabase(database)
+  })
+
+  it('backfills a meal on existing food logs when migrating to v10', async () => {
+    const name = `training-log-v10-meal-migration-${crypto.randomUUID()}`
+    const oldDatabase = new Dexie(name)
+    oldDatabase.version(9).stores(v9Stores)
+    await oldDatabase.table('appMetadata').put({
+      id: 'app',
+      databaseSchemaVersion: 9,
+      backupSchemaVersion: 1,
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    const legacyCreatedAt = '2026-06-18T08:30:00.000Z'
+    // The backfill infers the meal from the log's local time of day, so derive
+    // the expectation the same way to stay timezone-independent.
+    const expectedInferredMeal = mealTypeForHour(
+      new Date(legacyCreatedAt).getHours(),
+    )
+    await oldDatabase.table('foodLogEntries').put({
+      id: 'legacy-log',
+      localDate: '2026-06-18',
+      foodId: 'food-1',
+      foodSnapshot: {
+        foodName: 'Oats',
+        servingQuantity: 1,
+        servingUnit: 'cup',
+        servingDescription: '',
+        caloriesPerServing: 150,
+        proteinGramsPerServing: 5,
+        carbohydrateGramsPerServing: 27,
+        fatGramsPerServing: 3,
+        notes: '',
+      },
+      servingMultiplier: 1,
+      computedCalories: 150,
+      computedProteinGrams: 5,
+      computedCarbohydrateGrams: 27,
+      computedFatGrams: 3,
+      notes: '',
+      createdAt: legacyCreatedAt,
+      updatedAt: legacyCreatedAt,
+    })
+    await oldDatabase.table('foodLogEntries').put({
+      id: 'already-tagged-log',
+      localDate: '2026-06-18',
+      foodId: 'food-2',
+      foodSnapshot: {
+        foodName: 'Steak',
+        servingQuantity: 4,
+        servingUnit: 'oz',
+        servingDescription: '',
+        caloriesPerServing: 200,
+        proteinGramsPerServing: 30,
+        carbohydrateGramsPerServing: 0,
+        fatGramsPerServing: 9,
+        notes: '',
+      },
+      mealType: 'dinner',
+      servingMultiplier: 1,
+      computedCalories: 200,
+      computedProteinGrams: 30,
+      computedCarbohydrateGrams: 0,
+      computedFatGrams: 9,
+      notes: '',
+      createdAt: '2026-06-18T19:00:00.000Z',
+      updatedAt: '2026-06-18T19:00:00.000Z',
+    })
+    oldDatabase.close()
+
+    const migratedDatabase = new TrainingLogDatabase(name)
+
+    await expect(
+      migratedDatabase.foodLogEntries.get('legacy-log'),
+    ).resolves.toMatchObject({ mealType: expectedInferredMeal })
+    await expect(
+      migratedDatabase.foodLogEntries.get('already-tagged-log'),
+    ).resolves.toMatchObject({ mealType: 'dinner' })
+    await expect(
+      migratedDatabase.appMetadata.get('app'),
+    ).resolves.toMatchObject({
+      databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+    })
+
+    await destroyTestDatabase(migratedDatabase)
+  })
+
+  it('backfills GPS tracking metadata on existing runs when migrating to v13', async () => {
+    const name = `training-log-v13-run-migration-${crypto.randomUUID()}`
+    const oldDatabase = new Dexie(name)
+    oldDatabase.version(12).stores({
+      appMetadata: '&id',
+      runs: '&id, status, localDate, startedAt, completedAt',
+    })
+    await oldDatabase.table('appMetadata').put({
+      id: 'app',
+      databaseSchemaVersion: 12,
+      backupSchemaVersion: 1,
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('runs').put({
+      id: 'legacy-run',
+      localDate: '2026-06-18',
+      status: 'completed',
+      startedAt: '2026-06-18T12:00:00.000Z',
+      completedAt: '2026-06-18T12:30:00.000Z',
+      elapsedSeconds: 1800,
+      movingSeconds: 1700,
+      distanceMeters: 5000,
+      currentPaceSecondsPerMile: null,
+      averageMovingPaceSecondsPerMile: 547,
+      hasGpsGap: false,
+      lowPaceAlertedAt: null,
+      notes: '',
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:30:00.000Z',
+    })
+    oldDatabase.close()
+
+    const migratedDatabase = new TrainingLogDatabase(name)
+
+    await expect(
+      migratedDatabase.runs.get('legacy-run'),
+    ).resolves.toMatchObject({
+      trackingMode: 'gps',
+      treadmillStepCount: 0,
+      treadmillStrideMeters: null,
+    })
+    await expect(
+      migratedDatabase.appMetadata.get('app'),
+    ).resolves.toMatchObject({
+      databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+    })
+
+    await destroyTestDatabase(migratedDatabase)
+  })
+
+  it('backfills blank active-cycle exercise notes from source template exercises when migrating to v14', async () => {
+    const name = `training-log-v14-active-exercise-notes-${crypto.randomUUID()}`
+    const oldDatabase = new Dexie(name)
+    oldDatabase.version(13).stores({
+      appMetadata: '&id',
+      templateWorkoutExercises:
+        '&id, templateId, dayId, exerciseId, [dayId+orderIndex]',
+      activeCycleWorkoutExercises:
+        '&id, activeCycleId, dayId, exerciseId, sourceTemplateExerciseId, [dayId+orderIndex]',
+      runs: '&id, status, localDate, startedAt, completedAt',
+    })
+    await oldDatabase.table('appMetadata').put({
+      id: 'app',
+      databaseSchemaVersion: 13,
+      backupSchemaVersion: 1,
+      createdAt: '2026-06-18T12:00:00.000Z',
+      updatedAt: '2026-06-18T12:00:00.000Z',
+    })
+    await oldDatabase.table('templateWorkoutExercises').bulkPut([
+      {
+        id: 'template-exercise-with-notes',
+        templateId: 'template-1',
+        dayId: 'template-day-1',
+        exerciseId: 'exercise-1',
+        exerciseSnapshot: {},
+        orderIndex: 0,
+        targetSetCount: 2,
+        targetWeight: null,
+        targetDurationSeconds: null,
+        targetDistance: null,
+        targetRepsMin: 5,
+        targetRepsMax: 8,
+        targetRir: 2,
+        restSecondsOverride: null,
+        notes: 'Use a full pause.',
+        createdAt: '2026-06-18T12:00:00.000Z',
+        updatedAt: '2026-06-18T12:00:00.000Z',
+      },
+      {
+        id: 'template-exercise-without-notes',
+        templateId: 'template-1',
+        dayId: 'template-day-1',
+        exerciseId: 'exercise-2',
+        exerciseSnapshot: {},
+        orderIndex: 1,
+        targetSetCount: 2,
+        targetWeight: null,
+        targetDurationSeconds: null,
+        targetDistance: null,
+        targetRepsMin: 5,
+        targetRepsMax: 8,
+        targetRir: 2,
+        restSecondsOverride: null,
+        notes: '',
+        createdAt: '2026-06-18T12:00:00.000Z',
+        updatedAt: '2026-06-18T12:00:00.000Z',
+      },
+    ])
+    await oldDatabase.table('activeCycleWorkoutExercises').bulkPut([
+      {
+        id: 'active-exercise-blank',
+        activeCycleId: 'cycle-1',
+        dayId: 'active-day-1',
+        sourceTemplateExerciseId: 'template-exercise-with-notes',
+        exerciseId: 'exercise-1',
+        exerciseSnapshot: {},
+        orderIndex: 0,
+        targetSetCount: 2,
+        targetWeight: null,
+        targetDurationSeconds: null,
+        targetDistance: null,
+        targetRepsMin: 5,
+        targetRepsMax: 8,
+        targetRir: 2,
+        restSecondsOverride: null,
+        notes: '',
+        createdAt: '2026-06-18T12:00:00.000Z',
+        updatedAt: '2026-06-18T12:00:00.000Z',
+      },
+      {
+        id: 'active-exercise-existing',
+        activeCycleId: 'cycle-1',
+        dayId: 'active-day-1',
+        sourceTemplateExerciseId: 'template-exercise-with-notes',
+        exerciseId: 'exercise-1',
+        exerciseSnapshot: {},
+        orderIndex: 1,
+        targetSetCount: 2,
+        targetWeight: null,
+        targetDurationSeconds: null,
+        targetDistance: null,
+        targetRepsMin: 5,
+        targetRepsMax: 8,
+        targetRir: 2,
+        restSecondsOverride: null,
+        notes: 'Keep this active-cycle note.',
+        createdAt: '2026-06-18T12:00:00.000Z',
+        updatedAt: '2026-06-18T12:00:00.000Z',
+      },
+      {
+        id: 'active-exercise-no-source-notes',
+        activeCycleId: 'cycle-1',
+        dayId: 'active-day-1',
+        sourceTemplateExerciseId: 'template-exercise-without-notes',
+        exerciseId: 'exercise-2',
+        exerciseSnapshot: {},
+        orderIndex: 2,
+        targetSetCount: 2,
+        targetWeight: null,
+        targetDurationSeconds: null,
+        targetDistance: null,
+        targetRepsMin: 5,
+        targetRepsMax: 8,
+        targetRir: 2,
+        restSecondsOverride: null,
+        notes: '',
+        createdAt: '2026-06-18T12:00:00.000Z',
+        updatedAt: '2026-06-18T12:00:00.000Z',
+      },
+    ])
+    oldDatabase.close()
+
+    const migratedDatabase = new TrainingLogDatabase(name)
+
+    await expect(
+      migratedDatabase.activeCycleWorkoutExercises.get('active-exercise-blank'),
+    ).resolves.toMatchObject({ notes: 'Use a full pause.' })
+    await expect(
+      migratedDatabase.activeCycleWorkoutExercises.get(
+        'active-exercise-existing',
+      ),
+    ).resolves.toMatchObject({ notes: 'Keep this active-cycle note.' })
+    await expect(
+      migratedDatabase.activeCycleWorkoutExercises.get(
+        'active-exercise-no-source-notes',
+      ),
+    ).resolves.toMatchObject({ notes: '' })
+    await expect(
+      migratedDatabase.appMetadata.get('app'),
+    ).resolves.toMatchObject({
+      databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+    })
+
+    await destroyTestDatabase(migratedDatabase)
+  })
 })
 
 const v2Stores = {
@@ -593,4 +882,12 @@ const v6Stores = {
   runSplits: '&id, runId, mileNumber, completedAt',
   runClassifications: '&id, runId, type, startedAt',
   apiKeyIntegrationSettings: '&id, status, updatedAt',
+}
+
+const v9Stores = {
+  ...v6Stores,
+  foodUnitPreferences: '&id, foodId, updatedAt',
+  barcodeProductCache: '&id, &barcode, foodId, updatedAt',
+  programTemplates: '&id, status, name, lastActiveAt, updatedAt',
+  activeProgramCycles: '&id, sourceTemplateId, status, activatedAt, updatedAt',
 }

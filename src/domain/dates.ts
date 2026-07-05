@@ -1,4 +1,7 @@
 import { addDays, format, parse } from 'date-fns'
+import { es } from 'date-fns/locale'
+
+import type { AppLanguage } from '@shared-types/app'
 
 export type LocalDateString = `${number}-${number}-${number}`
 
@@ -17,6 +20,11 @@ export function addLocalDays(
   return formatLocalDate(addDays(parseLocalDate(localDate), amount))
 }
 
-export function formatSelectedDateLabel(localDate: LocalDateString): string {
-  return format(parseLocalDate(localDate), 'EEE, MMM d')
+export function formatSelectedDateLabel(
+  localDate: LocalDateString,
+  language: AppLanguage = 'en',
+): string {
+  return format(parseLocalDate(localDate), 'EEE, MMM d', {
+    locale: language === 'es' ? es : undefined,
+  })
 }

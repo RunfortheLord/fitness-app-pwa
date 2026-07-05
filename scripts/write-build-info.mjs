@@ -24,13 +24,16 @@ function gitShortHash() {
 }
 
 function deploymentEnvironment() {
+  if (process.env.VITE_DEPLOYMENT_ENV) {
+    return process.env.VITE_DEPLOYMENT_ENV
+  }
   if (process.env.VERCEL_ENV === 'production') {
     return 'Production'
   }
   if (process.env.VERCEL_ENV === 'preview') {
     return 'Preview'
   }
-  return process.env.VITE_DEPLOYMENT_ENV || 'Local build'
+  return 'Local build'
 }
 
 mkdirSync(dirname(outputPath), { recursive: true })

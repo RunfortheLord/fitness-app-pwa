@@ -1,4 +1,4 @@
-import { ChevronDown } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronLeft, Search } from 'lucide-react'
 import { useContext, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -6,6 +6,7 @@ import {
   Card,
   EmptyState,
   FormField,
+  IconButton,
   LoadingState,
   NumericInput,
   PageContainer,
@@ -15,12 +16,14 @@ import {
   StatusMessage,
   ValidationMessage,
 } from '@components/ui'
+import { CalorieHistoryChart } from '@components/CalorieHistoryChart'
 import { DashboardContext } from '@components/dashboardContextValue'
+import { useLanguage } from '@components/languageContextValue'
 import { formatLocalDate } from '@domain/dates'
+import { currentTrendWeight } from '@domain/bodyweightTrend'
 import {
   createBodyweightChartModel,
   filterBodyweightEntriesForRange,
-  formatWeight,
   type BodyweightRange,
 } from '@domain/bodyweightProgress'
 import {
@@ -28,11 +31,21 @@ import {
   createStrengthGraphPoints,
   filterStrengthPointsForRange,
   formatEstimatedMax,
+  formatEstimatedWeight,
   listStrengthExerciseOptions,
   strengthEstimateLimitText,
+  type StrengthExerciseOption,
   type StrengthGraphPoint,
   type StrengthRange,
 } from '@domain/strengthProgress'
+import {
+  formatWeight as formatWeightWithUnit,
+  weightDisplayNumber,
+  weightInputToLb,
+  weightInputValue,
+  weightUnitSuffix,
+} from '@domain/weightUnits'
+import { useWeightUnit } from '@hooks/useWeightUnit'
 import {
   formatDistance,
   formatDuration as formatRunDuration,
@@ -42,7 +55,13 @@ import {
   exerciseHistorySummary,
   formatHistoryDate,
 } from '@domain/historyDisplay'
+import { useSubpageBackGesture } from '@hooks/useSubpageBackGesture'
 import { bodyweightRepository } from '@repositories/bodyweightRepository'
+import {
+  calorieHistoryService,
+  type CalorieHistoryRange,
+  type DailyCalorieHistory,
+} from '@services/calorieHistoryService'
 import { runRepository, type RunStructure } from '@repositories/runRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
 import type {
@@ -93,7 +112,17 @@ const strengthRangeOptions: Array<{
   { label: 'All', value: 'all' },
 ]
 
+const calorieRangeOptions: Array<{
+  label: string
+  value: CalorieHistoryRange
+}> = [
+  { label: '1W', value: '1w' },
+  { label: '1M', value: '1m' },
+  { label: '3M', value: '3m' },
+]
+
 export function HistoryPage() {
+  const { t } = useLanguage()
   const location = useLocation()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -257,6 +286,14 @@ export function HistoryPage() {
 
   const selectedWorkout = state.selected
   const isHomeHistory = searchParams.get('source') === 'home'
+  const showAllHomeHistory = () => {
+    if (selectedWorkout || state.selectedRun) {
+      setSearchParams({ source: 'home' })
+      return
+    }
+
+    void navigate('/')
+  }
   const setHistoryParams = (params: Record<string, string>) => {
     setSearchParams(isHomeHistory ? { ...params, source: 'home' } : params)
   }
@@ -265,7 +302,7 @@ export function HistoryPage() {
     <PageContainer>
       {isHomeHistory ? (
         <div className="button-row">
-          <SecondaryButton type="button" onClick={() => void navigate('/')}>
+          <SecondaryButton type="button" onClick={showAllHomeHistory}>
             Back
           </SecondaryButton>
         </div>
@@ -299,26 +336,44 @@ export function HistoryPage() {
         />
       )}
       {editError ? <ValidationMessage message={editError} /> : null}
+      {searchParams.get('changeSave') === 'failed' ? (
+        <StatusMessage tone="warning">
+          Workout saved, but live workout changes could not be saved to your
+          program.
+        </StatusMessage>
+      ) : null}
       <div className="history-layout">
         {!selectedWorkout && !state.selectedRun ? (
-          <Card title={isHomeHistory ? undefined : 'History'}>
-            <div className="history-list">
+          <section aria-label="History" className="history-card-section">
+            {!isHomeHistory ? <h2>History</h2> : null}
+            <div className="history-list history-card-list">
               {listHistoryItems(state.workouts, state.runs).map((item) =>
                 item.type === 'run' ? (
                   <button
                     aria-label={`${formatHistoryDate(item.run.localDate)} Run`}
+                    className="history-item-card history-run-card"
                     key={item.run.id}
                     onClick={() => setHistoryParams({ run: item.run.id })}
                     type="button"
                   >
-                    <strong>{formatHistoryDate(item.run.localDate)}</strong>
-                    <span>Run</span>
+                    <span>
+                      <strong>{formatHistoryDate(item.run.localDate)}</strong>
+                      <small>{formatRunType(item.run)}</small>
+                    </span>
+                    <span>
+                      <strong>{formatDistance(item.run.distanceMeters)}</strong>
+                      <small>
+                        {formatRunDuration(item.run.elapsedSeconds)} ·{' '}
+                        {formatPace(item.run.averageMovingPaceSecondsPerMile)}
+                      </small>
+                    </span>
                   </button>
                 ) : (
                   <button
                     aria-label={`${formatHistoryDate(
                       item.workout.localDate,
                     )} ${item.workout.name}`}
+                    className="history-item-card"
                     key={item.workout.id}
                     onClick={() =>
                       setHistoryParams({ workout: item.workout.id })
@@ -331,7 +386,7 @@ export function HistoryPage() {
                 ),
               )}
             </div>
-          </Card>
+          </section>
         ) : null}
 
         {state.selectedRun ? (
@@ -346,21 +401,21 @@ export function HistoryPage() {
                   <strong>
                     {formatHistoryDetailDate(selectedWorkout.localDate)}
                   </strong>
-                  <small>Date completed</small>
+                  <small>{t('Date completed')}</small>
                 </span>
                 <span>
                   <strong>
                     {formatDuration(selectedWorkout.durationSeconds)}
                   </strong>
-                  <small>Duration</small>
+                  <small>{t('Duration')}</small>
                 </span>
                 <span>
                   <strong>{summary.exercisesCompleted}</strong>
-                  <small>Exercises</small>
+                  <small>{t('Exercises')}</small>
                 </span>
                 <span>
                   <strong>{summary.setsCompleted}</strong>
-                  <small>Completed sets</small>
+                  <small>{t('Completed sets')}</small>
                 </span>
               </div>
             ) : null}
@@ -408,11 +463,13 @@ function BodyweightProgressView({
 }: {
   onShowWorkouts: () => void
 }) {
+  const { t } = useLanguage()
   const [range, setRange] = useState<BodyweightRange>('3m')
   const [graphCategory, setGraphCategory] = useState('bodyweight')
   const [entries, setEntries] = useState<BodyweightEntry[]>([])
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null)
+  const weightUnit = useWeightUnit()
   const dashboardContext = useContext(DashboardContext)
   const dashboardRevision = dashboardContext?.dashboardRevision ?? 0
   const openBodyweightSheet = dashboardContext?.openBodyweightSheet
@@ -448,7 +505,7 @@ function BodyweightProgressView({
     range,
     today,
   })
-  const model = createBodyweightChartModel(rangedEntries)
+  const model = createBodyweightChartModel(rangedEntries, weightUnit)
   const selectedEntry =
     rangedEntries.find((entry) => entry.id === selectedEntryId) ??
     rangedEntries.at(-1) ??
@@ -471,7 +528,6 @@ function BodyweightProgressView({
           { label: 'Body Weight', value: 'bodyweight' },
           { label: 'Exercises', value: 'exercises' },
           { label: 'Running', value: 'running' },
-          { label: 'All', value: 'all' },
         ]}
         value={graphCategory}
       />
@@ -488,19 +544,6 @@ function BodyweightProgressView({
             title="No running graph selected"
             message="Completed runs remain available from History."
           />
-        </Card>
-      ) : null}
-      {graphCategory === 'all' ? (
-        <Card title="View everything">
-          <FormField id="all-dashboard-filter" label="Dashboard filter">
-            <select id="all-dashboard-filter" defaultValue="bodyweight">
-              <option value="bodyweight">Body weight</option>
-              <option value="exercises">Exercises</option>
-              <option value="running">Running</option>
-              <option value="nutrition">Nutrition</option>
-              <option value="history">History</option>
-            </select>
-          </FormField>
         </Card>
       ) : null}
       {graphCategory === 'bodyweight' ? (
@@ -541,12 +584,13 @@ function BodyweightProgressView({
           ) : null}
           {status === 'error' ? (
             <StatusMessage tone="warning">
-              Bodyweight progress could not load.
+              {t('Bodyweight progress could not load.')}
             </StatusMessage>
           ) : null}
           {status === 'ready' ? (
             <BodyweightChart
               model={model}
+              trendWeight={currentTrendWeight(entries)}
               onSelect={(entry) => setSelectedEntryId(entry.id)}
               selectedEntry={selectedEntry}
             />
@@ -562,12 +606,47 @@ function StrengthGraphsView({
 }: {
   onShowWorkouts: () => void
 }) {
+  const [graphCategory, setGraphCategory] = useState<'strength' | 'calories'>(
+    'strength',
+  )
   const [range, setRange] = useState<StrengthRange>('3m')
+  const [calorieRange, setCalorieRange] = useState<CalorieHistoryRange>('1w')
+  const [calorieHistory, setCalorieHistory] = useState<DailyCalorieHistory[]>(
+    [],
+  )
+  const [calorieStatus, setCalorieStatus] = useState<
+    'loading' | 'ready' | 'error'
+  >('loading')
   const [points, setPoints] = useState<StrengthGraphPoint[]>([])
   const [selectedExerciseId, setSelectedExerciseId] = useState('')
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  const weightUnit = useWeightUnit()
   const today = formatLocalDate(new Date())
+
+  useEffect(() => {
+    if (graphCategory !== 'calories') {
+      return
+    }
+    let isCurrent = true
+    void calorieHistoryService
+      .getHistory(today, calorieRange)
+      .then((history) => {
+        if (isCurrent) {
+          setCalorieHistory(history)
+          setCalorieStatus('ready')
+        }
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setCalorieStatus('error')
+        }
+      })
+    return () => {
+      isCurrent = false
+    }
+  }, [calorieRange, graphCategory, today])
 
   useEffect(() => {
     let isCurrent = true
@@ -584,12 +663,16 @@ function StrengthGraphsView({
         }
         const nextPoints = createStrengthGraphPoints(structures)
         const options = listStrengthExerciseOptions(nextPoints)
+        const latestExerciseId =
+          [...nextPoints].sort(
+            (left, right) =>
+              right.completedAt.localeCompare(left.completedAt) ||
+              right.localDate.localeCompare(left.localDate),
+          )[0]?.exerciseId ?? ''
         setPoints(nextPoints)
         setSelectedExerciseId(
-          (current) => current || options[0]?.exerciseId || '',
-        )
-        setSelectedPointId(
-          (current) => current ?? nextPoints.at(-1)?.id ?? null,
+          (current) =>
+            current || latestExerciseId || options[0]?.exerciseId || '',
         )
         setStatus('ready')
       })
@@ -604,8 +687,13 @@ function StrengthGraphsView({
     }
   }, [])
 
+  useSubpageBackGesture(pickerOpen, () => setPickerOpen(false))
+
   const options = listStrengthExerciseOptions(points)
   const selectedExercise = selectedExerciseId || options[0]?.exerciseId || ''
+  const selectedExerciseName =
+    options.find((option) => option.exerciseId === selectedExercise)
+      ?.exerciseName ?? ''
   const exercisePoints = points.filter(
     (point) => point.exerciseId === selectedExercise,
   )
@@ -614,75 +702,210 @@ function StrengthGraphsView({
     range,
     today,
   })
-  const model = createStrengthGraphModel(rangedPoints)
+  const model = createStrengthGraphModel(rangedPoints, weightUnit)
   const selectedPoint =
     model.status === 'empty'
       ? null
-      : (model.points.find((point) => point.id === selectedPointId) ??
-        model.points.at(-1) ??
-        null)
+      : (model.points.find((point) => point.id === selectedPointId) ?? null)
+
+  if (pickerOpen) {
+    return (
+      <StrengthExercisePicker
+        options={options}
+        selectedExerciseId={selectedExercise}
+        onBack={() => setPickerOpen(false)}
+        onSelect={(exerciseId) => {
+          setSelectedExerciseId(exerciseId)
+          setSelectedPointId(null)
+          setPickerOpen(false)
+        }}
+      />
+    )
+  }
 
   return (
     <PageContainer>
       <SectionHeader
-        title="Strength graphs"
+        title="Graphs"
         action={
-          <SecondaryButton type="button" onClick={onShowWorkouts}>
-            Workouts
-          </SecondaryButton>
+          <IconButton
+            aria-label="Back to history"
+            type="button"
+            onClick={onShowWorkouts}
+          >
+            <ChevronLeft aria-hidden="true" size={20} />
+          </IconButton>
         }
       />
-      <Card title="Estimated 1RM">
-        <SegmentedControl
-          label="Strength graph range"
-          onChange={(value) => {
-            setRange(value as StrengthRange)
-            setSelectedPointId(null)
-          }}
-          options={strengthRangeOptions}
-          value={range}
-        />
-        {status === 'loading' ? (
-          <LoadingState label="Loading strength graphs" />
-        ) : null}
-        {status === 'error' ? (
-          <StatusMessage tone="warning">
-            Strength graphs could not load.
-          </StatusMessage>
-        ) : null}
-        {status === 'ready' && options.length ? (
-          <>
-            <FormField id="strength-exercise" label="Exercise">
-              <select
-                id="strength-exercise"
-                onChange={(event) => {
-                  setSelectedExerciseId(event.target.value)
+      <SegmentedControl
+        label="Graph category"
+        onChange={(value) => {
+          if (value === 'calories') {
+            setCalorieStatus('loading')
+          }
+          setGraphCategory(value as 'strength' | 'calories')
+        }}
+        options={[
+          { label: 'Strength', value: 'strength' },
+          { label: 'Calories', value: 'calories' },
+        ]}
+        value={graphCategory}
+      />
+      {graphCategory === 'calories' ? (
+        <Card title="Calories">
+          <SegmentedControl
+            label="Calorie graph range"
+            onChange={(value) => {
+              setCalorieStatus('loading')
+              setCalorieRange(value as CalorieHistoryRange)
+            }}
+            options={calorieRangeOptions}
+            value={calorieRange}
+          />
+          {calorieStatus === 'loading' ? (
+            <LoadingState label="Loading calorie history" />
+          ) : null}
+          {calorieStatus === 'error' ? (
+            <StatusMessage tone="warning">
+              Calorie history could not load.
+            </StatusMessage>
+          ) : null}
+          {calorieStatus === 'ready' ? (
+            <CalorieHistoryChart history={calorieHistory} />
+          ) : null}
+        </Card>
+      ) : null}
+      {graphCategory === 'strength' ? (
+        <Card title="Estimated 1 Rep Max">
+          {status === 'loading' ? (
+            <LoadingState label="Loading strength graphs" />
+          ) : null}
+          {status === 'error' ? (
+            <StatusMessage tone="warning">
+              Strength graphs could not load.
+            </StatusMessage>
+          ) : null}
+          {status === 'ready' && options.length ? (
+            <>
+              <FormField id="strength-exercise" label="Exercise">
+                <button
+                  aria-label={`Select exercise: ${
+                    selectedExerciseName || 'Select exercise'
+                  }`}
+                  id="strength-exercise"
+                  className="exercise-select-trigger"
+                  type="button"
+                  onClick={() => setPickerOpen(true)}
+                >
+                  <Search aria-hidden="true" size={18} />
+                  <span>{selectedExerciseName || 'Select exercise'}</span>
+                </button>
+              </FormField>
+              <SegmentedControl
+                label="Strength graph range"
+                onChange={(value) => {
+                  setRange(value as StrengthRange)
                   setSelectedPointId(null)
                 }}
-                value={selectedExercise}
-              >
-                {options.map((option) => (
-                  <option key={option.exerciseId} value={option.exerciseId}>
-                    {option.exerciseName}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-            <StrengthChart
-              model={model}
-              onSelect={(point) => setSelectedPointId(point.id)}
-              selectedPoint={selectedPoint}
+                options={strengthRangeOptions}
+                value={range}
+              />
+              <StrengthChart
+                model={model}
+                onSelect={(point) =>
+                  setSelectedPointId((current) =>
+                    current === point.id ? null : point.id,
+                  )
+                }
+                selectedPoint={selectedPoint}
+              />
+              <p className="muted">{strengthEstimateLimitText()}</p>
+            </>
+          ) : null}
+          {status === 'ready' && !options.length ? (
+            <EmptyState
+              title="No weighted exercise history"
+              message="Complete weighted-repetition workout sets to build estimated 1RM graphs."
             />
-            <p className="muted">{strengthEstimateLimitText()}</p>
-          </>
-        ) : null}
-        {status === 'ready' && !options.length ? (
-          <EmptyState
-            title="No weighted exercise history"
-            message="Complete weighted-repetition workout sets to build estimated 1RM graphs."
-          />
-        ) : null}
-      </Card>
+          ) : null}
+        </Card>
+      ) : null}
+    </PageContainer>
+  )
+}
+
+function StrengthExercisePicker({
+  options,
+  selectedExerciseId,
+  onBack,
+  onSelect,
+}: {
+  options: StrengthExerciseOption[]
+  selectedExerciseId: string
+  onBack: () => void
+  onSelect: (exerciseId: string) => void
+}) {
+  const [query, setQuery] = useState('')
+  const weightUnit = useWeightUnit()
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const filtered = normalizedQuery
+    ? options.filter((option) =>
+        option.exerciseName.toLocaleLowerCase().includes(normalizedQuery),
+      )
+    : options
+
+  return (
+    <PageContainer>
+      <div className="exercise-picker subpage-enter">
+        <div className="exercise-picker-sticky">
+          <div className="exercise-picker-bar">
+            <IconButton aria-label="Back to strength graphs" onClick={onBack}>
+              <ArrowLeft aria-hidden="true" size={20} />
+            </IconButton>
+            <div className="input-icon-row">
+              <Search aria-hidden="true" size={18} />
+              <input
+                aria-label="Search exercises"
+                autoFocus
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search exercises"
+                type="search"
+                value={query}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="exercise-picker-body">
+          {filtered.length ? (
+            <div className="exercise-picker-list">
+              {filtered.map((option) => (
+                <button
+                  aria-pressed={option.exerciseId === selectedExerciseId}
+                  className="exercise-picker-row"
+                  key={option.exerciseId}
+                  onClick={() => onSelect(option.exerciseId)}
+                  type="button"
+                >
+                  <strong>{option.exerciseName}</strong>
+                  <small>
+                    {option.pointCount}{' '}
+                    {option.pointCount === 1 ? 'session' : 'sessions'} · best{' '}
+                    {formatEstimatedWeight(
+                      option.allTimeBest.estimatedOneRepMax,
+                      weightUnit,
+                    )}
+                  </small>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="No exercises found"
+              message="Only exercises with recorded weighted sets appear here."
+            />
+          )}
+        </div>
+      </div>
     </PageContainer>
   )
 }
@@ -696,6 +919,13 @@ function StrengthChart({
   onSelect: (point: StrengthGraphPoint) => void
   selectedPoint: StrengthGraphPoint | null
 }) {
+  const [tooltipId, setTooltipId] = useFadingTooltip()
+  const weightUnit = useWeightUnit()
+  const unitSuffix = weightUnitSuffix(weightUnit)
+  const formatAxisWeight = (value: number) =>
+    weightUnit === 'kg'
+      ? weightDisplayNumber(value, 'kg', 'lifting')
+      : formatEstimatedMax(value)
   if (model.status === 'empty') {
     return (
       <EmptyState
@@ -706,67 +936,95 @@ function StrengthChart({
   }
 
   const path = model.points
-    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+    .map(
+      (point, index) =>
+        `${index === 0 ? 'M' : 'L'} ${projectChartX(point.x)} ${projectChartY(point.y)}`,
+    )
     .join(' ')
+  const yTicks = projectAxisTicks(
+    buildValueAxisTicks(model.chartMin, model.chartMax, (value) =>
+      formatAxisWeight(value),
+    ),
+    projectChartY,
+  )
+  const xTicks = projectAxisTicks(
+    buildDateAxisTicks(model.points),
+    projectChartX,
+  )
+  const tooltipPoint = tooltipId
+    ? (model.points.find((point) => point.id === tooltipId) ?? null)
+    : null
 
   return (
     <div className="bodyweight-chart-panel">
       <p className="visually-hidden" aria-live="polite">
         {model.summary}
       </p>
-      <div className="bodyweight-chart-summary" aria-label="Strength summary">
-        <span>
-          <strong>
-            {formatEstimatedMax(model.latest.estimatedOneRepMax)} lb
-          </strong>
-          <small>Latest - {model.latest.localDate}</small>
-        </span>
-        <span>
-          <strong>
-            {formatEstimatedMax(model.allTimeBest.estimatedOneRepMax)} lb
-          </strong>
-          <small>Best - {model.allTimeBest.localDate}</small>
-        </span>
-        <span>
-          <strong>
-            {formatEstimatedMax(model.minEstimate)}-
-            {formatEstimatedMax(model.maxEstimate)} lb
-          </strong>
-          <small>Range</small>
-        </span>
-      </div>
-      <div className="bodyweight-chart" aria-label="Estimated 1RM graph">
+      <div className="bodyweight-chart" aria-label="Estimated 1 Rep Max graph">
         <span className="chart-axis-label chart-axis-label-x">Date</span>
         <span className="chart-axis-label chart-axis-label-y">
-          Estimated 1RM (lb)
+          Estimated 1RM ({unitSuffix})
         </span>
+        <ChartAxisTicks yTicks={yTicks} xTicks={xTicks} />
         <svg
           aria-hidden="true"
           focusable="false"
           preserveAspectRatio="none"
           viewBox="0 0 100 100"
         >
-          <line x1="0" x2="100" y1="100" y2="100" />
+          <line
+            x1={projectChartX(0)}
+            x2={projectChartX(100)}
+            y1={CHART_BASELINE_Y}
+            y2={CHART_BASELINE_Y}
+          />
           {model.status === 'ready' ? <path d={path} /> : null}
           {model.points.map((point) => (
-            <circle cx={point.x} cy={point.y} key={point.id} r="1.8" />
+            <circle
+              cx={projectChartX(point.x)}
+              cy={projectChartY(point.y)}
+              key={point.id}
+              r="1.3"
+            />
           ))}
         </svg>
         {model.points.map((point) => (
           <button
-            aria-label={`${point.localDate} ${formatEstimatedMax(
+            aria-label={`${point.localDate} ${formatEstimatedWeight(
               point.estimatedOneRepMax,
-            )} lb estimated one-repetition maximum`}
+              weightUnit,
+            )} estimated one-repetition maximum`}
+            aria-pressed={selectedPoint?.id === point.id}
             className="bodyweight-point-button"
             key={point.id}
-            onClick={() => onSelect(point)}
+            onClick={() => {
+              onSelect(point)
+              setTooltipId(point.id)
+            }}
             style={{
-              left: `${point.x}%`,
-              top: `${point.y}%`,
+              left: `${projectChartX(point.x)}%`,
+              top: `${projectChartY(point.y)}%`,
             }}
             type="button"
           />
         ))}
+        {tooltipPoint ? (
+          <span
+            aria-hidden="true"
+            className={`bodyweight-point-value chart-point-tooltip${
+              projectChartY(tooltipPoint.y) < 18
+                ? ' chart-point-tooltip-below'
+                : ''
+            }`}
+            key={tooltipPoint.id}
+            style={{
+              left: `${projectChartX(tooltipPoint.x)}%`,
+              top: `${projectChartY(tooltipPoint.y)}%`,
+            }}
+          >
+            {formatEstimatedWeight(tooltipPoint.estimatedOneRepMax, weightUnit)}
+          </span>
+        ) : null}
       </div>
       <p className="muted">{model.summary}</p>
       {model.status === 'single' ? (
@@ -783,13 +1041,18 @@ function StrengthChart({
           <div>
             <dt>Completed set</dt>
             <dd>
-              {formatEstimatedMax(selectedPoint.weight)} lb x{' '}
+              {formatEstimatedWeight(selectedPoint.weight, weightUnit)} x{' '}
               {selectedPoint.repetitions}
             </dd>
           </div>
           <div>
             <dt>Estimated 1RM</dt>
-            <dd>{formatEstimatedMax(selectedPoint.estimatedOneRepMax)} lb</dd>
+            <dd>
+              {formatEstimatedWeight(
+                selectedPoint.estimatedOneRepMax,
+                weightUnit,
+              )}
+            </dd>
           </div>
         </dl>
       ) : null}
@@ -823,9 +1086,15 @@ function RunHistoryDetail({ structure }: { structure: RunStructure }) {
           <small>Average pace</small>
         </span>
         <span>
-          <strong>{run.hasGpsGap ? 'Yes' : 'No'}</strong>
-          <small>GPS gap</small>
+          <strong>{formatRunType(run)}</strong>
+          <small>Tracking</small>
         </span>
+        {run.trackingMode === 'treadmill' ? (
+          <span>
+            <strong>{run.treadmillStepCount ?? 0}</strong>
+            <small>Steps sensed</small>
+          </span>
+        ) : null}
       </div>
       <dl className="history-detail-list">
         <div>
@@ -839,6 +1108,7 @@ function RunHistoryDetail({ structure }: { structure: RunStructure }) {
           </dd>
         </div>
       </dl>
+      {run.notes ? <p>{run.notes}</p> : null}
       <h3>Mile splits</h3>
       {splits.length ? (
         <div className="run-split-list">
@@ -875,13 +1145,19 @@ function RunHistoryDetail({ structure }: { structure: RunStructure }) {
 
 function BodyweightChart({
   model,
+  trendWeight,
   onSelect,
   selectedEntry,
 }: {
   model: ReturnType<typeof createBodyweightChartModel>
+  trendWeight: number | null
   onSelect: (entry: BodyweightEntry) => void
   selectedEntry: BodyweightEntry | null
 }) {
+  const { t } = useLanguage()
+  const [tooltipId, setTooltipId] = useFadingTooltip()
+  const weightUnit = useWeightUnit()
+  const unitSuffix = weightUnitSuffix(weightUnit)
   if (model.status === 'empty') {
     return (
       <EmptyState
@@ -892,10 +1168,30 @@ function BodyweightChart({
   }
 
   const path = model.points
-    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+    .map(
+      (point, index) =>
+        `${index === 0 ? 'M' : 'L'} ${projectChartX(point.x)} ${projectChartY(point.y)}`,
+    )
     .join(' ')
-  const first = model.entries[0]
-  const latest = model.entries.at(-1) ?? first
+  const latest = model.entries.at(-1) ?? model.entries[0]
+  const yTicks = projectAxisTicks(
+    buildValueAxisTicks(model.chartMin, model.chartMax, (value) =>
+      weightDisplayNumber(value, weightUnit, 'bodyweight'),
+    ),
+    projectChartY,
+  )
+  const xTicks = projectAxisTicks(
+    buildDateAxisTicks(
+      model.points.map((point) => ({
+        x: point.x,
+        localDate: point.entry.localDate,
+      })),
+    ),
+    projectChartX,
+  )
+  const tooltipPoint = tooltipId
+    ? (model.points.find((point) => point.entry.id === tooltipId) ?? null)
+    : null
 
   return (
     <div className="bodyweight-chart-panel">
@@ -904,82 +1200,122 @@ function BodyweightChart({
           {model.summary.text}
         </p>
       ) : null}
-      <div className="bodyweight-chart-summary" aria-label="Graph summary">
+      <div className="bodyweight-chart-summary" aria-label={t('Graph summary')}>
+        {trendWeight !== null ? (
+          <span className="bodyweight-chart-summary-primary">
+            <strong>
+              {formatWeightWithUnit(trendWeight, weightUnit, 'bodyweight')}
+            </strong>
+            <small>{t('Trend weight')}</small>
+          </span>
+        ) : null}
         <span>
           <strong>
-            {formatWeight(first.weight)} {first.unit}
+            {formatWeightWithUnit(latest.weight, weightUnit, 'bodyweight')}
           </strong>
-          <small>First - {first.localDate}</small>
-        </span>
-        <span>
-          <strong>
-            {formatWeight(latest.weight)} {latest.unit}
-          </strong>
-          <small>Latest - {latest.localDate}</small>
-        </span>
-        <span>
-          <strong>
-            {formatWeight(model.minWeight)}-{formatWeight(model.maxWeight)}{' '}
-            {latest.unit}
-          </strong>
-          <small>Range</small>
+          <small>
+            {t('Last recorded')} - {latest.localDate}
+          </small>
         </span>
       </div>
-      <div className="bodyweight-chart" aria-label="Bodyweight graph">
-        <span className="chart-axis-label chart-axis-label-x">Date</span>
+      <div className="bodyweight-chart" aria-label={t('Bodyweight graph')}>
+        <span className="chart-axis-label chart-axis-label-x">{t('Date')}</span>
         <span className="chart-axis-label chart-axis-label-y">
-          Bodyweight ({latest.unit})
+          {t('Bodyweight')} ({unitSuffix})
         </span>
+        <ChartAxisTicks yTicks={yTicks} xTicks={xTicks} />
         <svg
           aria-hidden="true"
           focusable="false"
           preserveAspectRatio="none"
           viewBox="0 0 100 100"
         >
-          <line x1="0" x2="100" y1="100" y2="100" />
+          <line
+            x1={projectChartX(0)}
+            x2={projectChartX(100)}
+            y1={CHART_BASELINE_Y}
+            y2={CHART_BASELINE_Y}
+          />
           {model.status === 'ready' ? <path d={path} /> : null}
           {model.points.map((point) => (
-            <circle cx={point.x} cy={point.y} key={point.entry.id} r="1.8" />
+            <circle
+              cx={projectChartX(point.x)}
+              cy={projectChartY(point.y)}
+              key={point.entry.id}
+              r="0.9"
+            />
           ))}
         </svg>
         {model.points.map((point) => (
           <button
-            aria-label={`${point.entry.localDate} ${formatWeight(
+            aria-label={`${point.entry.localDate} ${formatWeightWithUnit(
               point.entry.weight,
-            )} ${point.entry.unit}`}
+              weightUnit,
+              'bodyweight',
+            )}`}
             className="bodyweight-point-button"
             key={point.entry.id}
-            onClick={() => onSelect(point.entry)}
+            onClick={() => {
+              onSelect(point.entry)
+              setTooltipId(point.entry.id)
+            }}
             style={{
-              left: `${point.x}%`,
-              top: `${point.y}%`,
+              left: `${projectChartX(point.x)}%`,
+              top: `${projectChartY(point.y)}%`,
             }}
             type="button"
           />
         ))}
+        {tooltipPoint ? (
+          <span
+            aria-hidden="true"
+            className={`bodyweight-point-value chart-point-tooltip${
+              projectChartY(tooltipPoint.y) < 18
+                ? ' chart-point-tooltip-below'
+                : ''
+            }`}
+            key={tooltipPoint.entry.id}
+            style={{
+              left: `${projectChartX(tooltipPoint.x)}%`,
+              top: `${projectChartY(tooltipPoint.y)}%`,
+            }}
+          >
+            {formatWeightWithUnit(
+              tooltipPoint.entry.weight,
+              weightUnit,
+              'bodyweight',
+            )}
+          </span>
+        ) : null}
       </div>
       {model.summary.status !== 'empty' ? (
-        <p className="muted">{model.summary.text}</p>
+        <p className="muted">{t(model.summary.text)}</p>
       ) : null}
       {model.status === 'single' ? (
         <StatusMessage>
-          One bodyweight entry is saved. Add another entry to show a line.
+          {t(
+            'One bodyweight entry is saved. Add another entry to show a line.',
+          )}
         </StatusMessage>
       ) : null}
       {selectedEntry ? (
         <dl className="history-detail-list bodyweight-detail">
           <div>
-            <dt>Selected</dt>
+            <dt>{t('Selected')}</dt>
             <dd>
-              {formatWeight(selectedEntry.weight)} {selectedEntry.unit}
+              {formatWeightWithUnit(
+                selectedEntry.weight,
+                weightUnit,
+                'bodyweight',
+              )}
             </dd>
           </div>
           <div>
-            <dt>Local date</dt>
+            <dt>{t('Local date')}</dt>
             <dd>{selectedEntry.localDate}</dd>
           </div>
           <div>
-            <dt>Timestamp</dt>
+            <dt>{t('Timestamp')}</dt>
             <dd>{formatTimestamp(selectedEntry.updatedAt)}</dd>
           </div>
         </dl>
@@ -1068,29 +1404,49 @@ function HistorySetRow({
   onSetChange: (input: HistorySetInput) => void
   set: WorkoutHistorySet
 }) {
+  const weightUnit = useWeightUnit()
   return (
     <div className="set-row history-set-row">
       <div className="set-number">
         <strong>Set {set.setNumber}</strong>
         <small>{set.completed ? 'Completed' : 'Incomplete'}</small>
       </div>
-      {metrics.map((metric) => (
-        <label key={metric.key}>
-          <span>{metric.label}</span>
-          <NumericInput
-            aria-label={`Set ${set.setNumber} ${metric.label}`}
-            defaultValue={formatMetricInput(set.metricValues[metric.key])}
-            onBlur={(event) =>
-              onSetChange({
-                metricValues: {
-                  ...set.metricValues,
-                  [metric.key]: parseMetricValue(event.currentTarget.value),
-                },
-              })
-            }
-          />
-        </label>
-      ))}
+      {metrics.map((metric) => {
+        // Weight metrics persist in canonical pounds; edit them in the display
+        // unit and convert back on blur. Reps and durations pass through.
+        const isWeightMetric = metric.unit === 'lb'
+        const storedValue = set.metricValues[metric.key]
+        return (
+          <label key={metric.key}>
+            <span>{metric.label}</span>
+            <NumericInput
+              aria-label={`Set ${set.setNumber} ${metric.label}`}
+              defaultValue={
+                isWeightMetric
+                  ? weightInputValue(
+                      typeof storedValue === 'number' ? storedValue : null,
+                      weightUnit,
+                      'lifting',
+                    )
+                  : formatMetricInput(storedValue)
+              }
+              key={`${metric.key}-${weightUnit}`}
+              onBlur={(event) => {
+                const parsed = parseMetricValue(event.currentTarget.value)
+                onSetChange({
+                  metricValues: {
+                    ...set.metricValues,
+                    [metric.key]:
+                      isWeightMetric && typeof parsed === 'number'
+                        ? weightInputToLb(parsed, weightUnit)
+                        : parsed,
+                  },
+                })
+              }}
+            />
+          </label>
+        )
+      })}
       {usesRir(metrics) ? (
         <label>
           <span>RIR</span>
@@ -1136,11 +1492,164 @@ function listHistoryItems(workouts: WorkoutHistoryEntry[], runs: Run[]) {
   ].sort((left, right) => right.completedAt.localeCompare(left.completedAt))
 }
 
+function formatRunType(run: Run) {
+  if (run.trackingMode === 'treadmill') {
+    return 'Treadmill run'
+  }
+  if (run.trackingMode === 'manual') {
+    return 'Manual run'
+  }
+  return 'Outdoor GPS run'
+}
+
 function formatTimestamp(timestamp: string) {
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(timestamp))
+}
+
+// Shows a point's value tooltip on tap/click and clears it automatically after
+// 5 seconds so it never lingers over the rest of the chart UI.
+function useFadingTooltip() {
+  const [tooltipId, setTooltipId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!tooltipId) {
+      return
+    }
+    const timer = window.setTimeout(() => setTooltipId(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [tooltipId])
+  return [tooltipId, setTooltipId] as const
+}
+
+type ChartAxisTick = { key: string; position: number; label: string }
+
+// Reserve a margin (in 0-100 chart units) around the plotted data so points and
+// the trend line never sit on top of the axis baseline or the chart border, and
+// so the first/last date labels clear the y-axis value column. Model coordinates
+// arrive as a raw 0-100 range; these helpers remap them into the inset band that
+// every renderer (line, points, tap targets, tooltips, axis ticks) shares.
+const CHART_PLOT_INSET = { top: 8, bottom: 8, left: 20, right: 5 }
+
+// The axis baseline sits below the lowest plottable point (at the bottom inset
+// edge, ~92) so chart-minimum points float just above it instead of on it.
+const CHART_BASELINE_Y = 96
+
+function projectChartX(x: number): number {
+  const span = 100 - CHART_PLOT_INSET.left - CHART_PLOT_INSET.right
+  return CHART_PLOT_INSET.left + (x / 100) * span
+}
+
+function projectChartY(y: number): number {
+  const span = 100 - CHART_PLOT_INSET.top - CHART_PLOT_INSET.bottom
+  return CHART_PLOT_INSET.top + (y / 100) * span
+}
+
+function projectAxisTicks(
+  ticks: ChartAxisTick[],
+  project: (position: number) => number,
+): ChartAxisTick[] {
+  return ticks.map((tick) => ({ ...tick, position: project(tick.position) }))
+}
+
+// Evenly spaced Y-axis interval markers running from chartMax (top) to chartMin
+// (bottom), matching the value-to-position mapping the plotted points use.
+function buildValueAxisTicks(
+  chartMin: number,
+  chartMax: number,
+  format: (value: number) => string,
+): ChartAxisTick[] {
+  const span = chartMax - chartMin
+  if (!(span > 0)) {
+    return [{ key: 'mid', position: 50, label: format(chartMin) }]
+  }
+  const steps = 4
+  return Array.from({ length: steps + 1 }, (_, index) => {
+    const position = (index / steps) * 100
+    const value = chartMax - (index / steps) * span
+    return { key: String(index), position, label: format(value) }
+  })
+}
+
+// X-axis date markers placed at the first, middle, and last data points so the
+// time progression is readable without crowding the axis.
+function buildDateAxisTicks(
+  points: Array<{ x: number; localDate: string }>,
+): ChartAxisTick[] {
+  if (!points.length) {
+    return []
+  }
+  const lastIndex = points.length - 1
+  const candidateIndices =
+    points.length <= 2
+      ? [0, lastIndex]
+      : [0, Math.floor(lastIndex / 2), lastIndex]
+  const seen = new Set<number>()
+  const ticks: ChartAxisTick[] = []
+  for (const index of candidateIndices) {
+    if (seen.has(index)) {
+      continue
+    }
+    seen.add(index)
+    const point = points[index]
+    ticks.push({
+      key: String(index),
+      position: point.x,
+      label: formatShortLocalDate(point.localDate),
+    })
+  }
+  return ticks
+}
+
+function formatShortLocalDate(localDate: string) {
+  const [year, month, day] = localDate.split('-').map(Number)
+  if (!year || !month || !day) {
+    return localDate
+  }
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
+function ChartAxisTicks({
+  yTicks,
+  xTicks,
+}: {
+  yTicks: ChartAxisTick[]
+  xTicks: ChartAxisTick[]
+}) {
+  return (
+    <>
+      <div className="chart-axis-ticks chart-axis-ticks-y" aria-hidden="true">
+        {yTicks.map((tick) => (
+          <span key={tick.key} style={{ top: `${tick.position}%` }}>
+            {tick.label}
+          </span>
+        ))}
+      </div>
+      <div className="chart-axis-ticks chart-axis-ticks-x" aria-hidden="true">
+        {xTicks.map((tick, index) => {
+          const edgeClass =
+            index === 0
+              ? ' chart-axis-tick-first'
+              : index === xTicks.length - 1
+                ? ' chart-axis-tick-last'
+                : ''
+          return (
+            <span
+              className={`chart-axis-tick${edgeClass}`}
+              key={tick.key}
+              style={{ left: `${tick.position}%` }}
+            >
+              {tick.label}
+            </span>
+          )
+        })}
+      </div>
+    </>
+  )
 }
 
 function formatHistoryDetailDate(localDate: string) {

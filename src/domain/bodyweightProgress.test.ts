@@ -4,6 +4,7 @@ import {
   createBodyweightChartModel,
   filterBodyweightEntriesForRange,
   formatBodyweightChange,
+  formatBodyweightWeeklyChange,
   latestBodyweight,
   summarizeBodyweightTrend,
 } from '@domain/bodyweightProgress'
@@ -34,12 +35,13 @@ describe('bodyweightProgress', () => {
 
     expect(summary).toMatchObject({
       status: 'ready',
-      change: -1.5,
+      weeklyChange: expect.any(Number),
       direction: 'down',
     })
-    expect(summary.status === 'ready' ? summary.text : '').toContain(
-      'from 190 to 188.5 lb',
+    expect(summary.status === 'ready' ? summary.weeklyChange : 0).toBeLessThan(
+      0,
     )
+    expect(summary.status === 'ready' ? summary.text : '').toContain('per week')
   })
 
   it('filters ranges by local dates across daylight-saving boundaries', () => {
@@ -75,10 +77,36 @@ describe('bodyweightProgress', () => {
     expect(model.status === 'ready' ? model.points : []).toHaveLength(40)
   })
 
+  it('centers a lone chart point so it clears the y-axis labels', () => {
+    const model = createBodyweightChartModel([
+      entry('only', '2026-06-19', 188, '2026-06-19T12:00:00.000Z'),
+    ])
+
+    expect(model.status).toBe('single')
+    expect(model.status !== 'empty' ? model.points[0]?.x : null).toBe(50)
+  })
+
   it('formats bodyweight changes without relying only on direction', () => {
     expect(formatBodyweightChange(1.25)).toBe('+1.3 lb')
     expect(formatBodyweightChange(-1)).toBe('-1 lb')
     expect(formatBodyweightChange(0.01)).toBe('0 lb')
+    expect(formatBodyweightWeeklyChange(1.25)).toBe('+1.3 lb/week')
+  })
+
+  it('renders the trend summary and change in the chosen unit', () => {
+    const entries = [
+      entry('a', '2026-06-01', 200, '2026-06-01T12:00:00.000Z'),
+      entry('b', '2026-06-19', 190, '2026-06-19T12:00:00.000Z'),
+    ]
+
+    // 200 lb -> 90.7 kg, 190 lb -> 86.2 kg, change -10 lb -> 4.5 kg.
+    const summary = summarizeBodyweightTrend(entries, 'kg')
+    expect(summary.status === 'ready' ? summary.text : '').toContain(
+      'kg per week',
+    )
+    expect(formatBodyweightChange(-10, 'kg')).toBe('-4.5 kg')
+    expect(formatBodyweightWeeklyChange(-10, 'kg')).toBe('-4.5 kg/week')
+    expect(formatBodyweightChange(0.01, 'kg')).toBe('0 kg')
   })
 })
 

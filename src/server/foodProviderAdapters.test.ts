@@ -52,6 +52,43 @@ describe('food provider adapters', () => {
     expect(food?.macrosPerServing?.fatGrams).toBeCloseTo(4.32)
   })
 
+  it('parses search-result foodMeasures into household portions, ranked and cleaned', () => {
+    const food = normalizeUsdaFood(
+      {
+        fdcId: 555,
+        description: 'Rice, white, cooked',
+        dataType: 'Survey (FNDDS)',
+        foodNutrients: [
+          { nutrientId: 1008, value: 130 },
+          { nutrientId: 1003, value: 2.7 },
+          { nutrientId: 1005, value: 28 },
+          { nutrientId: 1004, value: 0.3 },
+        ],
+        foodMeasures: [
+          {
+            disseminationText: 'Quantity not specified',
+            gramWeight: 158,
+            rank: 2,
+          },
+          { disseminationText: '1 cup', gramWeight: 186, rank: 1 },
+          { disseminationText: '1 cup, NFS', gramWeight: 200, rank: 3 },
+        ],
+      },
+      now,
+    )
+
+    const portions = food?.serving.sourcePortions ?? []
+    // "Quantity not specified" is dropped; rank 1 comes first.
+    expect(portions.map((portion) => portion.unit)).toEqual(['cup', 'cup'])
+    expect(portions[0]).toMatchObject({
+      amount: 1,
+      unit: 'cup',
+      gramWeight: 186,
+    })
+    // The rank-1 portion seeds the base serving weight.
+    expect(food?.serving.gramsPerServing).toBe(186)
+  })
+
   it('normalizes USDA branded and restaurant-like records while preserving brand and barcode metadata', () => {
     const food = normalizeUsdaFood(
       {
@@ -159,6 +196,34 @@ describe('food provider adapters', () => {
         fatGrams: 30.9,
       },
       serving: { gramsPerServing: 15 },
+    })
+  })
+
+  it('prefers Spanish Open Food Facts names and categories for Spanish search', () => {
+    const food = normalizeOpenFoodFactsFood(
+      {
+        code: '8410000000001',
+        product_name: 'Tomato Soup',
+        product_name_es: 'Sopa de tomate',
+        generic_name: 'Prepared soup',
+        generic_name_es: 'Sopa preparada',
+        categories: 'Soups',
+        categories_es: 'Sopas',
+        nutriments: {
+          'energy-kcal_100g': 45,
+          proteins_100g: 1.2,
+          carbohydrates_100g: 7.5,
+          fat_100g: 1.1,
+        },
+      },
+      now,
+      'es',
+    )
+
+    expect(food).toMatchObject({
+      name: 'Sopa de tomate',
+      foodCategory: 'Sopas',
+      normalizedSearchName: 'sopa de tomate',
     })
   })
 

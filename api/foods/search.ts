@@ -37,6 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       page: readInteger(body.page),
       pageSize: readInteger(body.pageSize),
       allowFallback: body.allowFallback === true,
+      language: readString(body.language) as never,
     },
     { usdaApiKey: readApiKey(req) },
   )

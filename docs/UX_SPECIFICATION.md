@@ -41,13 +41,10 @@
 ### Cards and Controls
 
 - Header: selected date, previous-day button, next-day button, return-to-today action, Settings access.
-- Nutrition summary card:
-  - calories consumed
-  - calorie target
-  - calories remaining
-  - protein consumed/target
-  - carbohydrates consumed/target
-  - fat consumed/target
+- Calorie history card:
+  - compact seven-day bar graph for logged calories
+  - contrasting daily target line
+  - visible spacing between daily bars
 - Bodyweight card:
   - current value from the latest timestamped entry or empty state
   - selected-date latest value when available
@@ -72,6 +69,9 @@
 - No foods logged: show Log Food quick action.
 - No bodyweight: show Log Bodyweight action and explain that a second entry is
   needed before trend change is shown.
+- Tapping the compact Home bodyweight summary opens bodyweight logging.
+- Bodyweight logging includes a native date picker, defaults to the selected
+  date (today on normal entry), and supports past dates.
 - No active program: show Create Program and Activate Program actions.
 - No workout history: show Start Workout after program setup or Empty Workout if supported later.
 
@@ -81,19 +81,36 @@
 
 - Date selector at top.
 - Daily total card with calories and macros.
-- Prominent barcode scanner entry near the top of Nutrition. USDA key
-  management remains available from Settings -> Integrations.
+- Prominent barcode scanner entry near the top of Nutrition.
 - Search input for recent, custom, previously used, and provider foods.
-- Remote provider search waits for at least three normalized characters, a saved
-  USDA FoodData Central API key, and debounces requests.
-- Results are sectioned in priority order: recent and previously used foods,
-  private custom foods, previously used provider foods, then provider results.
+- English remote provider search waits for at least three normalized
+  characters, debounces requests, and uses USDA. Spanish remote search requires
+  an explicit keyboard or on-screen Search action, uses Open Food Facts, and
+  prefers provider-supplied Spanish product and category fields.
+- Results are sectioned in priority order: strict saved recipe match, recent
+  and previously used foods, private custom foods, previously used provider
+  foods, then provider results. Typo-only recipe queries do not create the
+  recipe section.
 - Provider loading, offline, timeout, unavailable, rate-limit, server
   configuration, and unexpected-error states are distinct from no acceptable
   results.
 - Recent foods list in the Foods tab when no search is active.
 - Logged foods grouped for the selected date.
 - Create Food action reachable from header, empty state, and Add sheet.
+
+### Set Goal
+
+- Step one collects current and desired weight, height, age, sex, and activity
+  outside exercise. Activity choices include Sedentary, Lightly active,
+  Moderately active, and Heavily active.
+- Step two is headed `Goal Type:` and derives Maintenance, Bulking, or Cutting
+  from desired weight compared with current weight.
+- Cutting uses a 0.25% to 1% bodyweight-per-week slider starting at the marked
+  0.5% recommendation. Bulking uses 0.1% to 0.5%, starting at the marked 0.25%
+  recommendation. The recommendation marker stays fixed while the thumb moves.
+- The selected weekly rate and estimated goal date update live. Maintenance
+  shows an ongoing goal with zero weekly change and no slider.
+- Done saves the goal and calorie/macro targets, then returns to Targets.
 
 ### Food Rows
 
@@ -108,8 +125,9 @@
 
 ### Create/Edit Food Form
 
-- Fields: name, optional brand, serving quantity, serving unit, calories,
-  protein, carbohydrates, fat, notes.
+- The form opens as a full-height subpage.
+- Fields: name, serving quantity, serving unit, calories, protein,
+  carbohydrates, and fat. The current form does not collect brand or notes.
 - Required fields are marked without excessive copy.
 - Numeric fields reject invalid, negative, or nonnumeric values. Calories are
   required; blank optional macros save as zero.
@@ -129,9 +147,17 @@
   ounces are not treated as mass ounces.
 - Preview displays computed calories and macros.
 - Save logs the snapshot to the selected date.
+- Icons in the current-search added-items tray are 44-pixel buttons. Selecting
+  one reopens that exact food log in the serving editor.
 
 ### Barcode Scanner
 
+- The Nutrition camera action opens a compact vertical menu directly below the
+  camera button. It stays within the viewport and uses two clearly labeled,
+  44-pixel-or-larger actions for barcode scanning and AI meal-photo analysis.
+- Scrolling or pressing outside the open camera menu does not dismiss it. The
+  camera toggle and Escape can dismiss it explicitly, and navigating away
+  resets it before the user returns.
 - Scanner opens from the Nutrition screen and requests camera access only after
   user action.
 - The scanner shows a visible frame, cancel control, retry path, permission
@@ -142,6 +168,31 @@
   fat, and source. It never logs immediately.
 - Unknown or incomplete barcode records open the custom-food form with the
   barcode associated locally.
+
+### AI Meal Camera
+
+- The AI action opens a full Nutrition subpage with the rear-facing camera
+  preview, capture action, photo-library import action,
+  permission/loading/failure states, and retry.
+- Without a configured Gemini key, the subpage links to the Gemini integration
+  in Settings and does not request camera access.
+- Capturing a photo sends a resized JPEG directly to Gemini 3.5 Flash. The app
+  validates the structured result before using it.
+- While analysis is running, the captured photo is covered by a friendly robot
+  calculation animation and clear processing text.
+- A successful result opens the existing recipe builder with an editable name,
+  estimated ingredient snapshots, assumptions, and clear estimate context.
+- The builder leads with a prominent total formatted as "Calories: XX".
+  Estimated ingredients appear as tappable, food-style rows in a vertical list.
+  Each row shows its current serving and macro summary; opening it provides the
+  detected serving amount, detailed macros, serving controls, and a live
+  preview. The existing food search remains available for adding ingredients.
+- Save as recipe is an off-by-default checkmark option. Log food is the primary
+  action; it logs every estimated ingredient to the selected date, optionally
+  saves the recipe, and exits the subpage.
+- When Gemini returns no detected ingredients, the subpage displays "AI failed"
+  for approximately three seconds and returns to the page that launched it.
+- Leaving before Log food discards the draft.
 
 ## Training Screen
 
@@ -215,6 +266,8 @@
 - Replace exercise action.
 - Add set action.
 - Delete set action.
+- Session exercise notes can be edited and saved without changing the source
+  program prescription.
 - Reorder exercise action where practical.
 
 ### Set Rows
@@ -254,19 +307,47 @@
 - On resume from background, recalculates remaining time instead of trusting an interval count.
 - Timer state is stored on the active workout and continues while navigating
   between exercises or returning to the workout route.
+- The app shell monitors timer expiry across all routes, so completion feedback
+  fires while the user is viewing Home, Nutrition, Training, Run, or Settings.
 - Completion feedback uses UI status, vibration when supported, a short audible
   tone when browser autoplay policy allows it, and browser notifications only
   when permission has already been granted. The app does not repeatedly request
   notification permission and does not claim alerts work while the browser or
-  installed PWA is fully suspended.
+  installed PWA is fully suspended. Foreground completion uses a transient
+  audio-session hint so other audio may keep playing or briefly duck; previews
+  use media playback so users can hear the selected sound. Calls, Silent Mode,
+  and browser suspension may still suppress playback.
+- In the native iOS wrapper, starting a rest timer requests notification
+  permission in context when needed and schedules a time-sensitive local
+  notification. Pause, resume, adjustment, dismissal, discard, and finish
+  replace or cancel the pending notification.
+- In an installed iPhone Home Screen PWA, Settings exposes **Enable outside-app
+  timer alerts** when Web Push is supported. The copy states that internet
+  access and iPhone notification sounds are required. Timer changes replace or
+  cancel the pending server-delayed notification.
+- Checking a completed set must not start or pause media merely to prime the
+  later timer sound. Foreground completion uses transient audio; outside-app
+  completion uses one standard iPhone notification.
+- When outside-app alerts are scheduled, the same system notification is also
+  used while the PWA is visible and the app does not play a second HTML-media
+  chime.
+- When outside-app alerts are not scheduled and the installed iPhone PWA is
+  visibly open, the app shell may play the bundled foreground chime after
+  navigation away from the live workout screen.
+- On Web Push-capable installed iPhone PWAs, Settings identifies the alert as
+  the default iPhone notification sound and does not present bundled sound
+  selection or preview controls.
 
 ## Completion and Change Review
 
-- Finish Workout saves the historical workout first.
-- If structural changes are detected, show a compact checklist.
-- Each selected item has a destination selector: active cycle only, template
-  only, or both. Unchecked items are saved as not applied.
-- User can finish without applying any changes.
+- Finish Workout waits for pending live edits, then saves the historical
+  workout first.
+- The confirmation includes one "Save all live workout changes to my program"
+  checkbox. It is unchecked every time the confirmation opens.
+- Leaving the checkbox unchecked saves the completed workout but rejects all
+  detected program changes, preserving the source cycle and template.
+- Checking it applies every detected structural change and progression
+  recommendation to both available program sources in one transaction.
 - Failed apply operation shows an error and leaves saved workout intact.
 
 ## History Screen
@@ -296,6 +377,9 @@
 - Additional graph categories are reachable from History and Graphs. Strength
   graph placeholders may be deferred when no eligible implementation data is
   available.
+- Calories is available from History Graphs with 1W, 1M, and 3M controls.
+  Logged calories use separated bars and the daily target uses a contrasting
+  line.
 - Strength graph range controls are 1M, 3M, 6M, 1Y, and All.
 - The chart plots one point per completed workout per exercise, selected from
   the highest eligible Epley estimate in that workout.
@@ -322,13 +406,24 @@
 
 ## Settings Screen
 
-- Nutrition targets.
-- Timer completion sound on/off, sound selection, selected-state display, and
-  one-shot preview.
+- Preferences include English/Spanish interface language, timer completion
+  sound on/off, sound selection, selected-state display, and one-shot preview.
+- The native iOS wrapper also exposes an **Enable outside-app timer alerts**
+  action and explains that delivery remains controlled by iPhone notification
+  and volume settings.
+- Nutrition targets are managed from the Nutrition dashboard, not Settings.
+- AI meal analysis includes a device-local Gemini API key field, connection
+  test, status, replacement, and removal controls. The key is excluded from
+  backups. Settings explains that meal photos go directly to Google and that
+  free-tier requests may be used by Google to improve its products.
 - Backup export.
 - CSV export.
 - Restore backup.
 - Clear all data.
+- Cloud backup uses larger vertical spacing between account status, backup
+  status, and actions.
+- What's new shows the latest update by default. A Show all action opens a
+  What's New subpage with all logged updates.
 - App version and update status.
 - Data schema version.
 

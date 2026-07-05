@@ -1,4 +1,6 @@
 import type {
+  Run,
+  RunPause,
   RunSample,
   RunSampleRejectionReason,
   RunSplit,
@@ -17,6 +19,7 @@ export type RawRunSample = {
 export type RunProcessingConfig = {
   maxAccuracyMeters: number
   minDistanceMeters: number
+  accuracyDistanceMultiplier: number
   maxSpeedMetersPerSecond: number
   staleSampleSeconds: number
   maxGapSeconds: number
@@ -28,8 +31,9 @@ export type RunProcessingConfig = {
 }
 
 export const defaultRunProcessingConfig: RunProcessingConfig = {
-  maxAccuracyMeters: 35,
+  maxAccuracyMeters: 25,
   minDistanceMeters: 7,
+  accuracyDistanceMultiplier: 1,
   maxSpeedMetersPerSecond: 8.5,
   staleSampleSeconds: 1,
   maxGapSeconds: 30,
@@ -52,7 +56,23 @@ export function processRunSample(
   sample: RawRunSample,
   previousAccepted: RunSample | null,
   config = defaultRunProcessingConfig,
+  bounds?: {
+    notBeforeTimestamp?: string
+  },
 ): ProcessRunSampleResult {
+  const sampleTime = Date.parse(sample.timestamp)
+  const notBeforeTime = bounds?.notBeforeTimestamp
+    ? Date.parse(bounds.notBeforeTimestamp)
+    : null
+  if (
+    !Number.isFinite(sampleTime) ||
+    (notBeforeTime !== null &&
+      Number.isFinite(notBeforeTime) &&
+      sampleTime < notBeforeTime)
+  ) {
+    return reject('stale')
+  }
+
   if (sample.accuracyMeters > config.maxAccuracyMeters) {
     return reject('poor_accuracy')
   }
@@ -90,7 +110,12 @@ export function processRunSample(
     }
   }
 
-  if (distance < config.minDistanceMeters) {
+  const minimumReliableDistance = Math.max(
+    config.minDistanceMeters,
+    (previousAccepted.accuracyMeters + sample.accuracyMeters) *
+      config.accuracyDistanceMultiplier,
+  )
+  if (distance < minimumReliableDistance) {
     return reject('jitter')
   }
 
@@ -170,6 +195,49 @@ export function calculatePaceSecondsPerMile(
     return null
   }
   return Math.round(seconds / (distanceMeters / METERS_PER_MILE))
+}
+
+export function calculateLiveRunMetrics(
+  run: Run,
+  pauses: RunPause[],
+  now: string,
+): Pick<
+  Run,
+  | 'elapsedSeconds'
+  | 'movingSeconds'
+  | 'currentPaceSecondsPerMile'
+  | 'averageMovingPaceSecondsPerMile'
+> {
+  if (run.status !== 'active') {
+    return {
+      elapsedSeconds: run.elapsedSeconds,
+      movingSeconds: run.movingSeconds,
+      currentPaceSecondsPerMile: run.currentPaceSecondsPerMile,
+      averageMovingPaceSecondsPerMile: run.averageMovingPaceSecondsPerMile,
+    }
+  }
+  const elapsedSeconds = Math.floor(secondsBetween(run.startedAt, now))
+  if (run.trackingMode !== 'treadmill') {
+    return {
+      elapsedSeconds,
+      movingSeconds: run.movingSeconds,
+      currentPaceSecondsPerMile: run.currentPaceSecondsPerMile,
+      averageMovingPaceSecondsPerMile: run.averageMovingPaceSecondsPerMile,
+    }
+  }
+  const pausedSeconds = pauses.reduce(
+    (total, pause) =>
+      total + secondsBetween(pause.startedAt, pause.endedAt ?? now),
+    0,
+  )
+  const movingSeconds = Math.max(0, elapsedSeconds - pausedSeconds)
+  const pace = calculatePaceSecondsPerMile(run.distanceMeters, movingSeconds)
+  return {
+    elapsedSeconds,
+    movingSeconds,
+    currentPaceSecondsPerMile: pace,
+    averageMovingPaceSecondsPerMile: pace,
+  }
 }
 
 export function calculateCurrentPaceSecondsPerMile(

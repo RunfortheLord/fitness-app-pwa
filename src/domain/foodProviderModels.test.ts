@@ -225,6 +225,31 @@ describe('food provider model utilities', () => {
       brandName: 'Costco',
     })
   })
+
+  it.each([
+    'Chick fil a spicy',
+    'Chick-fil-A spicy',
+    'chickfila spicy chicken sandwich',
+  ])('ranks the Chick-fil-A spicy sandwich near the top for %s', (query) => {
+    const ranked = rankFoods(
+      [
+        makeFood('usda:generic-chicken', 'Chicken breast', 'cooked', 100),
+        makeFood('usda:generic-rice', 'White rice', 'cooked', 100),
+        makeFood(
+          'usda:cfa-spicy',
+          'Spicy Chicken Sandwich',
+          'unknown',
+          85,
+          'Chick-fil-A',
+        ),
+      ],
+      query,
+    )
+
+    const topIndex = ranked.findIndex((food) => food.id === 'usda:cfa-spicy')
+    expect(topIndex).toBeGreaterThanOrEqual(0)
+    expect(topIndex).toBeLessThanOrEqual(1)
+  })
 })
 
 function makeFood(

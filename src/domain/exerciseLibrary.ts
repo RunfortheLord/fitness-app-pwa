@@ -6,8 +6,9 @@ import type {
   TrackingMethodId,
 } from '@shared-types/app'
 
-export const BUILT_IN_EXERCISE_SEED_VERSION = 4
+export const BUILT_IN_EXERCISE_SEED_VERSION = 10
 export const BUILT_IN_EXERCISE_CREATED_AT = '2026-06-19T00:00:00.000Z'
+const EXPANDED_EXERCISE_CREATED_AT = '2026-06-26T00:00:00.000Z'
 
 export type BuiltInExerciseSeed = Pick<
   Exercise,
@@ -86,7 +87,7 @@ function exercise(
   }
 }
 
-export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
+export const CORE_BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
   exercise('barbell-bench-press', 'Barbell Bench Press', 'barbell', ['chest'], {
     rest: largeCompound,
     secondary: ['triceps', 'shoulders'],
@@ -772,6 +773,16 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
   exercise('leg-extension', 'Leg Extension', 'machine', ['quadriceps'], {
     rest: isolation,
   }),
+  exercise(
+    'leg-extension-single-leg',
+    'Leg Extension (Single Leg)',
+    'machine',
+    ['quadriceps'],
+    {
+      perSide: true,
+      rest: isolation,
+    },
+  ),
   exercise('seated-leg-curl', 'Seated Leg Curl', 'machine', ['hamstrings'], {
     rest: isolation,
   }),
@@ -1079,36 +1090,43 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
   }),
 
   exercise('push-up', 'Push-Up', 'bodyweight', ['chest'], {
+    increment: 5,
     rest: moderateCompound,
     secondary: ['triceps', 'shoulders'],
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise('decline-push-up', 'Decline Push-Up', 'bodyweight', ['chest'], {
+    increment: 5,
     secondary: ['shoulders', 'triceps'],
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise('incline-push-up', 'Incline Push-Up', 'bodyweight', ['chest'], {
+    increment: 5,
     secondary: ['triceps'],
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise('diamond-push-up', 'Diamond Push-Up', 'bodyweight', ['triceps'], {
+    increment: 5,
     secondary: ['chest', 'shoulders'],
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise('pull-up', 'Pull-Up', 'bodyweight', ['back'], {
+    increment: 5,
     rest: moderateCompound,
     secondary: ['biceps'],
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise('scapular-pull-up', 'Scapular Pull-Up', 'bodyweight', ['back'], {
+    increment: 5,
     rest: isolation,
     secondary: ['shoulders'],
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise('chin-up', 'Chin-Up', 'bodyweight', ['back'], {
+    increment: 5,
     rest: moderateCompound,
     secondary: ['biceps'],
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise(
     'neutral-grip-pull-up',
@@ -1116,9 +1134,10 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
     'bodyweight',
     ['back'],
     {
+      increment: 5,
       rest: moderateCompound,
       secondary: ['biceps'],
-      tracking: 'reps_only',
+      tracking: 'added_weight_reps',
     },
   ),
   exercise('weighted-pull-up', 'Weighted Pull-Up', 'bodyweight', ['back'], {
@@ -1134,8 +1153,9 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
     tracking: 'added_weight_reps',
   }),
   exercise('inverted-row', 'Inverted Row', 'bodyweight', ['back'], {
+    increment: 5,
     secondary: ['biceps'],
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise(
     'bodyweight-squat',
@@ -1143,38 +1163,45 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
     'bodyweight',
     ['quadriceps'],
     {
+      increment: 5,
       secondary: ['glutes'],
-      tracking: 'reps_only',
+      tracking: 'added_weight_reps',
     },
   ),
   exercise('pistol-squat', 'Pistol Squat', 'bodyweight', ['quadriceps'], {
+    increment: 5,
     perSide: true,
     secondary: ['glutes', 'core'],
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise('split-squat', 'Split Squat', 'bodyweight', ['quadriceps'], {
+    increment: 5,
     perSide: true,
     secondary: ['glutes'],
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise('reverse-lunge', 'Reverse Lunge', 'bodyweight', ['glutes'], {
+    increment: 5,
     perSide: true,
     secondary: ['quadriceps', 'hamstrings'],
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise('walking-lunge', 'Walking Lunge', 'bodyweight', ['quadriceps'], {
+    increment: 5,
     perSide: true,
     secondary: ['glutes', 'hamstrings'],
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise('step-up', 'Step-Up', 'bodyweight', ['quadriceps'], {
+    increment: 5,
     perSide: true,
     secondary: ['glutes'],
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise('glute-bridge', 'Glute Bridge', 'bodyweight', ['glutes'], {
+    increment: 5,
     secondary: ['hamstrings'],
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise(
     'single-leg-glute-bridge',
@@ -1182,14 +1209,16 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
     'bodyweight',
     ['glutes'],
     {
+      increment: 5,
       perSide: true,
       secondary: ['hamstrings'],
-      tracking: 'reps_only',
+      tracking: 'added_weight_reps',
     },
   ),
   exercise('hip-thrust', 'Hip Thrust', 'bodyweight', ['glutes'], {
+    increment: 5,
     secondary: ['hamstrings'],
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise(
     'single-leg-calf-raise',
@@ -1197,9 +1226,10 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
     'bodyweight',
     ['calves'],
     {
+      increment: 5,
       perSide: true,
       rest: isolation,
-      tracking: 'reps_only',
+      tracking: 'added_weight_reps',
     },
   ),
   exercise(
@@ -1208,14 +1238,16 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
     'bodyweight',
     ['calves'],
     {
+      increment: 5,
       rest: isolation,
-      tracking: 'reps_only',
+      tracking: 'added_weight_reps',
     },
   ),
   exercise('dip', 'Dip', 'bodyweight', ['triceps'], {
+    increment: 5,
     rest: moderateCompound,
     secondary: ['chest', 'shoulders'],
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise('weighted-dip', 'Weighted Dip', 'bodyweight', ['triceps'], {
     increment: 5,
@@ -1224,8 +1256,9 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
     tracking: 'added_weight_reps',
   }),
   exercise('bench-dip', 'Bench Dip', 'bodyweight', ['triceps'], {
+    increment: 5,
     secondary: ['chest', 'shoulders'],
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise('plank', 'Plank', 'bodyweight', ['core'], {
     increment: null,
@@ -1252,26 +1285,35 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
     tracking: 'reps_only',
   }),
   exercise('hanging-knee-raise', 'Hanging Knee Raise', 'bodyweight', ['core'], {
+    increment: 5,
     secondary: ['forearms'],
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise('hanging-leg-raise', 'Hanging Leg Raise', 'bodyweight', ['core'], {
+    increment: 5,
     secondary: ['forearms'],
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise('sit-up', 'Sit-Up', 'bodyweight', ['core'], {
+    increment: 5,
     rest: shortIsolation,
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise('crunch', 'Crunch', 'bodyweight', ['core'], {
+    increment: 5,
     rest: shortIsolation,
-    tracking: 'reps_only',
+    tracking: 'added_weight_reps',
   }),
   exercise('reverse-crunch', 'Reverse Crunch', 'bodyweight', ['core'], {
     rest: shortIsolation,
     tracking: 'reps_only',
   }),
   exercise('back-extension', 'Back Extension', 'bodyweight', ['back'], {
+    rest: isolation,
+    secondary: ['glutes', 'hamstrings'],
+    tracking: 'added_weight_reps',
+  }),
+  exercise('dragon-flag', 'Dragon Flag', 'bodyweight', ['core'], {
     rest: isolation,
     secondary: ['glutes', 'hamstrings'],
     tracking: 'reps_only',
@@ -1282,13 +1324,15 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
     'bodyweight',
     ['hamstrings'],
     {
+      increment: 5,
       rest: moderateCompound,
       secondary: ['glutes'],
-      tracking: 'reps_only',
+      tracking: 'added_weight_reps',
     },
   ),
   exercise('sissy-squat', 'Sissy Squat', 'bodyweight', ['quadriceps'], {
-    tracking: 'reps_only',
+    increment: 5,
+    tracking: 'added_weight_reps',
   }),
   exercise('neck-flexion', 'Neck Flexion', 'bodyweight', ['traps'], {
     rest: shortIsolation,
@@ -1690,7 +1734,8 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
     },
   ),
   exercise('overhand-pull-up', 'Overhand Pull-Up', 'bodyweight', ['back'], {
-    tracking: 'reps_only',
+    increment: 5,
+    tracking: 'added_weight_reps',
     secondary: ['biceps'],
   }),
   exercise(
@@ -1709,13 +1754,15 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
     'bodyweight',
     ['quadriceps'],
     {
+      increment: 5,
       perSide: true,
-      tracking: 'reps_only',
+      tracking: 'added_weight_reps',
       secondary: ['glutes'],
     },
   ),
   exercise('glute-ham-raise', 'Glute Ham Raise', 'bodyweight', ['hamstrings'], {
-    tracking: 'reps_only',
+    increment: 5,
+    tracking: 'added_weight_reps',
     secondary: ['glutes'],
   }),
   exercise('hollow-body-hold', 'Hollow Body Hold', 'bodyweight', ['core'], {
@@ -1843,7 +1890,6 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
     },
   ),
   exercise('medicine-ball-slam', 'Medicine Ball Slam', 'dumbbell', ['core'], {
-    tracking: 'reps_only',
     secondary: ['shoulders'],
   }),
   exercise('outdoor-run', 'Outdoor Run', 'bodyweight', ['quadriceps'], {
@@ -2026,8 +2072,8 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
       rest: isolation,
     },
   ),
-  exercise('prone-y-raise', 'Prone Y-Raise', 'bodyweight', ['shoulders'], {
-    tracking: 'reps_only',
+  exercise('prone-y-raise', 'Prone Y-Raise', 'dumbbell', ['shoulders'], {
+    rest: isolation,
     secondary: ['traps'],
   }),
   exercise(
@@ -2049,6 +2095,183 @@ export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
       tracking: 'reps_only',
     },
   ),
+  // Added for the built-in program library (seed version 5).
+  exercise(
+    'barbell-back-squat',
+    'Barbell Back Squat',
+    'barbell',
+    ['quadriceps'],
+    {
+      rest: largeCompound,
+      secondary: ['glutes', 'hamstrings', 'core'],
+    },
+  ),
+  exercise(
+    'paused-barbell-back-squat',
+    'Paused Barbell Back Squat',
+    'barbell',
+    ['quadriceps'],
+    {
+      rest: largeCompound,
+      secondary: ['glutes', 'hamstrings', 'core'],
+    },
+  ),
+  exercise(
+    'paused-barbell-bench-press',
+    'Paused Barbell Bench Press',
+    'barbell',
+    ['chest'],
+    {
+      rest: largeCompound,
+      secondary: ['triceps', 'shoulders'],
+    },
+  ),
+  exercise(
+    'low-incline-barbell-bench-press',
+    'Low-Incline Barbell Bench Press',
+    'barbell',
+    ['chest'],
+    {
+      rest: largeCompound,
+      secondary: ['shoulders', 'triceps'],
+    },
+  ),
+  exercise(
+    'low-incline-dumbbell-bench-press',
+    'Low-Incline Dumbbell Bench Press',
+    'dumbbell',
+    ['chest'],
+    {
+      rest: moderateCompound,
+      secondary: ['shoulders', 'triceps'],
+    },
+  ),
+  // Added for seed version 6: a weighted-repetition core exercise.
+  exercise('ghd-sit-up', 'GHD Sit-Up', 'bodyweight', ['core'], {
+    increment: 5,
+    rest: isolation,
+    tracking: 'weight_reps',
+  }),
+  exercise('roman-chair-sit-up', 'Roman Chair Sit-Up', 'bodyweight', ['core'], {
+    increment: 5,
+    rest: isolation,
+    tracking: 'added_weight_reps',
+  }),
+  exercise(
+    'wide-grip-lat-pulldown',
+    'Wide-Grip Lat Pulldown',
+    'machine',
+    ['back'],
+    {
+      rest: moderateCompound,
+      secondary: ['biceps'],
+    },
+  ),
+  exercise('cable-y-raise', 'Cable Y-Raise', 'cable', ['shoulders'], {
+    rest: isolation,
+    secondary: ['traps'],
+  }),
+]
+
+type ExerciseVariant = {
+  idPrefix: string
+  namePrefix: string
+  include: (seed: BuiltInExerciseSeed) => boolean
+}
+
+const nonVariantMovementPattern =
+  /\b(?:battle|bike|broad|burpee|carry|clean|climber|cycling|dead bug|depth|elliptical|erg|grip|gripper|hang|hill|hold|isometric|jump|medicine ball|mountain climber|outdoor|pogo|rope|run|shuttle|slam|sled|snatch|sprint|stationary|throw|towel|turkish|vertical|walk)\b/iu
+const existingVariantPattern =
+  /^(?:1\.5-rep|3-second eccentric|paused|tempo)\b/iu
+const PAUSED_VARIANT_BASE_IDS = new Set([
+  'builtin:barbell-overhead-press',
+  'builtin:barbell-row',
+  'builtin:chin-up',
+  'builtin:conventional-deadlift',
+  'builtin:dumbbell-bench-press',
+  'builtin:dumbbell-shoulder-press',
+  'builtin:front-squat',
+  'builtin:hack-squat',
+  'builtin:leg-press',
+  'builtin:pendlay-row',
+  'builtin:pull-up',
+  'builtin:sumo-deadlift',
+])
+
+function supportsControlledRepVariant(seed: BuiltInExerciseSeed) {
+  return (
+    [
+      'weight_reps',
+      'reps_only',
+      'assisted_weight_reps',
+      'added_weight_reps',
+    ].includes(seed.trackingMethodId) &&
+    !nonVariantMovementPattern.test(seed.name) &&
+    !existingVariantPattern.test(seed.name)
+  )
+}
+
+const EXERCISE_VARIANTS: ExerciseVariant[] = [
+  {
+    idPrefix: 'tempo',
+    namePrefix: 'Tempo',
+    include: supportsControlledRepVariant,
+  },
+  {
+    idPrefix: 'three-second-eccentric',
+    namePrefix: '3-Second Eccentric',
+    include: supportsControlledRepVariant,
+  },
+  {
+    idPrefix: 'paused',
+    namePrefix: 'Paused',
+    include: (seed) => PAUSED_VARIANT_BASE_IDS.has(seed.id),
+  },
+  {
+    idPrefix: 'one-and-a-half-rep',
+    namePrefix: '1.5-Rep',
+    include: (seed) =>
+      supportsControlledRepVariant(seed) &&
+      seed.defaultRestSeconds <= moderateCompound,
+  },
+]
+
+function buildExerciseVariants(
+  exercises: BuiltInExerciseSeed[],
+): BuiltInExerciseSeed[] {
+  const names = new Set(
+    exercises.map((seed) => normalizeBuiltInExerciseName(seed.name)),
+  )
+  const variants: BuiltInExerciseSeed[] = []
+
+  for (const variant of EXERCISE_VARIANTS) {
+    for (const seed of exercises) {
+      if (!variant.include(seed)) {
+        continue
+      }
+      const name = `${variant.namePrefix} ${seed.name}`
+      const normalizedName = normalizeBuiltInExerciseName(name)
+      if (names.has(normalizedName)) {
+        continue
+      }
+      names.add(normalizedName)
+      variants.push({
+        ...seed,
+        id: `builtin:${variant.idPrefix}-${seed.id.slice('builtin:'.length)}`,
+        name,
+        seedDataVersion: BUILT_IN_EXERCISE_SEED_VERSION,
+        createdAt: EXPANDED_EXERCISE_CREATED_AT,
+        updatedAt: EXPANDED_EXERCISE_CREATED_AT,
+      })
+    }
+  }
+
+  return variants
+}
+
+export const BUILT_IN_EXERCISES: BuiltInExerciseSeed[] = [
+  ...CORE_BUILT_IN_EXERCISES,
+  ...buildExerciseVariants(CORE_BUILT_IN_EXERCISES),
 ]
 
 export function validateBuiltInExercises(

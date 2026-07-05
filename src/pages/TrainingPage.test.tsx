@@ -8,7 +8,7 @@ import {
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { App } from '@app/App'
 import { db } from '@db/database'
@@ -30,6 +30,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   cleanup()
+  vi.restoreAllMocks()
   await db.delete()
 })
 
@@ -203,11 +204,16 @@ describe('TrainingPage', () => {
     await seedExercise(db)
     renderTraining()
 
-    await screen.findByText('No inactive programs')
+    // The main library shows only user-owned programs (built-ins live under
+    // Browse programs), so wait for the create affordance to confirm load.
+    await screen.findAllByRole('button', { name: 'Create program' })
     await user.click(
       screen.getAllByRole('button', { name: 'Create program' })[0],
     )
-    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'PPL')
+    await user.type(
+      screen.getByRole('textbox', { name: 'Program name' }),
+      'PPL',
+    )
     await user.click(screen.getByRole('button', { name: 'Save program' }))
 
     expect(
@@ -272,9 +278,17 @@ describe('TrainingPage', () => {
     )
     await user.click(screen.getByRole('button', { name: 'Save prescription' }))
     await waitFor(async () => {
-      await expect(db.templateWorkoutExercises.count()).resolves.toBe(1)
+      // Ignore the seeded built-in library; only the created program's single
+      // prescription should be user-owned.
+      const all = await db.templateWorkoutExercises.toArray()
+      const userOwned = all.filter(
+        (entry) => !entry.templateId.startsWith('builtin-program:'),
+      )
+      expect(userOwned).toHaveLength(1)
     })
-    await user.click(within(builder).getByRole('button', { name: /Close/ }))
+    await user.click(
+      within(builder).getByRole('button', { name: /Back from edit template/i }),
+    )
 
     await user.click(screen.getByRole('button', { name: 'Activate PPL' }))
     await user.click(
@@ -288,13 +302,128 @@ describe('TrainingPage', () => {
       expect(activeCycle?.name).toBe('PPL')
     })
     await user.click(
-      await screen.findByRole('button', { name: /Pull/ }, { timeout: 5_000 }),
+      await screen.findByRole('button', { name: /^Pull/ }, { timeout: 5_000 }),
     )
     expect(
       await screen.findByRole('dialog', { name: 'Pull' }),
     ).toBeInTheDocument()
     expect(screen.getByText(/stays on this day/)).toBeInTheDocument()
   }, 15_000)
+
+  it('saves prescription rest edits to the selected exercise default', async () => {
+    const user = userEvent.setup()
+    const exercise = await seedExercise(db)
+    renderTraining()
+
+    await screen.findAllByRole('button', { name: 'Create program' })
+    await user.click(
+      screen.getAllByRole('button', { name: 'Create program' })[0],
+    )
+    await user.type(
+      screen.getByRole('textbox', { name: 'Program name' }),
+      'Rest defaults',
+    )
+    await user.click(screen.getByRole('button', { name: 'Save program' }))
+
+    const builder = await screen.findByRole('dialog', { name: 'Edit template' })
+    await user.type(
+      await within(builder).findByRole('textbox', { name: 'Add workout day' }),
+      'Day A',
+    )
+    await user.click(within(builder).getByRole('button', { name: 'Add day' }))
+    await user.click(
+      await within(builder).findByRole('button', { name: 'Add exercise' }),
+    )
+    const search = await within(builder).findByRole('searchbox', {
+      name: 'Search exercises',
+    })
+    await user.type(search, 'bench')
+    await user.click(
+      await within(builder).findByRole('button', { name: /Bench press/ }),
+    )
+    await user.clear(
+      within(builder).getByRole('textbox', { name: 'Rest minutes' }),
+    )
+    await user.type(
+      within(builder).getByRole('textbox', { name: 'Rest minutes' }),
+      '1',
+    )
+    await user.clear(
+      within(builder).getByRole('textbox', { name: 'Rest seconds' }),
+    )
+    await user.type(
+      within(builder).getByRole('textbox', { name: 'Rest seconds' }),
+      '45',
+    )
+    await user.type(
+      within(builder).getByRole('textbox', { name: 'Min reps' }),
+      '5',
+    )
+    await user.type(
+      within(builder).getByRole('textbox', { name: 'Max reps' }),
+      '8',
+    )
+    await user.click(
+      within(builder).getByRole('button', { name: 'Save prescription' }),
+    )
+
+    await waitFor(() =>
+      expect(
+        within(builder).queryByRole('searchbox', {
+          name: 'Search exercises',
+        }),
+      ).not.toBeInTheDocument(),
+    )
+    await waitFor(async () => {
+      await expect(db.exercises.get(exercise.id)).resolves.toMatchObject({
+        defaultRestSeconds: 105,
+      })
+    })
+    const prescription = (
+      await db.templateWorkoutExercises
+        .where({ exerciseId: exercise.id })
+        .toArray()
+    ).find((entry) => !entry.templateId.startsWith('builtin-program:'))
+    expect(prescription).toMatchObject({
+      restSecondsOverride: null,
+      exerciseSnapshot: { defaultRestSeconds: 105 },
+    })
+  }, 15_000)
+
+  it('renames the selected workout day inline by editing its name field', async () => {
+    const user = userEvent.setup()
+    renderTraining()
+
+    await screen.findAllByRole('button', { name: 'Create program' })
+    await user.click(
+      screen.getAllByRole('button', { name: 'Create program' })[0],
+    )
+    await user.type(
+      screen.getByRole('textbox', { name: 'Program name' }),
+      'Split',
+    )
+    await user.click(screen.getByRole('button', { name: 'Save program' }))
+
+    const builder = await screen.findByRole('dialog', { name: 'Edit template' })
+    await user.type(
+      await within(builder).findByRole('textbox', { name: 'Add workout day' }),
+      'Push',
+    )
+    await user.click(within(builder).getByRole('button', { name: 'Add day' }))
+
+    const dayNameField = await within(builder).findByRole('textbox', {
+      name: 'Workout day name',
+    })
+    expect(dayNameField).toHaveValue('Push')
+    await user.clear(dayNameField)
+    await user.type(dayNameField, 'Pull')
+    await user.tab()
+
+    await waitFor(() => {
+      expect(within(builder).getAllByText('Pull').length).toBeGreaterThan(0)
+      expect(within(builder).queryByText('Push')).not.toBeInTheDocument()
+    })
+  })
 
   it('searches built-in and visible custom exercises while excluding hidden custom exercises', async () => {
     const user = userEvent.setup()
@@ -308,9 +437,12 @@ describe('TrainingPage', () => {
     renderTraining()
 
     await user.click(
-      screen.getAllByRole('button', { name: 'Create program' })[0],
+      (await screen.findAllByRole('button', { name: 'Create program' }))[0],
     )
-    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Search')
+    await user.type(
+      screen.getByRole('textbox', { name: 'Program name' }),
+      'Search',
+    )
     await user.click(screen.getByRole('button', { name: 'Save program' }))
     const builder = await screen.findByRole('dialog', { name: 'Edit template' })
     await user.type(
@@ -350,7 +482,7 @@ describe('TrainingPage', () => {
 
     await user.click(
       within(await screen.findByLabelText('Workout days')).getByRole('button', {
-        name: /Upper/,
+        name: /^Upper/,
       }),
     )
     await user.click(
@@ -361,8 +493,62 @@ describe('TrainingPage', () => {
     )
 
     expect(
-      await screen.findByText('Live workout', undefined, { timeout: 5_000 }),
+      await screen.findByRole('button', { name: 'Finish' }, { timeout: 5_000 }),
     ).toBeInTheDocument()
+    const workoutHeader =
+      firstRender.container.querySelector('.live-workout-hero')
+    const exerciseWorkspace = firstRender.container.querySelector(
+      '.exercise-workspace',
+    )
+    expect(workoutHeader).not.toBeNull()
+    expect(exerciseWorkspace).not.toBeNull()
+    expect(
+      within(workoutHeader as HTMLElement).getByRole('button', {
+        name: 'Finish',
+      }),
+    ).toBeInTheDocument()
+
+    const addSetButton = within(exerciseWorkspace as HTMLElement).getByRole(
+      'button',
+      { name: 'Add Set' },
+    )
+    const exerciseActions = within(
+      exerciseWorkspace as HTMLElement,
+    ).getByLabelText('Exercise actions')
+    expect(
+      addSetButton.compareDocumentPosition(exerciseActions) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      within(exerciseActions).getByRole('button', { name: 'Add Exercise' }),
+    ).toBeInTheDocument()
+    expect(
+      within(exerciseActions).getByRole('button', {
+        name: 'Replace Exercise',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      within(exerciseActions).getByRole('button', {
+        name: 'Remove Exercise',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      within(exerciseActions).getByRole('button', { name: 'Skip Exercise' }),
+    ).toBeInTheDocument()
+    expect(
+      within(exerciseWorkspace as HTMLElement).getByLabelText('Exercise notes'),
+    ).toHaveTextContent('No exercise notes.')
+
+    const initialWeight = screen.getByRole('textbox', {
+      name: 'Set 1 Weight',
+    })
+    expect(initialWeight).toHaveAttribute('aria-invalid', 'false')
+    await user.click(screen.getByRole('button', { name: 'Complete set 1' }))
+    expect(
+      screen.getByText('Enter the required set values before completing it.'),
+    ).toBeInTheDocument()
+    expect(initialWeight).toHaveAttribute('aria-invalid', 'true')
+
     await user.clear(screen.getByRole('textbox', { name: 'Set 1 Weight' }))
     await user.type(
       screen.getByRole('textbox', { name: 'Set 1 Weight' }),
@@ -374,7 +560,18 @@ describe('TrainingPage', () => {
     await user.tab()
     await user.click(screen.getByRole('button', { name: 'Complete set 1' }))
 
-    expect(await screen.findByText('Rest timer')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Rest timer')).toBeInTheDocument()
+    expect(
+      firstRender.container.querySelector('.rest-timer-card'),
+    ).not.toBeInTheDocument()
+    expect(
+      firstRender.container.querySelector(
+        '.exercise-workspace .rest-timer-toolbar',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      firstRender.container.querySelector('.rest-timer-panel'),
+    ).not.toBeInTheDocument()
     firstRender.unmount()
     renderTraining(['/workout'])
 
@@ -382,6 +579,275 @@ describe('TrainingPage', () => {
       expect(screen.getAllByDisplayValue('185').length).toBeGreaterThan(0),
     )
     expect(screen.getAllByDisplayValue('8').length).toBeGreaterThan(0)
+  })
+
+  it('starts live rest timers from the exercise default instead of a global setting', async () => {
+    const user = userEvent.setup()
+    const exerciseRepository = createExerciseRepository(db)
+    const exercise = await exerciseRepository.createExercise({
+      name: 'Rested press',
+      defaultRestSeconds: 60,
+      trackingMethodId: 'weight_reps',
+      notes: '',
+    })
+    const program = await createProgramRepository(db).createProgramTemplate({
+      name: 'Rest split',
+      days: [
+        {
+          name: 'Day',
+          exercises: [
+            {
+              exerciseId: exercise.id,
+              targetSetCount: 2,
+              targetRepsMin: 5,
+              targetRepsMax: 8,
+              restSecondsOverride: null,
+            },
+          ],
+        },
+      ],
+    })
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    await db.userSettings.update('settings', { defaultRestSeconds: 300 })
+    await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    renderTraining(['/workout'])
+
+    await user.type(
+      await screen.findByRole('textbox', { name: 'Set 1 Weight' }),
+      '95',
+    )
+    await user.type(screen.getByRole('textbox', { name: 'Set 1 Reps' }), '8')
+    await user.click(screen.getByRole('button', { name: 'Complete set 1' }))
+
+    await waitFor(async () => {
+      const workout = await db.workouts.toCollection().first()
+      expect(workout?.activeRestTimer?.durationSeconds).toBe(60)
+    })
+  })
+
+  it('waits for live exercise notes to save before finishing the workout', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await workoutRepository.updateWorkoutSet(started.sets[0].id, {
+      metricValues: { weight: 185, reps: 8 },
+      completed: true,
+    })
+
+    const updateNotes =
+      workoutRepository.updateWorkoutExerciseNotes.bind(workoutRepository)
+    const releaseSave = { current: null as (() => void) | null }
+    let markSaveStarted: (() => void) | null = null
+    const saveStarted = new Promise<void>((resolve) => {
+      markSaveStarted = resolve
+    })
+    vi.spyOn(
+      workoutRepository,
+      'updateWorkoutExerciseNotes',
+    ).mockImplementation(
+      (workoutExerciseId, notes) =>
+        new Promise<void>((resolve, reject) => {
+          markSaveStarted?.()
+          releaseSave.current = () => {
+            void updateNotes(workoutExerciseId, notes).then(
+              () => resolve(),
+              reject,
+            )
+          }
+        }),
+    )
+    const completeWorkout = vi.spyOn(workoutRepository, 'completeWorkout')
+
+    renderTraining(['/workout'])
+
+    const notes = await screen.findByLabelText('Exercise notes')
+    await user.click(
+      within(notes).getByRole('button', { name: 'Edit exercise notes' }),
+    )
+    const notesInput = within(notes).getByRole('textbox', {
+      name: 'Exercise notes',
+    })
+    await user.clear(notesInput)
+    await user.type(notesInput, 'Pause every first rep.')
+    await user.click(within(notes).getByRole('button', { name: 'Save notes' }))
+    await saveStarted
+
+    await user.click(screen.getByRole('button', { name: 'Finish' }))
+    expect(
+      within(screen.getByRole('dialog', { name: 'Finish workout?' })).getByRole(
+        'checkbox',
+        {
+          name: 'Save all live workout changes to my program',
+        },
+      ),
+    ).not.toBeChecked()
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Finish workout?' })).getByRole(
+        'button',
+        { name: 'Finish Workout' },
+      ),
+    )
+    expect(completeWorkout).not.toHaveBeenCalled()
+
+    expect(releaseSave.current).not.toBeNull()
+    releaseSave.current?.()
+
+    expect(await screen.findByText('Date completed')).toBeInTheDocument()
+    await expect(
+      db.workoutHistoryExercises.get(started.exercises[0].id),
+    ).resolves.toMatchObject({
+      notes: 'Pause every first rep.',
+    })
+  })
+
+  it('does not save live workout changes to the program by default', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await workoutRepository.updateWorkoutSet(started.sets[0].id, {
+      completed: true,
+    })
+    await workoutRepository.addSet(started.exercises[0].id)
+    renderTraining(['/workout'])
+
+    await user.click(await screen.findByRole('button', { name: 'Finish' }))
+    const finishDialog = screen.getByRole('dialog', {
+      name: 'Finish workout?',
+    })
+    expect(
+      within(finishDialog).getByRole('checkbox', {
+        name: 'Save all live workout changes to my program',
+      }),
+    ).not.toBeChecked()
+    await user.click(
+      within(finishDialog).getByRole('button', { name: 'Finish Workout' }),
+    )
+
+    expect(await screen.findByText('Date completed')).toBeInTheDocument()
+    await expect(
+      db.activeCycleWorkoutExercises.get(active.exercises[0].id),
+    ).resolves.toMatchObject({ targetSetCount: 2 })
+    await expect(
+      db.templateWorkoutExercises.get(program.exercises[0].id),
+    ).resolves.toMatchObject({ targetSetCount: 2 })
+    await expect(db.detectedWorkoutChanges.toArray()).resolves.toMatchObject([
+      {
+        type: 'set_added',
+        status: 'rejected',
+        selectedDestination: 'neither',
+      },
+    ])
+  })
+
+  it('saves all live workout changes when selected at finish', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await workoutRepository.updateWorkoutSet(started.sets[0].id, {
+      completed: true,
+    })
+    await workoutRepository.addSet(started.exercises[0].id)
+    renderTraining(['/workout'])
+
+    await user.click(await screen.findByRole('button', { name: 'Finish' }))
+    const finishDialog = screen.getByRole('dialog', {
+      name: 'Finish workout?',
+    })
+    await user.click(
+      within(finishDialog).getByRole('checkbox', {
+        name: 'Save all live workout changes to my program',
+      }),
+    )
+    await user.click(
+      within(finishDialog).getByRole('button', { name: 'Finish Workout' }),
+    )
+
+    expect(await screen.findByText('Date completed')).toBeInTheDocument()
+    await expect(
+      db.activeCycleWorkoutExercises.get(active.exercises[0].id),
+    ).resolves.toMatchObject({ targetSetCount: 3 })
+    await expect(
+      db.templateWorkoutExercises.get(program.exercises[0].id),
+    ).resolves.toMatchObject({ targetSetCount: 3 })
+    await expect(db.detectedWorkoutChanges.toArray()).resolves.toMatchObject([
+      {
+        type: 'set_added',
+        status: 'applied',
+        selectedDestination: 'both',
+      },
+    ])
+  })
+
+  it('keeps completed history when saving program changes fails', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await workoutRepository.updateWorkoutSet(started.sets[0].id, {
+      completed: true,
+    })
+    await workoutRepository.addSet(started.exercises[0].id)
+    vi.spyOn(workoutRepository, 'applyDetectedChanges').mockRejectedValue(
+      new Error('Program update failed.'),
+    )
+    renderTraining(['/workout'])
+
+    await user.click(await screen.findByRole('button', { name: 'Finish' }))
+    const finishDialog = screen.getByRole('dialog', {
+      name: 'Finish workout?',
+    })
+    await user.click(
+      within(finishDialog).getByRole('checkbox', {
+        name: 'Save all live workout changes to my program',
+      }),
+    )
+    await user.click(
+      within(finishDialog).getByRole('button', { name: 'Finish Workout' }),
+    )
+
+    expect(
+      await screen.findByText(
+        'Workout saved, but live workout changes could not be saved to your program.',
+      ),
+    ).toBeInTheDocument()
+    await expect(db.workoutHistoryEntries.toArray()).resolves.toHaveLength(1)
+    await expect(db.workouts.toArray()).resolves.toEqual([])
+    await expect(
+      db.activeCycleWorkoutExercises.get(active.exercises[0].id),
+    ).resolves.toMatchObject({ targetSetCount: 2 })
   })
 
   it('shows start workout controls beside active cycle days and at the top of day detail', async () => {
@@ -402,7 +868,7 @@ describe('TrainingPage', () => {
     ).toBeInTheDocument()
 
     await user.click(
-      within(upperDay as HTMLElement).getByRole('button', { name: /Upper/ }),
+      within(upperDay as HTMLElement).getByRole('button', { name: /^Upper/ }),
     )
     const dialog = await screen.findByRole('dialog', { name: 'Upper' })
     const startButton = within(dialog).getByRole('button', {
@@ -415,6 +881,136 @@ describe('TrainingPage', () => {
     ).toBeTruthy()
   })
 
+  it('shows the current program week on the active cycle card', async () => {
+    const program = await seedProgram(db)
+    await createProgramRepository(db).activateTemplate(program.template.id)
+    renderTraining()
+
+    // A freshly activated cycle is in its first week.
+    expect(await screen.findByText('Week 1')).toBeInTheDocument()
+  })
+
+  it('checks off and unchecks a workout day for the current week with no confirmation', async () => {
+    const user = userEvent.setup()
+    const program = await seedTwoDayProgram(db)
+    await createProgramRepository(db).activateTemplate(program.template.id)
+    renderTraining()
+
+    const checkButton = await screen.findByRole('button', {
+      name: 'Mark Upper done this week',
+    })
+    await user.click(checkButton)
+
+    const checked = await screen.findByRole('button', {
+      name: 'Mark Upper not done this week',
+    })
+    expect(checked).toHaveAttribute('aria-pressed', 'true')
+    // Checked-off days darken until the whole week is done.
+    expect(checked.closest('.program-day-card')).toHaveClass('is-done')
+
+    // Unchecking is also a single tap (no "are you sure" dialog).
+    await user.click(checked)
+    expect(
+      await screen.findByRole('button', {
+        name: 'Mark Upper done this week',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('dialog', { name: /sure/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('completes the week and resets the check-offs once every day is checked', async () => {
+    const user = userEvent.setup()
+    const program = await seedTwoDayProgram(db)
+    await createProgramRepository(db).activateTemplate(program.template.id)
+    renderTraining()
+
+    expect(await screen.findByText('Week 1')).toBeInTheDocument()
+    await user.click(
+      await screen.findByRole('button', { name: 'Mark Upper done this week' }),
+    )
+    await user.click(
+      await screen.findByRole('button', { name: 'Mark Lower done this week' }),
+    )
+
+    // Checking the final day rolls the cycle into week 2 with a clean slate.
+    expect(await screen.findByText('Week 2')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: 'Mark Upper done this week' }),
+    ).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: 'Mark Lower done this week' }),
+    ).toBeInTheDocument()
+  })
+
+  it('reorders exercises during a live workout with the move buttons', async () => {
+    const user = userEvent.setup()
+    const exerciseRepository = createExerciseRepository(db)
+    const press = await exerciseRepository.createExercise({
+      name: 'Order press',
+      defaultRestSeconds: 60,
+      trackingMethodId: 'weight_reps',
+      notes: '',
+    })
+    const row = await exerciseRepository.createExercise({
+      name: 'Order row',
+      defaultRestSeconds: 60,
+      trackingMethodId: 'weight_reps',
+      notes: '',
+    })
+    const template = {
+      targetSetCount: 1,
+      targetRepsMin: 6,
+      targetRepsMax: 8,
+      targetRir: 1,
+      restSecondsOverride: null,
+    }
+    const program = await createProgramRepository(db).createProgramTemplate({
+      name: 'Order split',
+      days: [
+        {
+          name: 'Day',
+          exercises: [
+            { exerciseId: press.id, ...template },
+            { exerciseId: row.id, ...template },
+          ],
+        },
+      ],
+    })
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    renderTraining(['/workout'])
+
+    expect(await screen.findByText('Exercise 1 of 2')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Order press' }),
+    ).toBeInTheDocument()
+    // The first exercise cannot move further forward.
+    expect(screen.getByRole('button', { name: 'Move Earlier' })).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: 'Move Later' }))
+
+    // The moved exercise stays active in its new slot.
+    expect(await screen.findByText('Exercise 2 of 2')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Order press' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Move Later' })).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: 'Previous' }))
+    expect(await screen.findByText('Exercise 1 of 2')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Order row' }),
+    ).toBeInTheDocument()
+  })
+
   it('shows one live exercise workspace and keeps the active exercise stable after edits, swipes, and reload', async () => {
     const user = userEvent.setup()
     const exerciseRepository = createExerciseRepository(db)
@@ -425,9 +1021,9 @@ describe('TrainingPage', () => {
       notes: '',
     })
     const row = await exerciseRepository.createExercise({
-      name: 'Live row',
+      name: 'Live pull-up',
       defaultRestSeconds: 60,
-      trackingMethodId: 'reps_only',
+      trackingMethodId: 'added_weight_reps',
       notes: '',
     })
     const program = await createProgramRepository(db).createProgramTemplate({
@@ -443,14 +1039,16 @@ describe('TrainingPage', () => {
               targetRepsMax: 8,
               targetRir: 1,
               restSecondsOverride: null,
+              notes: 'Brace hard and pause every first rep.',
             },
             {
               exerciseId: row.id,
-              targetSetCount: 1,
+              targetSetCount: 2,
               targetRepsMin: 10,
               targetRepsMax: 12,
-              targetRir: null,
+              targetRir: 1,
               restSecondsOverride: null,
+              notes: 'Keep the chest tall and reset between reps.',
             },
           ],
         },
@@ -475,7 +1073,7 @@ describe('TrainingPage', () => {
       screen.getByRole('heading', { name: 'Live press' }),
     ).toBeInTheDocument()
     expect(
-      screen.queryByRole('heading', { name: 'Live row' }),
+      screen.queryByRole('heading', { name: 'Live pull-up' }),
     ).not.toBeInTheDocument()
     expect(
       screen.getByRole('textbox', { name: 'Set 2 final RIR' }),
@@ -483,11 +1081,43 @@ describe('TrainingPage', () => {
     expect(
       screen.queryByRole('textbox', { name: 'Set 1 final RIR' }),
     ).not.toBeInTheDocument()
+    const firstWorkspace = rendered.container.querySelector(
+      '.exercise-workspace',
+    )
+    expect(firstWorkspace).toBeTruthy()
+    const firstActions = within(firstWorkspace as HTMLElement).getByLabelText(
+      'Exercise actions',
+    )
+    const firstNotes = within(firstWorkspace as HTMLElement).getByLabelText(
+      'Exercise notes',
+    )
+    expect(
+      within(firstNotes).getByText('Brace hard and pause every first rep.'),
+    ).toBeInTheDocument()
+    expect(
+      firstActions.compareDocumentPosition(firstNotes) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
 
     await user.click(screen.getByRole('button', { name: 'Next' }))
     expect(await screen.findByText('Exercise 2 of 2')).toBeInTheDocument()
     expect(
-      screen.getByRole('heading', { name: 'Live row' }),
+      screen.getByRole('heading', { name: 'Live pull-up' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('textbox', { name: 'Set 1 Added' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('textbox', { name: 'Set 2 final RIR' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('textbox', { name: 'Set 1 final RIR' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('Brace hard and pause every first rep.'),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByText('Keep the chest tall and reset between reps.'),
     ).toBeInTheDocument()
     await user.clear(screen.getByRole('textbox', { name: 'Set 1 Reps' }))
     await user.type(screen.getByRole('textbox', { name: 'Set 1 Reps' }), '12')
@@ -504,7 +1134,7 @@ describe('TrainingPage', () => {
     rendered.unmount()
     renderTraining(['/workout'])
     expect(await screen.findByText('Exercise 2 of 2')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('12')).toBeInTheDocument()
+    expect(screen.getAllByDisplayValue('12').length).toBeGreaterThan(0)
   })
 
   it('permanently deletes inactive templates from the library after two confirmations', async () => {
@@ -531,7 +1161,131 @@ describe('TrainingPage', () => {
     await waitFor(() =>
       expect(screen.queryByText('Upper Lower')).not.toBeInTheDocument(),
     )
-    expect(screen.getByText('No inactive programs')).toBeInTheDocument()
+    // The user template is gone; the main library shows its empty state.
+    expect(screen.getByText('No saved programs')).toBeInTheDocument()
+  })
+
+  it('adds a built-in program from Browse programs into the user library', async () => {
+    const user = userEvent.setup()
+    renderTraining()
+
+    await screen.findByText('No saved programs')
+
+    await user.click(screen.getByRole('button', { name: 'Browse programs' }))
+    expect(
+      await screen.findByText('Beginner Full Body A/B'),
+    ).toBeInTheDocument()
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Add Beginner Full Body A/B to library',
+      }),
+    )
+    expect(
+      await screen.findByText('Program added to your library.'),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Back to training' }))
+    expect(
+      await screen.findByText('Beginner Full Body A/B copy'),
+    ).toBeInTheDocument()
+  })
+
+  it('previews a built-in program from Browse and returns with the back arrow', async () => {
+    const user = userEvent.setup()
+    renderTraining()
+
+    await screen.findByText('No saved programs')
+    await user.click(screen.getByRole('button', { name: 'Browse programs' }))
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Preview Powerlifting-Focused Full Body - Four Days per Week',
+      }),
+    )
+
+    // The preview sub-page lists the program's days and exercises read-only.
+    expect(
+      await screen.findByRole('button', {
+        name: 'Back to browse programs',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      await screen.findByText('Monday - Squat + Bench'),
+    ).toBeInTheDocument()
+    expect(
+      screen
+        .getByRole('button', { name: 'Back to browse programs' })
+        .closest('section'),
+    ).toHaveClass('subpage-enter')
+    expect(screen.getByText('Barbell Back Squat')).toBeInTheDocument()
+    const mondayPreview = screen
+      .getByText('Monday - Squat + Bench')
+      .closest('section')
+    if (!mondayPreview) {
+      throw new Error('Monday program preview was not found.')
+    }
+    expect(
+      within(mondayPreview).getByText(
+        /1 top set of 3, then 2 back-off sets of 3/,
+      ),
+    ).toBeInTheDocument()
+    const squatRow = within(mondayPreview)
+      .getByText('Barbell Back Squat')
+      .closest('li')
+    if (!squatRow) {
+      throw new Error('Squat preview row was not found.')
+    }
+    expect(
+      within(squatRow).getByText(/1 top set of 3, then 2 back-off sets of 3/),
+    ).not.toHaveClass('program-preview-exercise-summary')
+
+    await user.click(
+      screen.getByRole('button', { name: 'Back to browse programs' }),
+    )
+    // Back on the Browse list.
+    expect(
+      await screen.findByRole('button', {
+        name: 'Add Powerlifting-Focused Full Body - Four Days per Week to library',
+      }),
+    ).toBeInTheDocument()
+  })
+
+  it('closes the Browse sub-page with the Escape key', async () => {
+    const user = userEvent.setup()
+    renderTraining()
+
+    await screen.findByText('No saved programs')
+    await user.click(screen.getByRole('button', { name: 'Browse programs' }))
+    expect(
+      await screen.findByText('Beginner Full Body A/B'),
+    ).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+
+    expect(
+      await screen.findByRole('button', { name: 'Browse programs' }),
+    ).toBeInTheDocument()
+  })
+
+  it('opens the full program library sub-page from Show More', async () => {
+    const user = userEvent.setup()
+    await seedProgram(db)
+    await seedProgram(db)
+    await seedProgram(db)
+    await seedProgram(db)
+    renderTraining()
+
+    await waitFor(() =>
+      expect(screen.getAllByText('Upper Lower').length).toBe(3),
+    )
+    await user.click(screen.getByRole('button', { name: 'Show More' }))
+
+    expect(
+      await screen.findByRole('button', { name: 'Back to training' }),
+    ).toBeInTheDocument()
+    // All four user programs are listed on the full library sub-page.
+    await waitFor(() =>
+      expect(screen.getAllByText('Upper Lower').length).toBe(4),
+    )
   })
 
   it('persists the active cycle after remount', async () => {
@@ -551,7 +1305,7 @@ describe('TrainingPage', () => {
     )
     expect(
       within(screen.getByLabelText('Workout days')).getByRole('button', {
-        name: /Upper/,
+        name: /^Upper/,
       }),
     ).toBeInTheDocument()
 
@@ -560,7 +1314,7 @@ describe('TrainingPage', () => {
       name: 'Edit current cycle',
     })
     const cycleNameInput = await within(cycleEditor).findByRole('textbox', {
-      name: 'Name',
+      name: 'Program name',
     })
     await waitFor(() => expect(cycleNameInput).toHaveValue('Upper Lower'))
     await user.clear(cycleNameInput)
@@ -568,7 +1322,7 @@ describe('TrainingPage', () => {
     expect(screen.getByText('Program name is required.')).toBeInTheDocument()
     expect(cycleEditor).toBeInTheDocument()
     await user.type(
-      within(cycleEditor).getByRole('textbox', { name: 'Name' }),
+      within(cycleEditor).getByRole('textbox', { name: 'Program name' }),
       'Upper Lower',
     )
     await user.tab()
@@ -578,6 +1332,28 @@ describe('TrainingPage', () => {
     expect(activeCycle?.notes).toBe('')
   })
 })
+
+// Two days so a single check-off leaves the week (and its checks) in place.
+async function seedTwoDayProgram(database: typeof db) {
+  const exercise = await seedExercise(database)
+  const dayExercises = [
+    {
+      exerciseId: exercise.id,
+      targetSetCount: 2,
+      targetRepsMin: 8,
+      targetRepsMax: 10,
+      targetRir: 2,
+      restSecondsOverride: 90,
+    },
+  ]
+  return createProgramRepository(database).createProgramTemplate({
+    name: 'Upper Lower Split',
+    days: [
+      { name: 'Upper', exercises: dayExercises },
+      { name: 'Lower', exercises: dayExercises },
+    ],
+  })
+}
 
 function renderTraining(initialEntries = ['/training']) {
   const router = createMemoryRouter(

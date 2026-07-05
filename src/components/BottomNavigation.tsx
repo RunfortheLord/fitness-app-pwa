@@ -1,36 +1,39 @@
 import { Dumbbell, Footprints, Home, Plus, Utensils } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
+import { useLanguage } from '@components/languageContextValue'
+
 type BottomNavigationProps = {
   onAdd: () => void
 }
 
 export function BottomNavigation({ onAdd }: BottomNavigationProps) {
+  const { t } = useLanguage()
   return (
-    <nav className="bottom-nav" aria-label="Primary">
+    <nav className="bottom-nav" aria-label={t('Primary')}>
       <NavLink to="/" end className="bottom-nav-link">
         <Home aria-hidden="true" size={20} />
-        <span>Home</span>
+        <span>{t('Home')}</span>
       </NavLink>
       <NavLink to="/nutrition" className="bottom-nav-link">
         <Utensils aria-hidden="true" size={20} />
-        <span>Nutrition</span>
+        <span>{t('Nutrition')}</span>
       </NavLink>
       <button
         className="bottom-nav-add"
         type="button"
-        aria-label="Open quick actions"
+        aria-label={t('Open quick actions')}
         onClick={onAdd}
       >
         <Plus aria-hidden="true" size={28} />
       </button>
       <NavLink to="/training" className="bottom-nav-link">
         <Dumbbell aria-hidden="true" size={20} />
-        <span>Training</span>
+        <span>{t('Training')}</span>
       </NavLink>
       <NavLink to="/run" className="bottom-nav-link">
         <Footprints aria-hidden="true" size={20} />
-        <span>Run</span>
+        <span>{t('Run')}</span>
       </NavLink>
     </nav>
   )

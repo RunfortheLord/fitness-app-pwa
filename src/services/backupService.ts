@@ -29,6 +29,7 @@ import type {
   RunPause,
   RunSample,
   RunSplit,
+  SavedMeal,
   TemplateWorkoutExercise,
   UserSettings,
   Workout,
@@ -48,6 +49,7 @@ const tableNames = [
   'nutritionTargets',
   'foods',
   'foodLogEntries',
+  'savedMeals',
   'foodUnitPreferences',
   'barcodeProductCache',
   'bodyweightEntries',
@@ -80,6 +82,7 @@ export type BackupData = {
   nutritionTargets: NutritionTarget[]
   foods: Food[]
   foodLogEntries: FoodLogEntry[]
+  savedMeals: SavedMeal[]
   foodUnitPreferences: FoodUnitPreference[]
   barcodeProductCache: BarcodeProductCache[]
   bodyweightEntries: BodyweightEntry[]
@@ -171,7 +174,8 @@ const muscleGroupSchema = z.enum([
   'hip abductors',
   'hip adductors',
 ])
-const weightUnitSchema = z.literal('lb')
+const weightUnitSchema = z.enum(['lb', 'kg'])
+const appLanguageSchema = z.enum(['en', 'es'])
 const energyUnitSchema = z.literal('kcal')
 const foodSourceTypeSchema = z.enum(['local', 'provider'])
 const foodProviderSchema = z.enum(['usda', 'open_food_facts'])
@@ -205,13 +209,48 @@ const nutritionTargetValuesSchema = z.object({
   carbohydrateGrams: nonNegativeNumber,
   fatGrams: nonNegativeNumber,
 })
+const nutritionGoalSchema = z.object({
+  goalWeightLb: z.number().finite(),
+  calculationWeightLb: z.number().finite(),
+  heightInches: z.number().finite(),
+  ageYears: z.number().finite(),
+  sex: z.enum(['male', 'female']),
+  activityLevel: z.enum([
+    'sedentary',
+    'lightly_active',
+    'moderately_active',
+    'heavily_active',
+  ]),
+  direction: z.enum(['cut', 'bulk', 'maintain']),
+  weeklyRateLb: z.number().finite(),
+  maintenanceCalorieSource: z.enum(['calculated', 'manual']).optional(),
+  maintenanceCalories: nonNegativeNumber,
+  targets: nutritionTargetValuesSchema,
+  estimatedFinishDate: localDateSchema.nullable(),
+  formulaVersion: z.number().int(),
+  lastCalorieUpdate: z
+    .object({
+      appliedAt: isoTimestampSchema,
+      deltaKcal: z.number().finite(),
+      trendWeightLb: z.number().finite(),
+      observedWeeklyChangeLb: z.number().finite(),
+      signature: z.string(),
+    })
+    .nullable()
+    .optional(),
+  createdAt: isoTimestampSchema,
+  updatedAt: isoTimestampSchema,
+})
 const userSettingsSchema = z.object({
   id: z.literal('settings'),
+  language: appLanguageSchema.optional().default('en'),
   weightUnit: weightUnitSchema,
   energyUnit: energyUnitSchema,
   nutritionTargets: nutritionTargetValuesSchema,
+  nutritionGoal: nutritionGoalSchema.nullable().optional(),
   timerSoundEnabled: z.boolean().optional().default(true),
   selectedTimerSoundId: z.string().optional().default('rest-complete-chime'),
+  timerBannersEnabled: z.boolean().optional().default(true),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })
@@ -303,12 +342,29 @@ const foodLogEntrySchema = z.object({
   localDate: localDateSchema,
   foodId: nullableId,
   foodSnapshot: foodSnapshotSchema,
+  // Tolerate backups taken before meal grouping existed: missing or invalid
+  // values fall back to the catch-all "snack" meal.
+  mealType: z.enum(['breakfast', 'lunch', 'dinner', 'snack']).catch('snack'),
   servingMultiplier: nonNegativeNumber,
   computedCalories: nonNegativeNumber,
   computedProteinGrams: nonNegativeNumber,
   computedCarbohydrateGrams: nonNegativeNumber,
   computedFatGrams: nonNegativeNumber,
   notes: z.string(),
+  createdAt: isoTimestampSchema,
+  updatedAt: isoTimestampSchema,
+})
+const savedMealComponentSchema = z.object({
+  foodId: nullableId,
+  foodSnapshot: foodSnapshotSchema,
+  servingMultiplier: nonNegativeNumber,
+})
+const savedMealSchema = z.object({
+  id: idSchema,
+  name: z.string(),
+  components: z.array(savedMealComponentSchema),
+  notes: z.string(),
+  status: entityStatusSchema,
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })
@@ -375,6 +431,10 @@ const programTemplateSchema = z.object({
   notes: z.string(),
   status: entityStatusSchema,
   lastActiveAt: z.union([isoTimestampSchema, z.null()]).optional(),
+  isBuiltIn: z.boolean().optional(),
+  level: z.union([z.string(), z.null()]).optional(),
+  goal: z.union([z.string(), z.null()]).optional(),
+  builtInSeedVersion: z.union([z.number(), z.null()]).optional(),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })
@@ -629,6 +689,11 @@ const runSchema = z.object({
   distanceMeters: nonNegativeNumber,
   currentPaceSecondsPerMile: z.union([nonNegativeInteger, z.null()]),
   averageMovingPaceSecondsPerMile: z.union([nonNegativeInteger, z.null()]),
+  trackingMode: z.enum(['gps', 'treadmill', 'manual']).optional(),
+  treadmillStepCount: nonNegativeInteger.optional(),
+  treadmillStrideMeters: z
+    .union([z.number().finite().positive(), z.null()])
+    .optional(),
   hasGpsGap: z.boolean(),
   lowPaceAlertedAt: z.union([isoTimestampSchema, z.null()]),
   notes: z.string(),
@@ -693,6 +758,7 @@ const backupDataSchema = z.object({
   nutritionTargets: z.array(nutritionTargetSchema),
   foods: z.array(foodSchema),
   foodLogEntries: z.array(foodLogEntrySchema),
+  savedMeals: z.array(savedMealSchema).optional().default([]),
   foodUnitPreferences: z.array(foodUnitPreferenceSchema).optional().default([]),
   barcodeProductCache: z
     .array(barcodeProductCacheSchema)
@@ -910,6 +976,7 @@ async function readBackupData(
       nutritionTargets: await sortedTable(database.nutritionTargets),
       foods: await sortedTable(database.foods),
       foodLogEntries: await sortedTable(database.foodLogEntries),
+      savedMeals: await sortedTable(database.savedMeals),
       foodUnitPreferences: await sortedTable(database.foodUnitPreferences),
       barcodeProductCache: await sortedTable(database.barcodeProductCache),
       bodyweightEntries: await sortedTable(database.bodyweightEntries),
@@ -961,6 +1028,7 @@ async function putBackupData(database: TrainingLogDatabase, data: BackupData) {
   await database.nutritionTargets.bulkPut(data.nutritionTargets)
   await database.foods.bulkPut(data.foods)
   await database.foodLogEntries.bulkPut(data.foodLogEntries)
+  await database.savedMeals.bulkPut(data.savedMeals)
   await database.foodUnitPreferences.bulkPut(data.foodUnitPreferences)
   await database.barcodeProductCache.bulkPut(data.barcodeProductCache)
   await database.bodyweightEntries.bulkPut(data.bodyweightEntries)
@@ -1054,6 +1122,10 @@ function clearableDataTables(database: TrainingLogDatabase) {
   return [
     ...tableNames.map((name) => database[name]),
     database.apiKeyIntegrationSettings,
+    // Weekly day check-offs are ephemeral state (not part of the backup
+    // payload), but must still be wiped on reset/restore so a fresh import
+    // does not inherit stale checkmarks.
+    database.activeCycleDayChecks,
   ]
 }
 

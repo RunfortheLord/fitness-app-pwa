@@ -1,5 +1,6 @@
 import { db, type TrainingLogDatabase } from '@db/database'
 import type { LocalDateString } from '@domain/dates'
+import { completionProgramWeek, nextUpDayId } from '@domain/programWeeks'
 import {
   filterBodyweightEntriesForRange,
   latestBodyweight,
@@ -9,11 +10,16 @@ import {
 import { createBodyweightRepository } from '@repositories/bodyweightRepository'
 import { createFoodRepository } from '@repositories/foodRepository'
 import { createProgramRepository } from '@repositories/programRepository'
+import { createSettingsRepository } from '@repositories/settingsRepository'
 import { createWorkoutRepository } from '@repositories/workoutRepository'
 import {
   createNutritionSummaryService,
   type DailyNutritionSummary,
 } from '@services/nutritionSummaryService'
+import {
+  createCalorieHistoryService,
+  type DailyCalorieHistory,
+} from '@services/calorieHistoryService'
 import type {
   ActiveCycleWorkoutDay,
   ActiveCycleWorkoutExercise,
@@ -29,6 +35,7 @@ export type DashboardData = {
   selectedDate: LocalDateString
   metadata: AppMetadata | undefined
   nutrition: DailyNutritionSummary
+  calorieHistory: DailyCalorieHistory[]
   bodyweight: BodyweightEntry | undefined
   currentBodyweight: BodyweightEntry | undefined
   bodyweightEntries: BodyweightEntry[]
@@ -39,6 +46,10 @@ export type DashboardData = {
         days: ActiveCycleWorkoutDay[]
         exerciseCount: number
         exercisesByDay: Record<string, ActiveCycleWorkoutExercise[]>
+        /** The next day to train this week (first not yet checked off). */
+        nextDay: ActiveCycleWorkoutDay | undefined
+        /** 1-based current week of the cycle. */
+        weekNumber: number
       }
     | undefined
   activeWorkout: Workout | undefined
@@ -75,8 +86,10 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
   const bodyweightRepository = createBodyweightRepository(database)
   const foodRepository = createFoodRepository(database)
   const programRepository = createProgramRepository(database)
+  const settingsRepository = createSettingsRepository(database)
   const workoutRepository = createWorkoutRepository(database)
   const nutritionSummaryService = createNutritionSummaryService(database)
+  const calorieHistoryService = createCalorieHistoryService(database)
 
   return {
     async getDashboardData(
@@ -92,6 +105,8 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
         bodyweightEntries,
         foodLogs,
         completedWorkouts,
+        settings,
+        calorieHistory,
       ] = await Promise.all([
         nutritionSummaryService.getDailySummary(selectedDate),
         bodyweightRepository.listBodyweightEntriesForDate(selectedDate),
@@ -102,8 +117,11 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
         bodyweightRepository.listBodyweightEntries(),
         foodRepository.listRecentFoodLogs(5),
         workoutRepository.listRecentCompletedWorkouts(5),
+        settingsRepository.getSettings(),
+        calorieHistoryService.getHistory(selectedDate, '1w'),
       ])
 
+      const weightUnit = settings?.weightUnit ?? 'lb'
       const selectedDateBodyweight = latestBodyweight(bodyweight)
       const currentBodyweight = latestBodyweight(bodyweightEntries)
       const bodyweightTrend = summarizeBodyweightTrend(
@@ -112,27 +130,52 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
           range: '1m',
           today: selectedDate,
         }),
+        weightUnit,
       )
       const mostRecentCompletedWorkoutSummary = mostRecentCompletedWorkout
         ? await getWorkoutSummary(database, mostRecentCompletedWorkout.id)
         : undefined
 
+      let activeProgram: DashboardData['activeProgram']
+      if (activeProgramStructure) {
+        const allChecks = await programRepository.listAllActiveCycleDayChecks(
+          activeProgramStructure.cycle.id,
+        )
+        const weekNumber = completionProgramWeek(
+          allChecks,
+          activeProgramStructure.days.map((day) => day.id),
+        )
+        const checkedDayIds = new Set(
+          allChecks
+            .filter((check) => check.checked && check.weekNumber === weekNumber)
+            .map((check) => check.dayId),
+        )
+        const nextDayId = nextUpDayId(
+          activeProgramStructure.days.map((day) => day.id),
+          checkedDayIds,
+        )
+        activeProgram = {
+          ...activeProgramStructure,
+          exerciseCount: Object.values(
+            activeProgramStructure.exercisesByDay,
+          ).reduce((count, exercises) => count + exercises.length, 0),
+          nextDay: activeProgramStructure.days.find(
+            (day) => day.id === nextDayId,
+          ),
+          weekNumber,
+        }
+      }
+
       return {
         selectedDate,
         metadata,
         nutrition,
+        calorieHistory,
         bodyweight: selectedDateBodyweight,
         currentBodyweight,
         bodyweightEntries,
         bodyweightTrend,
-        activeProgram: activeProgramStructure
-          ? {
-              ...activeProgramStructure,
-              exerciseCount: Object.values(
-                activeProgramStructure.exercisesByDay,
-              ).reduce((count, exercises) => count + exercises.length, 0),
-            }
-          : undefined,
+        activeProgram,
         activeWorkout,
         mostRecentCompletedWorkout,
         mostRecentCompletedWorkoutSummary,

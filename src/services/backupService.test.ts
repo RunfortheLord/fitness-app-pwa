@@ -34,16 +34,19 @@ describe('backupService', () => {
   it('creates deterministic full-fidelity JSON backup metadata and table coverage', async () => {
     const food = await seedFood(database)
     await seedProgram(database)
-    await createSettingsRepository(database).saveNutritionTargets({
+    const settings = createSettingsRepository(database)
+    await settings.saveNutritionTargets({
       calories: 2400,
       proteinGrams: 180,
       carbohydrateGrams: 250,
       fatGrams: 70,
     })
+    await settings.saveLanguage('es')
     await database.foodLogEntries.add({
       id: 'food-log-1',
       localDate: testLocalDate,
       foodId: food.id,
+      mealType: 'lunch',
       foodSnapshot: {
         foodName: food.name,
         servingQuantity: food.servingQuantity,
@@ -148,6 +151,7 @@ describe('backupService', () => {
       'nutritionTargets',
       'foods',
       'foodLogEntries',
+      'savedMeals',
       'foodUnitPreferences',
       'barcodeProductCache',
       'bodyweightEntries',
@@ -173,6 +177,7 @@ describe('backupService', () => {
       'runClassifications',
     ])
     expect(result.backup.data.foods[0]?.id).toBe(food.id)
+    expect(result.backup.data.userSettings[0]?.language).toBe('es')
     expect(result.backup.data.foodLogEntries[0]).toMatchObject({
       id: 'food-log-1',
       foodId: food.id,
@@ -244,6 +249,9 @@ describe('backupService', () => {
       distanceMeters: 3218.688,
       currentPaceSecondsPerMile: null,
       averageMovingPaceSecondsPerMile: 750,
+      trackingMode: 'treadmill',
+      treadmillStepCount: 4100,
+      treadmillStrideMeters: 0.75,
       hasGpsGap: true,
       lowPaceAlertedAt: '2026-06-19T12:12:00.000Z',
       notes: '',
@@ -301,6 +309,11 @@ describe('backupService', () => {
       latitude: 41.88,
       decision: 'accepted',
     })
+    expect(result.backup.data.runs[0]).toMatchObject({
+      trackingMode: 'treadmill',
+      treadmillStepCount: 4100,
+      treadmillStrideMeters: 0.75,
+    })
     expect(
       createCsvFiles(result.backup.data).map((file) => file.name),
     ).toContain('runSamples.csv')
@@ -315,7 +328,13 @@ describe('backupService', () => {
       new Date('2026-06-19T15:00:00.000Z'),
     )
 
-    await expect(database.runs.count()).resolves.toBe(1)
+    await expect(database.runs.toArray()).resolves.toEqual([
+      expect.objectContaining({
+        trackingMode: 'treadmill',
+        treadmillStepCount: 4100,
+        treadmillStrideMeters: 0.75,
+      }),
+    ])
     await expect(database.runSamples.count()).resolves.toBe(1)
     await expect(database.runSplits.count()).resolves.toBe(1)
     await expect(database.runClassifications.count()).resolves.toBe(1)
@@ -326,6 +345,7 @@ describe('backupService', () => {
       id: 'provider-log-1',
       localDate: testLocalDate,
       foodId: 'usda:123',
+      mealType: 'dinner',
       foodSnapshot: {
         snapshotId: 'snapshot-1',
         foodName: 'Chicken breast cooked',

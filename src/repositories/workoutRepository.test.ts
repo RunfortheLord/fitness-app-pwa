@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { TrainingLogDatabase } from '@db/database'
+import { BUILT_IN_EXERCISES } from '@domain/exerciseLibrary'
+import { getTrackingMethod } from '@domain/trackingMethods'
 import { createExerciseRepository } from '@repositories/exerciseRepository'
 import { createProgramRepository } from '@repositories/programRepository'
 import { createWorkoutRepository } from '@repositories/workoutRepository'
@@ -114,6 +116,127 @@ describe('workoutRepository', () => {
     await expect(database.detectedWorkoutChanges.toArray()).resolves.toEqual([])
   })
 
+  it('uses the current exercise default rest when starting from an older program snapshot', async () => {
+    const exerciseRepository = createExerciseRepository(database)
+    const exercise = await exerciseRepository.createExercise({
+      name: 'Remembered rest press',
+      defaultRestSeconds: 60,
+      trackingMethodId: 'weight_reps',
+    })
+    const program = await createProgramRepository(
+      database,
+    ).createProgramTemplate({
+      name: 'Remembered rest',
+      days: [
+        {
+          name: 'Day',
+          exercises: [
+            {
+              exerciseId: exercise.id,
+              targetSetCount: 2,
+              targetRepsMin: 5,
+              targetRepsMax: 8,
+              restSecondsOverride: null,
+            },
+          ],
+        },
+      ],
+    })
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    await exerciseRepository.updateExerciseDefaultRest(exercise.id, 105)
+
+    const started = await createWorkoutRepository(database).startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+
+    expect(started.exercises[0].exerciseSnapshot.defaultRestSeconds).toBe(105)
+    expect(started.sets.map((set) => set.restSecondsUsed)).toEqual([null, null])
+  })
+
+  it('uses corrected built-in tracking metadata when starting from an older program snapshot', async () => {
+    const bodyweightSquat = BUILT_IN_EXERCISES.find(
+      (exercise) => exercise.id === 'builtin:bodyweight-squat',
+    )
+    const repsOnly = getTrackingMethod('reps_only')
+    if (!bodyweightSquat || !repsOnly) {
+      throw new Error('Required exercise metadata was not found.')
+    }
+    await database.exercises.put(bodyweightSquat)
+    const program = await createProgramRepository(
+      database,
+    ).createProgramTemplate({
+      name: 'Corrected tracking',
+      days: [
+        {
+          name: 'Day',
+          exercises: [
+            {
+              exerciseId: bodyweightSquat.id,
+              targetSetCount: 1,
+              targetRepsMin: 8,
+              targetRepsMax: 12,
+              restSecondsOverride: null,
+            },
+          ],
+        },
+      ],
+    })
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    await database.activeCycleWorkoutExercises.update(active.exercises[0].id, {
+      exerciseSnapshot: {
+        ...active.exercises[0].exerciseSnapshot,
+        trackingMethodId: 'reps_only',
+        trackingMetrics: repsOnly.metrics,
+      },
+    })
+
+    const started = await createWorkoutRepository(database).startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+
+    expect(started.exercises[0].exerciseSnapshot).toMatchObject({
+      trackingMethodId: 'added_weight_reps',
+      trackingMetrics: [
+        expect.objectContaining({ key: 'addedWeight' }),
+        expect.objectContaining({ key: 'reps' }),
+      ],
+    })
+  })
+
+  it('checks the program day off for the current week when a workout is completed', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    const repository = createWorkoutRepository(database)
+
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(started.sets[0].id, { completed: true })
+    await repository.completeWorkout({ workoutId: started.workout.id })
+
+    const checks = await database.activeCycleDayChecks.toArray()
+    expect(checks).toMatchObject([
+      {
+        activeCycleId: active.cycle.id,
+        dayId: active.days[0].id,
+        weekNumber: 1,
+        checked: true,
+      },
+    ])
+  })
+
   it('rejects invalid active-cycle and workout-day relationships', async () => {
     const firstProgram = await seedProgram(database)
     const firstActive = await createProgramRepository(
@@ -175,6 +298,45 @@ describe('workoutRepository', () => {
         setNumber: 2,
       },
     ])
+  })
+
+  it('added sets inherit the previous set values as auto so propagation stays live', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    const repository = createWorkoutRepository(database)
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+
+    const lastSet = started.sets
+      .filter((set) => set.workoutExerciseId === started.exercises[0].id)
+      .at(-1)
+    await repository.updateWorkoutSet(lastSet!.id, {
+      metricValues: { weight: 200, reps: 6 },
+    })
+    const added = await repository.addSet(started.exercises[0].id)
+
+    expect(added.metricValues).toMatchObject({ weight: 200, reps: 6 })
+    expect(added.metricValueSources).toMatchObject({
+      weight: 'auto',
+      reps: 'auto',
+    })
+
+    // A live edit on the previous set still flows into the added set.
+    await repository.updateWorkoutSetMetricAndPropagate(
+      lastSet!.id,
+      'weight',
+      210,
+    )
+    const reloaded = await repository.getActiveWorkoutStructure()
+    const reloadedAdded = reloaded?.setsByExercise[
+      started.exercises[0].id
+    ].find((set) => set.id === added.id)
+    expect(reloadedAdded?.metricValues.weight).toBe(210)
   })
 
   it('merges partial live metric edits with stored set values', async () => {
@@ -541,13 +703,17 @@ describe('workoutRepository', () => {
     })
 
     expect(second.sets.map((set) => set.metricValues.weight)).toEqual([
-      undefined,
-      undefined,
-      undefined,
+      135, 145, 155,
+    ])
+    expect(second.sets.map((set) => set.metricValues.reps)).toEqual([8, 8, 8])
+    expect(second.sets.map((set) => set.metricValueSources?.weight)).toEqual([
+      'auto',
+      'auto',
+      'auto',
     ])
     expect(
       second.sets.map((set) => set.targetRecommendation?.sourceSetId),
-    ).toEqual([null, null, null])
+    ).toEqual([first.sets[0].id, first.sets[1].id, extra.id])
   })
 
   it('matches legacy built-in history by exact exercise snapshot name', async () => {
@@ -582,7 +748,65 @@ describe('workoutRepository', () => {
       localDate: testLocalDate,
     })
 
-    expect(second.sets[0].metricValues.weight).toBeUndefined()
+    // Legacy snapshot-name matching still finds the prior performance and
+    // pre-logs its weight.
+    expect(second.sets[0].metricValues.weight).toBe(95)
+  })
+
+  it('prefills every set across programs and rep schemes from the latest exercise session', async () => {
+    const program = await seedProgram(database)
+    const programRepository = createProgramRepository(database)
+    const active = await programRepository.activateTemplate(program.template.id)
+    const repository = createWorkoutRepository(database)
+    const exerciseId = active.exercises[0].exerciseId
+
+    const first = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(first.sets[0].id, {
+      metricValues: { weight: 200, reps: 10 },
+      completed: true,
+    })
+    await repository.completeWorkout({
+      workoutId: first.workout.id,
+      completedAt: '2026-01-01T00:00:00.000Z',
+    })
+
+    const nextProgram = await programRepository.createProgramTemplate({
+      name: 'Different program',
+      days: [
+        {
+          name: 'Different day',
+          exercises: [
+            {
+              exerciseId,
+              targetSetCount: 3,
+              targetRepsMin: 5,
+              targetRepsMax: 5,
+            },
+          ],
+        },
+      ],
+    })
+    const nextActive = await programRepository.activateTemplate(
+      nextProgram.template.id,
+    )
+    const second = await repository.startWorkout({
+      activeCycleId: nextActive.cycle.id,
+      dayId: nextActive.days[0].id,
+      localDate: testLocalDate,
+    })
+
+    expect(second.sets.map((set) => set.metricValues)).toEqual([
+      { weight: 230, reps: 5 },
+      { weight: 230, reps: 5 },
+      { weight: 230, reps: 5 },
+    ])
+    expect(
+      second.sets.map((set) => set.targetRecommendation?.sourceSetId),
+    ).toEqual([first.sets[0].id, first.sets[0].id, first.sets[0].id])
   })
 
   it('records applied structural changes separately from workout completion', async () => {

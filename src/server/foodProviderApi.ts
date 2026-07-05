@@ -1,4 +1,8 @@
-import { normalizeProviderQuery } from '../domain/foodProviderModels.js'
+import {
+  normalizeProviderQuery,
+  type NormalizedFoodResult,
+} from '../domain/foodProviderModels.js'
+import { correctFoodQuery } from '../domain/foodSpellingCorrection.js'
 import {
   createOpenFoodFactsAdapter,
   createUsdaAdapter,
@@ -23,6 +27,7 @@ export type FoodSearchRequest = {
   page?: number
   pageSize?: number
   allowFallback?: boolean
+  language?: 'en' | 'es'
 }
 
 export type FoodResolveRequest = {
@@ -41,7 +46,7 @@ export type FoodProviderResponse =
 const SEARCH_CACHE_TTL_MS = 15 * 60 * 1000
 const OFF_CACHE_TTL_MS = 60 * 60 * 1000
 const searchCache = new TtlCache<unknown>(150, SEARCH_CACHE_TTL_MS)
-const offCache = new TtlCache<unknown>(50, OFF_CACHE_TTL_MS)
+const offCache = new TtlCache<NormalizedFoodResult[]>(50, OFF_CACHE_TTL_MS)
 
 export async function handleFoodSearch(
   request: FoodSearchRequest,
@@ -62,6 +67,7 @@ export async function handleFoodSearch(
       input.page,
       input.pageSize,
       input.allowFallback,
+      input.language,
     ].join('|')
 
     const data =
@@ -69,7 +75,7 @@ export async function handleFoodSearch(
         ? await searchCache.getOrCreate(cacheKey, async () =>
             searchWithFallback(input, adapters, signal),
           )
-        : await searchWithFallback(input, adapters, signal)
+        : await searchWithTypoCorrection(input, adapters, signal)
     return { ok: true, data }
   } catch (error) {
     return formatError(error)
@@ -179,7 +185,18 @@ export function validateSearchRequest(request: FoodSearchRequest) {
     page,
     pageSize,
     allowFallback: request.allowFallback ?? false,
+    language: validateSearchLanguage(request.language),
   }
+}
+
+function validateSearchLanguage(language: FoodSearchRequest['language']) {
+  if (language === undefined || language === 'en') {
+    return 'en' as const
+  }
+  if (language === 'es') {
+    return 'es' as const
+  }
+  throw new ProviderError('invalid_request', 'Unsupported search language.')
 }
 
 function containsControlCharacter(value: string) {
@@ -198,6 +215,38 @@ function validateBarcode(value: string) {
     )
   }
   return barcode
+}
+
+// When a query token is an obvious misspelling (USDA returns nothing canonical
+// for it), retry once with the corrected spelling and merge the canonical
+// results in. The original results are kept first so stored misspelled brand
+// products still appear; the client's section split surfaces the canonical
+// (Common) matches above them.
+async function searchWithTypoCorrection(
+  input: ReturnType<typeof validateSearchRequest>,
+  adapters: Record<'usda' | 'open_food_facts', ProviderAdapter>,
+  signal?: AbortSignal,
+) {
+  const base = await searchWithFallback(input, adapters, signal)
+  const corrected = correctFoodQuery(input.query)
+  if (!corrected) {
+    return base
+  }
+
+  const correctedData = await searchWithFallback(
+    { ...input, query: corrected },
+    adapters,
+    signal,
+  )
+  const seenIds = new Set(base.results.map((result) => result.id))
+  const merged = [...base.results]
+  for (const result of correctedData.results) {
+    if (!seenIds.has(result.id)) {
+      seenIds.add(result.id)
+      merged.push(result)
+    }
+  }
+  return { ...base, results: merged }
 }
 
 async function searchWithFallback(
@@ -245,6 +294,7 @@ async function searchOpenFoodFacts(
     input.query.toLocaleLowerCase(),
     input.page,
     input.pageSize,
+    input.language,
   ].join('|')
   const results = await offCache.getOrCreate(cacheKey, () =>
     adapter.search({ ...input, signal }),
