@@ -644,6 +644,59 @@ textarea:focus-visible {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
+.program-prescription-row.sortable-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.sortable-item {
+  min-width: 0;
+}
+
+.sortable-item-dragging {
+  position: relative;
+  z-index: 5;
+  border-color: var(--color-accent);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 50%);
+  opacity: 0.94;
+}
+
+.drag-handle {
+  touch-action: none;
+  cursor: grab;
+  color: var(--color-muted);
+  background: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.sortable-item-dragging .drag-handle {
+  color: var(--color-accent);
+}
+
+.program-day-tabs .sortable-item {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.program-day-tabs .sortable-item-dragging {
+  border-radius: var(--radius-sm);
+}
+
+.program-day-tabs .sortable-item-dragging button {
+  border-color: var(--color-accent);
+}
+
+.program-day-tabs button {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
 .program-preview-trigger {
   display: block;
   width: 100%;
