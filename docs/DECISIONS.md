@@ -1,5 +1,23 @@
 # Decisions
 
+## 2026-07-05: Prescription Editor Ergonomics (Phase 1)
+
+- Numeric prescription fields (sets, min/max reps, RIR, weight) use a new
+  `StepperInput` ui primitive: −/+ 44px buttons around the existing
+  NumericInput, so common adjustments never open the keyboard. Weight steps by
+  the exercise's `defaultWeightIncrement` (converted to the display unit),
+  falling back to 5 lb / 2.5 kg. Steppers only adjust user-entered values —
+  they never suggest a starting load or rep count.
+- Rest is chosen from preset chips (0:30–5:00) with the minute/second inputs
+  kept beneath for custom values; the matching chip shows as pressed.
+- Field order is now Sets → Reps → Weight/RIR → Rest → Notes (rest used to
+  come first), and Cancel + Save live together in a sticky bottom action bar
+  instead of Save floating at the top.
+- The selected-exercise card shows a live summary line (via
+  `PrescriptionInputSummaryText`) of exactly what the builder row will read.
+- The Sets field no longer autofocuses, so opening an existing prescription
+  does not pop the keyboard over the form.
+
 ## 2026-07-05: Builder Quick-Add, Duplicate Exercise, Chips, And Bulk Edit
 
 - Exercise rows show equipment and up to two primary-muscle chips looked up

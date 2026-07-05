@@ -9,6 +9,7 @@ import {
   NumericInput,
   PrimaryButton,
   SecondaryButton,
+  StepperInput,
   ValidationMessage,
 } from '@components/ui'
 import { TRACKING_METHODS } from '@domain/trackingMethods'
@@ -38,6 +39,7 @@ import {
   parseTrackingMethodId,
   showsWeightTarget,
 } from './exerciseMetadata'
+import { PrescriptionInputSummaryText } from './prescriptionSummary'
 import {
   emptyExerciseForm,
   emptyPrescriptionForm,
@@ -49,6 +51,12 @@ import {
   type PrescriptionFormState,
 } from './programForms'
 import type { BuilderMode } from './types'
+
+const REST_PRESET_SECONDS = [30, 60, 90, 120, 180, 300]
+
+function formatRestPreset(seconds: number) {
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+}
 
 export function PrescriptionEditor({
   exerciseUsage,
@@ -122,6 +130,26 @@ export function PrescriptionEditor({
   const isDirty =
     formIsDirty(form, target.exercise, weightUnit, selectedExercise) ||
     step === 'create'
+  const parsedRest = parseRestDuration(form.restMinutes, form.restSeconds)
+  const currentRestSeconds = parsedRest.ok ? parsedRest.value : null
+  const weightStep = (() => {
+    if (
+      selectedExercise?.defaultWeightIncrement !== null &&
+      selectedExercise?.defaultWeightIncrement !== undefined
+    ) {
+      const converted = Number(
+        weightInputValue(
+          selectedExercise.defaultWeightIncrement,
+          weightUnit,
+          'lifting',
+        ),
+      )
+      if (Number.isFinite(converted) && converted > 0) {
+        return converted
+      }
+    }
+    return weightUnit === 'kg' ? 2.5 : 5
+  })()
 
   function update(field: keyof PrescriptionFormState, value: string) {
     setForm((current) => ({ ...current, [field]: value }))
@@ -363,11 +391,6 @@ export function PrescriptionEditor({
 
         {step === 'edit' && selectedExercise ? (
           <div className="compact-prescription-form">
-            <div className="sheet-top-actions">
-              <PrimaryButton disabled={!parsed.ok} type="button" onClick={save}>
-                Save prescription
-              </PrimaryButton>
-            </div>
             {!target.exercise ? (
               <SecondaryButton type="button" onClick={() => setStep('search')}>
                 <ArrowLeft aria-hidden="true" size={18} />
@@ -387,61 +410,24 @@ export function PrescriptionEditor({
                     )} increment`
                   : ''}
               </small>
-            </div>
-            <div className="compact-field-grid">
-              <FormField id="prescription-rest-minutes" label="Rest minutes">
-                <NumericInput
-                  id="prescription-rest-minutes"
-                  onChange={(event) =>
-                    update('restMinutes', event.target.value)
-                  }
-                  pattern="[0-9]*"
-                  value={form.restMinutes}
-                />
-              </FormField>
-              <FormField id="prescription-rest-seconds" label="Rest seconds">
-                <NumericInput
-                  id="prescription-rest-seconds"
-                  onChange={(event) =>
-                    update('restSeconds', event.target.value)
-                  }
-                  pattern="[0-9]*"
-                  value={form.restSeconds}
-                />
-              </FormField>
+              {parsed.ok ? (
+                <small className="prescription-preview">
+                  <PrescriptionInputSummaryText input={parsed.value} />
+                </small>
+              ) : null}
             </div>
             <div className="compact-field-grid">
               <FormField id="target-sets" label="Sets">
-                <NumericInput
-                  autoFocus
+                <StepperInput
+                  decrementLabel="One set fewer"
                   id="target-sets"
-                  onChange={(event) =>
-                    update('targetSetCount', event.target.value)
-                  }
+                  incrementLabel="One set more"
+                  max={99}
+                  min={1}
+                  onValueChange={(value) => update('targetSetCount', value)}
                   value={form.targetSetCount}
                 />
               </FormField>
-              {showsWeightTarget(selectedExercise) ? (
-                <FormField
-                  id="target-weight"
-                  label={`${
-                    selectedExercise.trackingMethodId === 'assisted_weight_reps'
-                      ? 'Assistance target'
-                      : selectedExercise.trackingMethodId ===
-                          'added_weight_reps'
-                        ? 'Added-weight target'
-                        : 'Weight target'
-                  } (${weightUnitSuffix(weightUnit)})`}
-                >
-                  <NumericInput
-                    id="target-weight"
-                    onChange={(event) =>
-                      update('targetWeight', event.target.value)
-                    }
-                    value={form.targetWeight}
-                  />
-                </FormField>
-              ) : null}
               {selectedExercise.trackingMethodId === 'distance_duration' ? (
                 <FormField id="target-distance" label="Distance target (ft)">
                   <NumericInput
@@ -457,31 +443,108 @@ export function PrescriptionEditor({
             {isRepetitionBased(selectedExercise) ? (
               <div className="rep-range-grid">
                 <FormField id="target-reps-min" label="Min reps">
-                  <NumericInput
+                  <StepperInput
+                    decrementLabel="One minimum rep fewer"
                     id="target-reps-min"
-                    onChange={(event) =>
-                      update('targetRepsMin', event.target.value)
-                    }
+                    incrementLabel="One minimum rep more"
+                    min={1}
+                    onValueChange={(value) => update('targetRepsMin', value)}
                     value={form.targetRepsMin}
                   />
                 </FormField>
                 <FormField id="target-reps-max" label="Max reps">
-                  <NumericInput
+                  <StepperInput
+                    decrementLabel="One maximum rep fewer"
                     id="target-reps-max"
-                    onChange={(event) =>
-                      update('targetRepsMax', event.target.value)
-                    }
+                    incrementLabel="One maximum rep more"
+                    min={1}
+                    onValueChange={(value) => update('targetRepsMax', value)}
                     value={form.targetRepsMax}
                   />
                 </FormField>
               </div>
             ) : null}
-            <FormField id="target-rir" label="RIR">
-              <NumericInput
-                id="target-rir"
-                onChange={(event) => update('targetRir', event.target.value)}
-                value={form.targetRir}
-              />
+            <div className="compact-field-grid">
+              {showsWeightTarget(selectedExercise) ? (
+                <FormField
+                  id="target-weight"
+                  label={`${
+                    selectedExercise.trackingMethodId === 'assisted_weight_reps'
+                      ? 'Assistance target'
+                      : selectedExercise.trackingMethodId ===
+                          'added_weight_reps'
+                        ? 'Added-weight target'
+                        : 'Weight target'
+                  } (${weightUnitSuffix(weightUnit)})`}
+                >
+                  <StepperInput
+                    decrementLabel="Decrease weight target"
+                    id="target-weight"
+                    incrementLabel="Increase weight target"
+                    onValueChange={(value) => update('targetWeight', value)}
+                    step={weightStep}
+                    value={form.targetWeight}
+                  />
+                </FormField>
+              ) : null}
+              <FormField id="target-rir" label="RIR">
+                <StepperInput
+                  decrementLabel="One RIR fewer"
+                  id="target-rir"
+                  incrementLabel="One RIR more"
+                  max={10}
+                  onValueChange={(value) => update('targetRir', value)}
+                  value={form.targetRir}
+                />
+              </FormField>
+            </div>
+            <FormField
+              helpText="Applies as this exercise's default rest."
+              id="prescription-rest-minutes"
+              label="Rest"
+            >
+              <div
+                aria-label="Rest presets"
+                className="rest-preset-row"
+                role="group"
+              >
+                {REST_PRESET_SECONDS.map((seconds) => (
+                  <button
+                    aria-pressed={currentRestSeconds === seconds}
+                    className="rest-preset-chip"
+                    key={seconds}
+                    onClick={() =>
+                      setForm((current) => ({
+                        ...current,
+                        ...restFieldsFromSeconds(seconds),
+                      }))
+                    }
+                    type="button"
+                  >
+                    {formatRestPreset(seconds)}
+                  </button>
+                ))}
+              </div>
+              <div className="compact-field-grid">
+                <NumericInput
+                  aria-label="Rest minutes"
+                  id="prescription-rest-minutes"
+                  onChange={(event) =>
+                    update('restMinutes', event.target.value)
+                  }
+                  pattern="[0-9]*"
+                  value={form.restMinutes}
+                />
+                <NumericInput
+                  aria-label="Rest seconds"
+                  id="prescription-rest-seconds"
+                  onChange={(event) =>
+                    update('restSeconds', event.target.value)
+                  }
+                  pattern="[0-9]*"
+                  value={form.restSeconds}
+                />
+              </div>
             </FormField>
             <FormField id="prescription-notes" label="Notes">
               <textarea
@@ -491,10 +554,13 @@ export function PrescriptionEditor({
               />
             </FormField>
             {error ? <ValidationMessage message={error} /> : null}
-            <div className="button-row">
+            <div className="sheet-bottom-actions">
               <SecondaryButton type="button" onClick={requestClose}>
                 Cancel
               </SecondaryButton>
+              <PrimaryButton disabled={!parsed.ok} type="button" onClick={save}>
+                Save prescription
+              </PrimaryButton>
             </div>
           </div>
         ) : null}

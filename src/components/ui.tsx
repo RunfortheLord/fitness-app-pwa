@@ -8,7 +8,15 @@ import type {
   ReactNode,
 } from 'react'
 import { useEffect, useId, useRef, useState } from 'react'
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import {
+  ArrowLeft,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Minus,
+  Plus,
+  X,
+} from 'lucide-react'
 
 import { useLanguage } from '@components/languageContextValue'
 
@@ -558,6 +566,66 @@ export function NumericInput(props: NumericInputProps) {
       {...props}
       placeholder={placeholder}
     />
+  )
+}
+
+/**
+ * Numeric input flanked by 44px minus/plus buttons so common adjustments
+ * never need the keyboard. Values stay strings (form state convention);
+ * stepping from an empty field starts at the minimum.
+ */
+export function StepperInput({
+  decrementLabel,
+  id,
+  incrementLabel,
+  max,
+  min = 0,
+  onValueChange,
+  step = 1,
+  value,
+}: {
+  decrementLabel: string
+  id: string
+  incrementLabel: string
+  max?: number
+  min?: number
+  onValueChange: (value: string) => void
+  step?: number
+  value: string
+}) {
+  function adjust(direction: -1 | 1) {
+    const current = Number(value)
+    const hasValue = value.trim() !== '' && Number.isFinite(current)
+    let next = hasValue ? current + direction * step : min
+    next = Math.max(min, next)
+    if (max !== undefined) {
+      next = Math.min(max, next)
+    }
+    // Round away float noise from fractional steps like 2.5.
+    onValueChange(String(Math.round(next * 100) / 100))
+  }
+  return (
+    <div className="stepper-input">
+      <IconButton
+        aria-label={decrementLabel}
+        className="stepper-button"
+        onClick={() => adjust(-1)}
+      >
+        <Minus aria-hidden="true" size={18} />
+      </IconButton>
+      <NumericInput
+        id={id}
+        onChange={(event) => onValueChange(event.target.value)}
+        value={value}
+      />
+      <IconButton
+        aria-label={incrementLabel}
+        className="stepper-button"
+        onClick={() => adjust(1)}
+      >
+        <Plus aria-hidden="true" size={18} />
+      </IconButton>
+    </div>
   )
 }
 
