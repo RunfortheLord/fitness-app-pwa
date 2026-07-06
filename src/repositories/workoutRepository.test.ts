@@ -276,6 +276,29 @@ describe('workoutRepository', () => {
     expect(sets.map((set) => set.rir)).toEqual([null, 2])
   })
 
+  it('prefills the RIR target on every set and snapshots the flag when the program tracks RIR each set', async () => {
+    const program = await seedProgram(database)
+    const programRepository = createProgramRepository(database)
+    await programRepository.updateProgramTemplate(program.template.id, {
+      trackRirEverySet: true,
+    })
+    const active = await programRepository.activateTemplate(program.template.id)
+    expect(active.cycle.trackRirEverySet).toBe(true)
+
+    const repository = createWorkoutRepository(database)
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+
+    expect(started.workout.trackRirEverySet).toBe(true)
+    const sets = started.sets
+      .filter((set) => set.workoutExerciseId === started.exercises[0].id)
+      .sort((first, second) => first.setNumber - second.setNumber)
+    expect(sets.map((set) => set.rir)).toEqual([2, 2])
+  })
+
   it('persists live metric edits, notes, set completion, add set, and delete set', async () => {
     const program = await seedProgram(database)
     const active = await createProgramRepository(database).activateTemplate(

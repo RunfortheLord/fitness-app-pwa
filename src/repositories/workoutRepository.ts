@@ -173,6 +173,7 @@ export function createWorkoutRepository(
             elapsedPausedSeconds: 0,
             activeRestTimer: null,
             status: 'active',
+            trackRirEverySet: cycle.trackRirEverySet ?? false,
             createdAt: now,
             updatedAt: now,
           }
@@ -274,9 +275,11 @@ export function createWorkoutRepository(
                       ]),
                     )
                   : {},
-                // The prescribed RIR target applies to the final set only; the
-                // earlier sets start blank and accept an optional value.
+                // The prescribed RIR target applies to the final set only,
+                // unless this program tracks RIR on every set. Other sets start
+                // blank and accept an optional value.
                 rir:
+                  (workout.trackRirEverySet ?? false) ||
                   setNumber === sourceForWorkout.targetSetCount
                     ? sourceForWorkout.targetRir
                     : null,

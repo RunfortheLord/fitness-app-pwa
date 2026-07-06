@@ -593,6 +593,7 @@ export function LiveWorkoutPage() {
           exercise={activeExercise}
           exerciseCount={state.exercises.length}
           exerciseIndex={activeIndex}
+          rirTargetOnEverySet={state.workout.trackRirEverySet ?? false}
           key={activeExercise.id}
           onAddExercise={() => setPicker({ mode: 'add' })}
           onAddSet={() => run(workoutRepository.addSet(activeExercise.id))}
@@ -897,6 +898,7 @@ function ExerciseWorkspace({
   onSkip,
   prescription,
   restTimerPanel,
+  rirTargetOnEverySet,
   sets,
 }: {
   canGoNext: boolean
@@ -904,6 +906,7 @@ function ExerciseWorkspace({
   exercise: WorkoutExercise
   exerciseCount: number
   exerciseIndex: number
+  rirTargetOnEverySet: boolean
   onAddExercise: () => void
   onAddSet: () => void
   onCompleteSet: (set: WorkoutSet, completed: boolean) => void
@@ -1013,6 +1016,7 @@ function ExerciseWorkspace({
             onMetricChange={(key, value) => onSetMetric(set, { key, value })}
             onRirChange={(rir) => onSetRir(set, rir)}
             prescription={prescription}
+            rirTargetOnEverySet={rirTargetOnEverySet}
             set={set}
           />
         ))}
@@ -1124,6 +1128,7 @@ function SetRow({
   onMetricChange,
   onRirChange,
   prescription,
+  rirTargetOnEverySet,
   set,
 }: {
   exercise: WorkoutExercise
@@ -1134,6 +1139,7 @@ function SetRow({
   onMetricChange: (key: string, value: WorkoutSetMetricValue) => void
   onRirChange: (rir: number | null) => void
   prescription: ActiveCycleWorkoutExercise | undefined
+  rirTargetOnEverySet: boolean
   set: WorkoutSet
 }) {
   const { t } = useLanguage()
@@ -1145,8 +1151,10 @@ function SetRow({
   const [rirDraftValid, setRirDraftValid] = useState(false)
   const rirEnabled = useRirTracking()
   const isFinalProgrammedSet = set.id === finalProgrammedSetId
-  // RIR is recordable on any set; only the final programmed set requires it
-  // (and carries the prescribed target) when RIR tracking is enabled.
+  // RIR is recordable on any set. The prescribed target/required prompt lands
+  // on the final programmed set only, unless the program tracks RIR on every
+  // set — then every set is a target set.
+  const isRirTargetSet = rirTargetOnEverySet || isFinalProgrammedSet
   const showRir = supportsRir(metrics) && rirEnabled
   const repsPerSide = exerciseRecordsRepsPerSide(exercise)
   const invalidMetricKeys = invalidRequiredMetricKeys(set, metrics)
@@ -1155,7 +1163,7 @@ function SetRow({
   )
   const isRirInvalid =
     showRir &&
-    isFinalProgrammedSet &&
+    isRirTargetSet &&
     (set.rir === null || set.rir === undefined) &&
     !rirDraftValid
   const weightUnit = useWeightUnit()
@@ -1237,7 +1245,7 @@ function SetRow({
             disabled={set.completed}
             aria-invalid={(validationRequested || rirTouched) && isRirInvalid}
             placeholder={
-              isFinalProgrammedSet && prescription?.targetRir != null
+              isRirTargetSet && prescription?.targetRir != null
                 ? String(prescription.targetRir)
                 : undefined
             }

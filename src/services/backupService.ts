@@ -435,6 +435,7 @@ const programTemplateSchema = z.object({
   isBuiltIn: z.boolean().optional(),
   level: z.union([z.string(), z.null()]).optional(),
   goal: z.union([z.string(), z.null()]).optional(),
+  trackRirEverySet: z.boolean().optional(),
   builtInSeedVersion: z.union([z.number(), z.null()]).optional(),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
@@ -474,6 +475,7 @@ const activeProgramCycleSchema = z.object({
   notes: z.string(),
   status: z.enum(['active', 'inactive', 'archived']),
   activatedAt: isoTimestampSchema,
+  trackRirEverySet: z.boolean().optional(),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })
@@ -578,6 +580,7 @@ const workoutSchema = z.object({
   elapsedPausedSeconds: nonNegativeInteger,
   activeRestTimer: z.union([restTimerStateSchema, z.null()]),
   status: z.enum(['active', 'completed', 'cancelled']),
+  trackRirEverySet: z.boolean().optional(),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })

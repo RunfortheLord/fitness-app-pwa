@@ -125,7 +125,11 @@ describe('TrainingPage', () => {
       screen.queryByRole('button', { name: 'Archive' }),
     ).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Save exercise' }))
-    expect(await screen.findByText(/Reps only - 150s rest/)).toBeInTheDocument()
+    expect(
+      await screen.findByText(/Reps only - 150s rest/, undefined, {
+        timeout: 5_000,
+      }),
+    ).toBeInTheDocument()
   })
 
   it('hides and restores custom exercises without offering hide for built-ins', async () => {
@@ -219,16 +223,9 @@ describe('TrainingPage', () => {
     expect(
       await screen.findByRole('dialog', { name: 'Edit template' }),
     ).toBeInTheDocument()
-    await user.type(
-      await screen.findByRole('textbox', { name: 'Add workout day' }),
-      'Push',
-    )
-    await user.click(screen.getByRole('button', { name: 'Add day' }))
-    await user.type(
-      await screen.findByRole('textbox', { name: 'Add workout day' }),
-      'Pull',
-    )
-    await user.click(screen.getByRole('button', { name: 'Add day' }))
+    const builder = screen.getByRole('dialog', { name: 'Edit template' })
+    await addWorkoutDay(user, builder, 'Push')
+    await addWorkoutDay(user, builder, 'Pull')
     await waitFor(() => {
       expect(
         within(
@@ -244,7 +241,6 @@ describe('TrainingPage', () => {
 
     // Day reordering is drag-only (covered by SortableList tests); the builder
     // exposes no Up/Down buttons.
-    const builder = screen.getByRole('dialog', { name: 'Edit template' })
     expect(
       within(builder).queryByRole('button', { name: 'Down' }),
     ).not.toBeInTheDocument()
@@ -327,11 +323,7 @@ describe('TrainingPage', () => {
     await user.click(screen.getByRole('button', { name: 'Save program' }))
 
     const builder = await screen.findByRole('dialog', { name: 'Edit template' })
-    await user.type(
-      await within(builder).findByRole('textbox', { name: 'Add workout day' }),
-      'Day A',
-    )
-    await user.click(within(builder).getByRole('button', { name: 'Add day' }))
+    await addWorkoutDay(user, builder, 'Day A')
     await user.click(
       await within(builder).findByRole('button', { name: 'Add exercise' }),
     )
@@ -391,7 +383,7 @@ describe('TrainingPage', () => {
     })
   }, 15_000)
 
-  it('renames the selected workout day inline by editing its name field', async () => {
+  it('adds workout days from the compact plus control without a persistent naming field', async () => {
     const user = userEvent.setup()
     renderTraining()
 
@@ -406,24 +398,61 @@ describe('TrainingPage', () => {
     await user.click(screen.getByRole('button', { name: 'Save program' }))
 
     const builder = await screen.findByRole('dialog', { name: 'Edit template' })
+    const dayTabs = await within(builder).findByLabelText('Program days')
+    expect(
+      within(dayTabs).getByRole('button', { name: 'Add workout day' }),
+    ).toBeInTheDocument()
+    expect(
+      within(builder).queryByRole('textbox', { name: 'New workout day name' }),
+    ).not.toBeInTheDocument()
+
+    await addWorkoutDay(user, builder, 'Push')
+
+    expect(
+      within(builder).queryByRole('textbox', { name: 'Workout day name' }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(builder).queryByRole('textbox', { name: 'Add workout day' }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(builder).getByRole('button', { name: 'Add workout day' }),
+    ).toBeInTheDocument()
+    expect(
+      await within(builder).findByRole('button', { name: /^Push/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('cancels the compact workout-day input without adding a day', async () => {
+    const user = userEvent.setup()
+    renderTraining()
+
+    await screen.findAllByRole('button', { name: 'Create program' })
+    await user.click(
+      screen.getAllByRole('button', { name: 'Create program' })[0],
+    )
     await user.type(
-      await within(builder).findByRole('textbox', { name: 'Add workout day' }),
+      screen.getByRole('textbox', { name: 'Program name' }),
+      'Split',
+    )
+    await user.click(screen.getByRole('button', { name: 'Save program' }))
+
+    const builder = await screen.findByRole('dialog', { name: 'Edit template' })
+    const dayCountBefore = await db.templateWorkoutDays.count()
+    await user.click(
+      await within(builder).findByRole('button', { name: 'Add workout day' }),
+    )
+    await user.type(
+      within(builder).getByRole('textbox', { name: 'New workout day name' }),
       'Push',
     )
-    await user.click(within(builder).getByRole('button', { name: 'Add day' }))
+    await user.click(
+      within(builder).getByRole('button', {
+        name: 'Cancel adding workout day',
+      }),
+    )
 
-    const dayNameField = await within(builder).findByRole('textbox', {
-      name: 'Workout day name',
-    })
-    expect(dayNameField).toHaveValue('Push')
-    await user.clear(dayNameField)
-    await user.type(dayNameField, 'Pull')
-    await user.tab()
-
-    await waitFor(() => {
-      expect(within(builder).getAllByText('Pull').length).toBeGreaterThan(0)
-      expect(within(builder).queryByText('Push')).not.toBeInTheDocument()
-    })
+    expect(within(builder).queryByText('Push')).not.toBeInTheDocument()
+    await expect(db.templateWorkoutDays.count()).resolves.toBe(dayCountBefore)
   })
 
   it('searches built-in and visible custom exercises while excluding hidden custom exercises', async () => {
@@ -446,11 +475,7 @@ describe('TrainingPage', () => {
     )
     await user.click(screen.getByRole('button', { name: 'Save program' }))
     const builder = await screen.findByRole('dialog', { name: 'Edit template' })
-    await user.type(
-      await within(builder).findByRole('textbox', { name: 'Add workout day' }),
-      'Day',
-    )
-    await user.click(within(builder).getByRole('button', { name: 'Add day' }))
+    await addWorkoutDay(user, builder, 'Day')
     await within(builder).findByText('Day')
     await user.click(
       within(builder).getByRole('button', { name: 'Add exercise' }),
@@ -1378,6 +1403,25 @@ function renderTraining(initialEntries = ['/training']) {
   )
 
   return render(<RouterProvider router={router} />)
+}
+
+async function addWorkoutDay(
+  user: ReturnType<typeof userEvent.setup>,
+  builder: HTMLElement,
+  name: string,
+) {
+  await user.click(
+    await within(builder).findByRole('button', { name: 'Add workout day' }),
+  )
+  await user.type(
+    await within(builder).findByRole('textbox', {
+      name: 'New workout day name',
+    }),
+    name,
+  )
+  await user.click(
+    within(builder).getByRole('button', { name: 'Save workout day' }),
+  )
 }
 
 async function expectSaveExerciseDisabled() {

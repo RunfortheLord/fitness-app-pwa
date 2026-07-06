@@ -1,4 +1,4 @@
-import { Copy, Edit2, Plus, Trash2 } from 'lucide-react'
+import { Check, Copy, Edit2, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import {
@@ -24,6 +24,7 @@ import {
   searchExercises,
   type ExerciseUsageSummary,
 } from '@domain/exerciseSearch'
+import { useRirTracking } from '@hooks/useRirTracking'
 import { programRepository } from '@repositories/programRepository'
 import type {
   ActiveCycleWorkoutDay,
@@ -71,6 +72,7 @@ export function ProgramBuilderSheet({
   } | null>(null)
   const [nameForm, setNameForm] = useState(emptyProgramForm)
   const [dayName, setDayName] = useState('')
+  const [isAddingDay, setIsAddingDay] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [editingPrescription, setEditingPrescription] = useState<{
     dayId: string
@@ -90,8 +92,13 @@ export function ProgramBuilderSheet({
     () => new Set(),
   )
   const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false)
+  const [isPrescriptionDirty, setIsPrescriptionDirty] = useState(false)
+  const [isDiscardPrescriptionOpen, setIsDiscardPrescriptionOpen] =
+    useState(false)
 
   const mode: BuilderMode = target.mode
+  const rirEnabled = useRirTracking()
+  const trackRirEverySet = structure?.record.trackRirEverySet ?? false
 
   useEffect(() => {
     let isCurrent = true
@@ -266,20 +273,27 @@ export function ProgramBuilderSheet({
     )
   }
 
-  function saveDayName(dayId: string, nextName: string) {
-    const trimmed = nextName.trim()
-    if (!trimmed) {
-      return
-    }
-    const current = structure?.days.find((day) => day.id === dayId)
-    if (!current || trimmed === current.name) {
+  function saveTrackRirEverySet(nextValue: boolean) {
+    if (!structure || nextValue === trackRirEverySet) {
       return
     }
     run(
       mode === 'template'
-        ? programRepository.updateTemplateDay(dayId, { name: trimmed })
-        : programRepository.updateActiveCycleDay(dayId, { name: trimmed }),
+        ? programRepository.updateProgramTemplate(structure.record.id, {
+            trackRirEverySet: nextValue,
+          })
+        : programRepository.updateActiveCycle(structure.record.id, {
+            trackRirEverySet: nextValue,
+          }),
     )
+  }
+
+  function closePrescription() {
+    if (isPrescriptionDirty) {
+      setIsDiscardPrescriptionOpen(true)
+      return
+    }
+    setEditingPrescription(null)
   }
 
   function removeDayConfirmed() {
@@ -446,6 +460,13 @@ export function ProgramBuilderSheet({
           }),
     )
     setDayName('')
+    setIsAddingDay(false)
+  }
+
+  function cancelAddDay() {
+    setDayName('')
+    setIsAddingDay(false)
+    setError(null)
   }
 
   function selectDay(dayId: string) {
@@ -615,7 +636,7 @@ export function ProgramBuilderSheet({
         isOpen={isOpen}
         onClose={() => {
           if (editingPrescription) {
-            setEditingPrescription(null)
+            closePrescription()
             return
           }
           onClose()
@@ -629,12 +650,15 @@ export function ProgramBuilderSheet({
             exerciseUsage={exerciseUsage}
             exercises={exercises}
             mode={mode}
-            onClose={() => setEditingPrescription(null)}
+            onClose={closePrescription}
+            onDirtyChange={setIsPrescriptionDirty}
             onSaved={() => {
+              setIsPrescriptionDirty(false)
               setEditingPrescription(null)
               refresh()
             }}
             target={editingPrescription}
+            trackRirEverySet={trackRirEverySet}
           />
         ) : null}
         {structure && !editingPrescription ? (
@@ -692,50 +716,91 @@ export function ProgramBuilderSheet({
               />
             </FormField>
 
-            <div className="program-builder-add">
-              <FormField id="new-day-name" label="Add workout day">
+            {rirEnabled ? (
+              <label className="checkbox-row">
                 <input
-                  id="new-day-name"
-                  onChange={(event) => setDayName(event.target.value)}
-                  placeholder="Upper, Lower, Day 1"
-                  value={dayName}
+                  checked={trackRirEverySet}
+                  onChange={(event) =>
+                    saveTrackRirEverySet(event.currentTarget.checked)
+                  }
+                  type="checkbox"
                 />
-              </FormField>
-              <SecondaryButton type="button" onClick={addDay}>
-                Add day
-              </SecondaryButton>
-            </div>
+                Track RIR on every set?
+              </label>
+            ) : null}
 
             <SortableArea
               getItemLabel={builderItemLabel}
               onDragEnd={handleBuilderDragEnd}
             >
-              {structure.days.length ? (
-                <SortableZone
-                  direction="horizontal"
-                  itemIds={structure.days.map((day) => day.id)}
-                >
-                  <div className="program-day-tabs" aria-label="Program days">
-                    {structure.days.map((day) => (
-                      <SortableListItem id={day.id} key={day.id}>
-                        {(drag) => (
-                          <button
-                            aria-current={day.id === selectedDay?.id}
-                            onClick={() => selectDay(day.id)}
-                            type="button"
-                            {...pointerActivatorProps(drag)}
-                          >
-                            <span>{day.name}</span>
-                            <small>
-                              {(structure.exercisesByDay[day.id] ?? []).length}
-                            </small>
-                          </button>
-                        )}
-                      </SortableListItem>
-                    ))}
-                  </div>
-                </SortableZone>
-              ) : null}
+              <SortableZone
+                direction="horizontal"
+                itemIds={structure.days.map((day) => day.id)}
+              >
+                <div className="program-day-tabs" aria-label="Program days">
+                  {structure.days.map((day) => (
+                    <SortableListItem id={day.id} key={day.id}>
+                      {(drag) => (
+                        <button
+                          aria-current={day.id === selectedDay?.id}
+                          onClick={() => selectDay(day.id)}
+                          type="button"
+                          {...pointerActivatorProps(drag)}
+                        >
+                          <span>{day.name}</span>
+                          <small>
+                            {(structure.exercisesByDay[day.id] ?? []).length}
+                          </small>
+                        </button>
+                      )}
+                    </SortableListItem>
+                  ))}
+                  {isAddingDay ? (
+                    <form
+                      className="program-day-add-form"
+                      onSubmit={(event) => {
+                        event.preventDefault()
+                        addDay()
+                      }}
+                    >
+                      <input
+                        aria-label="New workout day name"
+                        autoFocus
+                        onChange={(event) => setDayName(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Escape') {
+                            cancelAddDay()
+                          }
+                        }}
+                        placeholder="Day name"
+                        value={dayName}
+                      />
+                      <IconButton
+                        aria-label="Save workout day"
+                        disabled={!dayName.trim()}
+                        type="submit"
+                      >
+                        <Check aria-hidden="true" size={18} />
+                      </IconButton>
+                      <IconButton
+                        aria-label="Cancel adding workout day"
+                        onClick={cancelAddDay}
+                        type="button"
+                      >
+                        <X aria-hidden="true" size={18} />
+                      </IconButton>
+                    </form>
+                  ) : (
+                    <IconButton
+                      aria-label="Add workout day"
+                      className="program-day-add-button"
+                      onClick={() => setIsAddingDay(true)}
+                    >
+                      <Plus aria-hidden="true" size={20} />
+                    </IconButton>
+                  )}
+                </div>
+              </SortableZone>
 
               <div className="program-builder-days">
                 {selectedDay ? (
@@ -744,37 +809,11 @@ export function ProgramBuilderSheet({
                     key={selectedDay.id}
                     {...daySwipe}
                   >
-                    <div className="program-builder-day-head">
-                      <FormField id="builder-day-name" label="Workout day name">
-                        <div className="rename-field">
-                          <input
-                            className="rename-field-input"
-                            defaultValue={selectedDay.name}
-                            id="builder-day-name"
-                            key={selectedDay.id}
-                            onBlur={(event) =>
-                              saveDayName(selectedDay.id, event.target.value)
-                            }
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter') {
-                                event.currentTarget.blur()
-                              }
-                            }}
-                          />
-                          <Edit2
-                            aria-hidden="true"
-                            className="rename-field-icon"
-                            size={16}
-                          />
-                        </div>
-                        <small className="rename-field-hint">
-                          Tap to rename
-                        </small>
-                      </FormField>
-                      {selectedDay.notes ? (
-                        <small>{selectedDay.notes}</small>
-                      ) : null}
-                    </div>
+                    {selectedDay.notes ? (
+                      <small className="program-builder-day-notes">
+                        {selectedDay.notes}
+                      </small>
+                    ) : null}
                     <div className="button-row">
                       <SecondaryButton
                         className="button-danger"
@@ -1069,6 +1108,19 @@ export function ProgramBuilderSheet({
             selectedExerciseIds.size === 1 ? 'exercise' : 'exercises'
           } will be removed from this workout day.`}
         </p>
+      </ModalConfirmationDialog>
+      <ModalConfirmationDialog
+        confirmLabel="Discard"
+        isOpen={isDiscardPrescriptionOpen}
+        onCancel={() => setIsDiscardPrescriptionOpen(false)}
+        onConfirm={() => {
+          setIsDiscardPrescriptionOpen(false)
+          setIsPrescriptionDirty(false)
+          setEditingPrescription(null)
+        }}
+        title="Discard prescription changes?"
+      >
+        <p>Entered prescription values will be discarded.</p>
       </ModalConfirmationDialog>
     </>
   )

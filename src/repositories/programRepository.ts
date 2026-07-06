@@ -43,6 +43,7 @@ export type CreateProgramTemplateInput = {
   name: string
   notes?: string
   durationWeeks?: number | null
+  trackRirEverySet?: boolean
   days: CreateTemplateDayInput[]
 }
 
@@ -229,6 +230,7 @@ export function createProgramRepository(
         durationWeeks: clampProgramDurationWeeks(
           input.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
         ),
+        trackRirEverySet: input.trackRirEverySet ?? false,
         createdAt: now,
         updatedAt: now,
       }
@@ -352,6 +354,7 @@ export function createProgramRepository(
             activatedAt: now,
             durationWeeks:
               template.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
+            trackRirEverySet: template.trackRirEverySet ?? false,
             createdAt: now,
             updatedAt: now,
           }
@@ -445,7 +448,9 @@ export function createProgramRepository(
 
     async updateProgramTemplate(
       id: string,
-      input: Partial<Pick<ProgramTemplate, 'name' | 'durationWeeks'>>,
+      input: Partial<
+        Pick<ProgramTemplate, 'name' | 'durationWeeks' | 'trackRirEverySet'>
+      >,
     ) {
       const template = await database.programTemplates.get(id)
       if (!template) {
@@ -1209,7 +1214,9 @@ export function createProgramRepository(
 
     async updateActiveCycle(
       id: string,
-      input: Partial<Pick<ActiveProgramCycle, 'name' | 'durationWeeks'>>,
+      input: Partial<
+        Pick<ActiveProgramCycle, 'name' | 'durationWeeks' | 'trackRirEverySet'>
+      >,
     ) {
       const cycle = await database.activeProgramCycles.get(id)
       if (!cycle) {

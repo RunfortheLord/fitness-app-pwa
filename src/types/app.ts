@@ -441,6 +441,12 @@ export type ProgramTemplate = {
   goal?: string | null
   /** Planned length of the program in weeks (built-ins default to 10). */
   durationWeeks?: number | null
+  /**
+   * When true, live workouts for this program prompt for RIR on every set
+   * (and prefill the exercise's target RIR on each), instead of the final set
+   * only. Defaults to false.
+   */
+  trackRirEverySet?: boolean
   /** Seed version of a built-in template, for idempotent re-seeding. */
   builtInSeedVersion?: number | null
   createdAt: IsoTimestamp
@@ -486,6 +492,8 @@ export type ActiveProgramCycle = {
   activatedAt: IsoTimestamp
   /** Planned length in weeks, snapshotted from the template at activation. */
   durationWeeks?: number | null
+  /** Track RIR on every set, snapshotted from the template at activation. */
+  trackRirEverySet?: boolean
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }
@@ -563,6 +571,8 @@ export type Workout = {
   elapsedPausedSeconds: number
   activeRestTimer: RestTimerState | null
   status: 'active' | 'completed' | 'cancelled'
+  /** Snapshotted at start: prompt RIR on every set, not just the final set. */
+  trackRirEverySet?: boolean
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }

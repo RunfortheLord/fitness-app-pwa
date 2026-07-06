@@ -17,7 +17,9 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Record RIR (reps in reserve) on any set during a workout — not just the last one.',
       'Prefer not to use RIR? Turn it off in Settings and RIR fields disappear from workouts and prescriptions. Your recorded history is kept.',
       'A prescription’s target RIR now clearly applies to the exercise’s last set only, and the weight-target field is gone — log the weight you actually lift during the workout.',
+      'Want RIR on every set of a program? Turn on “Track RIR on every set?” when editing that program.',
       'Reorder workout days by dragging their tabs; the old Up, Down, and Duplicate buttons are gone for a cleaner day header.',
+      'The prescription editor is tidier: one back button, the RIR target sits next to Sets, and redundant rest text is gone.',
     ],
   },
   {

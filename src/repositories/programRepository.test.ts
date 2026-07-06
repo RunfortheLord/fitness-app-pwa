@@ -435,6 +435,31 @@ describe('programRepository', () => {
     ).rejects.toThrow('The active program cannot be deleted')
   })
 
+  it('defaults track-RIR-every-set off, persists updates, and copies it on activation', async () => {
+    const repository = createProgramRepository(database)
+    const created = await repository.createProgramTemplate({
+      name: 'RIR every set',
+      days: [],
+    })
+    expect(created.template.trackRirEverySet).toBe(false)
+
+    const updated = await repository.updateProgramTemplate(
+      created.template.id,
+      {
+        trackRirEverySet: true,
+      },
+    )
+    expect(updated.trackRirEverySet).toBe(true)
+
+    const active = await repository.activateTemplate(created.template.id)
+    expect(active.cycle.trackRirEverySet).toBe(true)
+
+    const toggledOff = await repository.updateActiveCycle(active.cycle.id, {
+      trackRirEverySet: false,
+    })
+    expect(toggledOff.trackRirEverySet).toBe(false)
+  })
+
   it('moves a template exercise to another day and reindexes both days', async () => {
     const program = await seedProgram(database)
     const repository = createProgramRepository(database)
