@@ -204,29 +204,7 @@ textarea:focus-visible {
 
 .home-bodyweight-summary {
   display: grid;
-  gap: var(--space-3);
-}
-
-.home-bodyweight-summary-trigger {
-  display: grid;
-  gap: var(--space-3);
-  width: 100%;
-  min-height: 44px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-}
-
-.home-bodyweight-title {
-  display: inline-flex;
-  align-items: center;
   gap: var(--space-2);
-  color: var(--color-muted);
-  font-size: 13px;
-  font-weight: 800;
 }
 
 .home-action-grid {
@@ -329,11 +307,6 @@ textarea:focus-visible {
   color: var(--color-muted);
   font-size: 12px;
   font-weight: 600;
-}
-
-.home-bw-current-date {
-  color: var(--color-muted);
-  font-size: 12px;
 }
 
 .button-row.home-bodyweight-actions {
@@ -565,11 +538,6 @@ textarea:focus-visible {
   display: block;
   margin-top: var(--space-1);
   color: var(--color-dim);
-}
-
-.program-builder-day-head {
-  display: grid;
-  gap: var(--space-1);
 }
 
 .live-create-exercise-button {
@@ -992,8 +960,7 @@ textarea:focus-visible {
   min-height: 44px;
 }
 
-.program-action-row,
-.program-builder-add {
+.program-action-row {
   margin-top: var(--space-3);
 }
 
@@ -1059,6 +1026,38 @@ textarea:focus-visible {
 }
 
 .program-day-tabs small {
+  color: var(--color-muted);
+}
+
+.program-day-tabs .program-day-add-button {
+  min-width: 54px;
+  width: 54px;
+  place-items: center;
+  padding: 0;
+}
+
+.program-day-add-form {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.program-day-add-form input {
+  width: 138px;
+  min-height: 54px;
+  padding: var(--space-2);
+}
+
+.program-day-add-form .icon-button {
+  min-width: 44px;
+  width: 44px;
+  min-height: 44px;
+  place-items: center;
+  padding: 0;
+}
+
+.program-builder-day-notes {
   color: var(--color-muted);
 }
 
@@ -1224,28 +1223,81 @@ textarea:focus-visible {
   border-radius: var(--radius-sm);
 }
 
-.rest-preset-row {
+.rest-wheel {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-strong);
 }
 
-.rest-preset-chip {
-  min-width: 52px;
-  min-height: 44px;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--color-border-soft);
-  border-radius: 999px;
-  background: var(--color-surface-strong);
-  color: var(--color-text);
-  font: inherit;
+/* The highlighted center band, like a phone timer's selection row. */
+.rest-wheel::before {
+  content: '';
+  position: absolute;
+  left: var(--space-3);
+  right: var(--space-3);
+  top: 50%;
+  height: 40px;
+  transform: translateY(-50%);
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  pointer-events: none;
+}
+
+.wheel-unit-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.wheel-unit {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.wheel-separator {
+  color: var(--color-muted);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.wheel-scroll {
+  height: 200px;
+  width: 56px;
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+.wheel-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.wheel-item {
+  display: flex;
+  width: 100%;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  scroll-snap-align: center;
+  border: 0;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
 
-.rest-preset-chip[aria-pressed='true'] {
-  border-color: var(--color-accent);
-  background: var(--color-accent-soft);
+.wheel-item.is-selected {
+  color: var(--color-text);
+  font-weight: 700;
 }
 
 .prescription-preview,
@@ -4219,7 +4271,6 @@ body.food-search-open .bottom-nav {
   .icon-button,
   .icon-link,
   .metric-card-button,
-  .home-bodyweight-summary-trigger,
   .food-search-trigger,
   .history-list button,
   .quick-action-list button,
@@ -4243,7 +4294,6 @@ body.food-search-open .bottom-nav {
   .icon-button:active:not(:disabled),
   .icon-link:active,
   .metric-card-button:active,
-  .home-bodyweight-summary-trigger:active,
   .food-search-trigger:active,
   .history-list button:active,
   .quick-action-list button:active,

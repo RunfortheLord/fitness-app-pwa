@@ -334,19 +334,16 @@ describe('TrainingPage', () => {
     await user.click(
       await within(builder).findByRole('button', { name: /Bench press/ }),
     )
-    await user.clear(
-      within(builder).getByRole('textbox', { name: 'Rest minutes' }),
+    // Rest is set with the scrollable minute/second wheel; click 1 min 45 sec.
+    await user.click(
+      within(
+        within(builder).getByRole('listbox', { name: 'Rest minutes' }),
+      ).getByRole('option', { name: '01' }),
     )
-    await user.type(
-      within(builder).getByRole('textbox', { name: 'Rest minutes' }),
-      '1',
-    )
-    await user.clear(
-      within(builder).getByRole('textbox', { name: 'Rest seconds' }),
-    )
-    await user.type(
-      within(builder).getByRole('textbox', { name: 'Rest seconds' }),
-      '45',
+    await user.click(
+      within(
+        within(builder).getByRole('listbox', { name: 'Rest seconds' }),
+      ).getByRole('option', { name: '45' }),
     )
     await user.type(
       within(builder).getByRole('textbox', { name: 'Min reps' }),

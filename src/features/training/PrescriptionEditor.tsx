@@ -1,6 +1,7 @@
 import { ArrowLeft, Plus, Search } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { RestWheelPicker } from '@components/WheelPicker'
 import {
   EmptyState,
   FormField,
@@ -46,12 +47,6 @@ import {
   type PrescriptionFormState,
 } from './programForms'
 import type { BuilderMode } from './types'
-
-const REST_PRESET_SECONDS = [30, 60, 90, 120, 180, 300]
-
-function formatRestPreset(seconds: number) {
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
-}
 
 export function PrescriptionEditor({
   exerciseUsage,
@@ -128,8 +123,6 @@ export function PrescriptionEditor({
   const isDirty =
     formIsDirty(form, target.exercise, weightUnit, selectedExercise) ||
     step === 'create'
-  const parsedRest = parseRestDuration(form.restMinutes, form.restSeconds)
-  const currentRestSeconds = parsedRest.ok ? parsedRest.value : null
   const rirEnabled = useRirTracking()
 
   // Report dirtiness upward so the sheet's single back arrow can guard against
@@ -473,47 +466,20 @@ export function PrescriptionEditor({
           ) : null}
           <FormField
             helpText="Applies as this exercise's default rest."
-            id="prescription-rest-minutes"
+            id="prescription-rest"
             label="Rest"
           >
-            <div
-              aria-label="Rest presets"
-              className="rest-preset-row"
-              role="group"
-            >
-              {REST_PRESET_SECONDS.map((seconds) => (
-                <button
-                  aria-pressed={currentRestSeconds === seconds}
-                  className="rest-preset-chip"
-                  key={seconds}
-                  onClick={() =>
-                    setForm((current) => ({
-                      ...current,
-                      ...restFieldsFromSeconds(seconds),
-                    }))
-                  }
-                  type="button"
-                >
-                  {formatRestPreset(seconds)}
-                </button>
-              ))}
-            </div>
-            <div className="compact-field-grid">
-              <NumericInput
-                aria-label="Rest minutes"
-                id="prescription-rest-minutes"
-                onChange={(event) => update('restMinutes', event.target.value)}
-                pattern="[0-9]*"
-                value={form.restMinutes}
-              />
-              <NumericInput
-                aria-label="Rest seconds"
-                id="prescription-rest-seconds"
-                onChange={(event) => update('restSeconds', event.target.value)}
-                pattern="[0-9]*"
-                value={form.restSeconds}
-              />
-            </div>
+            <RestWheelPicker
+              minutes={Number(form.restMinutes) || 0}
+              onChange={(minutes, seconds) =>
+                setForm((current) => ({
+                  ...current,
+                  restMinutes: String(minutes),
+                  restSeconds: String(seconds),
+                }))
+              }
+              seconds={Number(form.restSeconds) || 0}
+            />
           </FormField>
           <FormField id="prescription-notes" label="Notes">
             <textarea
