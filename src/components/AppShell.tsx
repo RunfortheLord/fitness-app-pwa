@@ -1,7 +1,7 @@
 import {
-  CircleMinus,
   Dumbbell,
   Footprints,
+  Minus,
   NotebookPen,
   Scale,
   Sparkles,
@@ -265,7 +265,7 @@ function AppShellContent({ children }: AppShellProps) {
                   aria-label={t('Minimize workout')}
                   onClick={() => void navigate('/training')}
                 >
-                  <CircleMinus aria-hidden="true" size={22} />
+                  <Minus aria-hidden="true" size={22} />
                 </button>
               ) : null}
               <Link
