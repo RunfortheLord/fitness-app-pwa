@@ -1,4 +1,5 @@
 import {
+  CircleMinus,
   Dumbbell,
   Footprints,
   NotebookPen,
@@ -9,7 +10,7 @@ import {
   Utensils,
   X,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import {
@@ -33,11 +34,16 @@ import {
   IconButton,
   OfflineIndicator,
   PrimaryButton,
+  SecondaryButton,
   StatusMessage,
+  ValidationMessage,
 } from '@components/ui'
 import { useDashboardContext } from '@hooks/useDashboardContext'
+import { useAuth } from '@hooks/useAuth'
 import { useKeyboardInset } from '@hooks/useKeyboardInset'
+import { useTabSwipeNavigation } from '@hooks/useTabSwipeNavigation'
 import { runRepository } from '@repositories/runRepository'
+import { automaticCloudBackupService } from '@services/automaticCloudBackupService'
 import { workoutRepository } from '@repositories/workoutRepository'
 
 type ActiveActivity =
@@ -59,6 +65,7 @@ export function AppShell({ children }: AppShellProps) {
 
 function AppShellContent({ children }: AppShellProps) {
   const { t } = useLanguage()
+  const location = useLocation()
   const [pendingUpdate, setPendingUpdate] =
     useState<ServiceWorkerUpdate | null>(null)
   const [isApplyingUpdate, setIsApplyingUpdate] = useState(false)
@@ -69,12 +76,23 @@ function AppShellContent({ children }: AppShellProps) {
   const [showWhatsNew, setShowWhatsNew] = useState(() => hasUnseenChangelog())
   const [isQuickActionOpen, setIsQuickActionOpen] = useState(false)
   const [activeActivity, setActiveActivity] = useState<ActiveActivity>(null)
+  const [hasDismissedSignInPrompt, setHasDismissedSignInPrompt] =
+    useState(false)
+  const [offerSignInOnLaunch] = useState(() => location.pathname === '/')
+  const [signInError, setSignInError] = useState<string | null>(null)
+  const [automaticBackupError, setAutomaticBackupError] = useState<
+    string | null
+  >(null)
+  const [automaticBackupBlocked, setAutomaticBackupBlocked] = useState(false)
+  const mainRef = useRef<HTMLElement>(null)
+  const previousPathRef = useRef(location.pathname)
   const { bodyweightSheet, closeBodyweightSheet, openBodyweightSheet } =
     useDashboardContext()
-  const location = useLocation()
+  const { signIn, status: authStatus } = useAuth()
   const navigate = useNavigate()
 
   useKeyboardInset()
+  useTabSwipeNavigation(mainRef, location.pathname, navigate)
 
   useEffect(() => {
     const update = registerServiceWorkerUpdateHandler((nextUpdate) => {
@@ -149,12 +167,53 @@ function AppShellContent({ children }: AppShellProps) {
     }
   }, [])
 
+  useEffect(() => {
+    if (previousPathRef.current === location.pathname) {
+      return
+    }
+
+    previousPathRef.current = location.pathname
+    mainRef.current?.focus({ preventScroll: true })
+  }, [location.pathname])
+
+  useEffect(() => {
+    if (authStatus !== 'signedIn') {
+      return
+    }
+
+    return automaticCloudBackupService.start({
+      onBlocked: () => {
+        setAutomaticBackupBlocked(true)
+        setAutomaticBackupError(null)
+      },
+      onError: () => {
+        setAutomaticBackupBlocked(false)
+        setAutomaticBackupError(
+          "Your data hasn't been backed up to the cloud in a few days. It's still safe on this device, and the app will keep retrying.",
+        )
+      },
+      onSuccess: () => {
+        setAutomaticBackupBlocked(false)
+        setAutomaticBackupError(null)
+      },
+    })
+  }, [authStatus])
+
   const routeTitle = getRouteTitle(location.pathname)
   const hasUpdateReady = pendingUpdate !== null
   const isHomeRoute = location.pathname === '/'
   const latestChangelogEntry = LATEST_CHANGELOG_ENTRY
+  const showSignInPrompt =
+    offerSignInOnLaunch &&
+    authStatus === 'signedOut' &&
+    isHomeRoute &&
+    !hasDismissedSignInPrompt
   const showWhatsNewBanner =
-    showWhatsNew && latestChangelogEntry && isHomeRoute && !activeActivity
+    showWhatsNew &&
+    latestChangelogEntry &&
+    isHomeRoute &&
+    !activeActivity &&
+    !showSignInPrompt
 
   function dismissWhatsNew() {
     markChangelogSeen()
@@ -175,25 +234,65 @@ function AppShellContent({ children }: AppShellProps) {
     }, 1500)
   }
 
+  async function signInForAutomaticBackup() {
+    setSignInError(null)
+    try {
+      await signIn()
+    } catch (caught) {
+      setSignInError(
+        caught instanceof Error
+          ? caught.message
+          : 'Google sign-in could not start.',
+      )
+    }
+  }
+
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">
+        {t('Skip to content')}
+      </a>
       <RestTimerMonitor />
       <AppHeader
         title={routeTitle}
         action={
           location.pathname.startsWith('/settings') ? undefined : (
-            <Link
-              className="icon-link"
-              aria-label={t('Settings')}
-              to="/settings"
-            >
-              <Settings aria-hidden="true" size={22} />
-            </Link>
+            <div className="live-workout-header-actions">
+              {location.pathname.startsWith('/workout') ? (
+                <button
+                  className="icon-link"
+                  type="button"
+                  aria-label={t('Minimize workout')}
+                  onClick={() => void navigate('/training')}
+                >
+                  <CircleMinus aria-hidden="true" size={22} />
+                </button>
+              ) : null}
+              <Link
+                className="icon-link"
+                aria-label={t('Settings')}
+                to="/settings"
+              >
+                <Settings aria-hidden="true" size={22} />
+              </Link>
+            </div>
           )
         }
       />
 
       <OfflineIndicator isOffline={isOffline} />
+
+      {automaticBackupError ? (
+        <StatusMessage tone="warning">{t(automaticBackupError)}</StatusMessage>
+      ) : null}
+
+      {automaticBackupBlocked ? (
+        <StatusMessage tone="warning">
+          {t(
+            'A cloud backup already exists. Restore it or choose Back up now in Settings before automatic backups start on this device.',
+          )}
+        </StatusMessage>
+      ) : null}
 
       {hasUpdateReady ? (
         <StatusMessage tone="warning">
@@ -238,6 +337,37 @@ function AppShellContent({ children }: AppShellProps) {
         </div>
       ) : null}
 
+      {showSignInPrompt ? (
+        <aside
+          aria-labelledby="backup-prompt-title"
+          className="backup-sign-in-prompt"
+        >
+          <div className="backup-sign-in-copy">
+            <strong id="backup-prompt-title">{t('Prevent data loss')}</strong>
+            <p>
+              {t(
+                'Sign in with Google to automatically back up your fitness data. You can keep using the app offline, and your data stays available on this device.',
+              )}
+            </p>
+            {signInError ? <ValidationMessage message={signInError} /> : null}
+          </div>
+          <div className="backup-sign-in-actions">
+            <PrimaryButton type="button" onClick={signInForAutomaticBackup}>
+              {t('Sign in with Google')}
+            </PrimaryButton>
+            <SecondaryButton
+              type="button"
+              onClick={() => {
+                setSignInError(null)
+                setHasDismissedSignInPrompt(true)
+              }}
+            >
+              {t('Not now')}
+            </SecondaryButton>
+          </div>
+        </aside>
+      ) : null}
+
       {activeActivity &&
       !isHomeRoute &&
       !isActiveActivityRoute(location.pathname) ? (
@@ -256,12 +386,23 @@ function AppShellContent({ children }: AppShellProps) {
         </button>
       ) : null}
 
-      <main className="app-main">
+      <main
+        aria-label={t(routeTitle)}
+        className="app-main"
+        id="main-content"
+        ref={mainRef}
+        tabIndex={-1}
+      >
         <div className="route-transition" key={location.pathname}>
           {children}
         </div>
       </main>
-      <BottomNavigation onAdd={() => setIsQuickActionOpen(true)} />
+      <BottomNavigation
+        onAdd={() => setIsQuickActionOpen(true)}
+        trainingTo={
+          activeActivity?.type === 'workout' ? '/workout' : '/training'
+        }
+      />
       <BottomSheet
         isOpen={isQuickActionOpen}
         onClose={() => setIsQuickActionOpen(false)}

@@ -78,12 +78,14 @@ export function DailyTotalsCard({
 export function FoodSearchTrigger({
   onOpen,
   onOpenAiCamera,
+  onCreateFood,
   onOpenQuickAdd,
   onOpenScanner,
   onOpenRecipe,
 }: {
   onOpen: () => void
   onOpenAiCamera: () => void
+  onCreateFood?: () => void
   onOpenQuickAdd: () => void
   onOpenScanner: () => void
   onOpenRecipe: () => void
@@ -123,31 +125,19 @@ export function FoodSearchTrigger({
           <span>{t('Scan / AI')}</span>
         </div>
       </div>
-    </Card>
-  )
-}
-
-export function NutritionActionCard({
-  onCreateFood,
-}: {
-  onCreateFood: () => void
-}) {
-  const { t } = useLanguage()
-  return (
-    <Card>
-      <button
-        className="nutrition-action-row"
-        type="button"
-        onClick={onCreateFood}
-      >
-        <span className="quick-action-icon">
+      {onCreateFood ? (
+        <button
+          className="nutrition-action-row nutrition-action-row-compact"
+          type="button"
+          onClick={onCreateFood}
+        >
           <ReceiptText aria-hidden="true" size={18} />
-        </span>
-        <span>
-          <strong>{t('Create custom food')}</strong>
-          <small>{t('Save a reusable food with calories and macros.')}</small>
-        </span>
-      </button>
+          <span>
+            <strong>{t('Create custom food')}</strong>
+            <small>{t('Save a reusable food with calories and macros.')}</small>
+          </span>
+        </button>
+      ) : null}
     </Card>
   )
 }

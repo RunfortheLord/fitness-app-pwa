@@ -764,6 +764,44 @@ export function createFoodRepository(
 
       return Array.from(foods.values())
     },
+
+    async listRecentFoodsForMeal({
+      endDate,
+      limit = 4,
+      mealType,
+      startDate,
+    }: {
+      endDate: LocalDateString
+      limit?: number
+      mealType: MealType
+      startDate: LocalDateString
+    }) {
+      if (limit <= 0) {
+        return []
+      }
+
+      const logs = await database.foodLogEntries
+        .where('localDate')
+        .between(startDate, endDate, true, true)
+        .filter((entry) => entry.mealType === mealType && Boolean(entry.foodId))
+        .toArray()
+      logs.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+
+      const foodIds: string[] = []
+      const seenFoodIds = new Set<string>()
+      for (const log of logs) {
+        if (!log.foodId || seenFoodIds.has(log.foodId)) {
+          continue
+        }
+        seenFoodIds.add(log.foodId)
+        foodIds.push(log.foodId)
+      }
+
+      const foods = await database.foods.bulkGet(foodIds)
+      return foods
+        .filter((food): food is Food => food?.status === 'active')
+        .slice(0, limit)
+    },
   }
 
   return repository

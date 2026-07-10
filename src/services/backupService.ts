@@ -803,7 +803,7 @@ export function createBackupService(database: TrainingLogDatabase = db) {
   return {
     async createJsonBackup(now = new Date()) {
       const exportedAt = now.toISOString()
-      const data = await readBackupData(database)
+      const data = await readBackupData(database, { includeRunSamples: true })
       const backup: JsonBackup = {
         backupFormatVersion: BACKUP_FORMAT_VERSION,
         databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
@@ -828,6 +828,40 @@ export function createBackupService(database: TrainingLogDatabase = db) {
         backup,
         filename: createReadableFilename(
           'training-log-backup',
+          exportedAt,
+          'json',
+        ),
+        json: `${JSON.stringify(backup, null, 2)}\n`,
+      }
+    },
+
+    async createCloudBackup(now = new Date()) {
+      const exportedAt = now.toISOString()
+      const data = await readBackupData(database, { includeRunSamples: false })
+      const backup: JsonBackup = {
+        backupFormatVersion: BACKUP_FORMAT_VERSION,
+        databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+        applicationVersion: APPLICATION_VERSION,
+        exportedAt,
+        data,
+      }
+
+      await database.backupMetadata.put({
+        id: `export-${exportedAt}`,
+        backupSchemaVersion: BACKUP_FORMAT_VERSION,
+        databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+        exportedAt,
+        importedAt: null,
+        mode: 'export',
+        summary: `${countRecords(data)} records exported`,
+        createdAt: exportedAt,
+        updatedAt: exportedAt,
+      })
+
+      return {
+        backup,
+        filename: createReadableFilename(
+          'training-log-cloud-backup',
           exportedAt,
           'json',
         ),
@@ -919,7 +953,7 @@ export function createBackupService(database: TrainingLogDatabase = db) {
 
     async createCsvArchive(now = new Date()) {
       const exportedAt = now.toISOString()
-      const data = await readBackupData(database)
+      const data = await readBackupData(database, { includeRunSamples: true })
       const files = createCsvFiles(data)
       return {
         blob: createTarArchive(files),
@@ -971,6 +1005,7 @@ export function validateBackup(
 
 async function readBackupData(
   database: TrainingLogDatabase,
+  options: { includeRunSamples: boolean },
 ): Promise<BackupData> {
   return database.transaction(
     'r',
@@ -1010,7 +1045,9 @@ async function readBackupData(
       ),
       appliedWorkoutChanges: await sortedTable(database.appliedWorkoutChanges),
       runs: await sortedTable(database.runs),
-      runSamples: await sortedTable(database.runSamples),
+      runSamples: options.includeRunSamples
+        ? await sortedTable(database.runSamples)
+        : [],
       runPauses: await sortedTable(database.runPauses),
       runSplits: await sortedTable(database.runSplits),
       runClassifications: await sortedTable(database.runClassifications),

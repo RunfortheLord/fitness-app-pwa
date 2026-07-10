@@ -18,6 +18,8 @@ import {
   type GroupedFoodResult,
   type NormalizedFoodResult,
 } from '@domain/foodProviderModels'
+import { addLocalDays, formatLocalDate } from '@domain/dates'
+import { recommendationMealTypeForDate } from '@domain/meals'
 import { snapshotFood } from '@domain/snapshots'
 import { HomePage } from '@pages/HomePage'
 import { createSearchSections } from '@domain/foodSearchSections'
@@ -890,6 +892,32 @@ describe('NutritionPage', () => {
     )
   })
 
+  it('does not rerun provider search after plus-adding a matching food', async () => {
+    const user = userEvent.setup()
+    await configureUsdaKey()
+    mockSearchProviderFoods.mockResolvedValue({
+      provider: 'usda',
+      query: 'chicken',
+      results: [providerChicken()],
+      fallbackUsed: false,
+    })
+    renderNutrition()
+    await screen.findByText('Connected')
+
+    await user.type(await openFoodSearch(user), 'chicken')
+    await waitFor(() =>
+      expect(mockSearchProviderFoods).toHaveBeenCalledTimes(1),
+    )
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Add Chicken breast cooked' }),
+    )
+
+    expect(await screen.findByText(/1 added/)).toBeInTheDocument()
+    await delay(650)
+    expect(mockSearchProviderFoods).toHaveBeenCalledTimes(1)
+  })
+
   it('uses Spanish Open Food Facts search when the app language is Spanish', async () => {
     const user = userEvent.setup()
     await settingsRepository.saveLanguage('es')
@@ -1065,6 +1093,85 @@ describe('NutritionPage', () => {
       await screen.findByText('Logged Chicken and Rice (1 items).'),
     ).toBeInTheDocument()
     await expect(db.foodLogEntries.count()).resolves.toBe(1)
+  })
+
+  it('recommends the four most recent foods for the current meal until search begins', async () => {
+    const user = userEvent.setup()
+    const repository = createFoodRepository(db)
+    const today = formatLocalDate(new Date())
+    const mealType = recommendationMealTypeForDate(new Date())
+
+    for (let index = 0; index < 5; index += 1) {
+      const food = await repository.createFood({
+        name: `Meal choice ${index + 1}`,
+        servingQuantity: 1,
+        servingUnit: 'serving',
+        servingDescription: '',
+        caloriesPerServing: 100 + index,
+        proteinGramsPerServing: 10,
+        carbohydrateGramsPerServing: 10,
+        fatGramsPerServing: 2,
+        notes: '',
+      })
+      await repository.logFood({
+        foodId: food.id,
+        localDate: addLocalDays(today, -index),
+        servingMultiplier: 1,
+        mealType,
+      })
+    }
+
+    const oldFood = await repository.createFood({
+      name: 'Old meal choice',
+      servingQuantity: 1,
+      servingUnit: 'serving',
+      servingDescription: '',
+      caloriesPerServing: 90,
+      proteinGramsPerServing: 9,
+      carbohydrateGramsPerServing: 9,
+      fatGramsPerServing: 2,
+      notes: '',
+    })
+    await repository.logFood({
+      foodId: oldFood.id,
+      localDate: addLocalDays(today, -7),
+      servingMultiplier: 1,
+      mealType,
+    })
+
+    renderNutrition()
+    const search = await openFoodSearch(user)
+    const recommended = await screen.findByRole('region', {
+      name: 'Recommended foods',
+    })
+    const recommendedRows = within(recommended).getAllByRole('button', {
+      name: /^Select Meal choice/,
+    })
+    expect(recommendedRows).toHaveLength(4)
+    expect(
+      recommendedRows.map((row) => row.getAttribute('aria-label')),
+    ).toEqual([
+      'Select Meal choice 5',
+      'Select Meal choice 4',
+      'Select Meal choice 3',
+      'Select Meal choice 2',
+    ])
+    expect(
+      within(recommended).queryByText('Meal choice 1'),
+    ).not.toBeInTheDocument()
+    expect(
+      within(recommended).queryByText('Old meal choice'),
+    ).not.toBeInTheDocument()
+
+    await user.type(search, 'Meal choice 1')
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('region', { name: 'Recommended foods' }),
+      ).not.toBeInTheDocument(),
+    )
+    expect(
+      await screen.findByRole('button', { name: 'Select Meal choice 1' }),
+    ).toBeInTheDocument()
   })
 
   it('does not create a recipe search section for one-character-off queries', async () => {

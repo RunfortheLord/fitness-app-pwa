@@ -19,6 +19,7 @@ export type FoodSearchResult =
 // showing all of them made the lists overwhelmingly long. Cap each section to a
 // concise number of its most relevant entries.
 const RECENT_SECTION_CAP = 3
+const RECOMMENDED_SECTION_CAP = 4
 const COMMON_SECTION_CAP = 5
 const BRANDED_SECTION_CAP = 3
 const OTHER_SECTION_CAP = 5
@@ -40,6 +41,7 @@ export function createSearchSections({
   providerResults,
   query,
   recentFoods,
+  recommendedFoods = [],
   savedMeals = [],
 }: {
   includeRecentFoods: boolean
@@ -47,9 +49,29 @@ export function createSearchSections({
   providerResults: GroupedFoodResult[]
   query: string
   recentFoods: Food[]
+  recommendedFoods?: Food[]
   savedMeals?: SavedMeal[]
 }): Array<{ title: string; items: FoodSearchResult[] }> {
   const normalizedQuery = normalizeProviderQuery(query)
+  if (!query) {
+    return recommendedFoods.length
+      ? [
+          {
+            title: 'Recommended foods',
+            items: recommendedFoods
+              .slice(0, RECOMMENDED_SECTION_CAP)
+              .map((food) => ({
+                type: 'local' as const,
+                food,
+                section:
+                  food.sourceType === 'provider'
+                    ? ('used' as const)
+                    : ('recent' as const),
+              })),
+          },
+        ]
+      : []
+  }
   if (!normalizedQuery) {
     return []
   }

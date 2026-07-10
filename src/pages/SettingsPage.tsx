@@ -11,6 +11,7 @@ import {
   SecondaryButton,
   SectionHeader,
   StatusMessage,
+  SwitchControl,
   ValidationMessage,
 } from '@components/ui'
 import { useLanguage } from '@components/languageContextValue'
@@ -33,8 +34,10 @@ import { ArrowLeft } from 'lucide-react'
 import { useAuth } from '@hooks/useAuth'
 import { useDashboardContext } from '@hooks/useDashboardContext'
 import { useSubpageBackGesture } from '@hooks/useSubpageBackGesture'
+import { getAppMetadata } from '@repositories/appMetadataRepository'
 import { settingsRepository } from '@repositories/settingsRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
+import type { StoragePersistenceStatus } from '@services/appInitializationService'
 import {
   nativeRestTimerNotificationService,
   supportsNativeRestTimerNotifications,
@@ -56,6 +59,7 @@ import {
   cloudSyncService,
   type CloudBackupInfo,
 } from '@services/cloudSyncService'
+import { automaticCloudBackupService } from '@services/automaticCloudBackupService'
 import { FeedbackClientError, sendFeedback } from '@services/feedbackClient'
 import {
   geminiConnectionStatusForError,
@@ -130,6 +134,8 @@ export function SettingsPage() {
     null,
   )
   const [languageMessage, setLanguageMessage] = useState<string | null>(null)
+  const [storagePersistenceStatus, setStoragePersistenceStatus] =
+    useState<StoragePersistenceStatus | null>(null)
   const [buildInfo, setBuildInfo] = useState<BuildInfo | null>(null)
   const [feedbackText, setFeedbackText] = useState('')
   const [feedbackSending, setFeedbackSending] = useState(false)
@@ -197,6 +203,21 @@ export function SettingsPage() {
       )
       setWeightUnit(settings.weightUnit ?? 'lb')
       setRirTrackingEnabled(settings.rirTrackingEnabled ?? true)
+    })
+
+    return () => {
+      isCurrent = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let isCurrent = true
+
+    void getAppMetadata().then((metadata) => {
+      if (!isCurrent) {
+        return
+      }
+      setStoragePersistenceStatus(metadata?.storagePersistenceStatus ?? null)
     })
 
     return () => {
@@ -411,6 +432,23 @@ export function SettingsPage() {
     }
   }
 
+  function toggleOutsideAppTimerAlerts(enabled: boolean) {
+    saveTimerSettings({
+      timerSoundEnabled,
+      selectedTimerSoundId,
+      timerBannersEnabled: enabled,
+    })
+    if (!enabled) {
+      setNativeTimerAlertMessage(null)
+      return
+    }
+    if (supportsNativeRestTimerNotifications()) {
+      void enableNativeTimerAlerts()
+    } else {
+      void enableWebPushTimerAlerts()
+    }
+  }
+
   useEffect(() => {
     preloadTimerSound(selectedTimerSoundId)
   }, [selectedTimerSoundId])
@@ -468,6 +506,7 @@ export function SettingsPage() {
     setCloudMessage(null)
     try {
       const info = await cloudSyncService.backupToCloud()
+      automaticCloudBackupService.markCurrentDeviceSafe()
       setCloudBackupInfo(info)
       setCloudMessage('Cloud backup saved.')
     } catch (caught) {
@@ -487,6 +526,7 @@ export function SettingsPage() {
     setCloudMessage(null)
     try {
       await cloudSyncService.restoreFromCloud()
+      automaticCloudBackupService.markCurrentDeviceSafe()
       setCloudMessage('Cloud backup restored. Reloading local data.')
       refreshDashboard()
       window.location.reload()
@@ -874,12 +914,13 @@ export function SettingsPage() {
                     'Native timer alerts are scheduled on this iPhone and work when the app is closed or in the background.',
                   )}
                 </p>
-                <SecondaryButton
-                  type="button"
-                  onClick={() => void enableNativeTimerAlerts()}
-                >
-                  {t('Enable outside-app timer alerts')}
-                </SecondaryButton>
+                <SwitchControl
+                  checked={timerBannersEnabled}
+                  label="Enable outside-app timer alerts"
+                  onChange={(event) =>
+                    toggleOutsideAppTimerAlerts(event.currentTarget.checked)
+                  }
+                />
                 {nativeTimerAlertMessage ? (
                   <StatusMessage tone="warning">
                     {t(nativeTimerAlertMessage)}
@@ -895,12 +936,14 @@ export function SettingsPage() {
                       : 'Install this app on the iPhone Home Screen before enabling outside-app timer alerts.',
                   )}
                 </p>
-                <SecondaryButton
-                  type="button"
-                  onClick={() => void enableWebPushTimerAlerts()}
-                >
-                  {t('Enable outside-app timer alerts')}
-                </SecondaryButton>
+                <SwitchControl
+                  checked={timerBannersEnabled}
+                  disabled={!isInstalledWebApp()}
+                  label="Enable outside-app timer alerts"
+                  onChange={(event) =>
+                    toggleOutsideAppTimerAlerts(event.currentTarget.checked)
+                  }
+                />
                 {nativeTimerAlertMessage ? (
                   <StatusMessage tone="warning">
                     {t(nativeTimerAlertMessage)}
@@ -1005,6 +1048,12 @@ export function SettingsPage() {
                 'Local backup files and CSV exports stay on this device unless you use the separate cloud backup controls below.',
               )}
             </p>
+            <dl className="settings-list">
+              <div>
+                <dt>{t('Device storage')}</dt>
+                <dd>{storagePersistenceLabel(storagePersistenceStatus)}</dd>
+              </div>
+            </dl>
             <div className="button-row">
               <SecondaryButton type="button" onClick={exportJsonBackup}>
                 Export JSON backup
@@ -1047,7 +1096,7 @@ export function SettingsPage() {
           <Card className="cloud-backup-card">
             <p className="muted">
               {t(
-                'Manual Google-account backup and restore. Local data remains usable while signed out or offline.',
+                'Signed-in data is backed up automatically within five minutes of changes and when the app opens or resumes. Local data remains usable while signed out or offline.',
               )}
             </p>
             {!isOnline ? (
@@ -1440,6 +1489,21 @@ function systemTimerAlertPreviewMessage(
 function formatBuildTimestamp(timestamp: string) {
   const parsed = new Date(timestamp)
   return Number.isNaN(parsed.getTime()) ? timestamp : parsed.toISOString()
+}
+
+function storagePersistenceLabel(status: StoragePersistenceStatus | null) {
+  switch (status) {
+    case 'granted':
+      return 'Protected by browser storage'
+    case 'denied':
+      return 'Browser may reclaim storage'
+    case 'unsupported':
+      return 'Persistent storage not supported'
+    case 'error':
+      return 'Persistent storage check failed'
+    default:
+      return 'Checking storage'
+  }
 }
 
 function formatCloudTimestamp(timestamp: string) {

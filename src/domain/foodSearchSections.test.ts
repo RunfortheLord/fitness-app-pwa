@@ -126,6 +126,44 @@ function section(
 }
 
 describe('createSearchSections', () => {
+  it('shows at most four recommended foods only while the query is blank', () => {
+    const recommendedFoods = Array.from({ length: 5 }, (_, index) =>
+      makeRecentFood(`r${index}`, `Meal food ${index}`),
+    )
+    const blankSections = createSearchSections({
+      includeRecentFoods: true,
+      localFoods: [],
+      providerResults: [],
+      query: '',
+      recentFoods: [],
+      recommendedFoods,
+    })
+
+    expect(blankSections).toHaveLength(1)
+    expect(blankSections[0]).toMatchObject({ title: 'Recommended foods' })
+    expect(blankSections[0].items).toHaveLength(4)
+
+    const searchedSections = createSearchSections({
+      includeRecentFoods: true,
+      localFoods: [],
+      providerResults: [],
+      query: 'unrelated',
+      recentFoods: [],
+      recommendedFoods,
+    })
+    expect(section(searchedSections, 'Recommended foods')).toBeUndefined()
+
+    const whitespaceSections = createSearchSections({
+      includeRecentFoods: true,
+      localFoods: [],
+      providerResults: [],
+      query: ' ',
+      recentFoods: [],
+      recommendedFoods,
+    })
+    expect(whitespaceSections).toEqual([])
+  })
+
   it('drops repeated provider items so each food appears once', () => {
     const sections = createSearchSections({
       includeRecentFoods: false,

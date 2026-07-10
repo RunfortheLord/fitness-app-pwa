@@ -33,6 +33,7 @@
 - Detected-change checklist.
 - History detail view.
 - Settings backup/restore forms.
+- Signed-out launch prompt and signed-in automatic-backup lifecycle.
 - Validation and error states.
 
 ## Integration Tests
@@ -114,9 +115,8 @@
 
 ## Regression Scope Checks
 
-- No account creation or login UI.
-- No backend requirement.
-- No cloud sync.
+- No account or backend requirement for core offline use.
+- No realtime multi-device cloud sync or automatic cloud restore.
 - No subscriptions or ads.
 - Barcode and AI camera actions remain separate. AI photo analysis requires a
   user-supplied key and never saves or logs without explicit confirmation.

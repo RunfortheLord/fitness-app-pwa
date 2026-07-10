@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -29,7 +29,11 @@ describe('HistoryPage', () => {
   it('shows a clear empty state', async () => {
     renderHistory()
 
-    expect(await screen.findByText('No workout history')).toBeInTheDocument()
+    expect(await screen.findByText('No completed activity')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Graphs' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Bodyweight' }),
+    ).toBeInTheDocument()
   })
 
   it('shows a clear empty state for bodyweight progress', async () => {
@@ -434,6 +438,78 @@ describe('HistoryPage', () => {
     expect(runCard).toHaveTextContent('3.11 mi')
   })
 
+  it('deletes a selected workout history day after confirmation', async () => {
+    const user = userEvent.setup()
+    const repository = createWorkoutRepository(db)
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const completed = await completeSeedWorkout(
+      repository,
+      active.cycle.id,
+      active.days[0].id,
+    )
+
+    renderHistory()
+
+    await user.click(await screen.findByRole('button', { name: 'Select' }))
+    const workoutCard = screen.getByRole('button', { name: /Upper/ })
+    await user.click(workoutCard)
+    expect(workoutCard).toHaveAttribute('aria-pressed', 'true')
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+    const dialog = screen.getByRole('dialog', {
+      name: 'Delete day permanently?',
+    })
+    expect(dialog).toHaveTextContent('Delete Jun 18, 2026 Upper permanently?')
+    await user.click(within(dialog).getByRole('button', { name: 'Delete day' }))
+
+    expect(await screen.findByText('No completed activity')).toBeInTheDocument()
+    await expect(
+      db.workoutHistoryEntries.get(completed.history.id),
+    ).resolves.toBeUndefined()
+    await expect(
+      db.workoutHistoryExercises
+        .where({ workoutId: completed.history.id })
+        .count(),
+    ).resolves.toBe(0)
+    await expect(
+      db.workoutHistorySets.where({ workoutId: completed.history.id }).count(),
+    ).resolves.toBe(0)
+  })
+
+  it('deletes a selected run history day after confirmation', async () => {
+    const user = userEvent.setup()
+    const repository = createRunRepository(db)
+    const run = await repository.logManualRun(
+      {
+        localDate: '2026-06-18',
+        distanceMeters: 5000,
+        elapsedSeconds: 1500,
+        trackingMode: 'manual',
+      },
+      new Date('2026-06-18T18:00:00.000Z'),
+    )
+
+    renderHistory()
+
+    await user.click(await screen.findByRole('button', { name: 'Select' }))
+    const runCard = screen.getByRole('button', { name: /Jun 18, 2026 Run/ })
+    await user.click(runCard)
+    expect(runCard).toHaveAttribute('aria-pressed', 'true')
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+    await user.click(
+      within(
+        screen.getByRole('dialog', { name: 'Delete day permanently?' }),
+      ).getByRole('button', { name: 'Delete day' }),
+    )
+
+    expect(await screen.findByText('No completed activity')).toBeInTheDocument()
+    await expect(db.runs.get(run.id)).resolves.toBeUndefined()
+  })
+
   it('displays full workout detail including snapshots, timestamps, sets, skipped exercises, and changes', async () => {
     const repository = createWorkoutRepository(db)
     const program = await seedProgram(db)
@@ -483,11 +559,14 @@ describe('HistoryPage', () => {
     expect(screen.getAllByText('Upper').length).toBeGreaterThan(0)
     expect(screen.queryByLabelText('Workout notes')).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /Bench press/ }))
-    expect(screen.getByLabelText('Exercise notes')).toHaveValue('pause reps')
+    expect(screen.queryByLabelText('Exercise notes')).not.toBeInTheDocument()
+    expect(screen.queryByText('pause reps')).not.toBeInTheDocument()
+    expect(screen.queryByText(/weight_reps/)).not.toBeInTheDocument()
     expect(screen.getByText('Skipped: Bench press')).toBeInTheDocument()
-    expect(screen.getByLabelText('Set 1 Weight')).toHaveValue('185')
-    expect(screen.getByLabelText('Set 1 Reps')).toHaveValue('8')
-    expect(screen.getByLabelText('Set 1 RIR')).toHaveValue('2')
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(screen.getByText('185 lb')).toBeInTheDocument()
+    expect(screen.getAllByText('8').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('2').length).toBeGreaterThan(0)
     expect(screen.queryByText('Skipped Bench press')).not.toBeInTheDocument()
     expect(screen.queryByText('Selected')).not.toBeInTheDocument()
     expect(screen.queryByText('Result')).not.toBeInTheDocument()
@@ -500,7 +579,7 @@ describe('HistoryPage', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('edits exercise notes and recorded set values without changing reusable records', async () => {
+  it('shows recorded set values as read-only history', async () => {
     const user = userEvent.setup()
     const food = await createFoodRepository(db).createFood({
       name: 'Reusable rice',
@@ -528,24 +607,22 @@ describe('HistoryPage', () => {
     renderHistory(`/history?workout=${completed.history.id}`)
 
     await user.click(await screen.findByRole('button', { name: /Bench press/ }))
-    await user.clear(screen.getByLabelText('Exercise notes'))
-    await user.type(screen.getByLabelText('Exercise notes'), 'history exercise')
-    await user.tab()
-    await user.clear(screen.getByLabelText('Set 1 Weight'))
-    await user.type(screen.getByLabelText('Set 1 Weight'), '155')
-    await user.tab()
-    await user.clear(screen.getByLabelText('Set 1 Reps'))
-    await user.type(screen.getByLabelText('Set 1 Reps'), '7')
-    await user.tab()
+    expect(screen.queryByLabelText('Exercise notes')).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(screen.getByText('135 lb')).toBeInTheDocument()
+    expect(screen.getAllByText('5').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('3').length).toBeGreaterThan(0)
+    expect(screen.getByLabelText('Set 1 complete')).toBeInTheDocument()
+    expect(screen.getByLabelText('Set 2 incomplete')).toBeInTheDocument()
+    expect(screen.queryByText('Complete')).not.toBeInTheDocument()
+    expect(screen.queryByText('Incomplete')).not.toBeInTheDocument()
 
-    await waitFor(async () => {
-      const history = await repository.getWorkoutHistoryStructure(
-        completed.history.id,
-      )
-      expect(history.exercises[0].notes).toBe('history exercise')
-      expect(history.setsByExercise[history.exercises[0].id][0]).toMatchObject({
-        metricValues: { weight: 155, reps: 7 },
-      })
+    const history = await repository.getWorkoutHistoryStructure(
+      completed.history.id,
+    )
+    expect(history.exercises[0].notes).toBe('')
+    expect(history.setsByExercise[history.exercises[0].id][0]).toMatchObject({
+      metricValues: { weight: 135, reps: 5 },
     })
     await expect(
       db.templateWorkoutExercises.get(program.exercises[0].id),
@@ -633,8 +710,9 @@ describe('HistoryPage', () => {
     expect(screen.getAllByText('Carry').length).toBeGreaterThan(0)
     await userEvent.click(screen.getByRole('button', { name: /Plank/ }))
     await userEvent.click(screen.getByRole('button', { name: /Carry/ }))
-    expect(screen.getAllByLabelText('Set 1 Duration')[0]).toHaveValue('45')
-    expect(screen.getByLabelText('Set 1 Distance')).toHaveValue('0.25')
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(screen.getByText('45')).toBeInTheDocument()
+    expect(screen.getByText('0.25')).toBeInTheDocument()
   })
 
   it('keeps detected change review out of completed workout detail', async () => {

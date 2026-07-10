@@ -1,4 +1,4 @@
-import { Check, Copy, Edit2, Plus, Trash2, X } from 'lucide-react'
+import { Check, Copy, Edit2, Plus, Settings2, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import {
@@ -95,6 +95,7 @@ export function ProgramBuilderSheet({
   const [isPrescriptionDirty, setIsPrescriptionDirty] = useState(false)
   const [isDiscardPrescriptionOpen, setIsDiscardPrescriptionOpen] =
     useState(false)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   const mode: BuilderMode = target.mode
   const rirEnabled = useRirTracking()
@@ -633,6 +634,16 @@ export function ProgramBuilderSheet({
   return (
     <>
       <BottomSheet
+        headerAction={
+          rirEnabled && structure ? (
+            <IconButton
+              aria-label="Program editor settings"
+              onClick={() => setIsSettingsOpen(true)}
+            >
+              <Settings2 aria-hidden="true" size={20} />
+            </IconButton>
+          ) : null
+        }
         isOpen={isOpen}
         onClose={() => {
           if (editingPrescription) {
@@ -641,7 +652,7 @@ export function ProgramBuilderSheet({
           }
           onClose()
         }}
-        title={mode === 'template' ? 'Edit template' : 'Edit current cycle'}
+        title={mode === 'template' ? 'Edit template' : 'Edit program'}
         variant="page"
       >
         {!structure ? <LoadingState label="Loading program" /> : null}
@@ -715,19 +726,6 @@ export function ProgramBuilderSheet({
                 value={nameForm.durationWeeks}
               />
             </FormField>
-
-            {rirEnabled ? (
-              <label className="checkbox-row">
-                <input
-                  checked={trackRirEverySet}
-                  onChange={(event) =>
-                    saveTrackRirEverySet(event.currentTarget.checked)
-                  }
-                  type="checkbox"
-                />
-                Track RIR on every set?
-              </label>
-            ) : null}
 
             <SortableArea
               getItemLabel={builderItemLabel}
@@ -1085,6 +1083,22 @@ export function ProgramBuilderSheet({
         onDismiss={() => setRemovedExercise(null)}
         tone="neutral"
       />
+      <BottomSheet
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        title="Program settings"
+      >
+        <label className="checkbox-row">
+          <input
+            checked={trackRirEverySet}
+            onChange={(event) =>
+              saveTrackRirEverySet(event.currentTarget.checked)
+            }
+            type="checkbox"
+          />
+          Track RIR on every set?
+        </label>
+      </BottomSheet>
       <ModalConfirmationDialog
         confirmLabel="Delete Day"
         isOpen={removeDayConfirmation !== null}

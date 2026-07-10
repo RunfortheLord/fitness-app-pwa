@@ -7,7 +7,6 @@ import {
   ChevronsRight,
   Clock,
   Minus,
-  MoreHorizontal,
   Pause,
   Pencil,
   Play,
@@ -22,6 +21,7 @@ import {
 } from 'lucide-react'
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type FocusEvent,
@@ -45,6 +45,7 @@ import {
   StatusMessage,
   ValidationMessage,
 } from '@components/ui'
+import { RestWheelPicker } from '@components/WheelPicker'
 import { useLanguage } from '@components/languageContextValue'
 import { getRestTimerRemainingSeconds } from '@domain/restTimer'
 import { DEFAULT_TIMER_SOUND_ID, preloadTimerSound } from '@domain/timerSounds'
@@ -55,7 +56,9 @@ import {
   searchExercises,
 } from '@domain/exerciseSearch'
 import { canSkipWorkoutExercise } from '@domain/workoutSkip'
+import { rankedExerciseReplacements } from '@domain/exerciseReplacements'
 import { TRACKING_METHODS } from '@domain/trackingMethods'
+import { detectWorkoutStructuralChanges } from '@domain/workoutChanges'
 import {
   formatWeight as formatWeightWithUnit,
   weightInputToLb,
@@ -103,7 +106,7 @@ type LiveWorkoutState =
 
 type ExercisePickerState =
   | { mode: 'add' }
-  | { mode: 'replace'; workoutExerciseId: string }
+  | { mode: 'replace'; workoutExerciseId: string; exerciseId: string | null }
   | null
 
 declare global {
@@ -135,6 +138,7 @@ export function LiveWorkoutPage() {
   })
   const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null)
   const pendingWorkoutMutations = useRef(new Set<Promise<unknown>>())
+  const autoFinishPromptedRef = useRef(false)
 
   useEffect(() => {
     let isCurrent = true
@@ -258,11 +262,12 @@ export function LiveWorkoutPage() {
       })
       let changeSaveFailed = false
       if (completed.detectedChanges.length > 0) {
-        const destination = saveAllChanges
-          ? workout.sourceTemplateId
-            ? 'both'
-            : 'cycle_only'
-          : 'neither'
+        const destination =
+          saveAllChanges && hasStructuralWorkoutChanges
+            ? workout.sourceTemplateId
+              ? 'both'
+              : 'cycle_only'
+            : 'neither'
         try {
           await workoutRepository.applyDetectedChanges(
             completed.detectedChanges.map((change) => ({
@@ -421,6 +426,21 @@ export function LiveWorkoutPage() {
           activeIndex + 1
         } of ${readyState.exercises.length}`
       : ''
+  const hasStructuralWorkoutChanges = useMemo(() => {
+    if (!readyState) {
+      return false
+    }
+    return (
+      detectWorkoutStructuralChanges({
+        sourceExercises: Object.values(
+          readyState.sourcePrescriptionsByExercise,
+        ),
+        workout: readyState.workout,
+        performedExercises: readyState.exercises,
+        performedSetsByExercise: readyState.setsByExercise,
+      }).length > 0
+    )
+  }, [readyState])
 
   function selectExercise(index: number) {
     const next = readyState?.exercises[index]
@@ -465,6 +485,24 @@ export function LiveWorkoutPage() {
         'fitness-log:rest-timer-completed',
         reloadCompletedTimer,
       )
+    }
+  }, [readyState])
+
+  useEffect(() => {
+    if (!readyState) {
+      return
+    }
+    const sets = Object.values(readyState.setsByExercise).flat()
+    const everySetCompleted =
+      sets.length > 0 && sets.every((set) => set.completed)
+    if (!everySetCompleted) {
+      autoFinishPromptedRef.current = false
+      return
+    }
+    if (!autoFinishPromptedRef.current) {
+      autoFinishPromptedRef.current = true
+      setSaveAllChanges(false)
+      setConfirmFinish(true)
     }
   }, [readyState])
 
@@ -518,35 +556,34 @@ export function LiveWorkoutPage() {
               {state.workout.workoutSnapshot.activeCycleName ?? t('Program')}
             </p>
           </div>
-          <div className="live-workout-header-actions">
-            <PrimaryButton
-              className="live-workout-finish"
-              disabled={isFinishing}
-              type="button"
-              onClick={() => {
-                setSaveAllChanges(false)
-                setConfirmFinish(true)
-              }}
-            >
-              {isFinishing ? t('Saving...') : t('Finish')}
-            </PrimaryButton>
-            <IconButton
-              aria-label={t('Workout options')}
-              className="live-workout-options"
-              onClick={() => setConfirmDiscard(true)}
-            >
-              <MoreHorizontal aria-hidden="true" size={20} />
-            </IconButton>
-          </div>
-        </div>
-        <div className="live-workout-stats">
-          <span>
-            <Clock aria-hidden="true" size={16} />
-            {formatDuration(elapsedSeconds)}
-          </span>
-          <span>{state.workout.localDate}</span>
         </div>
       </Card>
+
+      <div className="live-workout-session-bar">
+        <span className="live-workout-session-time">
+          <Clock aria-hidden="true" size={17} />
+          {formatDuration(elapsedSeconds)}
+        </span>
+        <SecondaryButton
+          className="button-danger live-workout-discard"
+          type="button"
+          onClick={() => setConfirmDiscard(true)}
+        >
+          <Trash2 aria-hidden="true" size={16} />
+          {t('Discard workout')}
+        </SecondaryButton>
+        <PrimaryButton
+          className="live-workout-finish"
+          disabled={isFinishing}
+          type="button"
+          onClick={() => {
+            setSaveAllChanges(false)
+            setConfirmFinish(true)
+          }}
+        >
+          {isFinishing ? t('Saving...') : t('Finish')}
+        </PrimaryButton>
+      </div>
 
       {error ? <ValidationMessage message={error} /> : null}
       {nativeTimerMessage ? (
@@ -660,6 +697,7 @@ export function LiveWorkoutPage() {
             setPicker({
               mode: 'replace',
               workoutExerciseId: activeExercise.id,
+              exerciseId: activeExercise.exerciseId,
             })
           }
           onRemoveExercise={() => setConfirmRemove(true)}
@@ -720,7 +758,6 @@ export function LiveWorkoutPage() {
               exerciseDefaultRestSeconds={
                 activeExercise.exerciseSnapshot.defaultRestSeconds ?? 0
               }
-              exerciseName={activeExercise.exerciseSnapshot.exerciseName}
               onChangeExerciseDefaultRest={saveActiveExerciseDefaultRest}
             />
           }
@@ -743,6 +780,7 @@ export function LiveWorkoutPage() {
           />
         </Card>
       )}
+      <div aria-hidden="true" className="live-workout-session-bar-spacer" />
 
       <ExercisePickerSheet
         currentWorkoutId={state.workout.id}
@@ -797,22 +835,28 @@ export function LiveWorkoutPage() {
             'This saves the completed workout to your history and ends the active session.',
           )}
         </p>
-        <label className="checkbox-row finish-save-changes">
-          <input
-            aria-label={t('Save all live workout changes to my program')}
-            checked={saveAllChanges}
-            onChange={(event) => setSaveAllChanges(event.currentTarget.checked)}
-            type="checkbox"
-          />
-          <span>
-            <strong>{t('Save all live workout changes to my program')}</strong>
-            <small>
-              {t(
-                'Leave unchecked to keep those changes in this completed workout only.',
-              )}
-            </small>
-          </span>
-        </label>
+        {hasStructuralWorkoutChanges ? (
+          <label className="checkbox-row finish-save-changes">
+            <input
+              aria-label={t('Save all live workout changes to my program')}
+              checked={saveAllChanges}
+              onChange={(event) =>
+                setSaveAllChanges(event.currentTarget.checked)
+              }
+              type="checkbox"
+            />
+            <span>
+              <strong>
+                {t('Save all live workout changes to my program')}
+              </strong>
+              <small>
+                {t(
+                  'Leave unchecked to keep those changes in this completed workout only.',
+                )}
+              </small>
+            </span>
+          </label>
+        ) : null}
       </ModalConfirmationDialog>
 
       <ModalConfirmationDialog
@@ -1037,7 +1081,7 @@ function ExerciseWorkspace({
         </SecondaryButton>
         <SecondaryButton type="button" onClick={onReplaceExercise}>
           <RefreshCcw aria-hidden="true" size={16} />
-          {t('Replace Exercise')}
+          {t('Swap Exercise')}
         </SecondaryButton>
         <SecondaryButton
           type="button"
@@ -1396,7 +1440,6 @@ function MetricNumericInput({
 
 function RestTimerPanel({
   exerciseDefaultRestSeconds,
-  exerciseName,
   onAddTime,
   onChangeExerciseDefaultRest,
   onDismiss,
@@ -1407,7 +1450,6 @@ function RestTimerPanel({
   timer,
 }: {
   exerciseDefaultRestSeconds: number
-  exerciseName: string
   onAddTime: () => void
   onChangeExerciseDefaultRest: (seconds: number) => void
   onDismiss: () => void
@@ -1419,24 +1461,19 @@ function RestTimerPanel({
 }) {
   const { t } = useLanguage()
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [draftRest, setDraftRest] = useState('')
+  const [draftRestSeconds, setDraftRestSeconds] = useState(0)
 
   if (!timer || timer.status === 'dismissed') {
     return null
   }
 
   function openSettings() {
-    setDraftRest(String(exerciseDefaultRestSeconds))
+    setDraftRestSeconds(clampRestPickerSeconds(exerciseDefaultRestSeconds))
     setSettingsOpen(true)
   }
 
   function saveSettings() {
-    const trimmed = draftRest.trim()
-    const parsed = Number(trimmed)
-    if (!trimmed || !Number.isFinite(parsed) || parsed < 0) {
-      return
-    }
-    onChangeExerciseDefaultRest(Math.round(parsed))
+    onChangeExerciseDefaultRest(draftRestSeconds)
     setSettingsOpen(false)
   }
 
@@ -1522,20 +1559,16 @@ function RestTimerPanel({
         <div className="rest-timer-settings-form">
           <FormField
             id="exercise-default-rest-seconds"
-            label="Exercise default rest (seconds)"
+            label="Exercise default rest"
           >
-            <NumericInput
-              id="exercise-default-rest-seconds"
-              onChange={(event) => setDraftRest(event.target.value)}
-              placeholder="e.g. 90"
-              value={draftRest}
+            <RestWheelPicker
+              minutes={Math.floor(draftRestSeconds / 60)}
+              onChange={(minutes, seconds) =>
+                setDraftRestSeconds(minutes * 60 + seconds)
+              }
+              seconds={draftRestSeconds % 60}
             />
           </FormField>
-          <p className="muted">
-            {t(
-              `Saved to ${exerciseName || 'this exercise'} and reused anywhere this exercise appears.`,
-            )}
-          </p>
           <div className="button-row">
             <SecondaryButton
               type="button"
@@ -1600,11 +1633,20 @@ function ExercisePickerSheet({
   // one exercise for another and may legitimately reuse a name already present.
   const blockedExerciseIds =
     picker?.mode === 'add' ? new Set(existingExerciseIds) : new Set<string>()
-  const title = picker?.mode === 'replace' ? 'Replace Exercise' : 'Add Exercise'
+  const title = picker?.mode === 'replace' ? 'Swap Exercise' : 'Add Exercise'
   const searchable = hasSearchableQuery(searchQuery)
+  const currentExercise =
+    picker?.mode === 'replace'
+      ? exercises.find((exercise) => exercise.id === picker.exerciseId)
+      : undefined
   const results = searchable
     ? searchExercises(exercises, searchQuery).map((result) => result.exercise)
-    : defaultExerciseResults(exercises)
+    : picker?.mode === 'replace' && currentExercise
+      ? rankedExerciseReplacements({
+          candidates: exercises,
+          current: currentExercise,
+        })
+      : defaultExerciseResults(exercises)
 
   function choose(exerciseId: string) {
     if (!picker) {
@@ -1726,12 +1768,17 @@ function ExercisePickerSheet({
             </div>
           </FormField>
           {picker?.mode === 'replace' ? (
-            <p className="muted">Replacement exercises start blank.</p>
+            <>
+              <p className="muted">Recommended swaps are shown first.</p>
+              <p className="muted">Swap exercises start blank.</p>
+            </>
           ) : null}
           <p className="visually-hidden" role="status">
             {searchable
               ? `${results.length} exercise results`
-              : 'Enter at least two characters to search exercises'}
+              : picker?.mode === 'replace'
+                ? `${results.length} recommended exercise swaps`
+                : 'Enter at least two characters to search exercises'}
           </p>
           {error ? <ValidationMessage message={error} /> : null}
           <div className="exercise-result-list">
@@ -1790,6 +1837,11 @@ function formatDuration(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
+
+function clampRestPickerSeconds(totalSeconds: number) {
+  const maxSeconds = 15 * 60 + 59
+  return Math.min(maxSeconds, Math.max(0, Math.round(totalSeconds)))
 }
 
 function activeExerciseStorageKey(workoutId: string) {

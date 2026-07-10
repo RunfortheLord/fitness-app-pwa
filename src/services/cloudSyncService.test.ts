@@ -48,6 +48,37 @@ const userId = '00000000-0000-4000-8000-000000000001'
 describe('cloudSyncService', () => {
   it('uploads a full JSON backup snapshot to the signed-in user row', async () => {
     await seedFood(db)
+    await db.runs.add({
+      id: 'run-1',
+      localDate: '2026-06-19',
+      status: 'completed',
+      startedAt: '2026-06-19T12:00:00.000Z',
+      completedAt: '2026-06-19T12:30:00.000Z',
+      elapsedSeconds: 1800,
+      movingSeconds: 1500,
+      distanceMeters: 3218.688,
+      currentPaceSecondsPerMile: null,
+      averageMovingPaceSecondsPerMile: 750,
+      trackingMode: 'gps',
+      hasGpsGap: false,
+      lowPaceAlertedAt: null,
+      notes: '',
+      createdAt: '2026-06-19T12:00:00.000Z',
+      updatedAt: '2026-06-19T12:30:00.000Z',
+    })
+    await db.runSamples.add({
+      id: 'sample-1',
+      runId: 'run-1',
+      latitude: 41.88,
+      longitude: -87.63,
+      timestamp: '2026-06-19T12:00:00.000Z',
+      accuracyMeters: 8,
+      altitudeMeters: null,
+      decision: 'accepted',
+      rejectionReason: 'first_sample',
+      segmentDistanceMeters: 0,
+      createdAt: '2026-06-19T12:00:00.000Z',
+    })
     const upsert = vi.fn().mockResolvedValue({ error: null })
     supabaseMocks.from.mockReturnValue({ upsert })
 
@@ -65,6 +96,8 @@ describe('cloudSyncService', () => {
     expect(uploaded.snapshot.data.foods).toEqual(
       expect.arrayContaining([expect.objectContaining({ name: 'Rice' })]),
     )
+    expect(uploaded.snapshot.data.runs).toHaveLength(1)
+    expect(uploaded.snapshot.data.runSamples).toEqual([])
     expect(info.recordCount).toBeGreaterThan(0)
   })
 
@@ -125,6 +158,26 @@ describe('cloudSyncService', () => {
       'Cloud backup requires an internet connection.',
     )
     expect(supabaseMocks.getSession).not.toHaveBeenCalled()
+  })
+
+  it('only allows automatic overwrite when this device recognizes the cloud snapshot', async () => {
+    const exportResult = await backupService.createJsonBackup(
+      new Date('2026-01-02T03:04:05.000Z'),
+    )
+    mockSelectRow({
+      schema_version: exportResult.backup.databaseSchemaVersion,
+      snapshot: exportResult.backup,
+      updated_at: exportResult.backup.exportedAt,
+    })
+
+    await expect(cloudSyncService.canSafelyBackUpAutomatically()).resolves.toBe(
+      true,
+    )
+
+    await db.backupMetadata.clear()
+    await expect(cloudSyncService.canSafelyBackUpAutomatically()).resolves.toBe(
+      false,
+    )
   })
 })
 

@@ -133,6 +133,11 @@ test('shows and applies the update availability action', async ({ page }) => {
   await expect(
     page.getByRole('heading', { level: 1, name: 'Home' }),
   ).toBeVisible()
+  const signInPrompt = page.getByRole('complementary', {
+    name: 'Prevent data loss',
+  })
+  await signInPrompt.getByRole('button', { name: 'Not now' }).click()
+  await expect(signInPrompt).not.toBeVisible()
 
   await page.evaluate(() => {
     const testWindow = window as Window & {
@@ -260,10 +265,7 @@ async function createActiveWorkout(page: Page) {
   await page.getByRole('button', { name: 'Save program' }).click()
 
   const builder = page.getByRole('dialog', { name: 'Edit template' })
-  await builder
-    .getByRole('textbox', { name: 'Add workout day' })
-    .fill('Offline A')
-  await builder.getByRole('button', { name: 'Add day' }).click()
+  await addWorkoutDay(builder, 'Offline A')
   await builder.getByRole('button', { name: 'Add exercise' }).click()
   await addPrescription(builder, 'Offline recovery press', '2')
   await closeBuilder(builder)
@@ -322,6 +324,14 @@ async function addPrescription(
   await expect(builder.getByLabel('Prescription editor')).not.toBeVisible({
     timeout: 15_000,
   })
+}
+
+async function addWorkoutDay(builder: Locator, name: string) {
+  await builder.getByRole('button', { name: 'Add workout day' }).click()
+  await builder
+    .getByRole('textbox', { name: 'New workout day name' })
+    .fill(name)
+  await builder.getByRole('button', { name: 'Save workout day' }).click()
 }
 
 async function closeBuilder(builder: Locator) {

@@ -42,6 +42,13 @@ export function mealTypeForDate(date: Date): MealType {
   return mealTypeForHour(date.getHours())
 }
 
+export function recommendationMealTypeForDate(
+  date: Date,
+): Exclude<MealType, 'snack'> {
+  const mealType = mealTypeForDate(date)
+  return mealType === 'snack' ? 'dinner' : mealType
+}
+
 export function entryMealType(entry: Pick<FoodLogEntry, 'mealType'>): MealType {
   return isMealType(entry.mealType) ? entry.mealType : DEFAULT_MEAL_TYPE
 }

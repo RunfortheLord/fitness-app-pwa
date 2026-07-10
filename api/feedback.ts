@@ -1,12 +1,15 @@
 /// <reference types="node" />
 import {
+  createMemoryFeedbackRateLimiter,
   handleFeedbackSubmission,
   statusForFeedbackError,
 } from '../src/server/feedbackApi.js'
 
 type VercelRequest = {
+  headers?: Record<string, string | string[] | undefined>
   method?: string
   body?: unknown
+  socket?: { remoteAddress?: string }
 }
 
 type VercelResponse = {
@@ -14,6 +17,11 @@ type VercelResponse = {
   setHeader(name: string, value: string): void
   json(value: unknown): void
 }
+
+const feedbackRateLimiter = createMemoryFeedbackRateLimiter({
+  limit: 5,
+  windowMs: 10 * 60 * 1_000,
+})
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Cache-Control', 'no-store')
@@ -29,7 +37,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const body = readBody(req.body)
   const result = await handleFeedbackSubmission(
     { message: body.message, context: body.context },
-    { webhookUrl: process.env.FEEDBACK_WEBHOOK_URL },
+    {
+      clientIp: readClientIp(req),
+      rateLimiter: feedbackRateLimiter,
+      webhookUrl: process.env.FEEDBACK_WEBHOOK_URL,
+    },
   )
 
   if ('error' in result) {
@@ -38,6 +50,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   res.status(200).json(result)
+}
+
+function readClientIp(req: VercelRequest) {
+  const forwardedFor = readHeader(req, 'x-forwarded-for')
+  if (forwardedFor) {
+    return forwardedFor.split(',')[0]?.trim() || 'unknown'
+  }
+  return readHeader(req, 'x-real-ip') ?? req.socket?.remoteAddress ?? 'unknown'
+}
+
+function readHeader(req: VercelRequest, name: string) {
+  const value = req.headers?.[name] ?? req.headers?.[name.toLowerCase()]
+  if (Array.isArray(value)) {
+    return value[0]
+  }
+  return value
 }
 
 function readBody(body: unknown): Record<string, unknown> {

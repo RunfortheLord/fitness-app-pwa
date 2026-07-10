@@ -101,6 +101,12 @@ const spanishTranslations: Record<string, string> = {
   'Restore from cloud': 'Restaurar desde la nube',
   'Sign out': 'Cerrar sesión',
   'Sign in with Google': 'Iniciar sesión con Google',
+  'Prevent data loss': 'Evita perder tus datos',
+  'Not now': 'Ahora no',
+  'Skip to content': 'Saltar al contenido',
+  'Choose workout day': 'Elegir día de entrenamiento',
+  'Select the workout day you want to perform.':
+    'Selecciona el día de entrenamiento que quieres realizar.',
   'Send feedback': 'Enviar comentarios',
   'Your feedback': 'Tus comentarios',
   'Sending…': 'Enviando…',
@@ -180,6 +186,14 @@ const spanishTranslations: Record<string, string> = {
     'Las copias locales y los archivos CSV permanecen en este dispositivo salvo que uses los controles de copia en la nube.',
   'Manual Google-account backup and restore. Local data remains usable while signed out or offline.':
     'Copia y restauración manual con una cuenta de Google. Los datos locales siguen disponibles sin sesión o sin conexión.',
+  'Signed-in data is backed up automatically within five minutes of changes and when the app opens or resumes. Local data remains usable while signed out or offline.':
+    'Los datos se guardan automáticamente dentro de los cinco minutos posteriores a los cambios y cuando la aplicación se abre o reanuda si has iniciado sesión. Los datos locales siguen disponibles sin sesión o sin conexión.',
+  'Sign in with Google to automatically back up your fitness data. You can keep using the app offline, and your data stays available on this device.':
+    'Inicia sesión con Google para crear copias automáticas de tus datos de fitness. Puedes seguir usando la aplicación sin conexión y tus datos permanecerán disponibles en este dispositivo.',
+  "Your data hasn't been backed up to the cloud in a few days. It's still safe on this device, and the app will keep retrying.":
+    'Tus datos no se han copiado en la nube desde hace unos días. Siguen seguros en este dispositivo y la aplicación seguirá intentándolo.',
+  'A cloud backup already exists. Restore it or choose Back up now in Settings before automatic backups start on this device.':
+    'Ya existe una copia en la nube. Restáurala o elige Crear copia ahora en Ajustes antes de iniciar las copias automáticas en este dispositivo.',
   'Cloud backup is unavailable offline. Local app data still works on this device.':
     'La copia en la nube no está disponible sin conexión. Los datos locales siguen funcionando en este dispositivo.',
   'Checking sign-in': 'Comprobando sesión',
@@ -245,6 +259,7 @@ const spanishTranslations: Record<string, string> = {
     'No se pudieron enviar los comentarios. Inténtalo de nuevo más tarde.',
   'Food search': 'Buscar alimentos',
   'Search foods': 'Buscar alimentos',
+  'Recommended foods': 'Alimentos recomendados',
   'Search Spanish foods': 'Buscar alimentos en español',
   'Tap the search button to search Spanish food products.':
     'Toca el botón de búsqueda para buscar productos alimenticios en español.',
@@ -326,6 +341,7 @@ const spanishTranslations: Record<string, string> = {
   Distance: 'Distancia',
   Duration: 'Duración',
   Exercises: 'Ejercicios',
+  Programs: 'Programas',
   'Completed sets': 'Series completadas',
   Date: 'Fecha',
   Elapsed: 'Transcurrido',
@@ -354,6 +370,7 @@ const spanishTranslations: Record<string, string> = {
   Skipped: 'Omitido',
   'Exercise navigation': 'Navegación de ejercicios',
   'Final RIR': 'RIR final',
+  'Track RIR on every set?': '¿Registrar RIR en cada serie?',
   'Track RIR (reps in reserve)': 'Registrar RIR (repeticiones en reserva)',
   'When off, RIR inputs and targets are hidden during workouts and in prescriptions.':
     'Al desactivarlo, los campos y objetivos de RIR se ocultan durante los entrenamientos y en las prescripciones.',

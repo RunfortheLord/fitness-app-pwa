@@ -675,6 +675,9 @@ function gramsFromUsdaServingSize(record: Record<string, unknown>) {
   if (unit === 'oz' || unit === 'ounce' || unit === 'ounces') {
     return servingSize * 28.349523125
   }
+  if (unit === 'ml' || unit === 'milliliter' || unit === 'milliliters') {
+    return servingSize
+  }
   return null
 }
 

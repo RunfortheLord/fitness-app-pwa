@@ -7,6 +7,7 @@
 export type FeedbackErrorCode =
   | 'invalid_request'
   | 'not_configured'
+  | 'rate_limited'
   | 'relay_failed'
 
 export type SubmitFeedbackResult =
@@ -19,8 +20,14 @@ export type FeedbackInput = {
 }
 
 export type FeedbackConfig = {
+  clientIp?: string
   webhookUrl: string | undefined
   fetchImpl?: typeof fetch
+  rateLimiter?: FeedbackRateLimiter
+}
+
+export type FeedbackRateLimiter = {
+  check(key: string): Promise<boolean> | boolean
 }
 
 // Discord caps webhook `content` at 2000 characters; keep the message well under
@@ -41,7 +48,6 @@ export async function handleFeedbackSubmission(
       `Feedback must be ${MAX_MESSAGE_LENGTH} characters or fewer.`,
     )
   }
-
   if (!config.webhookUrl) {
     return {
       ok: false,
@@ -49,6 +55,18 @@ export async function handleFeedbackSubmission(
         code: 'not_configured',
         message: 'Feedback is not configured yet.',
       },
+    }
+  }
+  if (config.rateLimiter) {
+    const allowed = await config.rateLimiter.check(config.clientIp ?? 'unknown')
+    if (!allowed) {
+      return {
+        ok: false,
+        error: {
+          code: 'rate_limited',
+          message: 'Feedback is being sent too quickly. Try again later.',
+        },
+      }
     }
   }
 
@@ -81,8 +99,43 @@ function formatWebhookPayload(message: string, context: string) {
   }
   const text = lines.join('\n')
   // Discord reads `content`, Slack reads `text`; sending both keeps the relay
-  // working for either service without code changes.
-  return { content: text, text }
+  // working for either service without code changes. The extra fields disable
+  // broadcast/user/role mention parsing where the webhook service supports it.
+  return {
+    allowed_mentions: { parse: [] },
+    content: text,
+    link_names: false,
+    text,
+  }
+}
+
+export function createMemoryFeedbackRateLimiter({
+  limit,
+  now = () => Date.now(),
+  windowMs,
+}: {
+  limit: number
+  now?: () => number
+  windowMs: number
+}): FeedbackRateLimiter {
+  const hitsByKey = new Map<string, number[]>()
+
+  return {
+    check(key: string) {
+      const current = now()
+      const windowStart = current - windowMs
+      const recentHits = (hitsByKey.get(key) ?? []).filter(
+        (hit) => hit > windowStart,
+      )
+      if (recentHits.length >= limit) {
+        hitsByKey.set(key, recentHits)
+        return false
+      }
+      recentHits.push(current)
+      hitsByKey.set(key, recentHits)
+      return true
+    },
+  }
 }
 
 function invalid(message: string): SubmitFeedbackResult {
@@ -105,6 +158,8 @@ export function statusForFeedbackError(code: FeedbackErrorCode): number {
       return 400
     case 'not_configured':
       return 503
+    case 'rate_limited':
+      return 429
     case 'relay_failed':
       return 502
     default:

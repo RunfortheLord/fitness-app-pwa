@@ -497,6 +497,73 @@ describe('foodRepository', () => {
     ])
   })
 
+  it('lists distinct recent foods for one meal inside a local-date range', async () => {
+    const repository = createFoodRepository(database)
+    const rice = await seedFood(database)
+    const oats = await repository.createFood({
+      name: 'Oats',
+      servingQuantity: 1,
+      servingUnit: 'cup',
+      servingDescription: '',
+      caloriesPerServing: 300,
+      proteinGramsPerServing: 10,
+      carbohydrateGramsPerServing: 54,
+      fatGramsPerServing: 5,
+      notes: '',
+    })
+    const eggs = await repository.createFood({
+      name: 'Eggs',
+      servingQuantity: 2,
+      servingUnit: 'eggs',
+      servingDescription: '',
+      caloriesPerServing: 140,
+      proteinGramsPerServing: 12,
+      carbohydrateGramsPerServing: 1,
+      fatGramsPerServing: 10,
+      notes: '',
+    })
+
+    await repository.logFood({
+      foodId: eggs.id,
+      localDate: '2026-06-11',
+      servingMultiplier: 1,
+      mealType: 'breakfast',
+    })
+    await repository.logFood({
+      foodId: rice.id,
+      localDate: '2026-06-18',
+      servingMultiplier: 1,
+      mealType: 'lunch',
+    })
+    await repository.logFood({
+      foodId: rice.id,
+      localDate: '2026-06-17',
+      servingMultiplier: 1,
+      mealType: 'breakfast',
+    })
+    await repository.logFood({
+      foodId: oats.id,
+      localDate: '2026-06-18',
+      servingMultiplier: 1,
+      mealType: 'breakfast',
+    })
+    await repository.logFood({
+      foodId: rice.id,
+      localDate: '2026-06-18',
+      servingMultiplier: 2,
+      mealType: 'breakfast',
+    })
+
+    await expect(
+      repository.listRecentFoodsForMeal({
+        startDate: '2026-06-12',
+        endDate: '2026-06-18',
+        mealType: 'breakfast',
+        limit: 4,
+      }),
+    ).resolves.toMatchObject([{ id: rice.id }, { id: oats.id }])
+  })
+
   it('rejects invalid foods and serving multipliers', async () => {
     const repository = createFoodRepository(database)
     await expect(

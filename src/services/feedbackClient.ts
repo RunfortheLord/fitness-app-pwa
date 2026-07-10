@@ -3,6 +3,7 @@
 export type FeedbackClientErrorCode =
   | 'invalid_request'
   | 'not_configured'
+  | 'rate_limited'
   | 'relay_failed'
   | 'network'
   | 'unexpected'

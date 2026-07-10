@@ -5,7 +5,8 @@
 1. User opens the installed PWA or visits the app in Safari.
 2. App loads the application shell.
 3. App initializes IndexedDB if no local database exists.
-4. App shows Home with empty dashboard cards and no account prompt.
+4. App shows Home with empty dashboard cards. If signed out, it also shows a
+   dismissible prompt offering Google sign-in for automatic backup.
 5. User can open Nutrition to set calorie and macro targets.
 6. User can use Add, Nutrition, Training, and History without signing in.
 7. If offline after installation, app still opens and shows local data.
@@ -38,21 +39,25 @@
 ## Logging Food
 
 1. User opens Nutrition for the selected local date.
-2. User searches strict saved-recipe matches, recent foods, custom foods,
-   previously used foods, or remote providers.
-3. App searches remote providers only after at least three normalized
+2. With no search text, app shows up to four distinct foods most recently
+   logged for the current time-of-day meal during the last seven local calendar
+   dates.
+3. User can select a recommendation or search strict saved-recipe matches,
+   recent foods, custom foods, previously used foods, or remote providers.
+   Entering any search text hides the recommendation section.
+4. App searches remote providers only after at least three normalized
    characters are entered and the request debounce elapses.
-4. User selects a food.
-5. App opens a detail sheet with calories, protein, total carbohydrates, fat,
+5. User selects a food.
+6. App opens a detail sheet with calories, protein, total carbohydrates, fat,
    serving amount, and available serving units.
-6. User edits serving amount or chooses grams/mass ounces when reliable
+7. User edits serving amount or chooses grams/mass ounces when reliable
    conversion is available.
-7. App previews calories and macros for that amount.
-8. User logs the food.
-9. App creates a date-based log entry that snapshots the food values and
-   provider metadata when known.
-10. Daily totals update immediately.
-11. If a reusable or provider-retained food changes later, this logged entry
+8. App previews calories and macros for that amount.
+9. User logs the food.
+10. App creates a date-based log entry that snapshots the food values and
+    provider metadata when known.
+11. Daily totals update immediately.
+12. If a reusable or provider-retained food changes later, this logged entry
     keeps its original snapshot values.
 
 ## Creating A Recipe From A Meal Photo
@@ -129,8 +134,10 @@
 1. User opens Training.
 2. User chooses Create Program.
 3. User enters program name and optional notes.
-4. User adds ordered workout days.
-5. User gives each day a name and optional notes.
+4. User taps the plus control at the end of the day-tab row, enters a day name,
+   and saves each ordered workout day.
+5. The day-name input closes after saving so the selected-day editor remains
+   compact.
 6. User adds prescribed exercises to each day.
 7. For each prescribed exercise, user may set target sets, target reps or range, target RIR, rest override, and notes.
 8. User saves the program template.
@@ -217,9 +224,11 @@
    history item.
 3. User opens a workout row.
 4. App shows source program/day when applicable, start time, completion time, duration, exercise details, performed sets, skipped exercises, and change review outcomes.
-5. User may edit recorded performance values.
-6. Edits do not change the source program template.
-7. User may delete the historical workout only after confirmation.
+5. User reviews recorded performance values as read-only history.
+6. To delete a history day, user returns to the history list, chooses Select,
+   picks one history card, and chooses Delete.
+7. App asks "Delete day permanently?" before permanently removing the selected
+   history day.
 
 ## Viewing Strength Graphs
 
@@ -316,6 +325,7 @@
 7. User logs bodyweight, workouts, and foreground runs offline when browser
    location permission and platform behavior allow it.
 8. App persists all changes locally.
-9. When online again, no cloud sync is attempted.
+9. When online again, signed-in users receive an automatic full-snapshot cloud
+   backup. Signed-out users continue with local data only.
 10. If a newer application version is available later, app notifies the user
     deliberately.

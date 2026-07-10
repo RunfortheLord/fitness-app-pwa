@@ -6,6 +6,7 @@ import {
   groupEntriesByMeal,
   mealTypeForHour,
   mealTypeForDate,
+  recommendationMealTypeForDate,
 } from './meals'
 import type { FoodLogEntry, MealType } from '@shared-types/app'
 
@@ -56,6 +57,21 @@ describe('meal helpers', () => {
   it('derives the default meal from a date', () => {
     const morning = new Date(2026, 5, 18, 8, 0, 0)
     expect(mealTypeForDate(morning)).toBe('breakfast')
+  })
+
+  it('keeps recommendations scoped to breakfast, lunch, or dinner', () => {
+    expect(recommendationMealTypeForDate(new Date(2026, 5, 18, 8, 0, 0))).toBe(
+      'breakfast',
+    )
+    expect(recommendationMealTypeForDate(new Date(2026, 5, 18, 13, 0, 0))).toBe(
+      'lunch',
+    )
+    expect(recommendationMealTypeForDate(new Date(2026, 5, 18, 18, 0, 0))).toBe(
+      'dinner',
+    )
+    expect(recommendationMealTypeForDate(new Date(2026, 5, 18, 23, 0, 0))).toBe(
+      'dinner',
+    )
   })
 
   it('defaults a missing or invalid meal to snack', () => {

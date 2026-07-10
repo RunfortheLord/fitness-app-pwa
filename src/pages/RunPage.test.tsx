@@ -40,7 +40,7 @@ describe('RunPage', () => {
     const user = userEvent.setup()
     render(<RunPage />)
 
-    expect(await screen.findByText('No active run')).toBeInTheDocument()
+    expect(await screen.findByText('Choose a run')).toBeInTheDocument()
     expect(navigator.geolocation.watchPosition).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('button', { name: /Start Outdoor Run/ }))

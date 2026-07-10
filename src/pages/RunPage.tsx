@@ -364,14 +364,13 @@ export function RunPage() {
   if (state.status === 'idle') {
     return (
       <PageContainer>
-        <SectionHeader title="Run" />
         {geoError ? <ValidationMessage message={geoError} /> : null}
         {savedMessage ? (
           <StatusMessage tone="success">{savedMessage}</StatusMessage>
         ) : null}
         <Card>
           <EmptyState
-            title="No active run"
+            title="Choose a run"
             message="Track outside with GPS, sense treadmill steps, or add a completed run manually."
             action={
               <div className="run-start-actions">
@@ -478,7 +477,7 @@ export function RunPage() {
 
   return (
     <PageContainer>
-      <SectionHeader title={completed ? 'Run complete' : 'Run'} />
+      <SectionHeader title={completed ? 'Run complete' : 'Active run'} />
       {!completed ? (
         <SecondaryButton
           className="button-danger"

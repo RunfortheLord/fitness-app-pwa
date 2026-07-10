@@ -6,7 +6,10 @@ Use this checklist before reporting completion for implementation work.
 
 - Relevant docs under `docs/` were read before implementation.
 - The change satisfies the requested behavior and does not add unrequested product scope.
-- The change does not introduce excluded first-release features such as accounts, backend services, cloud sync, AI recommendations, external food databases, subscriptions, social features, wearable integrations, graphs, adherence scores, e1RM calculations, or automatic progression.
+- The change does not introduce excluded first-release features such as
+  required accounts, realtime multi-device cloud sync, AI recommendations,
+  subscriptions, social features, wearable integrations, adherence scores,
+  automatic calorie adjustment, or automatic progression.
 - Any unavoidable product or technical assumption is recorded in `docs/DECISIONS.md`.
 
 ## Data Integrity

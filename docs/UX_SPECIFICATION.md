@@ -358,8 +358,9 @@
 - Workout detail shows local date, source program/day, start and completion times, duration, exercises, sets, skipped exercises, and change review results.
 - Run detail shows local date, distance, elapsed time, moving time, average
   moving pace, mile splits, walking/rest classifications, and GPS-gap state.
-- Editing is limited to recorded performance values.
-- Delete requires confirmation.
+- Completed workout and run details are read-only after saving.
+- Delete is available from list selection only, requires confirmation, and
+  permanently removes the selected history day.
 - Graphs opens to Bodyweight progress by default and is reachable from Home,
   History query state, and the `/graphs` route.
 - Bodyweight graph shows local date/time on the horizontal axis through stored

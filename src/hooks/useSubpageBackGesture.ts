@@ -75,8 +75,10 @@ export function useSubpageBackGesture(isOpen: boolean, onExit: () => void) {
         // we pushed so the history stack stays balanced, and flag the resulting
         // popstate so a parent sub-page does not also close.
         openSubpageDepth -= 1
-        suppressNextPop = true
-        window.history.back()
+        if (window.history.state?.__subpage === depth) {
+          suppressNextPop = true
+          window.history.back()
+        }
       }
     }
   }, [isOpen])

@@ -1,22 +1,38 @@
 # Cloud Backup
 
-Cloud backup is a manual snapshot feature layered on top of the local-first app.
-IndexedDB remains the source of truth, and the app remains usable when signed
-out or offline.
+Cloud backup is an automatic snapshot feature for signed-in users layered on
+top of the local-first app. IndexedDB remains the source of truth, and the app
+remains usable when signed out or offline.
 
 ## Behavior
 
 - Sign-in uses Supabase Auth with the Google OAuth provider.
+- Signed-in users receive a full automatic snapshot when the app opens or
+  resumes, when connectivity returns, and within five minutes of backed-up
+  local data changing. Repeated changes do not postpone that five-minute
+  snapshot.
+- Automatic backups retry after transient failures. Changes made offline stay
+  local and are backed up after connectivity returns.
+- Transient backup failures are silent. A warning that the data has not been
+  backed up in a few days only appears once the last successful backup is older
+  than the staleness threshold (three days), measured against the persisted
+  `appMetadata.lastAutomaticBackupAt` so it survives app restarts.
+- A device does not automatically replace an existing cloud snapshot unless
+  its local backup history proves that the snapshot was created or restored on
+  that device. This prevents a new or cleared device from overwriting a useful
+  cloud backup with an empty local database.
 - `Back up now` uploads the existing JSON backup snapshot from
   `backupService.createJsonBackup()` to the signed-in user's `public.backups`
-  row.
+  row and remains available as a manual fallback.
 - `Restore from cloud` downloads that snapshot, validates it with
   `backupService.validateBackup()`, and then calls
   `backupService.restoreReplace()`.
 - Restore is replace-only. It clears local app data before importing the
   validated cloud snapshot.
-- There is no realtime sync, merge, conflict resolution, automatic backup, or
-  automatic restore.
+- There is no realtime sync, merge, conflict resolution, or automatic restore.
+- The latest successful snapshot replaces the previous `public.backups` row;
+  cloud backup does not provide version history.
+- Signed-out users see a dismissible sign-in prompt on each fresh app launch.
 
 ## Manual Setup
 

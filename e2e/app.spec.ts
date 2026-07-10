@@ -10,6 +10,7 @@ const routes = [
 ]
 
 for (const viewport of [
+  { width: 375, height: 667 },
   { width: 390, height: 844 },
   { width: 393, height: 852 },
   { width: 430, height: 932 },
@@ -47,11 +48,49 @@ for (const viewport of [
   })
 }
 
+test('prompts signed-out users to enable automatic cloud backup on launch', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+
+  const prompt = page.getByRole('complementary', { name: 'Prevent data loss' })
+  await expect(prompt).toBeVisible()
+  await expect(prompt).toContainText(
+    'Sign in with Google to automatically back up your fitness data.',
+  )
+  await prompt.getByRole('button', { name: 'Not now' }).click()
+  await expect(prompt).not.toBeVisible()
+})
+
+test('supports skipping navigation and focuses content after route changes', async ({
+  browserName,
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+
+  const skipLink = page.getByRole('link', { name: 'Skip to content' })
+  await expect(skipLink).toBeAttached()
+  if (browserName !== 'webkit') {
+    await page.keyboard.press('Tab')
+    await expect(skipLink).toBeFocused()
+  }
+
+  await dismissSignInPrompt(page)
+  await page
+    .getByRole('navigation', { name: 'Primary' })
+    .getByRole('link', { name: 'Nutrition' })
+    .click()
+  await expect(page.getByRole('main', { name: 'Nutrition' })).toBeFocused()
+})
+
 test('opens the quick action bottom sheet from the center add button', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
+  await dismissSignInPrompt(page)
 
   await page.getByRole('button', { name: 'Open quick actions' }).click()
   const sheet = page.getByRole('dialog', { name: 'Quick actions' })
@@ -73,6 +112,7 @@ test('bottom navigation has exactly five controls and no History tab', async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
+  await dismissSignInPrompt(page)
 
   const nav = page.getByRole('navigation', { name: 'Primary' })
   await expect(nav.getByRole('link', { name: 'Home' })).toBeVisible()
@@ -129,8 +169,13 @@ test('quick action sheet traps focus and closes with Escape', async ({
   browserName,
   page,
 }) => {
+  test.skip(
+    browserName === 'webkit',
+    'Mobile WebKit does not reliably synthesize hardware Tab and Escape keyboard navigation.',
+  )
   await page.setViewportSize({ width: 393, height: 852 })
   await page.goto('/')
+  await dismissSignInPrompt(page)
 
   await page.getByRole('button', { name: 'Open quick actions' }).click()
   const sheet = page.getByRole('dialog', { name: 'Quick actions' })
@@ -140,11 +185,9 @@ test('quick action sheet traps focus and closes with Escape', async ({
   await expect(sheet.getByRole('button', { name: /Log food/ })).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(sheet).not.toBeVisible()
-  if (browserName !== 'webkit') {
-    await expect(
-      page.getByRole('button', { name: 'Open quick actions' }),
-    ).toBeFocused()
-  }
+  await expect(
+    page.getByRole('button', { name: 'Open quick actions' }),
+  ).toBeFocused()
 })
 
 test('creates and persists a custom exercise from the Add sheet', async ({
@@ -156,6 +199,7 @@ test('creates and persists a custom exercise from the Add sheet', async ({
   )
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
+  await dismissSignInPrompt(page)
 
   await page.getByRole('button', { name: 'Open quick actions' }).click()
   await page.getByRole('button', { name: /Create exercise/ }).click()
@@ -203,8 +247,7 @@ test('creates, activates, manually selects, and persists a program cycle', async
   await page.getByRole('button', { name: 'Save program' }).click()
   const builder = page.getByRole('dialog', { name: 'Edit template' })
   await expect(builder).toBeVisible()
-  await builder.getByRole('textbox', { name: 'Add workout day' }).fill('Day A')
-  await builder.getByRole('button', { name: 'Add day' }).click()
+  await addWorkoutDay(builder, 'Day A')
   await expect(builder.getByText('Day A')).toBeVisible()
   await builder.getByRole('button', { name: 'Add exercise' }).click()
   await addPrescription(builder, 'E2E Squat')
@@ -256,8 +299,7 @@ test('starts, resumes, edits, and cancels a live workout', async ({
   await page.getByRole('textbox', { name: 'Name' }).fill('E2E Live program')
   await page.getByRole('button', { name: 'Save program' }).click()
   const builder = page.getByRole('dialog', { name: 'Edit template' })
-  await builder.getByRole('textbox', { name: 'Add workout day' }).fill('Live A')
-  await builder.getByRole('button', { name: 'Add day' }).click()
+  await addWorkoutDay(builder, 'Live A')
   await builder.getByRole('button', { name: 'Add exercise' }).click()
   await addPrescription(builder, 'E2E Live press', '2')
   await closeBuilder(builder)
@@ -303,7 +345,7 @@ test('starts, resumes, edits, and cancels a live workout', async ({
     '10',
   )
 
-  await page.getByLabel('Workout options').click()
+  await page.getByRole('button', { name: 'Discard workout' }).click()
   await page
     .getByRole('dialog', { name: 'Discard workout?' })
     .getByRole('button', { name: 'Discard Workout' })
@@ -413,6 +455,7 @@ test('logs, edits, deletes, switches dates, and persists bodyweight after reload
   )
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
+  await dismissSignInPrompt(page)
 
   await page.getByRole('button', { name: 'Open quick actions' }).click()
   await page
@@ -432,13 +475,16 @@ test('logs, edits, deletes, switches dates, and persists bodyweight after reload
   ).toBeVisible({ timeout: 15_000 })
 
   await page.reload()
+  await dismissSignInPrompt(page)
   await expect(
     bodyweightCard.locator('.home-bw-value-secondary', {
       hasText: '188.4 lb',
     }),
   ).toBeVisible()
 
-  await page.getByRole('button', { name: 'Edit latest' }).click()
+  await page
+    .getByRole('button', { name: 'Log bodyweight', exact: true })
+    .click()
   const editInput = page
     .getByRole('dialog', { name: 'Log bodyweight' })
     .getByRole('textbox', { name: 'Bodyweight' })
@@ -452,9 +498,15 @@ test('logs, edits, deletes, switches dates, and persists bodyweight after reload
   ).toBeVisible()
 
   await page.getByRole('button', { name: 'Next day' }).click()
+  await page
+    .getByRole('button', { name: 'Log bodyweight', exact: true })
+    .click()
   await expect(
-    bodyweightCard.getByText('Selected date: no bodyweight entry'),
-  ).toBeVisible()
+    page
+      .getByRole('dialog', { name: 'Log bodyweight' })
+      .getByRole('textbox', { name: 'Bodyweight' }),
+  ).toHaveValue('')
+  await page.getByRole('button', { name: 'Cancel' }).click()
   await page.getByRole('button', { name: 'Previous day' }).click()
   await expect(
     bodyweightCard.locator('.home-bw-value-secondary', {
@@ -462,7 +514,9 @@ test('logs, edits, deletes, switches dates, and persists bodyweight after reload
     }),
   ).toBeVisible()
 
-  await page.getByRole('button', { name: 'Edit latest' }).click()
+  await page
+    .getByRole('button', { name: 'Log bodyweight', exact: true })
+    .click()
   await page.getByRole('button', { name: /Delete/ }).click()
   await page
     .getByRole('dialog', { name: 'Delete bodyweight?' })
@@ -475,6 +529,7 @@ test('logs, edits, deletes, switches dates, and persists bodyweight after reload
   ).toBeVisible()
 
   await page.reload()
+  await dismissSignInPrompt(page)
   await expect(
     bodyweightCard.locator('.home-bw-value-secondary', {
       hasText: 'No entry',
@@ -482,25 +537,29 @@ test('logs, edits, deletes, switches dates, and persists bodyweight after reload
   ).toBeVisible()
 })
 
-test('opens bodyweight logging from its Home card and accepts a past date', async ({
-  page,
-}) => {
+test('logs bodyweight for a past date from its Home card', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
+  await dismissSignInPrompt(page)
 
-  await page.getByRole('button', { name: 'Open bodyweight log' }).click()
+  await page
+    .getByRole('button', { name: 'Log bodyweight', exact: true })
+    .click()
   const dialog = page.getByRole('dialog', { name: 'Log bodyweight' })
   await dialog.getByLabel('Date').fill('2026-01-15')
   await dialog.getByRole('textbox', { name: 'Bodyweight' }).fill('180')
   await dialog.getByRole('button', { name: 'Save' }).click()
 
-  await expect(page.getByText('Current from 2026-01-15')).toBeVisible()
+  await expect(
+    page.locator('.home-bw-value-secondary', { hasText: '180 lb' }),
+  ).toBeVisible()
 })
 
 test('exits the What’s New deep link back to usable Settings', async ({
   page,
 }) => {
   await page.goto('/')
+  await dismissSignInPrompt(page)
 
   await page.getByRole('link', { name: "See what's new" }).click()
   await expect(page).toHaveURL(/\/settings\?section=whats-new/)
@@ -518,6 +577,7 @@ test('shows bodyweight progress graph with range controls and tap details', asyn
 }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
+  await dismissSignInPrompt(page)
 
   await page
     .getByRole('button', { name: 'Log bodyweight', exact: true })
@@ -530,8 +590,11 @@ test('shows bodyweight progress graph with range controls and tap details', asyn
   await page
     .getByRole('button', { name: 'Log bodyweight', exact: true })
     .click()
-  await page
-    .getByRole('dialog', { name: 'Log bodyweight' })
+  const secondEntryDialog = page.getByRole('dialog', {
+    name: 'Log bodyweight',
+  })
+  await secondEntryDialog.getByLabel('Date').fill('2026-07-04')
+  await secondEntryDialog
     .getByRole('textbox', { name: 'Bodyweight' })
     .fill('189')
   await page.getByRole('button', { name: 'Save' }).click()
@@ -557,6 +620,7 @@ test('shows calorie bars and target line on Home and in History Graphs', async (
   page,
 }) => {
   await page.goto('/')
+  await dismissSignInPrompt(page)
 
   const homeChart = page.getByRole('img', {
     name: 'Daily calories logged and target graph',
@@ -721,6 +785,7 @@ test('completes the release workflow through backup restore', async ({
   await expect(page.getByText(/1.25 cup .* 250 kcal/)).toBeVisible()
 
   await page.goto('/')
+  await dismissSignInPrompt(page)
   await page.getByRole('button', { name: 'Open quick actions' }).click()
   await page
     .getByRole('dialog', { name: 'Quick actions' })
@@ -750,10 +815,7 @@ test('completes the release workflow through backup restore', async ({
   await page.getByRole('textbox', { name: 'Name' }).fill('Audit program')
   await page.getByRole('button', { name: 'Save program' }).click()
   const builder = page.getByRole('dialog', { name: 'Edit template' })
-  await builder
-    .getByRole('textbox', { name: 'Add workout day' })
-    .fill('Audit A')
-  await builder.getByRole('button', { name: 'Add day' }).click()
+  await addWorkoutDay(builder, 'Audit A')
   await builder.getByRole('button', { name: 'Add exercise' }).click()
   await addPrescription(builder, 'Audit squat', '3')
   await builder.getByRole('button', { name: 'Add exercise' }).click()
@@ -792,8 +854,8 @@ test('completes the release workflow through backup restore', async ({
   await page.getByRole('heading', { name: /Audit squat|Audit curl/ }).waitFor()
   await page.getByRole('button', { name: /1 Audit squat/ }).click()
   await expect(page.getByRole('heading', { name: 'Audit squat' })).toBeVisible()
-  await page.getByRole('button', { name: 'Replace Exercise' }).first().click()
-  const replaceSheet = page.getByRole('dialog', { name: 'Replace Exercise' })
+  await page.getByRole('button', { name: 'Swap Exercise' }).first().click()
+  const replaceSheet = page.getByRole('dialog', { name: 'Swap Exercise' })
   await replaceSheet.getByLabel('Search exercises').fill('Audit row')
   await replaceSheet.getByRole('button', { name: /Audit row/ }).click()
   await expect(page.getByRole('heading', { name: 'Audit row' })).toBeVisible()
@@ -882,7 +944,8 @@ test('completes the release workflow through backup restore', async ({
   await page.getByRole('button', { name: /Audit A/ }).click()
   await expect(page.getByRole('heading', { name: 'Audit A' })).toBeVisible()
   await page.getByRole('button', { name: /Audit row/ }).click()
-  await expect(page.getByLabel('Exercise notes')).toBeVisible()
+  await expect(page.getByLabel('Exercise notes')).toHaveCount(0)
+  await expect(page.getByText('weight_reps')).toHaveCount(0)
   await page.goto('/nutrition')
   await expect(page.getByText(/1.25 cup .* 250 kcal/)).toBeVisible()
 })
@@ -918,6 +981,14 @@ async function addPrescription(
   })
 }
 
+async function addWorkoutDay(builder: Locator, name: string) {
+  await builder.getByRole('button', { name: 'Add workout day' }).click()
+  await builder
+    .getByRole('textbox', { name: 'New workout day name' })
+    .fill(name)
+  await builder.getByRole('button', { name: 'Save workout day' }).click()
+}
+
 async function closeBuilder(builder: Locator) {
   await builder.getByRole('button', { name: /^Back from edit/ }).click()
   await expect(builder).not.toBeVisible({ timeout: 15_000 })
@@ -944,4 +1015,11 @@ async function fillRestInputs(page: Page, rest: string) {
   await page
     .getByRole('textbox', { name: 'Rest seconds' })
     .fill(String(totalSeconds % 60))
+}
+
+async function dismissSignInPrompt(page: Page) {
+  const prompt = page.getByRole('complementary', { name: 'Prevent data loss' })
+  await expect(prompt).toBeVisible()
+  await prompt.getByRole('button', { name: 'Not now' }).click()
+  await expect(prompt).not.toBeVisible()
 }

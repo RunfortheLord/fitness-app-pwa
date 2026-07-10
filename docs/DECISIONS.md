@@ -1,5 +1,69 @@
 # Decisions
 
+## 2026-07-07: Training Tab Resumes Active Workouts
+
+- The bottom navigation resolves the Training tab to `/workout` while an
+  active workout exists, instead of redirecting every `/training` route. This
+  keeps explicit Training sub-routes such as quick-action create flows usable
+  while making the primary tab behave as a live-workout resume control.
+
+## 2026-07-05: Meal-Aware Recent Foods And Compact Day Creation
+
+- Empty Log Food search now surfaces at most four distinct active reusable
+  foods most recently logged for the current clock-derived breakfast, lunch, or
+  dinner during the inclusive seven-local-date window ending today. Late-night
+  snack hours use dinner recommendations. Quick-add-only snapshots are excluded
+  because they have no reusable food record. Entering any query removes the
+  recommendation section and restores normal search ranking.
+- This local recency shortcut supersedes the blanket first-release exclusion of
+  meal recommendations. It does not generate foods, rank nutritional quality,
+  call an external recommendation service, or log automatically.
+- Program editing replaces the persistent Add workout day form with a plus
+  control after the horizontal day tabs. Tapping plus reveals an inline name
+  field with save/cancel controls. The selected-day panel no longer repeats a
+  workout-day name field or header; the selected tab remains the visible day
+  name.
+
+## 2026-07-05: Per-Program RIR-Every-Set And Prescription-Editor Layout
+
+- New per-program `trackRirEverySet` flag (on `ProgramTemplate`,
+  snapshotted onto `ActiveProgramCycle` at activation and onto `Workout` at
+  start; optional, defaults false; added to the backup schemas). A "Track RIR
+  on every set?" checkbox in the program builder toggles it, shown only when
+  global RIR tracking is on. When on, `startWorkout` prefills the exercise's
+  target RIR onto every set (not just the final), and the live workout treats
+  every set as a target set (prescribed placeholder + required to complete).
+  The prescription editor relabels its RIR field "RIR target" vs "Final-set
+  RIR" accordingly.
+- Prescription editor layout: the RIR-target field moved up beside Sets to
+  save vertical space; the "<rest>s rest - <increment> increment" line was
+  removed (that detail lives on the exercise itself); and the weight-target
+  field stays gone.
+- The editor's redundant second back arrow is gone: the nested header was
+  removed so the BottomSheet's single page-header back arrow is the only one.
+  It still guards unsaved edits — `PrescriptionEditor` reports dirtiness up via
+  `onDirtyChange` and the builder shows the discard confirmation before
+  closing. The sheet title stays "Edit template"/"Edit current cycle" (not
+  retitled per screen) so existing dialog-by-name references keep working.
+
+## 2026-07-05: Automatic Cloud Backups And Signed-Out Launch Warning
+
+- The direct request for automatic signed-in backups supersedes the earlier
+  manual-only cloud-backup decision. IndexedDB remains authoritative and the
+  app remains fully usable without an account or network connection.
+- A signed-in app uploads a full JSON snapshot on launch/resume and
+  reconnection. Mutation-driven snapshots are throttled to once every five
+  minutes; repeated changes do not postpone the pending snapshot.
+  High-frequency run-sample writes do not independently trigger uploads;
+  parent run-state changes do.
+- Existing cloud data is protected from a new or cleared device: automatic
+  overwrite is blocked until local backup metadata proves that the current
+  cloud snapshot was created or restored on that device. Manual backup and
+  validated replace-restore remain available in Settings.
+- Signed-out users receive a dismissible “Prevent data loss” Google sign-in
+  dialog on each fresh Home launch. Dismissing it does not restrict local or
+  offline use.
+
 ## 2026-07-05: RIR Recording Options And Program-Editor Trims
 
 - RIR can be recorded on any set during a live workout, not only the final
@@ -491,7 +555,9 @@
 - The app is a single-user, local-first Progressive Web App.
 - Primary target is iPhone installed through Safari using Add to Home Screen.
 - IndexedDB is the source of truth for all primary user records.
-- No account, backend, cloud sync, subscription, internet dependency after installation, or external food database is included in the first release.
+- Core use has no account, cloud, subscription, or internet dependency after
+  installation. Optional Google sign-in and Supabase snapshot backup are the
+  documented exception; they do not replace IndexedDB as the source of truth.
 - JSON is the authoritative full-fidelity backup format.
 - CSV is export-only for readable spreadsheet use.
 - Backup format version `1` is separate from IndexedDB schema version `6`.
@@ -587,8 +653,9 @@
 
 ## First-Release Exclusions
 
-- Account creation and login.
-- Backend server and cloud sync.
+- Required account creation or login.
+- Realtime multi-device cloud sync or an application backend beyond the
+  optional Supabase snapshot-backup integration.
 - Social features and public profiles.
 - Subscriptions and ads.
 - Wearables and Apple Health.

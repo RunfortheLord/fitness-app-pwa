@@ -77,6 +77,22 @@ describe('HomePage', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('Trend weight')).toBeInTheDocument()
     expect(screen.getByText('Last recorded')).toBeInTheDocument()
+    const bodyweightCard = screen.getByRole('region', { name: 'Bodyweight' })
+    expect(
+      within(bodyweightCard).getByRole('button', { name: 'Log bodyweight' }),
+    ).toBeInTheDocument()
+    expect(
+      within(bodyweightCard).getByRole('button', { name: 'View graph' }),
+    ).toBeInTheDocument()
+    expect(
+      within(bodyweightCard).queryByText('Edit latest'),
+    ).not.toBeInTheDocument()
+    expect(
+      within(bodyweightCard).queryByText(/Selected date:/),
+    ).not.toBeInTheDocument()
+    expect(
+      within(bodyweightCard).queryByText('Weekly change'),
+    ).not.toBeInTheDocument()
     expect(screen.getByText('Calories remaining')).toBeInTheDocument()
     expect(
       screen.getByRole('img', {
@@ -159,10 +175,11 @@ describe('HomePage', () => {
       screen.queryByRole('heading', { name: 'Current program' }),
     ).not.toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: 'Start workout' }),
+      screen.getByRole('button', { name: 'Choose workout day' }),
     ).toBeInTheDocument()
-    // The card surfaces the next-up day (the first day of a fresh cycle).
-    expect(screen.getByText('Next: Upper')).toBeInTheDocument()
+    expect(
+      screen.getByText('Select the workout day you want to perform.'),
+    ).toBeInTheDocument()
   })
 
   it('replaces start actions with one resume action during an active workout', async () => {
@@ -191,7 +208,7 @@ describe('HomePage', () => {
       }),
     ).not.toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: 'Start workout' }),
+      screen.queryByRole('button', { name: 'Choose workout day' }),
     ).not.toBeInTheDocument()
     expect(
       screen.queryByRole('heading', { name: 'Resume workout' }),
@@ -211,7 +228,7 @@ describe('HomePage', () => {
 
     expect(await screen.findAllByText('188.4 lb')).not.toHaveLength(0)
 
-    await user.click(screen.getByRole('button', { name: 'Edit latest' }))
+    await user.click(screen.getByRole('button', { name: 'Log bodyweight' }))
     const input = await bodyweightInput()
     await waitFor(() => expect(input).toHaveValue('188.4'))
     await user.clear(input)
@@ -221,7 +238,7 @@ describe('HomePage', () => {
     expect(await screen.findAllByText('189.2 lb')).not.toHaveLength(0)
     await expect(db.bodyweightEntries.toArray()).resolves.toHaveLength(1)
 
-    await user.click(screen.getByRole('button', { name: 'Edit latest' }))
+    await user.click(screen.getByRole('button', { name: 'Log bodyweight' }))
     await waitFor(() =>
       expect(
         within(
@@ -295,14 +312,17 @@ describe('HomePage', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(await screen.findAllByText('189 lb')).not.toHaveLength(0)
-    expect(screen.getByText('Selected date: 189 lb')).toBeInTheDocument()
-    expect(screen.getByLabelText('Bodyweight trend')).toHaveTextContent(
-      'One entry',
-    )
+    const bodyweightCard = screen.getByRole('region', { name: 'Bodyweight' })
+    const lastRecordedStat = within(bodyweightCard)
+      .getByText('Last recorded')
+      .closest('.home-bw-stat')
+    expect(lastRecordedStat).toHaveTextContent('189 lb')
+    expect(screen.queryByText(/Selected date:/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Bodyweight trend')).not.toBeInTheDocument()
     await expect(db.bodyweightEntries.toArray()).resolves.toHaveLength(1)
   })
 
-  it('shows weekly trend weight change on the bodyweight card', async () => {
+  it('shows trend weight without the weekly-change detail', async () => {
     const today = formatLocalDate(new Date())
     await bodyweightRepository.saveBodyweight({
       localDate: addLocalDays(today, -14),
@@ -320,13 +340,17 @@ describe('HomePage', () => {
     renderHome()
     await waitForDashboardReady()
 
-    expect(screen.getByText('Weekly change')).toBeInTheDocument()
-    expect(screen.getByLabelText('Bodyweight trend')).toHaveTextContent(
-      /lb\/week/,
-    )
-    expect(screen.getByLabelText('Bodyweight trend')).not.toHaveTextContent(
-      /from/i,
-    )
+    const bodyweightCard = screen.getByRole('region', { name: 'Bodyweight' })
+    const trendStat = within(bodyweightCard)
+      .getByText('Trend weight')
+      .closest('.home-bw-stat')
+    expect(trendStat).not.toHaveTextContent('—')
+    expect(
+      within(bodyweightCard).queryByText('Weekly change'),
+    ).not.toBeInTheDocument()
+    expect(
+      within(bodyweightCard).queryByLabelText('Bodyweight trend'),
+    ).not.toBeInTheDocument()
   })
 
   it('opens bodyweight entry from the center Add sheet', async () => {
@@ -349,14 +373,12 @@ describe('HomePage', () => {
     ).toBeInTheDocument()
   })
 
-  it('opens the bodyweight card and logs a weight for a past date', async () => {
+  it('logs a weight for a past date from the bodyweight card', async () => {
     const user = userEvent.setup()
     renderHome()
     await waitForDashboardReady()
 
-    await user.click(
-      screen.getByRole('button', { name: 'Open bodyweight log' }),
-    )
+    await user.click(screen.getByRole('button', { name: 'Log bodyweight' }))
     const dialog = await screen.findByRole('dialog', {
       name: 'Log bodyweight',
     })
@@ -390,13 +412,14 @@ describe('HomePage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Next day' }))
 
-    expect(
-      await screen.findByText('Selected date: no bodyweight entry'),
-    ).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Log bodyweight' }))
+    expect(await bodyweightInput()).toHaveValue('')
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
 
     await user.click(screen.getByRole('button', { name: 'Previous day' }))
 
-    expect(await screen.findAllByText('188 lb')).not.toHaveLength(0)
+    await user.click(screen.getByRole('button', { name: 'Log bodyweight' }))
+    expect(await bodyweightInput()).toHaveValue('188')
   })
 
   it('keeps completed workout history off the home dashboard', async () => {

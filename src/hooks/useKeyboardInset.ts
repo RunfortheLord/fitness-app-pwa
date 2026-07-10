@@ -19,10 +19,15 @@ export function useKeyboardInset() {
     }
 
     const root = document.documentElement
+    let focusOutUpdate: number | null = null
+
+    const reset = () => {
+      root.style.setProperty('--keyboard-inset', '0px')
+    }
 
     const update = () => {
       if (!isTextInputActive(document.activeElement)) {
-        root.style.setProperty('--keyboard-inset', '0px')
+        reset()
         return
       }
 
@@ -33,17 +38,38 @@ export function useKeyboardInset() {
       root.style.setProperty('--keyboard-inset', `${Math.round(inset)}px`)
     }
 
+    const updateAfterFocusSettles = () => {
+      if (focusOutUpdate !== null) {
+        window.clearTimeout(focusOutUpdate)
+      }
+      focusOutUpdate = window.setTimeout(() => {
+        focusOutUpdate = null
+        update()
+      }, 0)
+    }
+
+    const resetWhenHidden = () => {
+      if (document.visibilityState === 'hidden') {
+        reset()
+      }
+    }
+
     update()
     viewport.addEventListener('resize', update)
     viewport.addEventListener('scroll', update)
     document.addEventListener('focusin', update)
-    document.addEventListener('focusout', update)
+    document.addEventListener('focusout', updateAfterFocusSettles)
+    document.addEventListener('visibilitychange', resetWhenHidden)
 
     return () => {
+      if (focusOutUpdate !== null) {
+        window.clearTimeout(focusOutUpdate)
+      }
       viewport.removeEventListener('resize', update)
       viewport.removeEventListener('scroll', update)
       document.removeEventListener('focusin', update)
-      document.removeEventListener('focusout', update)
+      document.removeEventListener('focusout', updateAfterFocusSettles)
+      document.removeEventListener('visibilitychange', resetWhenHidden)
       root.style.removeProperty('--keyboard-inset')
     }
   }, [])

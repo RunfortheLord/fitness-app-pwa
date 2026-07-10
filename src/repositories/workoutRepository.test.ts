@@ -1015,6 +1015,46 @@ describe('workoutRepository', () => {
     ).resolves.toMatchObject({ targetSetCount: 3 })
   })
 
+  it('refuses to resume a completed workout after applied template changes would lose provenance', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    const repository = createWorkoutRepository(database)
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(started.sets[0].id, { completed: true })
+    await repository.addSet(started.exercises[0].id)
+    const completed = await repository.completeWorkout({
+      workoutId: started.workout.id,
+    })
+    await repository.applyDetectedChange(
+      completed.detectedChanges[0].id,
+      'template_only',
+    )
+
+    await expect(
+      repository.resumeCompletedWorkout(completed.history.id),
+    ).rejects.toThrow('Applied workout changes must stay in history.')
+
+    await expect(
+      database.templateWorkoutExercises.get(program.exercises[0].id),
+    ).resolves.toMatchObject({ targetSetCount: 3 })
+    await expect(database.workouts.toArray()).resolves.toEqual([])
+    await expect(
+      database.workoutHistoryEntries.get(completed.history.id),
+    ).resolves.toBeDefined()
+    await expect(
+      database.appliedWorkoutChanges.toArray(),
+    ).resolves.toHaveLength(1)
+    await expect(
+      database.detectedWorkoutChanges.toArray(),
+    ).resolves.toHaveLength(1)
+  })
+
   it('applies selected replacement changes to both destinations', async () => {
     const program = await seedProgram(database)
     const active = await createProgramRepository(database).activateTemplate(

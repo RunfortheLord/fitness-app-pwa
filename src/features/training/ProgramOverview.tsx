@@ -80,7 +80,7 @@ export function ProgramOverview({
           ) : null}
           <div className="button-row program-action-row">
             <SecondaryButton
-              aria-label="Edit current cycle"
+              aria-label="Edit active program"
               type="button"
               onClick={() => onEditCycle(currentCycle.cycle.id)}
             >

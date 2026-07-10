@@ -354,108 +354,119 @@ export function TrainingPage() {
         )
       ) : (
         <>
-          <ProgramOverview
-            currentCycle={loadState.currentCycle}
-            checkedDayIds={weekChecks.checkedDayIds}
-            weekNumber={weekChecks.week}
-            onToggleDayCheck={toggleDayCheck}
-            loadStatus={loadState.status}
-            onBrowse={() => setProgramView('browse')}
-            onCreateProgram={onCreateProgram}
-            onDeactivate={(cycle) =>
-              setProgramConfirmation({ type: 'deactivate', cycle })
-            }
-            onEditCycle={(cycleId) =>
-              setSheet({ type: 'builder', target: { mode: 'cycle', cycleId } })
-            }
-            onSelectDay={(cycle, day, exercises) =>
-              setSheet({
-                type: 'selectedDay',
-                selectedDay: { cycle, day, exercises },
-              })
-            }
-            onStartDay={startWorkoutDay}
-          />
-
-          <ProgramLibrary
-            loadStatus={loadState.status}
-            onActivate={onActivateProgram}
-            onBrowse={() => setProgramView('browse')}
-            onClone={(templateId) =>
-              cloneProgram(templateId, 'Program cloned.')
-            }
-            onCreateProgram={onCreateProgram}
-            onDelete={onDeleteProgram}
-            onEdit={onEditProgram}
-            onShowMore={() => setProgramView('library')}
-            showBrowse={
-              Boolean(loadState.currentCycle) || userTemplates.length > 0
-            }
-            templates={userTemplates}
-          />
-
-          <SectionHeader
-            title="Exercise library"
-            action={
-              <IconButton
-                aria-label="Create exercise"
-                onClick={() => setSheet({ type: 'exercise', exercise: null })}
-              >
-                <Plus aria-hidden="true" size={20} />
-              </IconButton>
-            }
-          />
-
-          <ExerciseLibraryCard
-            exercises={loadState.exercises}
-            isExpanded={isLibraryExpanded}
-            isFilterPanelOpen={isFilterPanelOpen}
-            loadStatus={loadState.status}
-            onCreateExercise={() =>
-              setSheet({ type: 'exercise', exercise: null })
-            }
-            onEditExercise={(exercise) =>
-              setSheet({ type: 'exercise', exercise })
-            }
-            onHideExercise={(exercise) => {
-              void exerciseRepository.hideExercise(exercise.id).then(() => {
-                setMessage('Exercise hidden.')
-                reload()
-              })
-            }}
-            onRestoreExercise={(exercise) => {
-              void exerciseRepository.restoreExercise(exercise.id).then(() => {
-                setMessage('Exercise restored.')
-                reload()
-              })
-            }}
-            onToggleExpanded={() => {
-              setIsLibraryExpanded((current) => {
-                const next = !current
-                if (!next) {
-                  setQuery('')
-                  setTrackingCategory('all')
-                  setPrimaryMuscle('all')
-                  setIsFilterPanelOpen(false)
-                }
-                return next
-              })
-            }}
-            primaryMuscle={primaryMuscle}
-            query={query}
-            setFilterPanelOpen={setIsFilterPanelOpen}
-            setPrimaryMuscle={setPrimaryMuscle}
-            setQuery={setQuery}
-            setTrackingCategory={(value) => {
-              setTrackingCategory(value)
-              if (value !== 'strength') {
-                setPrimaryMuscle('all')
+          <div id="active-program" className="training-section-anchor">
+            <ProgramOverview
+              currentCycle={loadState.currentCycle}
+              checkedDayIds={weekChecks.checkedDayIds}
+              weekNumber={weekChecks.week}
+              onToggleDayCheck={toggleDayCheck}
+              loadStatus={loadState.status}
+              onBrowse={() => setProgramView('browse')}
+              onCreateProgram={onCreateProgram}
+              onDeactivate={(cycle) =>
+                setProgramConfirmation({ type: 'deactivate', cycle })
               }
-            }}
-            setView={setView}
-            trackingCategory={trackingCategory}
-            view={view}
-          />
+              onEditCycle={(cycleId) =>
+                setSheet({
+                  type: 'builder',
+                  target: { mode: 'cycle', cycleId },
+                })
+              }
+              onSelectDay={(cycle, day, exercises) =>
+                setSheet({
+                  type: 'selectedDay',
+                  selectedDay: { cycle, day, exercises },
+                })
+              }
+              onStartDay={startWorkoutDay}
+            />
+          </div>
+
+          <div id="program-library" className="training-section-anchor">
+            <ProgramLibrary
+              loadStatus={loadState.status}
+              onActivate={onActivateProgram}
+              onBrowse={() => setProgramView('browse')}
+              onClone={(templateId) =>
+                cloneProgram(templateId, 'Program cloned.')
+              }
+              onCreateProgram={onCreateProgram}
+              onDelete={onDeleteProgram}
+              onEdit={onEditProgram}
+              onShowMore={() => setProgramView('library')}
+              showBrowse={
+                Boolean(loadState.currentCycle) || userTemplates.length > 0
+              }
+              templates={userTemplates}
+            />
+          </div>
+
+          <div id="exercise-library" className="training-section-anchor">
+            <SectionHeader
+              title="Exercise library"
+              action={
+                <IconButton
+                  aria-label="Create exercise"
+                  onClick={() => setSheet({ type: 'exercise', exercise: null })}
+                >
+                  <Plus aria-hidden="true" size={20} />
+                </IconButton>
+              }
+            />
+
+            <ExerciseLibraryCard
+              exercises={loadState.exercises}
+              isExpanded={isLibraryExpanded}
+              isFilterPanelOpen={isFilterPanelOpen}
+              loadStatus={loadState.status}
+              onCreateExercise={() =>
+                setSheet({ type: 'exercise', exercise: null })
+              }
+              onEditExercise={(exercise) =>
+                setSheet({ type: 'exercise', exercise })
+              }
+              onHideExercise={(exercise) => {
+                void exerciseRepository.hideExercise(exercise.id).then(() => {
+                  setMessage('Exercise hidden.')
+                  reload()
+                })
+              }}
+              onRestoreExercise={(exercise) => {
+                void exerciseRepository
+                  .restoreExercise(exercise.id)
+                  .then(() => {
+                    setMessage('Exercise restored.')
+                    reload()
+                  })
+              }}
+              onToggleExpanded={() => {
+                setIsLibraryExpanded((current) => {
+                  const next = !current
+                  if (!next) {
+                    setQuery('')
+                    setTrackingCategory('all')
+                    setPrimaryMuscle('all')
+                    setIsFilterPanelOpen(false)
+                  }
+                  return next
+                })
+              }}
+              primaryMuscle={primaryMuscle}
+              query={query}
+              setFilterPanelOpen={setIsFilterPanelOpen}
+              setPrimaryMuscle={setPrimaryMuscle}
+              setQuery={setQuery}
+              setTrackingCategory={(value) => {
+                setTrackingCategory(value)
+                if (value !== 'strength') {
+                  setPrimaryMuscle('all')
+                }
+              }}
+              setView={setView}
+              trackingCategory={trackingCategory}
+              view={view}
+            />
+          </div>
         </>
       )}
 

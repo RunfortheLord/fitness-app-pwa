@@ -124,6 +124,37 @@ describe('food provider adapters', () => {
     })
   })
 
+  it('treats USDA milliliter serving sizes as reliable serving weight', () => {
+    const food = normalizeUsdaFood(
+      {
+        fdcId: 457,
+        description: 'Milk',
+        dataType: 'Branded',
+        brandOwner: 'Dairy Brand',
+        servingSize: 236,
+        servingSizeUnit: 'ml',
+        householdServingFullText: '1 cup',
+        foodNutrients: [
+          { nutrientId: 1008, value: 55 },
+          { nutrientId: 1003, value: 3.4 },
+          { nutrientId: 1005, value: 5 },
+          { nutrientId: 1004, value: 0.1 },
+        ],
+      },
+      now,
+    )
+
+    expect(food).toMatchObject({
+      serving: {
+        quantity: 236,
+        unit: 'ml',
+        description: '1 cup',
+        gramsPerServing: 236,
+      },
+    })
+    expect(food?.macrosPerServing?.calories).toBeCloseTo(129.8)
+  })
+
   it('rejects USDA records missing required macros but keeps legitimate zero values', () => {
     expect(
       normalizeUsdaFood(

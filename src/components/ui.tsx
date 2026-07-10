@@ -126,6 +126,7 @@ export function SectionHeader({ title, action }: SectionHeaderProps) {
 
 type BottomSheetProps = {
   children: ReactNode
+  headerAction?: ReactNode
   isOpen: boolean
   onClose: () => void
   title: string
@@ -153,6 +154,7 @@ function getSheetExitAnimationMs() {
 
 export function BottomSheet({
   children,
+  headerAction,
   isOpen,
   onClose,
   title,
@@ -251,22 +253,28 @@ export function BottomSheet({
               <ArrowLeft aria-hidden="true" size={20} />
             </IconButton>
             <h2 id={titleId}>{t(title)}</h2>
+            {headerAction ? (
+              <div className="sheet-header-action">{headerAction}</div>
+            ) : null}
           </div>
         ) : (
           <>
             <div className="sheet-handle" aria-hidden="true" />
             <div className="sheet-header">
               <h2 id={titleId}>{t(title)}</h2>
-              <IconButton
-                aria-label={
-                  language === 'en'
-                    ? `Close ${title.toLowerCase()}`
-                    : `${t('Close')}: ${t(title)}`
-                }
-                onClick={onClose}
-              >
-                <X aria-hidden="true" size={20} />
-              </IconButton>
+              <div className="sheet-header-action">
+                {headerAction}
+                <IconButton
+                  aria-label={
+                    language === 'en'
+                      ? `Close ${title.toLowerCase()}`
+                      : `${t('Close')}: ${t(title)}`
+                  }
+                  onClick={onClose}
+                >
+                  <X aria-hidden="true" size={20} />
+                </IconButton>
+              </div>
             </div>
           </>
         )}
@@ -276,13 +284,44 @@ export function BottomSheet({
   )
 }
 
+type SwitchControlProps = Omit<
+  InputHTMLAttributes<HTMLInputElement>,
+  'type'
+> & {
+  label: string
+}
+
+export function SwitchControl({
+  checked,
+  disabled,
+  label,
+  onChange,
+  ...props
+}: SwitchControlProps) {
+  const { t } = useLanguage()
+  return (
+    <label className="switch-row">
+      <span>{t(label)}</span>
+      <input
+        checked={checked}
+        disabled={disabled}
+        onChange={onChange}
+        role="switch"
+        type="checkbox"
+        {...props}
+      />
+      <span aria-hidden="true" className="switch-track" />
+    </label>
+  )
+}
+
 type ModalConfirmationDialogProps = {
   cancelLabel?: string
   children: ReactNode
   confirmLabel?: string
   isOpen: boolean
   onCancel: () => void
-  onConfirm: () => void
+  onConfirm: () => void | Promise<unknown>
   title: string
 }
 
@@ -677,12 +716,38 @@ export function OfflineIndicator({ isOffline }: { isOffline: boolean }) {
   )
 }
 
-export function LoadingState({ label = 'Loading' }: { label?: string }) {
+export function LoadingState({
+  label = 'Loading',
+  delayMs = 160,
+}: {
+  label?: string
+  delayMs?: number
+}) {
   const { t } = useLanguage()
+  // Hold back the spinner briefly so fast reads (IndexedDB is usually well
+  // under 100ms) render straight to content instead of flashing a skeleton.
+  const [isVisible, setIsVisible] = useState(delayMs <= 0)
+
+  useEffect(() => {
+    if (delayMs <= 0) {
+      return
+    }
+
+    const timeout = window.setTimeout(() => setIsVisible(true), delayMs)
+    return () => window.clearTimeout(timeout)
+  }, [delayMs])
+
   return (
-    <div className="loading-state" role="status">
-      <span aria-hidden="true" />
-      <p>{t(label)}</p>
+    <div
+      className={`loading-state${isVisible ? '' : ' loading-state-pending'}`}
+      role="status"
+    >
+      {isVisible ? (
+        <>
+          <span aria-hidden="true" />
+          <p>{t(label)}</p>
+        </>
+      ) : null}
     </div>
   )
 }

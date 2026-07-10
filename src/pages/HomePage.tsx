@@ -1,4 +1,4 @@
-import { LineChart, Scale } from 'lucide-react'
+import { History, LineChart, Scale } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -20,10 +20,6 @@ import {
   formatSelectedDateLabel,
   type LocalDateString,
 } from '@domain/dates'
-import {
-  formatBodyweightWeeklyChange,
-  type BodyweightTrendSummary,
-} from '@domain/bodyweightProgress'
 import { currentTimeAwareTrendWeight } from '@domain/bodyweightTrend'
 import { formatWeight as formatWeightWithUnit } from '@domain/weightUnits'
 import type { BodyweightEntry } from '@shared-types/app'
@@ -161,13 +157,10 @@ export function HomePage() {
                 type="button"
                 onClick={() => void navigate('/training')}
               >
-                Start workout
+                {t('Choose workout day')}
               </PrimaryButton>
               <p className="home-action-meta">
-                {`${t('Next')}: ${
-                  dashboard.activeProgram.nextDay?.name ??
-                  dashboard.activeProgram.days[0]?.name
-                }`}
+                {t('Select the workout day you want to perform.')}
               </p>
             </>
           ) : (
@@ -181,45 +174,34 @@ export function HomePage() {
         </div>
       </Card>
 
-      <section className="home-action-grid" aria-label="Home shortcuts">
-        <Card className="home-action-card">
-          <div className="dashboard-shortcuts">
-            <SecondaryButton
-              type="button"
-              onClick={() => void navigate('/history?source=home')}
-            >
-              View all history
-            </SecondaryButton>
-            <SecondaryButton
-              type="button"
-              onClick={() => void navigate('/history?view=graphs')}
-            >
-              <LineChart aria-hidden="true" size={18} />
-              {t('Graphs')}
-            </SecondaryButton>
-            <SecondaryButton
-              type="button"
-              onClick={() => void navigate('/history?view=bodyweight')}
-            >
-              <Scale aria-hidden="true" size={18} />
-              {t('Bodyweight')}
-            </SecondaryButton>
-          </div>
-        </Card>
+      <section className="home-utility-nav" aria-label="Home shortcuts">
+        <SecondaryButton
+          type="button"
+          onClick={() => void navigate('/history?source=home')}
+        >
+          <History aria-hidden="true" size={18} />
+          View all history
+        </SecondaryButton>
+        <SecondaryButton
+          type="button"
+          onClick={() => void navigate('/history?view=graphs')}
+        >
+          <LineChart aria-hidden="true" size={18} />
+          {t('Graphs')}
+        </SecondaryButton>
+        <SecondaryButton
+          type="button"
+          onClick={() => void navigate('/history?view=bodyweight')}
+        >
+          <Scale aria-hidden="true" size={18} />
+          {t('Bodyweight')}
+        </SecondaryButton>
       </section>
 
       <section className="metric-grid" aria-label="Daily summary">
         <HomeBodyweightSummary
-          trend={dashboard?.bodyweightTrend}
           trendWeight={trendWeight}
           lastRecorded={dashboard?.currentBodyweight}
-          selectedEntry={dashboard?.bodyweight}
-          onEdit={() =>
-            openBodyweightSheet({
-              entryId: dashboard?.bodyweight?.id,
-              localDate: selectedDate,
-            })
-          }
           onLog={() => openBodyweightSheet(selectedDate)}
           onView={() => void navigate('/history?view=bodyweight')}
         />
@@ -263,121 +245,53 @@ export function HomePage() {
 }
 
 function HomeBodyweightSummary({
-  trend,
   trendWeight,
   lastRecorded,
-  selectedEntry,
-  onEdit,
   onLog,
   onView,
 }: {
-  trend: BodyweightTrendSummary | undefined
   trendWeight: number | null
   lastRecorded: BodyweightEntry | undefined
-  selectedEntry: BodyweightEntry | undefined
-  onEdit: () => void
   onLog: () => void
   onView: () => void
 }) {
   const { t } = useLanguage()
   const weightUnit = useWeightUnit()
   return (
-    <Card className="metric-card home-bodyweight-summary">
-      <button
-        aria-label={t('Open bodyweight log')}
-        className="home-bodyweight-summary-trigger"
-        onClick={onLog}
-        type="button"
-      >
-        <span className="home-bodyweight-title">
-          <Scale aria-hidden="true" size={18} />
-          {t('Bodyweight')}
-        </span>
-        <div className="home-bw-metric">
-          <div className="home-bw-stat">
-            <span className="home-bw-value">
-              {trendWeight !== null
-                ? formatWeightWithUnit(trendWeight, weightUnit, 'bodyweight')
-                : '—'}
-            </span>
-            <span className="home-bw-caption">{t('Trend weight')}</span>
-          </div>
-          <div className="home-bw-stat">
-            <span className="home-bw-value home-bw-value-secondary">
-              {lastRecorded
-                ? formatWeightWithUnit(
-                    lastRecorded.weight,
-                    weightUnit,
-                    'bodyweight',
-                  )
-                : t('No entry')}
-            </span>
-            <span className="home-bw-caption">{t('Last recorded')}</span>
-          </div>
-        </div>
-        {lastRecorded ? (
-          <span className="home-bw-current-date">
-            {t('Current from {date}', { date: lastRecorded.localDate })}
+    <Card
+      aria-label={t('Bodyweight')}
+      className="metric-card home-bodyweight-summary"
+    >
+      <div className="home-bw-metric">
+        <div className="home-bw-stat">
+          <span className="home-bw-value">
+            {trendWeight !== null
+              ? formatWeightWithUnit(trendWeight, weightUnit, 'bodyweight')
+              : '—'}
           </span>
-        ) : null}
-      </button>
-      {selectedEntry ? (
-        <p className="muted">
-          Selected date:{' '}
-          {formatWeightWithUnit(selectedEntry.weight, weightUnit, 'bodyweight')}
-        </p>
-      ) : (
-        <p className="muted">{t('Selected date: no bodyweight entry')}</p>
-      )}
-      <HomeBodyweightTrend trend={trend} />
+          <span className="home-bw-caption">{t('Trend weight')}</span>
+        </div>
+        <div className="home-bw-stat">
+          <span className="home-bw-value home-bw-value-secondary">
+            {lastRecorded
+              ? formatWeightWithUnit(
+                  lastRecorded.weight,
+                  weightUnit,
+                  'bodyweight',
+                )
+              : t('No entry')}
+          </span>
+          <span className="home-bw-caption">{t('Last recorded')}</span>
+        </div>
+      </div>
       <div className="button-row home-bodyweight-actions">
         <PrimaryButton type="button" onClick={onLog}>
           Log bodyweight
         </PrimaryButton>
-        {selectedEntry ? (
-          <SecondaryButton type="button" onClick={onEdit}>
-            Edit latest
-          </SecondaryButton>
-        ) : null}
         <SecondaryButton type="button" onClick={onView}>
           View graph
         </SecondaryButton>
       </div>
     </Card>
-  )
-}
-
-function HomeBodyweightTrend({
-  trend,
-}: {
-  trend: BodyweightTrendSummary | undefined
-}) {
-  const { t } = useLanguage()
-  const weightUnit = useWeightUnit()
-  if (!trend || trend.status === 'empty') {
-    return (
-      <div className="home-trend" aria-label={t('Bodyweight trend')}>
-        <span>{t('No trend yet')}</span>
-        <small>{t('Add at least two entries to show change.')}</small>
-      </div>
-    )
-  }
-
-  if (trend.status === 'single') {
-    return (
-      <div className="home-trend" aria-label={t('Bodyweight trend')}>
-        <span>{t('One entry')}</span>
-        <small>{t(trend.text)}</small>
-      </div>
-    )
-  }
-
-  return (
-    <div className="home-trend" aria-label={t('Bodyweight trend')}>
-      <span>
-        {formatBodyweightWeeklyChange(trend.weeklyChange, weightUnit)}
-      </span>
-      <small>{t('Weekly change')}</small>
-    </div>
   )
 }

@@ -1,4 +1,11 @@
-import { ArrowLeft, ChevronDown, ChevronLeft, Search } from 'lucide-react'
+import {
+  ArrowLeft,
+  CheckSquare,
+  ChevronDown,
+  ChevronLeft,
+  Search,
+  Square,
+} from 'lucide-react'
 import { useContext, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -8,13 +15,12 @@ import {
   FormField,
   IconButton,
   LoadingState,
-  NumericInput,
+  ModalConfirmationDialog,
   PageContainer,
   SegmentedControl,
   SecondaryButton,
   SectionHeader,
   StatusMessage,
-  ValidationMessage,
 } from '@components/ui'
 import { CalorieHistoryChart } from '@components/CalorieHistoryChart'
 import { DashboardContext } from '@components/dashboardContextValue'
@@ -41,8 +47,6 @@ import {
 import {
   formatWeight as formatWeightWithUnit,
   weightDisplayNumber,
-  weightInputToLb,
-  weightInputValue,
   weightUnitSuffix,
 } from '@domain/weightUnits'
 import { useWeightUnit } from '@hooks/useWeightUnit'
@@ -73,9 +77,7 @@ import type {
   WorkoutHistorySet,
 } from '@shared-types/app'
 
-type HistorySetInput = Parameters<
-  typeof workoutRepository.updateWorkoutHistorySet
->[1]
+type HistorySelection = { type: 'workout' | 'run'; id: string } | null
 
 type HistoryState =
   | { status: 'loading' }
@@ -128,7 +130,10 @@ export function HistoryPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [state, setState] = useState<HistoryState>({ status: 'loading' })
   const [revision, setRevision] = useState(0)
-  const [editError, setEditError] = useState<string | null>(null)
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedHistory, setSelectedHistory] = useState<HistorySelection>(null)
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
     if (
@@ -216,17 +221,52 @@ export function HistoryPage() {
     setRevision((current) => current + 1)
   }
 
-  function runEdit(action: Promise<unknown>) {
-    void action
-      .then(() => {
-        setEditError(null)
-        reload()
-      })
-      .catch((caught: unknown) => {
-        setEditError(
-          caught instanceof Error ? caught.message : 'History edit failed.',
-        )
-      })
+  function toggleSelectionMode() {
+    setDeleteError(null)
+    if (selectedHistory) {
+      setDeleteConfirmationOpen(true)
+      return
+    }
+    setSelectionMode((current) => {
+      if (current) {
+        setSelectedHistory(null)
+      }
+      return !current
+    })
+  }
+
+  function selectHistoryEntry(nextSelection: Exclude<HistorySelection, null>) {
+    setDeleteError(null)
+    setSelectedHistory((current) =>
+      current?.type === nextSelection.type && current.id === nextSelection.id
+        ? null
+        : nextSelection,
+    )
+  }
+
+  async function deleteSelectedHistoryEntry() {
+    if (!selectedHistory) {
+      setDeleteConfirmationOpen(false)
+      return
+    }
+
+    try {
+      if (selectedHistory.type === 'workout') {
+        await workoutRepository.deleteWorkoutHistory(selectedHistory.id)
+      } else {
+        await runRepository.deleteCompletedRun(selectedHistory.id)
+      }
+      setDeleteConfirmationOpen(false)
+      setSelectedHistory(null)
+      setSelectionMode(false)
+      setDeleteError(null)
+      reload()
+    } catch (caught) {
+      setDeleteConfirmationOpen(false)
+      setDeleteError(
+        caught instanceof Error ? caught.message : 'History could not delete.',
+      )
+    }
   }
 
   if (
@@ -265,11 +305,29 @@ export function HistoryPage() {
   if (state.status === 'empty') {
     return (
       <PageContainer>
-        <SectionHeader title="Completed workouts" />
+        <SectionHeader
+          title="History"
+          action={
+            <div className="button-row">
+              <SecondaryButton
+                type="button"
+                onClick={() => setSearchParams({ view: 'graphs' })}
+              >
+                Graphs
+              </SecondaryButton>
+              <SecondaryButton
+                type="button"
+                onClick={() => setSearchParams({ view: 'bodyweight' })}
+              >
+                Bodyweight
+              </SecondaryButton>
+            </div>
+          }
+        />
         <Card>
           <EmptyState
-            title="No workout history"
-            message="Completed workout snapshots appear here after live logging."
+            title="No completed activity"
+            message="Completed workouts and runs will appear here."
           />
         </Card>
       </PageContainer>
@@ -297,6 +355,9 @@ export function HistoryPage() {
   const setHistoryParams = (params: Record<string, string>) => {
     setSearchParams(isHomeHistory ? { ...params, source: 'home' } : params)
   }
+  const selectedItemLabel = selectedHistory
+    ? historySelectionLabel(selectedHistory, state.workouts, state.runs)
+    : 'this day'
 
   return (
     <PageContainer>
@@ -305,6 +366,15 @@ export function HistoryPage() {
           <SecondaryButton type="button" onClick={showAllHomeHistory}>
             Back
           </SecondaryButton>
+          {!selectedWorkout && !state.selectedRun ? (
+            <SecondaryButton
+              className={selectedHistory ? 'button-danger' : ''}
+              type="button"
+              onClick={toggleSelectionMode}
+            >
+              {selectedHistory ? 'Delete' : selectionMode ? 'Cancel' : 'Select'}
+            </SecondaryButton>
+          ) : null}
         </div>
       ) : (
         <SectionHeader
@@ -317,6 +387,19 @@ export function HistoryPage() {
                   onClick={() => setSearchParams({})}
                 >
                   All history
+                </SecondaryButton>
+              ) : null}
+              {!selectedWorkout && !state.selectedRun ? (
+                <SecondaryButton
+                  className={selectedHistory ? 'button-danger' : ''}
+                  type="button"
+                  onClick={toggleSelectionMode}
+                >
+                  {selectedHistory
+                    ? 'Delete'
+                    : selectionMode
+                      ? 'Cancel'
+                      : 'Select'}
                 </SecondaryButton>
               ) : null}
               <SecondaryButton
@@ -335,7 +418,9 @@ export function HistoryPage() {
           }
         />
       )}
-      {editError ? <ValidationMessage message={editError} /> : null}
+      {deleteError ? (
+        <StatusMessage tone="warning">{deleteError}</StatusMessage>
+      ) : null}
       {searchParams.get('changeSave') === 'failed' ? (
         <StatusMessage tone="warning">
           Workout saved, but live workout changes could not be saved to your
@@ -345,15 +430,27 @@ export function HistoryPage() {
       <div className="history-layout">
         {!selectedWorkout && !state.selectedRun ? (
           <section aria-label="History" className="history-card-section">
-            {!isHomeHistory ? <h2>History</h2> : null}
+            {!isHomeHistory ? <h2>Completed activity</h2> : null}
             <div className="history-list history-card-list">
               {listHistoryItems(state.workouts, state.runs).map((item) =>
                 item.type === 'run' ? (
                   <button
                     aria-label={`${formatHistoryDate(item.run.localDate)} Run`}
-                    className="history-item-card history-run-card"
+                    aria-pressed={
+                      selectionMode
+                        ? selectedHistory?.type === 'run' &&
+                          selectedHistory.id === item.run.id
+                        : undefined
+                    }
+                    className={`history-item-card history-run-card${
+                      selectionMode ? ' history-item-selectable' : ''
+                    }`}
                     key={item.run.id}
-                    onClick={() => setHistoryParams({ run: item.run.id })}
+                    onClick={() =>
+                      selectionMode
+                        ? selectHistoryEntry({ type: 'run', id: item.run.id })
+                        : setHistoryParams({ run: item.run.id })
+                    }
                     type="button"
                   >
                     <span>
@@ -367,21 +464,60 @@ export function HistoryPage() {
                         {formatPace(item.run.averageMovingPaceSecondsPerMile)}
                       </small>
                     </span>
+                    {selectionMode ? (
+                      <span
+                        aria-hidden="true"
+                        className="history-selection-check"
+                      >
+                        {selectedHistory?.type === 'run' &&
+                        selectedHistory.id === item.run.id
+                          ? 'x'
+                          : ''}
+                      </span>
+                    ) : null}
                   </button>
                 ) : (
                   <button
                     aria-label={`${formatHistoryDate(
                       item.workout.localDate,
                     )} ${item.workout.name}`}
-                    className="history-item-card"
+                    aria-pressed={
+                      selectionMode
+                        ? selectedHistory?.type === 'workout' &&
+                          selectedHistory.id === item.workout.id
+                        : undefined
+                    }
+                    className={`history-item-card${
+                      selectionMode ? ' history-item-selectable' : ''
+                    }`}
                     key={item.workout.id}
                     onClick={() =>
-                      setHistoryParams({ workout: item.workout.id })
+                      selectionMode
+                        ? selectHistoryEntry({
+                            type: 'workout',
+                            id: item.workout.id,
+                          })
+                        : setHistoryParams({ workout: item.workout.id })
                     }
                     type="button"
                   >
-                    <strong>{formatHistoryDate(item.workout.localDate)}</strong>
-                    <span>{item.workout.name}</span>
+                    <span className="history-item-main">
+                      <strong>
+                        {formatHistoryDate(item.workout.localDate)}
+                      </strong>
+                      <span>{item.workout.name}</span>
+                    </span>
+                    {selectionMode ? (
+                      <span
+                        aria-hidden="true"
+                        className="history-selection-check"
+                      >
+                        {selectedHistory?.type === 'workout' &&
+                        selectedHistory.id === item.workout.id
+                          ? 'x'
+                          : ''}
+                      </span>
+                    ) : null}
                   </button>
                 ),
               )}
@@ -434,19 +570,6 @@ export function HistoryPage() {
                 <HistoryExerciseAccordion
                   exercise={exercise}
                   key={exercise.id}
-                  onExerciseNotes={(notes) =>
-                    runEdit(
-                      workoutRepository.updateWorkoutHistoryExerciseNotes(
-                        exercise.id,
-                        notes,
-                      ),
-                    )
-                  }
-                  onSetChange={(set, input) =>
-                    runEdit(
-                      workoutRepository.updateWorkoutHistorySet(set.id, input),
-                    )
-                  }
                   sets={state.setsByExercise[exercise.id] ?? []}
                 />
               ))}
@@ -454,6 +577,15 @@ export function HistoryPage() {
           </Card>
         ) : null}
       </div>
+      <ModalConfirmationDialog
+        confirmLabel="Delete day"
+        isOpen={deleteConfirmationOpen}
+        onCancel={() => setDeleteConfirmationOpen(false)}
+        onConfirm={deleteSelectedHistoryEntry}
+        title="Delete day permanently?"
+      >
+        <p>Delete {selectedItemLabel} permanently? This cannot be undone.</p>
+      </ModalConfirmationDialog>
     </PageContainer>
   )
 }
@@ -1326,13 +1458,9 @@ function BodyweightChart({
 
 function HistoryExerciseAccordion({
   exercise,
-  onExerciseNotes,
-  onSetChange,
   sets,
 }: {
   exercise: WorkoutHistoryExercise
-  onExerciseNotes: (notes: string) => void
-  onSetChange: (set: WorkoutHistorySet, input: HistorySetInput) => void
   sets: WorkoutHistorySet[]
 }) {
   const metrics = exercise.exerciseSnapshot.trackingMetrics
@@ -1363,27 +1491,12 @@ function HistoryExerciseAccordion({
 
       {expanded ? (
         <div className="history-exercise-panel" id={panelId}>
-          <p className="muted">
-            {exercise.skipped ? 'Skipped' : 'Performed'} -{' '}
-            {exercise.exerciseSnapshot.trackingMethodId}
-          </p>
-          <FormField id={`${exercise.id}-notes`} label="Exercise notes">
-            <textarea
-              defaultValue={exercise.notes}
-              id={`${exercise.id}-notes`}
-              onBlur={(event) => onExerciseNotes(event.currentTarget.value)}
-            />
-          </FormField>
+          {exercise.skipped ? <p className="muted">Skipped</p> : null}
 
           <div className="set-list">
             {sets.length ? (
               sets.map((set) => (
-                <HistorySetRow
-                  key={set.id}
-                  metrics={metrics}
-                  onSetChange={(input) => onSetChange(set, input)}
-                  set={set}
-                />
+                <HistorySetRow key={set.id} metrics={metrics} set={set} />
               ))
             ) : (
               <p className="muted">No performed sets recorded.</p>
@@ -1397,11 +1510,9 @@ function HistoryExerciseAccordion({
 
 function HistorySetRow({
   metrics,
-  onSetChange,
   set,
 }: {
   metrics: TrackingMetric[]
-  onSetChange: (input: HistorySetInput) => void
   set: WorkoutHistorySet
 }) {
   const weightUnit = useWeightUnit()
@@ -1409,68 +1520,44 @@ function HistorySetRow({
     <div className="set-row history-set-row">
       <div className="set-number">
         <strong>Set {set.setNumber}</strong>
-        <small>{set.completed ? 'Completed' : 'Incomplete'}</small>
       </div>
       {metrics.map((metric) => {
-        // Weight metrics persist in canonical pounds; edit them in the display
-        // unit and convert back on blur. Reps and durations pass through.
         const isWeightMetric = metric.unit === 'lb'
         const storedValue = set.metricValues[metric.key]
         return (
-          <label key={metric.key}>
+          <span className="history-readonly-metric" key={metric.key}>
             <span>{metric.label}</span>
-            <NumericInput
-              aria-label={`Set ${set.setNumber} ${metric.label}`}
-              defaultValue={
-                isWeightMetric
-                  ? weightInputValue(
-                      typeof storedValue === 'number' ? storedValue : null,
-                      weightUnit,
-                      'lifting',
-                    )
+            <strong>
+              {typeof storedValue === 'number'
+                ? isWeightMetric
+                  ? formatWeightWithUnit(storedValue, weightUnit, 'lifting')
                   : formatMetricInput(storedValue)
-              }
-              key={`${metric.key}-${weightUnit}`}
-              onBlur={(event) => {
-                const parsed = parseMetricValue(event.currentTarget.value)
-                onSetChange({
-                  metricValues: {
-                    ...set.metricValues,
-                    [metric.key]:
-                      isWeightMetric && typeof parsed === 'number'
-                        ? weightInputToLb(parsed, weightUnit)
-                        : parsed,
-                  },
-                })
-              }}
-            />
-          </label>
+                : '-'}
+            </strong>
+          </span>
         )
       })}
       {usesRir(metrics) ? (
-        <label>
+        <span className="history-readonly-metric">
           <span>RIR</span>
-          <NumericInput
-            aria-label={`Set ${set.setNumber} RIR`}
-            defaultValue={set.rir?.toString() ?? ''}
-            onBlur={(event) =>
-              onSetChange({
-                rir: parseNullableNumber(event.currentTarget.value),
-              })
-            }
-          />
-        </label>
+          <strong>{set.rir ?? '-'}</strong>
+        </span>
       ) : null}
-      <label className="checkbox-row history-complete-toggle">
-        <input
-          checked={set.completed}
-          onChange={(event) =>
-            onSetChange({ completed: event.currentTarget.checked })
-          }
-          type="checkbox"
-        />
-        Complete
-      </label>
+      <span
+        aria-label={`Set ${set.setNumber} ${
+          set.completed ? 'complete' : 'incomplete'
+        }`}
+        className={`history-readonly-status ${
+          set.completed ? 'completed' : 'incomplete'
+        }`}
+        role="img"
+      >
+        {set.completed ? (
+          <CheckSquare aria-hidden="true" size={20} strokeWidth={2.4} />
+        ) : (
+          <Square aria-hidden="true" size={20} strokeWidth={2.4} />
+        )}
+      </span>
     </div>
   )
 }
@@ -1500,6 +1587,22 @@ function formatRunType(run: Run) {
     return 'Manual run'
   }
   return 'Outdoor GPS run'
+}
+
+function historySelectionLabel(
+  selection: Exclude<HistorySelection, null>,
+  workouts: WorkoutHistoryEntry[],
+  runs: Run[],
+) {
+  if (selection.type === 'run') {
+    const run = runs.find((candidate) => candidate.id === selection.id)
+    return run ? `${formatHistoryDate(run.localDate)} run` : 'this day'
+  }
+
+  const workout = workouts.find((candidate) => candidate.id === selection.id)
+  return workout
+    ? `${formatHistoryDate(workout.localDate)} ${workout.name}`
+    : 'this day'
 }
 
 function formatTimestamp(timestamp: string) {
@@ -1681,20 +1784,6 @@ function formatDuration(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
-}
-
-function parseMetricValue(value: string) {
-  const trimmed = value.trim()
-  if (!trimmed) {
-    return null
-  }
-  const parsed = Number(trimmed)
-  return Number.isFinite(parsed) ? parsed : null
-}
-
-function parseNullableNumber(value: string) {
-  const parsed = parseMetricValue(value)
-  return typeof parsed === 'number' ? parsed : null
 }
 
 function formatMetricInput(value: WorkoutHistorySet['metricValues'][string]) {

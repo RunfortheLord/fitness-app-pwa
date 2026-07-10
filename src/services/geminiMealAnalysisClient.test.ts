@@ -125,6 +125,117 @@ describe('geminiMealAnalysisClient', () => {
     expect(input[3]).toMatchObject({ type: 'image', data: 'angle-two' })
   })
 
+  it('accepts a direct structured JSON meal response', async () => {
+    const fetchImpl: typeof fetch = async () =>
+      jsonResponse({
+        recipeName: 'Direct response bowl',
+        confidence: 'medium',
+        assumptions: ['One serving'],
+        ingredients: [
+          {
+            name: 'Chicken',
+            servingQuantity: 5,
+            servingUnit: 'oz',
+            calories: 240,
+            proteinGrams: 45,
+            carbohydrateGrams: 0,
+            fatGrams: 5,
+          },
+        ],
+      })
+
+    await expect(
+      analyzeMealPhoto({
+        apiKey: 'test-key',
+        images: [{ base64: 'image-bytes', mimeType: 'image/jpeg' }],
+        fetchImpl,
+      }),
+    ).resolves.toMatchObject({
+      recipeName: 'Direct response bowl',
+      ingredients: [{ name: 'Chicken' }],
+    })
+  })
+
+  it('falls back to generateContent when Interactions is unavailable', async () => {
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = []
+    const fetchImpl: typeof fetch = async (input, init) => {
+      requests.push({
+        url: String(input),
+        body: JSON.parse(String(init?.body)),
+      })
+      if (requests.length === 1) {
+        return new Response('not found', { status: 404 })
+      }
+      return jsonResponse({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: JSON.stringify({
+                    recipeName: 'Fallback meal',
+                    confidence: 'medium',
+                    assumptions: ['One can'],
+                    ingredients: [
+                      {
+                        name: 'Zero sugar soda',
+                        servingQuantity: 12,
+                        servingUnit: 'fl oz',
+                        calories: 0,
+                        proteinGrams: 0,
+                        carbohydrateGrams: 0,
+                        fatGrams: 0,
+                      },
+                    ],
+                  }),
+                },
+              ],
+            },
+          },
+        ],
+      })
+    }
+
+    await expect(
+      analyzeMealPhoto({
+        apiKey: 'test-key',
+        images: [{ base64: 'image-bytes', mimeType: 'image/jpeg' }],
+        fetchImpl,
+      }),
+    ).resolves.toMatchObject({
+      recipeName: 'Fallback meal',
+      ingredients: [{ name: 'Zero sugar soda', calories: 0 }],
+    })
+
+    expect(requests[0].url).toContain('/v1beta/interactions')
+    expect(requests[1].url).toContain(
+      `/v1beta/models/${GEMINI_MEAL_MODEL}:generateContent`,
+    )
+    expect(requests[1].body).toMatchObject({
+      contents: [
+        {
+          parts: [
+            { text: expect.stringContaining('Estimate the photographed meal') },
+            {
+              inline_data: {
+                data: 'image-bytes',
+                mime_type: 'image/jpeg',
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        responseFormat: {
+          text: {
+            mimeType: 'application/json',
+            schema: expect.objectContaining({ type: 'object' }),
+          },
+        },
+      },
+    })
+  })
+
   it('maps free-tier rate limits to an actionable error', async () => {
     const fetchImpl: typeof fetch = async () =>
       new Response('quota exceeded', { status: 429 })

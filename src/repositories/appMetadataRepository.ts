@@ -12,6 +12,11 @@ const appMetadataSchema = z.object({
   id: z.literal('app'),
   databaseSchemaVersion: z.number().int().positive(),
   backupSchemaVersion: z.number().int().positive(),
+  storagePersistenceStatus: z
+    .enum(['granted', 'denied', 'unsupported', 'error'])
+    .optional(),
+  storagePersistenceCheckedAt: z.string().datetime().nullable().optional(),
+  lastAutomaticBackupAt: z.string().datetime().nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 })
@@ -54,6 +59,39 @@ export function createAppMetadataRepository(
       const parsed = appMetadataSchema.parse(metadata)
       await database.appMetadata.put(parsed)
 
+      return parsed
+    },
+
+    async getLastAutomaticBackupAt(): Promise<string | null> {
+      const existing = await database.appMetadata.get('app')
+      return existing?.lastAutomaticBackupAt ?? null
+    },
+
+    async recordAutomaticBackup(at = new Date().toISOString()) {
+      const existing = await this.ensureAppMetadata()
+      const metadata: AppMetadata = {
+        ...existing,
+        lastAutomaticBackupAt: at,
+        updatedAt: at,
+      }
+      const parsed = appMetadataSchema.parse(metadata)
+      await database.appMetadata.put(parsed)
+      return parsed
+    },
+
+    async updateStoragePersistenceStatus(
+      status: NonNullable<AppMetadata['storagePersistenceStatus']>,
+      checkedAt = new Date().toISOString(),
+    ) {
+      const existing = await this.ensureAppMetadata()
+      const metadata: AppMetadata = {
+        ...existing,
+        storagePersistenceStatus: status,
+        storagePersistenceCheckedAt: checkedAt,
+        updatedAt: checkedAt,
+      }
+      const parsed = appMetadataSchema.parse(metadata)
+      await database.appMetadata.put(parsed)
       return parsed
     },
   }

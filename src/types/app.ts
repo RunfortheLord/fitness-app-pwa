@@ -56,6 +56,10 @@ export type AppMetadata = {
   id: 'app'
   databaseSchemaVersion: number
   backupSchemaVersion: number
+  storagePersistenceStatus?: 'granted' | 'denied' | 'unsupported' | 'error'
+  storagePersistenceCheckedAt?: IsoTimestamp | null
+  /** When the automatic cloud backup last succeeded, used to detect staleness. */
+  lastAutomaticBackupAt?: IsoTimestamp | null
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }

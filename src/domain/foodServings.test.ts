@@ -255,6 +255,82 @@ describe('food serving helpers', () => {
     expect(keys.indexOf('g')).toBeLessThan(keys.indexOf('100g'))
   })
 
+  it('turns provider serving descriptions into real household units', () => {
+    const popcorn = {
+      ...baseFood,
+      id: 'popcorn',
+      name: 'Popcorn',
+      servingQuantity: 11,
+      servingUnit: 'g',
+      servingDescription: '1 cup',
+      gramsPerServing: 11,
+      ouncesPerServing: 11 / 28.349523125,
+      caloriesPerServing: 45,
+    }
+
+    const options = servingOptionsForFood(popcorn)
+
+    expect(options[0]).toMatchObject({
+      key: 'cup',
+      amount: 1,
+      label: '1 cup',
+    })
+    expect(options[0].toServingMultiplier(6)).toBe(6)
+    expect(options.find((option) => option.key === 'serving')).toBeDefined()
+  })
+
+  it('prefers tablespoons over cups for oils and dressings', () => {
+    const oil = providerFood('Olive oil', 224, [
+      { amount: 1, unit: 'cup', description: '', gramWeight: 224 },
+      { amount: 1, unit: 'tablespoon', description: '', gramWeight: 14 },
+    ])
+
+    const options = servingOptionsForFood(oil)
+
+    expect(options[0]).toMatchObject({
+      key: 'tablespoon',
+      amount: 1,
+      label: '1 tablespoon',
+    })
+    expect(options[0].toServingMultiplier(1)).toBeCloseTo(14 / 224, 5)
+    expect(options.find((option) => option.key === 'cup')).toBeDefined()
+  })
+
+  it('keeps a gram option and base serving when household portions are primary', () => {
+    const food = providerFood('Vegetable oil', 14, [
+      { amount: 1, unit: 'cup', description: '', gramWeight: 224 },
+    ])
+
+    const keys = servingOptionsForFood(food).map((option) => option.key)
+    expect(keys).toContain('serving')
+    expect(keys).toContain('cup')
+    expect(keys).toContain('g')
+    expect(keys).toContain('100g')
+  })
+
+  it('scales popcorn serving amounts from the selected unit base', () => {
+    const food = {
+      ...providerFood('Popcorn by Snappy Popcorn Co.', 23, [
+        { amount: 1, unit: 'cup', description: '', gramWeight: 23 },
+      ]),
+      macrosPerServing: {
+        calories: 100,
+        proteinGrams: 2,
+        carbohydrateGrams: 18,
+        fatGrams: 2,
+      },
+    }
+
+    const gramOption = servingOptionsForFood(food).find(
+      (option) => option.key === 'g',
+    )
+    expect(gramOption?.toServingMultiplier(90)).toBeCloseTo(90 / 23, 5)
+    expect(100 * (gramOption?.toServingMultiplier(90) ?? 0)).toBeCloseTo(
+      391.3,
+      1,
+    )
+  })
+
   it('formats calories and macros for display', () => {
     expect(formatCalories(123.6)).toBe('124')
     expect(formatMacroGram(3)).toBe('3.0')

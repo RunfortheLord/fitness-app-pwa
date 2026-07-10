@@ -1,4 +1,4 @@
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, render, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { useKeyboardInset } from '@hooks/useKeyboardInset'
@@ -73,7 +73,7 @@ describe('useKeyboardInset', () => {
     ).toBe('300px')
   })
 
-  it('clears the inset when text input focus leaves', () => {
+  it('clears the inset when text input focus leaves', async () => {
     const viewport = installVisualViewport({ height: 500, offsetTop: 0 })
     const input = document.createElement('input')
     document.body.append(input)
@@ -92,9 +92,11 @@ describe('useKeyboardInset', () => {
       input.blur()
     })
 
-    expect(
-      document.documentElement.style.getPropertyValue('--keyboard-inset'),
-    ).toBe('0px')
+    await waitFor(() =>
+      expect(
+        document.documentElement.style.getPropertyValue('--keyboard-inset'),
+      ).toBe('0px'),
+    )
   })
 })
 

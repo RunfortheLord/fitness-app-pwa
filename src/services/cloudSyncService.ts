@@ -1,4 +1,4 @@
-import { DATABASE_SCHEMA_VERSION } from '@db/database'
+import { db, DATABASE_SCHEMA_VERSION } from '@db/database'
 import {
   backupService,
   validateBackup,
@@ -23,7 +23,7 @@ type BackupRow = {
 export const cloudSyncService = {
   async backupToCloud(): Promise<CloudBackupInfo> {
     const session = await requireOnlineSession()
-    const exportResult = await backupService.createJsonBackup()
+    const exportResult = await backupService.createCloudBackup()
     const row: BackupRow & { user_id: string } = {
       user_id: session.user.id,
       snapshot: exportResult.backup,
@@ -69,6 +69,18 @@ export const cloudSyncService = {
     }
 
     return infoFromBackup(validation.backup, row.updated_at)
+  },
+
+  async canSafelyBackUpAutomatically(): Promise<boolean> {
+    const cloudBackup = await cloudSyncService.getCloudBackupInfo()
+    if (!cloudBackup) {
+      return true
+    }
+
+    const localBackupHistory = await db.backupMetadata.toArray()
+    return localBackupHistory.some(
+      (entry) => entry.exportedAt === cloudBackup.exportedAt,
+    )
   },
 }
 

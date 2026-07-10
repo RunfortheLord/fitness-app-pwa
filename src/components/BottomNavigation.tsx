@@ -5,9 +5,13 @@ import { useLanguage } from '@components/languageContextValue'
 
 type BottomNavigationProps = {
   onAdd: () => void
+  trainingTo?: string
 }
 
-export function BottomNavigation({ onAdd }: BottomNavigationProps) {
+export function BottomNavigation({
+  onAdd,
+  trainingTo = '/training',
+}: BottomNavigationProps) {
   const { t } = useLanguage()
   return (
     <nav className="bottom-nav" aria-label={t('Primary')}>
@@ -27,7 +31,7 @@ export function BottomNavigation({ onAdd }: BottomNavigationProps) {
       >
         <Plus aria-hidden="true" size={28} />
       </button>
-      <NavLink to="/training" className="bottom-nav-link">
+      <NavLink to={trainingTo} className="bottom-nav-link">
         <Dumbbell aria-hidden="true" size={20} />
         <span>{t('Training')}</span>
       </NavLink>

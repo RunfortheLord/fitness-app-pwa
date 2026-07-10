@@ -340,6 +340,53 @@ describe('backupService', () => {
     await expect(database.runClassifications.count()).resolves.toBe(1)
   })
 
+  it('omits high-volume GPS samples from cloud backups without changing manual backups', async () => {
+    await database.runs.add({
+      id: 'run-1',
+      localDate: testLocalDate,
+      status: 'completed',
+      startedAt: '2026-06-19T12:00:00.000Z',
+      completedAt: '2026-06-19T12:30:00.000Z',
+      elapsedSeconds: 1800,
+      movingSeconds: 1500,
+      distanceMeters: 3218.688,
+      currentPaceSecondsPerMile: null,
+      averageMovingPaceSecondsPerMile: 750,
+      trackingMode: 'gps',
+      hasGpsGap: false,
+      lowPaceAlertedAt: null,
+      notes: '',
+      createdAt: '2026-06-19T12:00:00.000Z',
+      updatedAt: '2026-06-19T12:30:00.000Z',
+    })
+    await database.runSamples.add({
+      id: 'sample-1',
+      runId: 'run-1',
+      latitude: 41.88,
+      longitude: -87.63,
+      timestamp: '2026-06-19T12:00:00.000Z',
+      accuracyMeters: 8,
+      altitudeMeters: null,
+      decision: 'accepted',
+      rejectionReason: 'first_sample',
+      segmentDistanceMeters: 0,
+      createdAt: '2026-06-19T12:00:00.000Z',
+    })
+
+    const service = createBackupService(database)
+    const manual = await service.createJsonBackup(
+      new Date('2026-06-19T14:00:00.000Z'),
+    )
+    const cloud = await service.createCloudBackup(
+      new Date('2026-06-19T14:05:00.000Z'),
+    )
+
+    expect(manual.backup.data.runSamples).toHaveLength(1)
+    expect(cloud.backup.data.runs).toHaveLength(1)
+    expect(cloud.backup.data.runSamples).toEqual([])
+    expect(validateBackup(cloud.backup, cloud.filename).ok).toBe(true)
+  })
+
   it('exports provider food log snapshots in JSON and CSV without refetching providers', async () => {
     await database.foodLogEntries.add({
       id: 'provider-log-1',

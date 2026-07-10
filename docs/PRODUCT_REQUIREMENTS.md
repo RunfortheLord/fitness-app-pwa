@@ -105,6 +105,10 @@
   data and prefer its Spanish product names and categories.
 - Users must be able to search recent, custom, previously used, and eligible
   provider foods from the Nutrition screen.
+- With an empty Log Food search, the app must show up to four distinct reusable
+  foods most recently logged for the current time-of-day meal within the last
+  seven local calendar dates. This recommendation section must disappear as
+  soon as the user enters a search query.
 - A strong saved-recipe match must appear in its own Recipes section before
   food results. Typo-only recipe matches must not create a separate recipe
   section.
@@ -131,7 +135,8 @@
   nutrition as an estimate.
 - The first release must continue to exclude barcode submission, automatic
   calorie adjustments, bundled bulk food databases, micronutrients,
-  search-as-you-type Open Food Facts calls, and meal recommendations. Spanish
+  search-as-you-type Open Food Facts calls, and generated or coaching-based meal
+  recommendations. Local meal-aware recent-food shortcuts are allowed. Spanish
   Open Food Facts search must require an explicit keyboard or on-screen Search
   action and remain server-cached.
 
@@ -161,6 +166,9 @@
 
 - The app must separate reusable Program Templates from Active Program Cycles.
 - Program templates must contain name, optional notes, ordered workout days, and no required weekday assignment.
+- Program editing must add workout days from a compact plus control at the end
+  of the horizontal day tabs. The day-name input is shown only while adding a
+  day; the selected-day panel must not repeat a persistent day-name field.
 - Workout days must contain name, optional notes, and ordered exercises.
 - Prescribed exercises may contain exercise reference, target set count, optional target reps or range, optional target RIR, optional rest-time override, and optional notes.
 - Activating a template must create an independent active-cycle copy.
@@ -272,9 +280,9 @@
   elapsed time, moving time, average moving pace, mile splits, walking/rest
   classifications, and GPS-gap indication.
 - Users must be able to view full workout details.
-- Users must be able to safely edit recorded performance values without
-  changing original program templates.
-- Deleting a historical workout must require confirmation.
+- Completed workout history must be read-only after saving.
+- Deleting a historical workout day must require explicit list selection and
+  confirmation.
 - History must include estimated one-repetition-maximum graphs for eligible
   weighted-repetition exercises. The graph uses completed historical sets only,
   applies the Epley formula, plots the highest eligible estimate per workout,
@@ -289,7 +297,10 @@
 - The app must provide full JSON backup, validated JSON restore, CSV export, backup schema version, database schema version, import preview, replace versus merge explanation, destructive confirmation before replacing data, and destructive confirmation before clearing all data.
 - JSON must be the authoritative full-fidelity backup format.
 - CSV must be readable export format for spreadsheets.
-- Backups must not upload to a cloud service.
+- Local JSON export must remain available without an account. When the user
+  explicitly signs in with Google, the app must automatically upload
+  full-fidelity backup snapshots to that user's protected Supabase row while
+  preserving offline and signed-out operation.
 
 ## Nonfunctional Requirements
 
@@ -308,7 +319,7 @@
 
 ## Out of Scope
 
-- Account creation, login, persistent database server, required cloud sync, social features, friends, followers, public profiles, subscriptions, advertisements, wearable integrations, Apple Health integration, AI coaching, bundled external food database, barcode submission, micronutrients, automatic calorie adjustment, automated training progression, automatic program advancement, trend-weight calculations, weekly adherence percentage, non-history graphs, route maps or external map tiles, reliable fully backgrounded GPS tracking, public App Store distribution, and required push notifications for core app use. Optional user-initiated Gemini meal-photo estimation, outside-app rest-timer Web Push alerts, and development-signed personal-device installation of the native iOS wrapper are supported.
+- Required accounts or cloud connectivity for core app use, realtime multi-device sync, social features, friends, followers, public profiles, subscriptions, advertisements, wearable integrations, Apple Health integration, AI coaching, bundled external food database, barcode submission, micronutrients, automatic calorie adjustment, automated training progression, automatic program advancement, trend-weight calculations, weekly adherence percentage, non-history graphs, route maps or external map tiles, reliable fully backgrounded GPS tracking, public App Store distribution, and required push notifications for core app use. Optional Google sign-in with automatic full-snapshot backup, user-initiated Gemini meal-photo estimation, outside-app rest-timer Web Push alerts, and development-signed personal-device installation of the native iOS wrapper are supported.
 
 ## Acceptance Criteria
 

@@ -5,7 +5,9 @@
 - Does the change match the binding requirements in `docs/PRODUCT_REQUIREMENTS.md`?
 - Did the author read the relevant docs before implementation?
 - Does the change avoid unrequested scope expansion?
-- Does it avoid excluded features: accounts, backend, cloud sync, AI recommendations, external food databases, subscriptions, social features, wearables, graphs, adherence scores, e1RM, automatic calorie adjustment, and automatic progression?
+- Does it avoid excluded features: required accounts, realtime multi-device
+  cloud sync, AI recommendations, subscriptions, social features, wearables,
+  adherence scores, automatic calorie adjustment, and automatic progression?
 - Are unavoidable assumptions recorded in `docs/DECISIONS.md`?
 
 ## Data Integrity

@@ -520,14 +520,23 @@ describe('TrainingPage', () => {
     ).toBeInTheDocument()
     const workoutHeader =
       firstRender.container.querySelector('.live-workout-hero')
+    const sessionBar = firstRender.container.querySelector(
+      '.live-workout-session-bar',
+    )
     const exerciseWorkspace = firstRender.container.querySelector(
       '.exercise-workspace',
     )
     expect(workoutHeader).not.toBeNull()
+    expect(sessionBar).not.toBeNull()
     expect(exerciseWorkspace).not.toBeNull()
     expect(
-      within(workoutHeader as HTMLElement).getByRole('button', {
+      within(sessionBar as HTMLElement).getByRole('button', {
         name: 'Finish',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      within(sessionBar as HTMLElement).getByRole('button', {
+        name: 'Discard workout',
       }),
     ).toBeInTheDocument()
 
@@ -547,7 +556,7 @@ describe('TrainingPage', () => {
     ).toBeInTheDocument()
     expect(
       within(exerciseActions).getByRole('button', {
-        name: 'Replace Exercise',
+        name: 'Swap Exercise',
       }),
     ).toBeInTheDocument()
     expect(
@@ -652,6 +661,37 @@ describe('TrainingPage', () => {
       const workout = await db.workouts.toCollection().first()
       expect(workout?.activeRestTimer?.durationSeconds).toBe(60)
     })
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Rest timer settings' }),
+    )
+    const settings = await screen.findByRole('dialog', {
+      name: 'Rest timer settings',
+    })
+    expect(
+      within(settings).queryByRole('textbox', {
+        name: 'Exercise default rest (seconds)',
+      }),
+    ).not.toBeInTheDocument()
+    await user.click(
+      within(
+        within(settings).getByRole('listbox', { name: 'Rest minutes' }),
+      ).getByRole('option', { name: '01' }),
+    )
+    await user.click(
+      within(
+        within(settings).getByRole('listbox', { name: 'Rest seconds' }),
+      ).getByRole('option', { name: '30' }),
+    )
+    await user.click(within(settings).getByRole('button', { name: 'Save' }))
+
+    await waitFor(async () => {
+      await expect(db.exercises.get(exercise.id)).resolves.toMatchObject({
+        defaultRestSeconds: 90,
+      })
+      const activeExercise = await db.workoutExercises.toCollection().first()
+      expect(activeExercise?.exerciseSnapshot.defaultRestSeconds).toBe(90)
+    })
   })
 
   it('waits for live exercise notes to save before finishing the workout', async () => {
@@ -711,12 +751,17 @@ describe('TrainingPage', () => {
     await user.click(screen.getByRole('button', { name: 'Finish' }))
     expect(
       within(screen.getByRole('dialog', { name: 'Finish workout?' })).getByRole(
-        'checkbox',
-        {
-          name: 'Save all live workout changes to my program',
-        },
+        'button',
+        { name: 'Finish Workout' },
       ),
-    ).not.toBeChecked()
+    ).toBeInTheDocument()
+    expect(
+      within(
+        screen.getByRole('dialog', { name: 'Finish workout?' }),
+      ).queryByRole('checkbox', {
+        name: 'Save all live workout changes to my program',
+      }),
+    ).not.toBeInTheDocument()
     await user.click(
       within(screen.getByRole('dialog', { name: 'Finish workout?' })).getByRole(
         'button',
@@ -780,6 +825,63 @@ describe('TrainingPage', () => {
         selectedDestination: 'neither',
       },
     ])
+  })
+
+  it('hides the save-to-program checkbox when the live workout has no structural changes', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await workoutRepository.updateWorkoutSet(started.sets[0].id, {
+      completed: true,
+    })
+    renderTraining(['/workout'])
+
+    await user.click(await screen.findByRole('button', { name: 'Finish' }))
+    const finishDialog = screen.getByRole('dialog', {
+      name: 'Finish workout?',
+    })
+
+    expect(
+      within(finishDialog).queryByRole('checkbox', {
+        name: 'Save all live workout changes to my program',
+      }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('automatically prompts to finish once every set is completed', async () => {
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    for (const set of started.sets) {
+      await workoutRepository.updateWorkoutSet(set.id, { completed: true })
+    }
+
+    renderTraining(['/workout'])
+
+    const finishDialog = await screen.findByRole('dialog', {
+      name: 'Finish workout?',
+    })
+    expect(
+      within(finishDialog).getByRole('button', { name: 'Finish Workout' }),
+    ).toBeInTheDocument()
+    expect(
+      within(finishDialog).queryByRole('checkbox', {
+        name: 'Save all live workout changes to my program',
+      }),
+    ).not.toBeInTheDocument()
   })
 
   it('saves all live workout changes when selected at finish', async () => {
@@ -1336,9 +1438,11 @@ describe('TrainingPage', () => {
       }),
     ).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Edit current cycle' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Edit active program' }),
+    )
     const cycleEditor = await screen.findByRole('dialog', {
-      name: 'Edit current cycle',
+      name: 'Edit program',
     })
     const cycleNameInput = await within(cycleEditor).findByRole('textbox', {
       name: 'Program name',
@@ -1357,6 +1461,32 @@ describe('TrainingPage', () => {
     const activeCycle = await db.activeProgramCycles.toCollection().first()
     expect(activeCycle?.name).toBe('Upper Lower')
     expect(activeCycle?.notes).toBe('')
+  })
+
+  it('routes the Training bottom nav item to the live workout when a workout is active', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    renderTraining(['/'])
+
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: 'Training' })).toHaveAttribute(
+        'href',
+        '/workout',
+      ),
+    )
+    await user.click(screen.getByRole('link', { name: 'Training' }))
+
+    expect(
+      await screen.findByRole('button', { name: 'Finish' }),
+    ).toBeInTheDocument()
   })
 })
 

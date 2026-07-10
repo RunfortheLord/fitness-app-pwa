@@ -14,6 +14,7 @@ import {
 import { snapshotExercise } from '@domain/snapshots'
 import { completionProgramWeek } from '@domain/programWeeks'
 import { suggestedWeightForReps } from '@domain/workoutPrefill'
+import { mapLastWorkoutRirToCurrentDay } from '@domain/workoutRirPrefill'
 import { detectWorkoutStructuralChanges } from '@domain/workoutChanges'
 import { canSkipWorkoutExercise } from '@domain/workoutSkip'
 import type { LocalDateString } from '@domain/dates'
@@ -183,6 +184,40 @@ export function createWorkoutRepository(
           const sourceExercises = await database.activeCycleWorkoutExercises
             .where({ dayId: day.id })
             .sortBy('orderIndex')
+          const previousSameDayWorkout = (
+            await database.workoutHistoryEntries.toArray()
+          )
+            .filter((entry) => entry.sourceDayId === day.id)
+            .filter((entry) => entry.completedAt < now)
+            .sort((first, second) =>
+              second.completedAt.localeCompare(first.completedAt),
+            )[0]
+          const previousSameDayExercises = previousSameDayWorkout
+            ? await database.workoutHistoryExercises
+                .where({ workoutId: previousSameDayWorkout.id })
+                .toArray()
+            : []
+          const previousSameDaySets = previousSameDayWorkout
+            ? await database.workoutHistorySets
+                .where({ workoutId: previousSameDayWorkout.id })
+                .toArray()
+            : []
+          const previousSameDayRirBySource = previousSameDayWorkout
+            ? mapLastWorkoutRirToCurrentDay({
+                currentExercises: sourceExercises,
+                previousExercises: previousSameDayExercises,
+                previousSetsByExercise: Object.fromEntries(
+                  previousSameDayExercises.map((exercise) => [
+                    exercise.id,
+                    previousSameDaySets
+                      .filter((set) => set.workoutExerciseId === exercise.id)
+                      .sort(
+                        (first, second) => first.setNumber - second.setNumber,
+                      ),
+                  ]),
+                ),
+              })
+            : {}
           const workoutExercises: WorkoutExercise[] = []
           const workoutSets: WorkoutSet[] = []
 
@@ -279,10 +314,13 @@ export function createWorkoutRepository(
                 // unless this program tracks RIR on every set. Other sets start
                 // blank and accept an optional value.
                 rir:
-                  (workout.trackRirEverySet ?? false) ||
+                  previousSameDayRirBySource[sourceForWorkout.id]?.[
+                    setNumber
+                  ] ??
+                  ((workout.trackRirEverySet ?? false) ||
                   setNumber === sourceForWorkout.targetSetCount
                     ? sourceForWorkout.targetRir
-                    : null,
+                    : null),
                 completed: false,
                 completedAt: null,
                 restSecondsUsed: sourceForWorkout.restSecondsOverride,
@@ -1182,6 +1220,15 @@ export function createWorkoutRepository(
           const history = await database.workoutHistoryEntries.get(workoutId)
           if (!history) {
             throw new Error(`Workout history ${workoutId} was not found.`)
+          }
+          const appliedChange = await database.appliedWorkoutChanges
+            .where({ workoutId })
+            .filter((change) => change.destination !== 'neither')
+            .first()
+          if (appliedChange) {
+            throw new Error(
+              'Applied workout changes must stay in history. Delete or adjust the program manually instead of resuming this workout.',
+            )
           }
           const exercises = await database.workoutHistoryExercises
             .where({ workoutId })

@@ -442,6 +442,30 @@ export function createRunRepository(database: TrainingLogDatabase = db) {
       )
     },
 
+    async deleteCompletedRun(runId: string) {
+      return database.transaction(
+        'rw',
+        [
+          database.runs,
+          database.runSamples,
+          database.runPauses,
+          database.runSplits,
+          database.runClassifications,
+        ],
+        async () => {
+          const run = await database.runs.get(runId)
+          if (!run || run.status !== 'completed') {
+            throw new Error(`Completed run ${runId} was not found.`)
+          }
+          await database.runClassifications.where({ runId }).delete()
+          await database.runSplits.where({ runId }).delete()
+          await database.runPauses.where({ runId }).delete()
+          await database.runSamples.where({ runId }).delete()
+          await database.runs.delete(runId)
+        },
+      )
+    },
+
     async recordLowPaceResponse(
       runId: string,
       response: RunAlertResponse,

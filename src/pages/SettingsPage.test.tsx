@@ -170,6 +170,10 @@ describe('SettingsPage', () => {
     expect(
       screen.getByRole('button', { name: 'Restore JSON' }),
     ).toBeInTheDocument()
+    expect(screen.getByText('Device storage')).toBeInTheDocument()
+    expect(
+      screen.getByText('Persistent storage not supported'),
+    ).toBeInTheDocument()
     expect(screen.getByText('Cloud backup')).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: 'Sign in with Google' }),
@@ -352,30 +356,21 @@ describe('SettingsPage', () => {
     expect(await screen.findByText('Timer settings saved.')).toBeInTheDocument()
   })
 
-  it('enables outside-app timer alerts in the native iOS wrapper', async () => {
-    const user = userEvent.setup()
+  it('shows outside-app timer alerts as a default-on switch in the native iOS wrapper', async () => {
     vi.spyOn(
       nativeTimerNotifications,
       'supportsNativeRestTimerNotifications',
     ).mockReturnValue(true)
-    vi.spyOn(
-      nativeTimerNotifications.nativeRestTimerNotificationService,
-      'requestPermission',
-    ).mockResolvedValue('granted')
     renderSettings()
 
-    await user.click(
-      await screen.findByRole('button', { name: 'Notifications' }),
-    )
-    await user.click(
-      await screen.findByRole('button', {
+    await userEvent
+      .setup()
+      .click(await screen.findByRole('button', { name: 'Notifications' }))
+    expect(
+      await screen.findByRole('switch', {
         name: 'Enable outside-app timer alerts',
       }),
-    )
-
-    expect(
-      await screen.findByText('Outside-app rest-timer alerts are enabled.'),
-    ).toBeInTheDocument()
+    ).toBeChecked()
   })
 
   it('switches the weight unit and persists the preference', async () => {

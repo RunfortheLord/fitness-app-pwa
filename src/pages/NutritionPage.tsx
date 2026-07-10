@@ -28,7 +28,7 @@ import {
   type FoodResult,
   type FoodSearchResult,
 } from '@domain/foodSearchSections'
-import { mealTypeForDate } from '@domain/meals'
+import { mealTypeForDate, recommendationMealTypeForDate } from '@domain/meals'
 import { snapshotFood } from '@domain/snapshots'
 import {
   createRecipeDraftFromGemini,
@@ -55,7 +55,6 @@ import {
   FoodSearchTrigger,
   FoodShortcutCard,
   LoggedFoodsCard,
-  NutritionActionCard,
   SavedMealsCard,
 } from '@features/nutrition/nutritionCards'
 import {
@@ -112,6 +111,7 @@ type LoadState = {
   foods: Food[]
   logs: FoodLogEntry[]
   recentFoods: Food[]
+  recommendedFoods: Food[]
   favoriteFoods: Food[]
   foodUnitPreferences: Record<string, FoodUnitPreference>
   savedMeals: SavedMeal[]
@@ -148,6 +148,7 @@ export function NutritionPage() {
     foods: [],
     logs: [],
     recentFoods: [],
+    recommendedFoods: [],
     favoriteFoods: [],
     foodUnitPreferences: {},
     savedMeals: [],
@@ -442,27 +443,42 @@ export function NutritionPage() {
 
     void Promise.all([
       foodRepository.listRecentFoods(50),
+      foodRepository.listRecentFoodsForMeal({
+        startDate: addLocalDays(today, -6),
+        endDate: today,
+        mealType: recommendationMealTypeForDate(new Date()),
+        limit: 4,
+      }),
       foodRepository.listFavoriteFoods(),
       foodRepository.listSavedMeals(),
       foodRepository.listRememberedFoodUnits(),
     ])
-      .then(([recentFoods, favoriteFoods, savedMeals, foodUnitPreferences]) => {
-        if (!isCurrent) {
-          return
-        }
-        setLoadState((current) => ({
-          ...current,
+      .then(
+        ([
           recentFoods,
+          recommendedFoods,
           favoriteFoods,
-          foodUnitPreferences: Object.fromEntries(
-            foodUnitPreferences.map((preference) => [
-              preference.foodId,
-              preference,
-            ]),
-          ),
           savedMeals,
-        }))
-      })
+          foodUnitPreferences,
+        ]) => {
+          if (!isCurrent) {
+            return
+          }
+          setLoadState((current) => ({
+            ...current,
+            recentFoods,
+            recommendedFoods,
+            favoriteFoods,
+            foodUnitPreferences: Object.fromEntries(
+              foodUnitPreferences.map((preference) => [
+                preference.foodId,
+                preference,
+              ]),
+            ),
+            savedMeals,
+          }))
+        },
+      )
       .catch(() => {
         if (isCurrent) {
           setLoadState((current) => ({ ...current, status: 'error' }))
@@ -472,7 +488,7 @@ export function NutritionPage() {
     return () => {
       isCurrent = false
     }
-  }, [libraryRevision])
+  }, [libraryRevision, today])
 
   useEffect(() => {
     let isCurrent = true
@@ -525,6 +541,7 @@ export function NutritionPage() {
   }, [revision])
 
   const remoteProviderQuery = language === 'es' ? submittedProviderQuery : query
+  const usdaApiKey = usdaKey.apiKey ?? ''
 
   useEffect(() => {
     const normalizedQuery = normalizeProviderQuery(remoteProviderQuery)
@@ -558,7 +575,6 @@ export function NutritionPage() {
     // A user-entered key is optional: when absent we send an empty key and let
     // the server fall back to its configured USDA key. If neither exists, the
     // server returns missing_api_key and the existing error UX is shown.
-    const apiKey = usdaKey.apiKey ?? ''
     const controller = new AbortController()
     const timeoutId = window.setTimeout(() => {
       setProviderSearch((current) => ({
@@ -568,7 +584,7 @@ export function NutritionPage() {
       }))
       void searchProviderFoods({
         query: normalizedQuery,
-        apiKey,
+        apiKey: usdaApiKey,
         provider: language === 'es' ? 'open_food_facts' : 'usda',
         allowFallback: false,
         language,
@@ -602,7 +618,7 @@ export function NutritionPage() {
       window.clearTimeout(timeoutId)
       controller.abort()
     }
-  }, [language, providerSearchNonce, remoteProviderQuery, usdaKey])
+  }, [language, providerSearchNonce, remoteProviderQuery, usdaApiKey])
 
   const daySearchResults = createSearchSections({
     localFoods: loadState.foods,
@@ -610,6 +626,7 @@ export function NutritionPage() {
     providerResults: providerSearch.results,
     query,
     recentFoods: loadState.recentFoods,
+    recommendedFoods: loadState.recommendedFoods,
     savedMeals: loadState.savedMeals,
   })
   const summary = loadState.summary
@@ -915,12 +932,10 @@ export function NutritionPage() {
               <FoodSearchTrigger
                 onOpen={openSearch}
                 onOpenAiCamera={openAiCamera}
+                onCreateFood={() => setSheet({ type: 'food', food: null })}
                 onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
                 onOpenScanner={() => setSheet({ type: 'scanner' })}
                 onOpenRecipe={startRecipe}
-              />
-              <NutritionActionCard
-                onCreateFood={() => setSheet({ type: 'food', food: null })}
               />
               <LoggedFoodsCard
                 entries={loadState.logs}
