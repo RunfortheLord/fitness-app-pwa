@@ -321,6 +321,27 @@ test('starts, resumes, edits, and cancels a live workout', async ({
   await expect(
     page.getByRole('textbox', { name: 'Workout notes' }),
   ).toHaveCount(0)
+  await page.getByRole('button', { name: 'Add Exercise' }).click()
+  const addExerciseSheet = page.getByRole('dialog', { name: 'Add Exercise' })
+  await expect(addExerciseSheet).toBeVisible()
+  const layerOrder = await page.evaluate(() => ({
+    sessionBar: Number.parseInt(
+      getComputedStyle(
+        document.querySelector('.live-workout-session-bar') as Element,
+      ).zIndex,
+      10,
+    ),
+    sheet: Number.parseInt(
+      getComputedStyle(
+        document.querySelector('.sheet-backdrop--page') as Element,
+      ).zIndex,
+      10,
+    ),
+  }))
+  expect(layerOrder.sheet).toBeGreaterThan(layerOrder.sessionBar)
+  await addExerciseSheet
+    .getByRole('button', { name: 'Back from add exercise' })
+    .click()
   await page.getByRole('textbox', { name: 'Set 1 Weight' }).fill('95')
   await page.getByRole('textbox', { name: 'Set 1 Reps' }).fill('10')
   await page.getByRole('textbox', { name: 'Set 1 Weight' }).click()

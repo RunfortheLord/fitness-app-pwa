@@ -1465,7 +1465,7 @@ textarea:focus-visible {
   position: fixed;
   left: 50%;
   bottom: calc(env(safe-area-inset-bottom) + var(--bottom-nav-height) + 8px);
-  z-index: 45;
+  z-index: 30;
   display: grid;
   width: min(calc(100% - (var(--space-4) * 2)), 688px);
   min-height: 60px;
