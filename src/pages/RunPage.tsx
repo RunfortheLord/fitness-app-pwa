@@ -311,13 +311,43 @@ export function RunPage() {
   }
 
   async function pauseRun(run: Run) {
-    await runRepository.pauseRun(run.id)
-    await reload(run.id)
+    setRunStatusImmediately(run, 'paused')
+    try {
+      await runRepository.pauseRun(run.id)
+      await reload(run.id)
+    } catch (caught) {
+      setGeoError(
+        caught instanceof Error ? caught.message : 'Run could not pause.',
+      )
+      await reload(run.id)
+    }
   }
 
   async function resumeRun(run: Run) {
-    await runRepository.resumeRun(run.id)
-    await reload(run.id)
+    setRunStatusImmediately(run, 'active')
+    try {
+      await runRepository.resumeRun(run.id)
+      await reload(run.id)
+    } catch (caught) {
+      setGeoError(
+        caught instanceof Error ? caught.message : 'Run could not resume.',
+      )
+      await reload(run.id)
+    }
+  }
+
+  function setRunStatusImmediately(run: Run, status: 'active' | 'paused') {
+    setState((current) =>
+      current.status === 'ready'
+        ? {
+            ...current,
+            structure: {
+              ...current.structure,
+              run: { ...current.structure.run, ...run, status },
+            },
+          }
+        : current,
+    )
   }
 
   async function finishRun(run: Run) {

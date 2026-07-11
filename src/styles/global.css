@@ -2724,6 +2724,16 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
+button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:not(:disabled):active {
+  filter: brightness(1.18);
+  transition-duration: 0ms;
+}
+
 .button {
   gap: var(--space-2);
   padding: 0 var(--space-4);

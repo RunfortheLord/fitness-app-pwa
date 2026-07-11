@@ -235,6 +235,7 @@ export function LiveWorkoutPage() {
       .catch((caught: unknown) => {
         const error = caught instanceof Error ? caught : new Error(failure)
         setError(error.message)
+        reload()
         throw error
       })
       .finally(() => pendingWorkoutMutations.current.delete(tracked))
@@ -330,6 +331,31 @@ export function LiveWorkoutPage() {
       action.then((timer) => syncNativeRestTimer(timer, requestPermission)),
       'Rest timer could not be updated.',
     )
+  }
+
+  function showRestTimerImmediately(
+    update: (timer: RestTimerState) => RestTimerState,
+  ) {
+    setState((current) => {
+      if (current.status !== 'ready' || !current.workout.activeRestTimer) {
+        return current
+      }
+      return {
+        ...current,
+        workout: {
+          ...current.workout,
+          activeRestTimer: update(current.workout.activeRestTimer),
+        },
+      }
+    })
+  }
+
+  function updateRestTimerImmediately(
+    update: (timer: RestTimerState) => RestTimerState,
+    persist: () => Promise<RestTimerState>,
+  ) {
+    showRestTimerImmediately(update)
+    runRestTimerMutation(persist())
   }
 
   function saveActiveExerciseDefaultRest(seconds: number) {
@@ -649,6 +675,53 @@ export function LiveWorkoutPage() {
                   (candidate) => !candidate.completed,
                 ),
             )
+            const changedAt = new Date().toISOString()
+            const optimisticTimer =
+              completed && hasMoreSetsInExercise && restSeconds > 0
+                ? {
+                    id: crypto.randomUUID(),
+                    startedAt: changedAt,
+                    durationSeconds: restSeconds,
+                    pausedAt: null,
+                    accumulatedPausedSeconds: 0,
+                    status: 'running' as const,
+                  }
+                : state.workout.activeRestTimer
+                  ? {
+                      ...state.workout.activeRestTimer,
+                      pausedAt: null,
+                      status: 'dismissed' as const,
+                    }
+                  : null
+            setState((current) => {
+              if (current.status !== 'ready') {
+                return current
+              }
+              return {
+                ...current,
+                workout: {
+                  ...current.workout,
+                  activeRestTimer: optimisticTimer,
+                },
+                setsByExercise: {
+                  ...current.setsByExercise,
+                  [set.workoutExerciseId]: (
+                    current.setsByExercise[set.workoutExerciseId] ?? []
+                  ).map((candidate) =>
+                    candidate.id === set.id
+                      ? {
+                          ...candidate,
+                          completed,
+                          completedAt: completed
+                            ? (candidate.completedAt ?? changedAt)
+                            : null,
+                          updatedAt: changedAt,
+                        }
+                      : candidate,
+                  ),
+                },
+              }
+            })
             run(
               workoutRepository
                 .updateWorkoutSet(set.id, { completed })
@@ -728,31 +801,88 @@ export function LiveWorkoutPage() {
           prescription={activePrescription}
           restTimerPanel={
             <RestTimerPanel
-              onAddTime={() =>
-                runRestTimerMutation(
-                  workoutRepository.addRestTimerSeconds(state.workout.id, 30),
+              onAddTime={() => {
+                updateRestTimerImmediately(
+                  (timer) =>
+                    timer.status === 'completed'
+                      ? {
+                          ...timer,
+                          startedAt: new Date().toISOString(),
+                          durationSeconds: 30,
+                          pausedAt: null,
+                          accumulatedPausedSeconds: 0,
+                          status: 'running',
+                        }
+                      : {
+                          ...timer,
+                          durationSeconds: timer.durationSeconds + 30,
+                        },
+                  () =>
+                    workoutRepository.addRestTimerSeconds(state.workout.id, 30),
                 )
-              }
-              onSubtractTime={() =>
-                runRestTimerMutation(
-                  workoutRepository.addRestTimerSeconds(state.workout.id, -30),
+              }}
+              onSubtractTime={() => {
+                updateRestTimerImmediately(
+                  (timer) => ({
+                    ...timer,
+                    durationSeconds: Math.max(0, timer.durationSeconds - 30),
+                  }),
+                  () =>
+                    workoutRepository.addRestTimerSeconds(
+                      state.workout.id,
+                      -30,
+                    ),
                 )
-              }
-              onDismiss={() =>
-                runRestTimerMutation(
-                  workoutRepository.dismissRestTimer(state.workout.id),
+              }}
+              onDismiss={() => {
+                updateRestTimerImmediately(
+                  (timer) => ({
+                    ...timer,
+                    pausedAt: null,
+                    status: 'dismissed',
+                  }),
+                  () => workoutRepository.dismissRestTimer(state.workout.id),
                 )
-              }
-              onPause={() =>
-                runRestTimerMutation(
-                  workoutRepository.pauseRestTimer(state.workout.id),
+              }}
+              onPause={() => {
+                updateRestTimerImmediately(
+                  (timer) =>
+                    timer.status === 'running'
+                      ? {
+                          ...timer,
+                          pausedAt: new Date().toISOString(),
+                          status: 'paused',
+                        }
+                      : timer,
+                  () => workoutRepository.pauseRestTimer(state.workout.id),
                 )
-              }
-              onResume={() =>
-                runRestTimerMutation(
-                  workoutRepository.resumeRestTimer(state.workout.id),
+              }}
+              onResume={() => {
+                updateRestTimerImmediately(
+                  (timer) => {
+                    if (timer.status !== 'paused' || !timer.pausedAt) {
+                      return timer
+                    }
+                    const resumedAt = new Date().toISOString()
+                    return {
+                      ...timer,
+                      accumulatedPausedSeconds:
+                        timer.accumulatedPausedSeconds +
+                        Math.max(
+                          0,
+                          Math.round(
+                            (Date.parse(resumedAt) -
+                              Date.parse(timer.pausedAt)) /
+                              1000,
+                          ),
+                        ),
+                      pausedAt: null,
+                      status: 'running',
+                    }
+                  },
+                  () => workoutRepository.resumeRestTimer(state.workout.id),
                 )
-              }
+              }}
               remainingSeconds={restRemaining}
               timer={state.workout.activeRestTimer}
               exerciseDefaultRestSeconds={

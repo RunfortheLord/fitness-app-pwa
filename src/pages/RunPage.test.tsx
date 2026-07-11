@@ -4,6 +4,7 @@ import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { db } from '@db/database'
+import { runRepository } from '@repositories/runRepository'
 import { initializeAppData } from '@services/appInitializationService'
 import { RunPage } from './RunPage'
 
@@ -113,6 +114,37 @@ describe('RunPage', () => {
       await expect(db.runs.toArray()).resolves.toEqual([
         expect.objectContaining({ status: 'completed' }),
       ])
+    })
+  })
+
+  it('shows a paused run before the pause write finishes', async () => {
+    const user = userEvent.setup()
+    render(<RunPage />)
+    await user.click(
+      await screen.findByRole('button', { name: /Start Outdoor Run/ }),
+    )
+    await screen.findByRole('button', { name: 'Pause' })
+
+    const persistPause = runRepository.pauseRun.bind(runRepository)
+    let releasePersistence: () => void = () => undefined
+    const persistenceGate = new Promise<void>((resolve) => {
+      releasePersistence = resolve
+    })
+    vi.spyOn(runRepository, 'pauseRun').mockImplementation(async (...args) => {
+      await persistenceGate
+      return persistPause(...args)
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Pause' }))
+
+    expect(screen.getByText('paused')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument()
+
+    releasePersistence()
+    await waitFor(async () => {
+      await expect(db.runs.toCollection().first()).resolves.toMatchObject({
+        status: 'paused',
+      })
     })
   })
 

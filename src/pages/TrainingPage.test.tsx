@@ -694,6 +694,76 @@ describe('TrainingPage', () => {
     })
   })
 
+  it('checks off a set and shows timer controls before persistence finishes', async () => {
+    const user = userEvent.setup()
+    const exerciseRepository = createExerciseRepository(db)
+    const exercise = await exerciseRepository.createExercise({
+      name: 'Instant press',
+      defaultRestSeconds: 60,
+      trackingMethodId: 'weight_reps',
+      notes: '',
+    })
+    const program = await createProgramRepository(db).createProgramTemplate({
+      name: 'Instant split',
+      days: [
+        {
+          name: 'Day',
+          exercises: [
+            {
+              exerciseId: exercise.id,
+              targetSetCount: 2,
+              targetRepsMin: 5,
+              targetRepsMax: 8,
+              restSecondsOverride: null,
+            },
+          ],
+        },
+      ],
+    })
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+
+    const persistSet =
+      workoutRepository.updateWorkoutSet.bind(workoutRepository)
+    let releasePersistence: () => void = () => undefined
+    const persistenceGate = new Promise<void>((resolve) => {
+      releasePersistence = resolve
+    })
+    vi.spyOn(workoutRepository, 'updateWorkoutSet').mockImplementation(
+      async (...args) => {
+        await persistenceGate
+        return persistSet(...args)
+      },
+    )
+
+    renderTraining(['/workout'])
+    await user.type(
+      await screen.findByRole('textbox', { name: 'Set 1 Weight' }),
+      '95',
+    )
+    await user.type(screen.getByRole('textbox', { name: 'Set 1 Reps' }), '8')
+    await user.click(screen.getByRole('button', { name: 'Complete set 1' }))
+
+    expect(
+      screen.getByRole('button', { name: 'Mark incomplete set 1' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Rest timer')).toBeInTheDocument()
+
+    releasePersistence()
+    await waitFor(async () => {
+      const savedSet = (await db.workoutSets.toArray()).find(
+        (set) => set.setNumber === 1,
+      )
+      expect(savedSet?.completed).toBe(true)
+    })
+  })
+
   it('waits for live exercise notes to save before finishing the workout', async () => {
     const user = userEvent.setup()
     const program = await seedProgram(db)
