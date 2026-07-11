@@ -212,6 +212,37 @@ describe('programRepository', () => {
     })
   })
 
+  it('manually changes the current week and clears that week forward', async () => {
+    const program = await seedProgram(database)
+    const repository = createProgramRepository(database)
+    const active = await repository.activateTemplate(program.template.id)
+    await repository.setActiveCycleDayCheck({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      weekNumber: 2,
+      checked: true,
+    })
+    await repository.setActiveCycleDayCheck({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      weekNumber: 5,
+      checked: true,
+    })
+
+    const updated = await repository.updateActiveCycle(active.cycle.id, {
+      currentWeekNumber: 4,
+    })
+
+    expect(updated.currentWeekNumber).toBe(4)
+    await expect(
+      database.activeCycleDayChecks
+        .where({ activeCycleId: active.cycle.id })
+        .toArray(),
+    ).resolves.toEqual([
+      expect.objectContaining({ weekNumber: 2, checked: true }),
+    ])
+  })
+
   it('keeps the current active cycle active when templates and active cycles are updated', async () => {
     const program = await seedProgram(database)
     const repository = createProgramRepository(database)

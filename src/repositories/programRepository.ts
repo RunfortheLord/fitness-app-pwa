@@ -7,6 +7,7 @@ import {
 import { snapshotExercise } from '@domain/snapshots'
 import {
   clampProgramDurationWeeks,
+  currentProgramWeek,
   DEFAULT_PROGRAM_DURATION_WEEKS,
 } from '@domain/programWeeks'
 import type { ExerciseUsageSummary } from '@domain/exerciseSearch'
@@ -354,6 +355,7 @@ export function createProgramRepository(
             activatedAt: now,
             durationWeeks:
               template.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
+            currentWeekNumber: 1,
             trackRirEverySet: template.trackRirEverySet ?? false,
             createdAt: now,
             updatedAt: now,
@@ -1126,30 +1128,59 @@ export function createProgramRepository(
       checked: boolean
     }) {
       const now = new Date().toISOString()
-      const existing = await database.activeCycleDayChecks
-        .where('[activeCycleId+dayId+weekNumber]')
-        .equals([input.activeCycleId, input.dayId, input.weekNumber])
-        .first()
-      if (existing) {
-        const updated: ActiveCycleDayCheck = {
-          ...existing,
-          checked: input.checked,
-          updatedAt: now,
-        }
-        await database.activeCycleDayChecks.put(updated)
-        return updated
-      }
-      const record: ActiveCycleDayCheck = {
-        id: createId(),
-        activeCycleId: input.activeCycleId,
-        dayId: input.dayId,
-        weekNumber: input.weekNumber,
-        checked: input.checked,
-        createdAt: now,
-        updatedAt: now,
-      }
-      await database.activeCycleDayChecks.add(record)
-      return record
+      return database.transaction(
+        'rw',
+        database.activeProgramCycles,
+        database.activeCycleWorkoutDays,
+        database.activeCycleDayChecks,
+        async () => {
+          const cycle = await database.activeProgramCycles.get(
+            input.activeCycleId,
+          )
+          if (!cycle) {
+            throw new Error(
+              `Active program cycle ${input.activeCycleId} was not found.`,
+            )
+          }
+          const existing = await database.activeCycleDayChecks
+            .where('[activeCycleId+dayId+weekNumber]')
+            .equals([input.activeCycleId, input.dayId, input.weekNumber])
+            .first()
+          const record: ActiveCycleDayCheck = existing
+            ? { ...existing, checked: input.checked, updatedAt: now }
+            : {
+                id: createId(),
+                activeCycleId: input.activeCycleId,
+                dayId: input.dayId,
+                weekNumber: input.weekNumber,
+                checked: input.checked,
+                createdAt: now,
+                updatedAt: now,
+              }
+          await database.activeCycleDayChecks.put(record)
+
+          const [days, checks] = await Promise.all([
+            database.activeCycleWorkoutDays
+              .where({ activeCycleId: cycle.id })
+              .toArray(),
+            database.activeCycleDayChecks
+              .where({ activeCycleId: cycle.id })
+              .toArray(),
+          ])
+          const nextWeekNumber = currentProgramWeek(
+            cycle.currentWeekNumber,
+            checks,
+            days.map((day) => day.id),
+          )
+          if (nextWeekNumber !== cycle.currentWeekNumber) {
+            await database.activeProgramCycles.update(cycle.id, {
+              currentWeekNumber: nextWeekNumber,
+              updatedAt: now,
+            })
+          }
+          return record
+        },
+      )
     },
 
     async getExerciseUsageSummary(): Promise<ExerciseUsageSummary> {
@@ -1215,7 +1246,10 @@ export function createProgramRepository(
     async updateActiveCycle(
       id: string,
       input: Partial<
-        Pick<ActiveProgramCycle, 'name' | 'durationWeeks' | 'trackRirEverySet'>
+        Pick<
+          ActiveProgramCycle,
+          'name' | 'durationWeeks' | 'currentWeekNumber' | 'trackRirEverySet'
+        >
       >,
     ) {
       const cycle = await database.activeProgramCycles.get(id)
@@ -1226,14 +1260,40 @@ export function createProgramRepository(
         input.durationWeeks != null
           ? clampProgramDurationWeeks(input.durationWeeks)
           : (cycle.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS)
+      const requestedWeekNumber =
+        input.currentWeekNumber ?? cycle.currentWeekNumber ?? 1
+      const currentWeekNumber = Math.min(
+        durationWeeks,
+        Math.max(1, Math.round(requestedWeekNumber)),
+      )
       const updated = {
         ...cycle,
         ...input,
         durationWeeks,
+        currentWeekNumber,
         notes: cycle.notes,
         updatedAt: new Date().toISOString(),
       }
-      await database.activeProgramCycles.put(updated)
+      await database.transaction(
+        'rw',
+        database.activeProgramCycles,
+        database.activeCycleDayChecks,
+        async () => {
+          await database.activeProgramCycles.put(updated)
+          if (
+            currentWeekNumber !== (cycle.currentWeekNumber ?? 1) ||
+            currentWeekNumber !== requestedWeekNumber
+          ) {
+            await database.activeCycleDayChecks
+              .where('[activeCycleId+weekNumber]')
+              .between(
+                [cycle.id, currentWeekNumber],
+                [cycle.id, Number.MAX_SAFE_INTEGER],
+              )
+              .delete()
+          }
+        },
+      )
       return updated
     },
 

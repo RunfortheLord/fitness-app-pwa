@@ -3391,7 +3391,19 @@ body.food-search-open .bottom-nav {
 }
 
 .sheet-header--page {
+  isolation: isolate;
   justify-content: flex-start;
+}
+
+.sheet-header--page::before {
+  position: absolute;
+  right: calc(-1 * var(--space-4));
+  bottom: 100%;
+  left: calc(-1 * var(--space-4));
+  z-index: -1;
+  height: calc(env(safe-area-inset-top) + var(--space-5));
+  background: var(--color-sheet);
+  content: '';
 }
 
 .sheet-header--page h2 {

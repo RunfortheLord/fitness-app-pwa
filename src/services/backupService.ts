@@ -475,6 +475,10 @@ const activeProgramCycleSchema = z.object({
   notes: z.string(),
   status: z.enum(['active', 'inactive', 'archived']),
   activatedAt: isoTimestampSchema,
+  durationWeeks: z.union([z.number().int().positive(), z.null()]).optional(),
+  currentWeekNumber: z
+    .union([z.number().int().positive(), z.null()])
+    .optional(),
   trackRirEverySet: z.boolean().optional(),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,

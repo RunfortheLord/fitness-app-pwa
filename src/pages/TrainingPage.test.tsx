@@ -1533,6 +1533,34 @@ describe('TrainingPage', () => {
     expect(activeCycle?.notes).toBe('')
   })
 
+  it('manually sets the active program week from the program editor', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    renderTraining()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Edit active program' }),
+    )
+    const editor = await screen.findByRole('dialog', { name: 'Edit program' })
+    const currentWeek = within(editor).getByRole('spinbutton', {
+      name: 'Current week',
+    })
+    expect(currentWeek).toHaveValue(1)
+    await user.clear(currentWeek)
+    await user.type(currentWeek, '4')
+    await user.tab()
+
+    await waitFor(async () => {
+      await expect(
+        db.activeProgramCycles.get(active.cycle.id),
+      ).resolves.toMatchObject({ currentWeekNumber: 4 })
+    })
+    expect(currentWeek).toHaveValue(4)
+  })
+
   it('routes the Training bottom nav item to the live workout when a workout is active', async () => {
     const user = userEvent.setup()
     const program = await seedProgram(db)

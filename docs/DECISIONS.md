@@ -1,5 +1,14 @@
 # Decisions
 
+## 2026-07-11: Manual Active-Program Week
+
+- The active program editor exposes a 1-based current-week field bounded by
+  the program length.
+- Manually changing the week clears check-offs for the selected week and later
+  weeks so the selected week starts clean, while preserving earlier history.
+- Completing every workout day still advances the cycle automatically from
+  the manually selected baseline.
+
 ## 2026-07-07: Training Tab Resumes Active Workouts
 
 - The bottom navigation resolves the Training tab to `/workout` while an

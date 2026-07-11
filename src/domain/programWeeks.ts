@@ -48,6 +48,21 @@ export function completionProgramWeek(
 }
 
 /**
+ * Current cycle week with a persisted manual baseline. Check-offs can still
+ * advance beyond that baseline when every workout day is completed.
+ */
+export function currentProgramWeek(
+  configuredWeek: number | null | undefined,
+  checks: readonly ProgramWeekCheck[],
+  dayIds: readonly string[],
+): number {
+  const baseline = Number.isFinite(configuredWeek)
+    ? Math.max(1, Math.round(configuredWeek ?? 1))
+    : 1
+  return Math.max(baseline, completionProgramWeek(checks, dayIds))
+}
+
+/**
  * The next day to train this week: the first day, in order, that has not been
  * checked off. Returns the first day when everything is checked (the week's
  * rotation has wrapped) and null when there are no days.

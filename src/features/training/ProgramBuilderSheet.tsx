@@ -24,6 +24,7 @@ import {
   searchExercises,
   type ExerciseUsageSummary,
 } from '@domain/exerciseSearch'
+import { clampProgramDurationWeeks } from '@domain/programWeeks'
 import { useRirTracking } from '@hooks/useRirTracking'
 import { programRepository } from '@repositories/programRepository'
 import type {
@@ -96,6 +97,7 @@ export function ProgramBuilderSheet({
   const [isDiscardPrescriptionOpen, setIsDiscardPrescriptionOpen] =
     useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [currentWeek, setCurrentWeek] = useState('1')
 
   const mode: BuilderMode = target.mode
   const rirEnabled = useRirTracking()
@@ -140,6 +142,7 @@ export function ProgramBuilderSheet({
           })
           setSelectedDayId((current) => current || loaded.days[0]?.id || '')
           setNameForm(programFormFromRecord(loaded.cycle))
+          setCurrentWeek(String(loaded.cycle.currentWeekNumber ?? 1))
         })
         .catch((caught: unknown) => {
           setError(
@@ -206,6 +209,7 @@ export function ProgramBuilderSheet({
               : loaded.days[0]?.id || '',
           )
           setNameForm(programFormFromRecord(record))
+          setCurrentWeek(String(record.currentWeekNumber ?? 1))
           onChanged()
         })
     }
@@ -271,6 +275,31 @@ export function ProgramBuilderSheet({
         : programRepository.updateActiveCycle(structure.record.id, {
             durationWeeks: nextWeeks,
           }),
+    )
+  }
+
+  function saveCurrentWeek() {
+    if (
+      !structure ||
+      mode !== 'cycle' ||
+      !('activatedAt' in structure.record)
+    ) {
+      return
+    }
+    const durationWeeks =
+      structure.record.durationWeeks ?? clampProgramDurationWeeks(Number.NaN)
+    const nextWeek = Math.min(
+      durationWeeks,
+      clampProgramDurationWeeks(Number(currentWeek)),
+    )
+    setCurrentWeek(String(nextWeek))
+    if (nextWeek === (structure.record.currentWeekNumber ?? 1)) {
+      return
+    }
+    run(
+      programRepository.updateActiveCycle(structure.record.id, {
+        currentWeekNumber: nextWeek,
+      }),
     )
   }
 
@@ -726,6 +755,26 @@ export function ProgramBuilderSheet({
                 value={nameForm.durationWeeks}
               />
             </FormField>
+
+            {mode === 'cycle' ? (
+              <FormField id="builder-current-week" label="Current week">
+                <input
+                  id="builder-current-week"
+                  inputMode="numeric"
+                  max={structure.record.durationWeeks ?? undefined}
+                  min={1}
+                  onBlur={saveCurrentWeek}
+                  onChange={(event) => setCurrentWeek(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.currentTarget.blur()
+                    }
+                  }}
+                  type="number"
+                  value={currentWeek}
+                />
+              </FormField>
+            ) : null}
 
             <SortableArea
               getItemLabel={builderItemLabel}

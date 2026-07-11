@@ -12,7 +12,7 @@ import {
 import { useLanguage } from '@components/languageContextValue'
 import { useSubpageBackGesture } from '@hooks/useSubpageBackGesture'
 import { formatLocalDate } from '@domain/dates'
-import { completionProgramWeek } from '@domain/programWeeks'
+import { currentProgramWeek } from '@domain/programWeeks'
 import type {
   ExerciseTrackingCategory,
   ExerciseUsageSummary,
@@ -196,7 +196,8 @@ export function TrainingPage() {
           const allChecks = await programRepository.listAllActiveCycleDayChecks(
             currentCycle.cycle.id,
           )
-          const week = completionProgramWeek(
+          const week = currentProgramWeek(
+            currentCycle.cycle.currentWeekNumber,
             allChecks,
             currentCycle.days.map((day) => day.id),
           )

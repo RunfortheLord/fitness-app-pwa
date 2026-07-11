@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   clampProgramDurationWeeks,
   completionProgramWeek,
+  currentProgramWeek,
   DEFAULT_PROGRAM_DURATION_WEEKS,
   MAX_PROGRAM_DURATION_WEEKS,
   MIN_PROGRAM_DURATION_WEEKS,
@@ -65,6 +66,24 @@ describe('completionProgramWeek', () => {
 
   it('returns week 1 when the cycle has no days', () => {
     expect(completionProgramWeek([check(1, 'a')], [])).toBe(1)
+  })
+})
+
+describe('currentProgramWeek', () => {
+  const days = ['a', 'b']
+
+  it('uses a manual week as the baseline and still advances after completion', () => {
+    expect(currentProgramWeek(4, [], days)).toBe(4)
+    expect(
+      currentProgramWeek(
+        4,
+        [
+          { weekNumber: 4, dayId: 'a', checked: true },
+          { weekNumber: 4, dayId: 'b', checked: true },
+        ],
+        days,
+      ),
+    ).toBe(5)
   })
 })
 

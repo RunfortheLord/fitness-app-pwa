@@ -496,6 +496,8 @@ export type ActiveProgramCycle = {
   activatedAt: IsoTimestamp
   /** Planned length in weeks, snapshotted from the template at activation. */
   durationWeeks?: number | null
+  /** User-controlled current week; completed check-offs can advance it. */
+  currentWeekNumber?: number | null
   /** Track RIR on every set, snapshotted from the template at activation. */
   trackRirEverySet?: boolean
   createdAt: IsoTimestamp
@@ -512,7 +514,7 @@ export type ActiveCycleDayCheck = {
   id: string
   activeCycleId: string
   dayId: string
-  /** 1-based week of the cycle, counted from the cycle's activation date. */
+  /** 1-based week of the cycle, advanced by completed day check-offs. */
   weekNumber: number
   checked: boolean
   createdAt: IsoTimestamp

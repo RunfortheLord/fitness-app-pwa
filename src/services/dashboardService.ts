@@ -1,6 +1,6 @@
 import { db, type TrainingLogDatabase } from '@db/database'
 import type { LocalDateString } from '@domain/dates'
-import { completionProgramWeek, nextUpDayId } from '@domain/programWeeks'
+import { currentProgramWeek, nextUpDayId } from '@domain/programWeeks'
 import {
   filterBodyweightEntriesForRange,
   latestBodyweight,
@@ -141,7 +141,8 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
         const allChecks = await programRepository.listAllActiveCycleDayChecks(
           activeProgramStructure.cycle.id,
         )
-        const weekNumber = completionProgramWeek(
+        const weekNumber = currentProgramWeek(
+          activeProgramStructure.cycle.currentWeekNumber,
           allChecks,
           activeProgramStructure.days.map((day) => day.id),
         )

@@ -12,7 +12,7 @@ import {
   type NextWorkoutPerformance,
 } from '@domain/progressionRecommendations'
 import { snapshotExercise } from '@domain/snapshots'
-import { completionProgramWeek } from '@domain/programWeeks'
+import { currentProgramWeek } from '@domain/programWeeks'
 import { suggestedWeightForReps } from '@domain/workoutPrefill'
 import { mapLastWorkoutRirToCurrentDay } from '@domain/workoutRirPrefill'
 import { detectWorkoutStructuralChanges } from '@domain/workoutChanges'
@@ -1155,7 +1155,8 @@ export function createWorkoutRepository(
               const cycleChecks = await database.activeCycleDayChecks
                 .where({ activeCycleId: cycle.id })
                 .toArray()
-              const weekNumber = completionProgramWeek(
+              const weekNumber = currentProgramWeek(
+                cycle.currentWeekNumber,
                 cycleChecks,
                 cycleDays.map((day) => day.id),
               )
@@ -1179,6 +1180,20 @@ export function createWorkoutRepository(
                   weekNumber,
                   checked: true,
                   createdAt: completedAt,
+                  updatedAt: completedAt,
+                })
+              }
+              const updatedChecks = await database.activeCycleDayChecks
+                .where({ activeCycleId: cycle.id })
+                .toArray()
+              const nextWeekNumber = currentProgramWeek(
+                cycle.currentWeekNumber,
+                updatedChecks,
+                cycleDays.map((day) => day.id),
+              )
+              if (nextWeekNumber !== cycle.currentWeekNumber) {
+                await database.activeProgramCycles.update(cycle.id, {
+                  currentWeekNumber: nextWeekNumber,
                   updatedAt: completedAt,
                 })
               }
