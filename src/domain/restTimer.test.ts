@@ -37,6 +37,21 @@ describe('restTimer', () => {
     ).toBe(70)
   })
 
+  it('never shows more than the configured duration when the render clock is stale', () => {
+    const timer: RestTimerState = {
+      id: 'timer-1',
+      startedAt: '2026-06-19T10:00:02.000Z',
+      durationSeconds: 90,
+      pausedAt: null,
+      accumulatedPausedSeconds: 0,
+      status: 'running',
+    }
+
+    expect(
+      getRestTimerRemainingSeconds(timer, '2026-06-19T10:00:00.000Z'),
+    ).toBe(90)
+  })
+
   it('derives the exact native notification time after resumed pauses', () => {
     const timer: RestTimerState = {
       id: 'timer-1',

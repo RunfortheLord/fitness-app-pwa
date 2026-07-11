@@ -83,8 +83,8 @@ describe('calorieAdjustment', () => {
   it('rounds, clamps, and deadbands raw adjustments', () => {
     expect(roundCalorieAdjustment(40)).toBe(0)
     expect(roundCalorieAdjustment(-40)).toBe(0)
-    expect(roundCalorieAdjustment(60)).toBe(50)
-    expect(roundCalorieAdjustment(137)).toBe(125)
+    expect(roundCalorieAdjustment(60.4)).toBe(60)
+    expect(roundCalorieAdjustment(137.6)).toBe(138)
     expect(roundCalorieAdjustment(260)).toBe(200)
     expect(roundCalorieAdjustment(-260)).toBe(-200)
   })

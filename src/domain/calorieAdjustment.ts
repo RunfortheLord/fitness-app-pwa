@@ -21,15 +21,14 @@ export const ADJUSTMENT_MIN_POINTS = 3
 export const ADJUSTMENT_MIN_SPAN_DAYS = 7
 export const ADJUSTMENT_MIN_INTAKE_DAYS = 7
 export const ADJUSTMENT_MIN_INTAKE_SPAN_DAYS = 7
-// A change is rounded to this increment, capped at this magnitude, and treated
-// as no change when smaller than the deadband.
-export const ADJUSTMENT_ROUNDING_KCAL = 25
+// A change is rounded to the nearest whole calorie, capped at this magnitude,
+// and treated as no change when smaller than the deadband.
 export const ADJUSTMENT_MAX_KCAL = 200
 export const ADJUSTMENT_DEADBAND_KCAL = 50
 
 /**
  * Rounds a raw daily calorie adjustment to a practical, bounded value: zero
- * within the deadband, otherwise rounded to {@link ADJUSTMENT_ROUNDING_KCAL} and
+ * within the deadband, otherwise rounded to the nearest whole calorie and
  * clamped to ±{@link ADJUSTMENT_MAX_KCAL}.
  */
 export function roundCalorieAdjustment(rawKcal: number): number {
@@ -39,8 +38,7 @@ export function roundCalorieAdjustment(rawKcal: number): number {
   ) {
     return 0
   }
-  const rounded =
-    Math.round(rawKcal / ADJUSTMENT_ROUNDING_KCAL) * ADJUSTMENT_ROUNDING_KCAL
+  const rounded = Math.round(rawKcal)
   return Math.max(-ADJUSTMENT_MAX_KCAL, Math.min(ADJUSTMENT_MAX_KCAL, rounded))
 }
 

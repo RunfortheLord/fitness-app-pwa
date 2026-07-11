@@ -12,11 +12,10 @@ export function getRestTimerRemainingSeconds(
     return Math.max(
       0,
       timer.durationSeconds -
-        Math.floor(
-          (Date.parse(timer.pausedAt) -
-            Date.parse(timer.startedAt) -
-            timer.accumulatedPausedSeconds * 1000) /
-            1000,
+        elapsedTimerSeconds(
+          timer.startedAt,
+          timer.pausedAt,
+          timer.accumulatedPausedSeconds,
         ),
     )
   }
@@ -24,13 +23,26 @@ export function getRestTimerRemainingSeconds(
   return Math.max(
     0,
     timer.durationSeconds -
-      Math.floor(
-        (Date.parse(nowIso) -
-          Date.parse(timer.startedAt) -
-          timer.accumulatedPausedSeconds * 1000) /
-          1000,
+      elapsedTimerSeconds(
+        timer.startedAt,
+        nowIso,
+        timer.accumulatedPausedSeconds,
       ),
   )
+}
+
+function elapsedTimerSeconds(
+  startedAt: string,
+  observedAt: string,
+  accumulatedPausedSeconds: number,
+) {
+  const elapsed = Math.floor(
+    (Date.parse(observedAt) -
+      Date.parse(startedAt) -
+      accumulatedPausedSeconds * 1000) /
+      1000,
+  )
+  return Number.isFinite(elapsed) ? Math.max(0, elapsed) : 0
 }
 
 export function isRestTimerExpired(

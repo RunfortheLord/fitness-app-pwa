@@ -1559,6 +1559,7 @@ describe('TrainingPage', () => {
       ).resolves.toMatchObject({ currentWeekNumber: 4 })
     })
     expect(currentWeek).toHaveValue(4)
+    await waitFor(() => expect(screen.getByText('Week 4')).toBeInTheDocument())
   })
 
   it('routes the Training bottom nav item to the live workout when a workout is active', async () => {
