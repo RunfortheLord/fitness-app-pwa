@@ -25,6 +25,7 @@ import { formatWeight as formatWeightWithUnit } from '@domain/weightUnits'
 import type { BodyweightEntry } from '@shared-types/app'
 import { useDashboardContext } from '@hooks/useDashboardContext'
 import { useWeightUnit } from '@hooks/useWeightUnit'
+import { workoutRepository } from '@repositories/workoutRepository'
 import {
   dashboardService,
   type DashboardData,
@@ -49,10 +50,18 @@ export function HomePage() {
   } = useDashboardContext()
   const navigate = useNavigate()
   const today = formatLocalDate(new Date())
-  const [dashboardState, setDashboardState] = useState<DashboardLoadState>({
-    status: 'loading',
-    selectedDate: null,
-  })
+  const [dashboardState, setDashboardState] = useState<DashboardLoadState>(
+    () => {
+      const cached = dashboardService.getCachedDashboardData(selectedDate)
+      return cached
+        ? { status: 'ready', selectedDate, dashboard: cached }
+        : { status: 'loading', selectedDate: null }
+    },
+  )
+  const [isStartingWorkout, setIsStartingWorkout] = useState(false)
+  const [startWorkoutError, setStartWorkoutError] = useState<string | null>(
+    null,
+  )
 
   useEffect(() => {
     let isCurrent = true
@@ -90,7 +99,7 @@ export function HomePage() {
     dashboardState.status === 'ready' &&
     dashboardState.selectedDate === selectedDate
       ? dashboardState.dashboard
-      : undefined
+      : dashboardService.getCachedDashboardData(selectedDate)
   const isDashboardLoading = !dashboard
 
   const caloriesConsumed = Math.round(dashboard?.nutrition.totals.calories ?? 0)
@@ -101,6 +110,28 @@ export function HomePage() {
   const trendWeight = dashboard
     ? currentTimeAwareTrendWeight(dashboard.bodyweightEntries)
     : null
+
+  async function startNextWorkout() {
+    const activeProgram = dashboard?.activeProgram
+    if (!activeProgram?.nextDay) {
+      return
+    }
+    setIsStartingWorkout(true)
+    setStartWorkoutError(null)
+    try {
+      await workoutRepository.startWorkout({
+        activeCycleId: activeProgram.cycle.id,
+        dayId: activeProgram.nextDay.id,
+        localDate: selectedDate,
+      })
+      await navigate('/workout')
+    } catch (caught) {
+      setStartWorkoutError(
+        caught instanceof Error ? caught.message : 'Workout could not start.',
+      )
+      setIsStartingWorkout(false)
+    }
+  }
 
   return (
     <PageContainer>
@@ -126,119 +157,133 @@ export function HomePage() {
           Dashboard data could not be loaded.
         </StatusMessage>
       ) : null}
+      {startWorkoutError ? (
+        <StatusMessage tone="warning">{startWorkoutError}</StatusMessage>
+      ) : null}
 
-      <Card
-        className="home-action-card home-workout-card"
-        title={
-          dashboard?.activeWorkout
-            ? 'Workout in progress'
-            : (dashboard?.activeProgram?.cycle.name ?? 'No active program')
-        }
-      >
-        <div className="dashboard-shortcuts">
-          {dashboard?.activeWorkout ? (
-            <>
-              <PrimaryButton
-                type="button"
-                onClick={() => void navigate('/workout')}
-              >
-                Resume workout
-              </PrimaryButton>
-              <p className="home-action-meta">
-                {dashboard.activeWorkout.name} -{' '}
-                {t('Started {date}', {
-                  date: dashboard.activeWorkout.localDate,
-                })}
-              </p>
-            </>
-          ) : dashboard?.activeProgram?.days.length ? (
-            <>
-              <PrimaryButton
-                type="button"
-                onClick={() => void navigate('/training')}
-              >
-                {t('Choose workout day')}
-              </PrimaryButton>
-              <p className="home-action-meta">
-                {t('Select the workout day you want to perform.')}
-              </p>
-            </>
-          ) : (
-            <PrimaryButton
-              type="button"
-              onClick={() => void navigate('/training?createProgram=1')}
-            >
-              Create program
-            </PrimaryButton>
-          )}
-        </div>
-      </Card>
+      {dashboard ? (
+        <>
+          <Card
+            className="home-action-card home-workout-card"
+            title={
+              dashboard?.activeWorkout
+                ? 'Workout in progress'
+                : (dashboard?.activeProgram?.cycle.name ?? 'No active program')
+            }
+          >
+            <div className="dashboard-shortcuts">
+              {dashboard?.activeWorkout ? (
+                <>
+                  <PrimaryButton
+                    type="button"
+                    onClick={() => void navigate('/workout')}
+                  >
+                    Resume workout
+                  </PrimaryButton>
+                  <p className="home-action-meta">
+                    {dashboard.activeWorkout.name} -{' '}
+                    {t('Started {date}', {
+                      date: dashboard.activeWorkout.localDate,
+                    })}
+                  </p>
+                </>
+              ) : dashboard.activeProgram?.nextDay ? (
+                <>
+                  <PrimaryButton
+                    disabled={isStartingWorkout}
+                    type="button"
+                    onClick={() => void startNextWorkout()}
+                  >
+                    {isStartingWorkout
+                      ? t('Starting...')
+                      : t('Start {day}', {
+                          day: dashboard.activeProgram.nextDay.name,
+                        })}
+                  </PrimaryButton>
+                  <p className="home-action-meta">
+                    {t('Week {week} · Next workout', {
+                      week: dashboard.activeProgram.weekNumber,
+                    })}
+                  </p>
+                </>
+              ) : (
+                <PrimaryButton
+                  type="button"
+                  onClick={() => void navigate('/training?createProgram=1')}
+                >
+                  Create program
+                </PrimaryButton>
+              )}
+            </div>
+          </Card>
 
-      <section className="home-utility-nav" aria-label="Home shortcuts">
-        <SecondaryButton
-          type="button"
-          onClick={() => void navigate('/history?source=home')}
-        >
-          <History aria-hidden="true" size={18} />
-          View all history
-        </SecondaryButton>
-        <SecondaryButton
-          type="button"
-          onClick={() => void navigate('/history?view=graphs')}
-        >
-          <LineChart aria-hidden="true" size={18} />
-          {t('Graphs')}
-        </SecondaryButton>
-        <SecondaryButton
-          type="button"
-          onClick={() => void navigate('/history?view=bodyweight')}
-        >
-          <Scale aria-hidden="true" size={18} />
-          {t('Bodyweight')}
-        </SecondaryButton>
-      </section>
-
-      <section className="metric-grid" aria-label="Daily summary">
-        <HomeBodyweightSummary
-          trendWeight={trendWeight}
-          lastRecorded={dashboard?.currentBodyweight}
-          onLog={() => openBodyweightSheet(selectedDate)}
-          onView={() => void navigate('/history?view=bodyweight')}
-        />
-        <MetricCard
-          label="Calories remaining"
-          onClick={() => void navigate('/nutrition?tab=day')}
-          value={`${caloriesRemaining}`}
-          detail={
-            calorieTarget > 0
-              ? `${calorieTarget} kcal target`
-              : 'Target not set'
-          }
-        />
-      </section>
-
-      <Card className="home-calories-card" title="Calories">
-        <CalorieHistoryChart
-          compact
-          history={dashboard?.calorieHistory ?? []}
-        />
-        {caloriesConsumed === 0 ? (
-          <div className="button-row">
+          <section className="home-utility-nav" aria-label="Home shortcuts">
             <SecondaryButton
               type="button"
-              onClick={() => void navigate('/nutrition?logFood=1')}
+              onClick={() => void navigate('/history?source=home')}
             >
-              Log food
+              <History aria-hidden="true" size={18} />
+              View all history
             </SecondaryButton>
-          </div>
-        ) : null}
-      </Card>
+            <SecondaryButton
+              type="button"
+              onClick={() => void navigate('/history?view=graphs')}
+            >
+              <LineChart aria-hidden="true" size={18} />
+              {t('Graphs')}
+            </SecondaryButton>
+            <SecondaryButton
+              type="button"
+              onClick={() => void navigate('/history?view=bodyweight')}
+            >
+              <Scale aria-hidden="true" size={18} />
+              {t('Bodyweight')}
+            </SecondaryButton>
+          </section>
 
-      {dashboard?.metadata ? (
-        <div className="visually-hidden">
-          Local database schema {dashboard.metadata.databaseSchemaVersion};
-          backup schema {dashboard.metadata.backupSchemaVersion}.
-        </div>
+          <section className="metric-grid" aria-label="Daily summary">
+            <HomeBodyweightSummary
+              trendWeight={trendWeight}
+              lastRecorded={dashboard?.currentBodyweight}
+              onLog={() => openBodyweightSheet(selectedDate)}
+              onView={() => void navigate('/history?view=bodyweight')}
+            />
+            <MetricCard
+              label="Calories remaining"
+              onClick={() => void navigate('/nutrition?tab=day')}
+              value={`${caloriesRemaining}`}
+              detail={
+                calorieTarget > 0
+                  ? `${calorieTarget} kcal target`
+                  : 'Target not set'
+              }
+            />
+          </section>
+
+          <Card className="home-calories-card" title="Calories">
+            <CalorieHistoryChart
+              compact
+              history={dashboard?.calorieHistory ?? []}
+            />
+            {caloriesConsumed === 0 ? (
+              <div className="button-row">
+                <SecondaryButton
+                  type="button"
+                  onClick={() => void navigate('/nutrition?logFood=1')}
+                >
+                  Log food
+                </SecondaryButton>
+              </div>
+            ) : null}
+          </Card>
+
+          {dashboard.metadata ? (
+            <div className="visually-hidden">
+              Local database schema {dashboard.metadata.databaseSchemaVersion};
+              backup schema {dashboard.metadata.backupSchemaVersion}.
+            </div>
+          ) : null}
+        </>
       ) : null}
     </PageContainer>
   )

@@ -10,6 +10,18 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-07-11-dashboard-food-and-data-export',
+    date: '2026-07-11',
+    title: 'Faster dashboards and cleaner logging',
+    items: [
+      'Home now returns with its data already in place instead of flashing empty cards.',
+      'The Home workout action names and starts the next day in your current program.',
+      'Food details now focus on serving, meal, live nutrition, and one Log food action; less-used tools sit under More options.',
+      'Export all fitness data creates a spreadsheet-ready archive covering nutrition, weight, programs, workouts, exercises, and runs.',
+      'The Finish workout program-save option remains available while late live edits finish saving.',
+    ],
+  },
+  {
     id: '2026-07-05-rir-controls-and-program-editing',
     date: '2026-07-05',
     title: 'RIR your way and simpler program editing',

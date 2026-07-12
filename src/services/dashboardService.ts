@@ -83,6 +83,7 @@ export type DashboardData = {
 }
 
 export function createDashboardService(database: TrainingLogDatabase = db) {
+  const cache = new Map<LocalDateString, DashboardData>()
   const bodyweightRepository = createBodyweightRepository(database)
   const foodRepository = createFoodRepository(database)
   const programRepository = createProgramRepository(database)
@@ -92,6 +93,14 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
   const calorieHistoryService = createCalorieHistoryService(database)
 
   return {
+    getCachedDashboardData(selectedDate: LocalDateString) {
+      return cache.get(selectedDate)
+    },
+
+    clearCachedDashboardData() {
+      cache.clear()
+    },
+
     async getDashboardData(
       selectedDate: LocalDateString,
     ): Promise<DashboardData> {
@@ -167,7 +176,7 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
         }
       }
 
-      return {
+      const dashboard: DashboardData = {
         selectedDate,
         metadata,
         nutrition,
@@ -195,6 +204,8 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
           ),
         ),
       }
+      cache.set(selectedDate, dashboard)
+      return dashboard
     },
   }
 }

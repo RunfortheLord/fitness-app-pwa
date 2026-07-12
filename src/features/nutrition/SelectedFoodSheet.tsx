@@ -1,9 +1,8 @@
-import { CopyPlus, Minus, Plus } from 'lucide-react'
+import { CopyPlus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import {
   FormField,
-  IconButton,
   NumericInput,
   PrimaryButton,
   SecondaryButton,
@@ -16,9 +15,6 @@ import {
   formatFoodServingLabel,
   formatGrams,
   formatMacroGram,
-  formatQuantityChipLabel,
-  nextSteppedAmount,
-  quantityChipsForUnit,
 } from '@domain/foodServings'
 import type { NormalizedFoodResult } from '@domain/foodProviderModels'
 import type { FoodResult } from '@domain/foodSearchSections'
@@ -104,7 +100,6 @@ export function SelectedFoodSheet({
   )
   const selectedOption =
     options.find((option) => option.key === unit) ?? options[0]
-  const unitKey = selectedOption?.key ?? unit
   const parsedAmount = parsePositiveNumber(amount)
   const servingMultiplier =
     parsedAmount && selectedOption
@@ -122,27 +117,16 @@ export function SelectedFoodSheet({
           grams: baseGrams != null ? servingMultiplier * baseGrams : null,
         }
       : null
-  const quantityChips = quantityChipsForUnit(unitKey)
-
   function applyAmount(next: string) {
     editedRef.current = true
     setAmount(next)
   }
 
-  function stepAmount(direction: 1 | -1) {
-    const current = parsedAmount ?? selectedOption?.amount ?? 1
-    const next = nextSteppedAmount(current, unitKey, direction)
-    if (next != null) {
-      applyAmount(formatAmountValue(next))
-    }
-  }
-
-  const decrementDisabled =
-    nextSteppedAmount(parsedAmount ?? 0, unitKey, -1) == null
   const display = resultDisplay(result)
   const isImported =
     result.type === 'external' ||
     (result.type === 'local' && result.food.sourceType === 'provider')
+  const alternates = result.type === 'external' ? result.food.alternates : []
 
   function saveLog() {
     if (!parsedAmount || !servingMultiplier) {
@@ -207,31 +191,14 @@ export function SelectedFoodSheet({
       onClose={onClose}
       title={onAddToRecipe ? 'Add to recipe' : 'Food details'}
     >
-      <p className="sheet-context">
+      <p className="sheet-context food-detail-heading">
         <strong>{display.name}</strong>
-        <br />
-        {display.brand ? <span className="muted">{display.brand}</span> : null}
-        <br />
-        <span className="muted">{display.serving} source serving</span>
+        {display.brand ? (
+          <small className="muted">{display.brand}</small>
+        ) : null}
       </p>
-      <p className="metric-value metric-value-small">
-        {formatCalories(base?.calories)} kcal
-      </p>
-      <div className="macro-row nutrition-row">
-        <span>Protein {formatMacroGram(base?.protein)} g</span>
-        <span>Carbs {formatMacroGram(base?.carbs)} g</span>
-        <span>Fat {formatMacroGram(base?.fat)} g</span>
-      </div>
-      <FormField id="serving-amount" label="Serving amount">
-        <div className="amount-stepper">
-          <IconButton
-            type="button"
-            aria-label="Decrease amount"
-            disabled={decrementDisabled}
-            onClick={() => stepAmount(-1)}
-          >
-            <Minus aria-hidden="true" size={18} />
-          </IconButton>
+      <div className="food-serving-controls">
+        <FormField id="serving-amount" label="Serving amount">
           <NumericInput
             id="serving-amount"
             autoFocus
@@ -239,107 +206,88 @@ export function SelectedFoodSheet({
             onChange={(event) => applyAmount(event.target.value)}
             value={amount}
           />
-          <IconButton
-            type="button"
-            aria-label="Increase amount"
-            onClick={() => stepAmount(1)}
+        </FormField>
+        <FormField id="serving-unit-select" label="Serving unit">
+          <select
+            id="serving-unit-select"
+            onChange={(event) => {
+              const next = options.find(
+                (option) => option.key === event.target.value,
+              )
+              editedRef.current = true
+              setUnit(event.target.value)
+              if (next) {
+                setAmount(formatAmountValue(next.amount))
+              }
+            }}
+            value={unit}
           >
-            <Plus aria-hidden="true" size={18} />
-          </IconButton>
-        </div>
-      </FormField>
-      <div className="quantity-chips" role="group" aria-label="Quick amounts">
-        {quantityChips.map((value) => {
-          const isActive =
-            parsedAmount != null && Math.abs(parsedAmount - value) < 0.01
-          return (
-            <button
-              key={value}
-              type="button"
-              className={`quantity-chip${isActive ? ' is-active' : ''}`}
-              aria-pressed={isActive}
-              onClick={() => applyAmount(formatAmountValue(value))}
-            >
-              {formatQuantityChipLabel(value)}
-            </button>
-          )
-        })}
+            {options.map((option) => (
+              <option key={option.key} value={option.key}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </FormField>
       </div>
-      <FormField id="serving-unit-select" label="Serving unit">
-        <select
-          id="serving-unit-select"
-          onChange={(event) => {
-            const next = options.find(
-              (option) => option.key === event.target.value,
-            )
-            editedRef.current = true
-            setUnit(event.target.value)
-            if (next) {
-              setAmount(formatAmountValue(next.amount))
-            }
-          }}
-          value={unit}
-        >
-          {options.map((option) => (
-            <option key={option.key} value={option.key}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </FormField>
       {onAddToRecipe ? null : (
         <MealTypeField value={mealType} onChange={setMealType} />
       )}
       {preview ? (
-        <p className="muted">
-          Preview: {formatCalories(preview.calories)} kcal - P{' '}
-          {formatMacroGram(preview.protein)} C {formatMacroGram(preview.carbs)}{' '}
-          F {formatMacroGram(preview.fat)}
-          {preview.grams != null ? ` = ${formatGrams(preview.grams)}` : ''}
-        </p>
-      ) : null}
-      {result.type === 'external' && result.food.alternates.length > 0 ? (
-        <details className="more-results">
-          <summary>More results ({result.food.alternates.length})</summary>
-          <div className="nutrition-list">
-            {result.food.alternates.map((alternate) => (
-              <button
-                className="alternate-result-row"
-                key={alternate.id}
-                type="button"
-                onClick={() => onSelectAlternate(alternate)}
-              >
-                <strong>{alternate.name}</strong>
-                <small>
-                  {alternate.brandName ? `${alternate.brandName} - ` : ''}
-                  {formatFoodServingLabel(alternate)}
-                </small>
-              </button>
-            ))}
+        <section className="food-log-preview" aria-label="Nutrition preview">
+          <strong>{formatCalories(preview.calories)} kcal</strong>
+          <div className="macro-row nutrition-row">
+            <span>Protein {formatMacroGram(preview.protein)} g</span>
+            <span>Carbs {formatMacroGram(preview.carbs)} g</span>
+            <span>Fat {formatMacroGram(preview.fat)} g</span>
           </div>
+          {preview.grams != null ? (
+            <small className="muted">{formatGrams(preview.grams)}</small>
+          ) : null}
+        </section>
+      ) : null}
+      {isImported || alternates.length > 0 ? (
+        <details className="more-results">
+          <summary>More options</summary>
+          {alternates.length > 0 ? (
+            <div className="nutrition-list">
+              {alternates.map((alternate) => (
+                <button
+                  className="alternate-result-row"
+                  key={alternate.id}
+                  type="button"
+                  onClick={() => onSelectAlternate(alternate)}
+                >
+                  <strong>{alternate.name}</strong>
+                  <small>
+                    {alternate.brandName ? `${alternate.brandName} - ` : ''}
+                    {formatFoodServingLabel(alternate)}
+                  </small>
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {isImported ? (
+            <SecondaryButton
+              type="button"
+              onClick={() =>
+                onCreateCopy(
+                  result.type === 'external'
+                    ? foodFormFromExternal(result.food, result.food.name)
+                    : foodFormFromLocal(result.food),
+                )
+              }
+            >
+              <CopyPlus aria-hidden="true" size={18} />
+              Create corrected copy
+            </SecondaryButton>
+          ) : null}
         </details>
       ) : null}
       {error ? <ValidationMessage message={error} /> : null}
-      <div className="button-row">
-        <PrimaryButton disabled={!preview} type="button" onClick={saveLog}>
-          {onAddToRecipe ? 'Add to recipe' : 'Log food'}
-        </PrimaryButton>
-        {isImported ? (
-          <SecondaryButton
-            type="button"
-            onClick={() =>
-              onCreateCopy(
-                result.type === 'external'
-                  ? foodFormFromExternal(result.food, result.food.name)
-                  : foodFormFromLocal(result.food),
-              )
-            }
-          >
-            <CopyPlus aria-hidden="true" size={18} />
-            Custom copy
-          </SecondaryButton>
-        ) : null}
-      </div>
+      <PrimaryButton disabled={!preview} type="button" onClick={saveLog}>
+        {onAddToRecipe ? 'Add to recipe' : 'Log food'}
+      </PrimaryButton>
     </Sheet>
   )
 }

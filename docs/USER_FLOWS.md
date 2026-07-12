@@ -164,7 +164,8 @@
 
 ## Starting a Workout
 
-1. User starts from a manually selected workout day.
+1. User starts from a manually selected workout day, or explicitly starts the
+   named next unchecked day from Home.
 2. App checks whether another active workout or active run exists.
 3. If a workout exists, app offers Resume or Discard Existing Workout with
    confirmation.
@@ -293,7 +294,8 @@
 2. User chooses Export Backup.
 3. App creates a full-fidelity JSON backup with backup schema version and database schema version.
 4. App offers the JSON file for local download/share.
-5. User may also choose CSV export for readable spreadsheet files.
+5. User may also choose Export all fitness data for a local archive of readable
+   spreadsheet-ready CSV files.
 6. JSON and CSV exports use historical food-log snapshots, including food name,
    optional brand or restaurant, provider identity when known, serving amount,
    consumed multiplier, calories, protein, total carbohydrates, fat, and

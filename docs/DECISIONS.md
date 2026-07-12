@@ -650,8 +650,22 @@
   speed meets the configured moving threshold. Paused, rejected, stale, jitter,
   impossible-speed, and long-gap intervals do not add moving time.
 - Finish confirmation offers one unchecked-by-default option to apply all
-  detected workout changes; without explicit opt-in, the source program remains
+  detected workout changes. The option stays visible even before a change has
+  finished persisting, because Finish waits for pending edits and performs final
+  detection afterward. Without explicit opt-in, the source program remains
   unchanged.
+- Home caches the last fully loaded dashboard per selected date so returning
+  from another tab never renders false empty-state cards while IndexedDB is
+  refreshing. A background reload still replaces the cached snapshot.
+- The Home training action names and directly starts the first unchecked day in
+  the current program week. This is still a user-selected action and does not
+  automatically start or advance a program.
+- The selected-food sheet keeps amount, unit, meal, live nutrition, and Log food
+  in the primary path. Provider alternates and corrected-copy creation remain
+  available under a collapsed More options disclosure.
+- The existing per-table CSV archive is surfaced as Export all fitness data; it
+  is the readable analysis export, while JSON remains the authoritative restore
+  backup.
 - Applying detected changes to active cycle/template/both is transactional.
 - Weights are stored canonically in pounds; the `weightUnit` preference (lb/kg)
   only changes display and how freshly entered values are interpreted, so

@@ -3043,6 +3043,43 @@ input::placeholder {
   margin: 0 0 var(--space-4);
 }
 
+.food-detail-heading {
+  display: grid;
+  gap: 2px;
+}
+
+.food-detail-heading strong {
+  font-size: 18px;
+}
+
+.food-serving-controls {
+  display: grid;
+  grid-template-columns: minmax(96px, 0.8fr) minmax(0, 1.2fr);
+  gap: var(--space-3);
+}
+
+.food-log-preview {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-strong);
+}
+
+.food-log-preview > strong {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+.food-log-preview .macro-row {
+  margin: 0;
+}
+
+.more-results[open] > .button {
+  margin-top: var(--space-3);
+}
+
 .validation-message {
   margin: 0;
   color: var(--color-danger);

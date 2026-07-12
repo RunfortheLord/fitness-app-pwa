@@ -21,7 +21,6 @@ import {
 } from 'lucide-react'
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
   type FocusEvent,
@@ -58,7 +57,6 @@ import {
 import { canSkipWorkoutExercise } from '@domain/workoutSkip'
 import { rankedExerciseReplacements } from '@domain/exerciseReplacements'
 import { TRACKING_METHODS } from '@domain/trackingMethods'
-import { detectWorkoutStructuralChanges } from '@domain/workoutChanges'
 import {
   formatWeight as formatWeightWithUnit,
   weightInputToLb,
@@ -263,12 +261,11 @@ export function LiveWorkoutPage() {
       })
       let changeSaveFailed = false
       if (completed.detectedChanges.length > 0) {
-        const destination =
-          saveAllChanges && hasStructuralWorkoutChanges
-            ? workout.sourceTemplateId
-              ? 'both'
-              : 'cycle_only'
-            : 'neither'
+        const destination = saveAllChanges
+          ? workout.sourceTemplateId
+            ? 'both'
+            : 'cycle_only'
+          : 'neither'
         try {
           await workoutRepository.applyDetectedChanges(
             completed.detectedChanges.map((change) => ({
@@ -452,22 +449,6 @@ export function LiveWorkoutPage() {
           activeIndex + 1
         } of ${readyState.exercises.length}`
       : ''
-  const hasStructuralWorkoutChanges = useMemo(() => {
-    if (!readyState) {
-      return false
-    }
-    return (
-      detectWorkoutStructuralChanges({
-        sourceExercises: Object.values(
-          readyState.sourcePrescriptionsByExercise,
-        ),
-        workout: readyState.workout,
-        performedExercises: readyState.exercises,
-        performedSetsByExercise: readyState.setsByExercise,
-      }).length > 0
-    )
-  }, [readyState])
-
   function selectExercise(index: number) {
     const next = readyState?.exercises[index]
     if (!next) {
@@ -965,28 +946,22 @@ export function LiveWorkoutPage() {
             'This saves the completed workout to your history and ends the active session.',
           )}
         </p>
-        {hasStructuralWorkoutChanges ? (
-          <label className="checkbox-row finish-save-changes">
-            <input
-              aria-label={t('Save all live workout changes to my program')}
-              checked={saveAllChanges}
-              onChange={(event) =>
-                setSaveAllChanges(event.currentTarget.checked)
-              }
-              type="checkbox"
-            />
-            <span>
-              <strong>
-                {t('Save all live workout changes to my program')}
-              </strong>
-              <small>
-                {t(
-                  'Leave unchecked to keep those changes in this completed workout only.',
-                )}
-              </small>
-            </span>
-          </label>
-        ) : null}
+        <label className="checkbox-row finish-save-changes">
+          <input
+            aria-label={t('Save all live workout changes to my program')}
+            checked={saveAllChanges}
+            onChange={(event) => setSaveAllChanges(event.currentTarget.checked)}
+            type="checkbox"
+          />
+          <span>
+            <strong>{t('Save all live workout changes to my program')}</strong>
+            <small>
+              {t(
+                'If changes are detected, save them to the active program and reusable template. Leave unchecked to keep them in workout history only.',
+              )}
+            </small>
+          </span>
+        </label>
       </ModalConfirmationDialog>
 
       <ModalConfirmationDialog

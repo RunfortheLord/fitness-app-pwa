@@ -962,7 +962,7 @@ export function createBackupService(database: TrainingLogDatabase = db) {
       return {
         blob: createTarArchive(files),
         filename: createReadableFilename(
-          'training-log-csv-export',
+          'fitness-data-export',
           exportedAt,
           'tar',
         ),

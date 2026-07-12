@@ -165,7 +165,7 @@ describe('SettingsPage', () => {
       screen.getByRole('button', { name: 'Export JSON backup' }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: 'Export CSV archive' }),
+      screen.getByRole('button', { name: 'Export all fitness data' }),
     ).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: 'Restore JSON' }),
@@ -421,15 +421,24 @@ describe('SettingsPage', () => {
     await user.click(await screen.findByRole('button', { name: 'About' }))
     expect(
       await screen.findByRole('heading', {
-        name: 'RIR your way and simpler program editing',
+        name: 'Faster dashboards and cleaner logging',
       }),
     ).toBeInTheDocument()
-    expect(screen.queryByText('Pounds or kilograms')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', {
+        name: 'RIR your way and simpler program editing',
+      }),
+    ).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Show all' }))
 
     expect(
       screen.getByRole('button', { name: 'Back to settings' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', {
+        name: 'RIR your way and simpler program editing',
+      }),
     ).toBeInTheDocument()
     expect(
       screen.getByRole('heading', {

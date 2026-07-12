@@ -20,9 +20,11 @@ import { NutritionPage } from '@pages/NutritionPage'
 import { createProgramRepository } from '@repositories/programRepository'
 import { createWorkoutRepository } from '@repositories/workoutRepository'
 import { initializeAppData } from '@services/appInitializationService'
+import { dashboardService } from '@services/dashboardService'
 import { seedProgram, testLocalDate } from '@test/seedFactories'
 
 beforeEach(async () => {
+  dashboardService.clearCachedDashboardData()
   await db.delete()
   await db.open()
   await initializeAppData()
@@ -30,6 +32,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   cleanup()
+  vi.restoreAllMocks()
+  dashboardService.clearCachedDashboardData()
   await db.delete()
 })
 
@@ -39,7 +43,10 @@ function renderHome() {
       {
         path: '/',
         element: <App />,
-        children: [{ index: true, element: <HomePage /> }],
+        children: [
+          { index: true, element: <HomePage /> },
+          { path: 'workout', element: <div>Workout route</div> },
+        ],
       },
     ],
     { initialEntries: ['/'] },
@@ -175,11 +182,50 @@ describe('HomePage', () => {
       screen.queryByRole('heading', { name: 'Current program' }),
     ).not.toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: 'Choose workout day' }),
+      screen.getByRole('button', { name: 'Start Upper' }),
     ).toBeInTheDocument()
+    expect(screen.getByText('Week 1 · Next workout')).toBeInTheDocument()
+  })
+
+  it('starts the next program day directly from Home', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+
+    renderHome()
+    await waitForDashboardReady()
+    await user.click(screen.getByRole('button', { name: 'Start Upper' }))
+
+    expect(await screen.findByText('Workout route')).toBeInTheDocument()
+    await expect(db.workouts.toCollection().first()).resolves.toMatchObject({
+      sourceActiveCycleId: active.cycle.id,
+      sourceDayId: active.days[0].id,
+    })
+  })
+
+  it('reuses cached dashboard data immediately after returning Home', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    await createProgramRepository(db).activateTemplate(program.template.id)
+    renderHomeWithNutritionRoute()
+    await waitForDashboardReady()
+
+    await user.click(screen.getByRole('link', { name: 'Nutrition' }))
     expect(
-      screen.getByText('Select the workout day you want to perform.'),
+      await screen.findByText('Daily nutrition totals'),
     ).toBeInTheDocument()
+    vi.spyOn(dashboardService, 'getDashboardData').mockImplementation(
+      () => new Promise(() => undefined),
+    )
+    await user.click(screen.getByRole('link', { name: 'Home' }))
+
+    expect(
+      screen.getByRole('button', { name: 'Start Upper' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Loading dashboard')).not.toBeInTheDocument()
+    expect(screen.queryByText('No active program')).not.toBeInTheDocument()
   })
 
   it('replaces start actions with one resume action during an active workout', async () => {
@@ -208,7 +254,7 @@ describe('HomePage', () => {
       }),
     ).not.toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: 'Choose workout day' }),
+      screen.queryByRole('button', { name: 'Start Upper' }),
     ).not.toBeInTheDocument()
     expect(
       screen.queryByRole('heading', { name: 'Resume workout' }),

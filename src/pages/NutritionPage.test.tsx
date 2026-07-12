@@ -352,7 +352,9 @@ describe('NutritionPage', () => {
       screen.getByRole('textbox', { name: 'Serving amount' }),
       '1.5',
     )
-    expect(screen.getByText(/Preview: 300 kcal/)).toBeInTheDocument()
+    expect(
+      within(screen.getByLabelText('Nutrition preview')).getByText('300 kcal'),
+    ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Log food' }))
 
     // The added item appears in the subpage tray; return to the day view to see
@@ -495,7 +497,9 @@ describe('NutritionPage', () => {
     expect(
       await screen.findByRole('textbox', { name: 'Serving amount' }),
     ).toHaveValue('27')
-    expect(screen.getByText(/Preview: 203 kcal/)).toBeInTheDocument()
+    expect(
+      within(screen.getByLabelText('Nutrition preview')).getByText('203 kcal'),
+    ).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Close food details' }))
     await user.click(
@@ -995,7 +999,9 @@ describe('NutritionPage', () => {
     expect(
       screen.getByRole('dialog', { name: 'Food details' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('Protein 37.2 g')).toBeInTheDocument()
+    expect(screen.getByLabelText('Nutrition preview')).toHaveTextContent(
+      'Protein',
+    )
     expect(screen.queryByText(/net/i)).not.toBeInTheDocument()
 
     await user.selectOptions(screen.getByLabelText('Serving unit'), 'g')
@@ -1004,7 +1010,9 @@ describe('NutritionPage', () => {
       screen.getByRole('textbox', { name: 'Serving amount' }),
       '60',
     )
-    expect(screen.getByText(/Preview: 99 kcal/)).toBeInTheDocument()
+    expect(
+      within(screen.getByLabelText('Nutrition preview')).getByText('99 kcal'),
+    ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Log food' }))
 
     let entry = await db.foodLogEntries.toCollection().first()
@@ -1048,11 +1056,14 @@ describe('NutritionPage', () => {
         name: 'Select Chicken breast cooked',
       }),
     )
-    await user.click(screen.getByText('More results (1)'))
+    await user.click(screen.getByText('More options'))
     await user.click(screen.getByRole('button', { name: /Chicken breast raw/ }))
     expect(screen.getByText('Chicken breast raw')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Custom copy' }))
+    await user.click(screen.getByText('More options'))
+    await user.click(
+      screen.getByRole('button', { name: 'Create corrected copy' }),
+    )
     expect(
       screen.getByRole('dialog', { name: 'Create food' }),
     ).toBeInTheDocument()

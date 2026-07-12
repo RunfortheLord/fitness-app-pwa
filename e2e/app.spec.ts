@@ -222,7 +222,7 @@ test('creates and persists a custom exercise from the Add sheet', async ({
   await expect(page.getByText('E2E Bench press')).toBeVisible()
 })
 
-test('creates, activates, manually selects, and persists a program cycle', async ({
+test('creates, activates, starts the next day, and persists a program cycle', async ({
   page,
 }, testInfo) => {
   test.skip(
@@ -260,10 +260,17 @@ test('creates, activates, manually selects, and persists a program cycle', async
     .getByRole('button', { name: 'Activate' })
     .click()
   await expect(page.getByText('Program activated.')).toBeVisible()
-  await page.getByRole('button', { name: /^Day A/ }).click()
-  const dayDetail = page.getByRole('dialog', { name: 'Day A' })
-  await expect(dayDetail).toBeVisible()
-  await expect(dayDetail.getByText('E2E Squat')).toBeVisible()
+  await page.getByRole('link', { name: 'Home' }).click()
+  await page.getByRole('button', { name: 'Start Day A' }).click()
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Live Workout' }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Discard workout' }).click()
+  await page
+    .getByRole('dialog', { name: 'Discard workout?' })
+    .getByRole('button', { name: 'Discard Workout' })
+    .click()
+  await expect(page).toHaveURL(/\/training/)
 
   await page.reload()
   await expect(
@@ -426,11 +433,20 @@ test('creates, logs, edits, deletes, and persists nutrition entries', async ({
 
   await page.getByRole('button', { name: 'Search foods' }).click()
   await page.getByRole('searchbox', { name: 'Search foods' }).fill('e2e')
-  await page.getByRole('button', { name: 'Add E2E Rice' }).click()
-  await page.getByRole('button', { name: 'Edit E2E Rice serving' }).click()
-  await page.getByRole('textbox', { name: 'Serving multiplier' }).fill('1.5')
-  await expect(page.getByText(/Preview: 300 kcal/)).toBeVisible()
-  await page.getByRole('button', { name: 'Save log' }).click()
+  await page.getByRole('button', { name: 'Select E2E Rice' }).click()
+  const foodDetails = page.getByRole('dialog', { name: 'Food details' })
+  await expect(foodDetails.getByLabel('Nutrition preview')).toBeVisible()
+  await expect(
+    foodDetails.getByRole('button', { name: 'Decrease amount' }),
+  ).toHaveCount(0)
+  await expect(
+    foodDetails.getByRole('group', { name: 'Quick amounts' }),
+  ).toHaveCount(0)
+  await foodDetails.getByRole('textbox', { name: 'Serving amount' }).fill('1.5')
+  await expect(foodDetails.getByLabel('Nutrition preview')).toContainText(
+    '300 kcal',
+  )
+  await foodDetails.getByRole('button', { name: 'Log food' }).click()
   // The food logs into the day view behind the search subpage; return to it.
   await page.getByRole('button', { name: 'Back to nutrition' }).click()
   await expect(
@@ -695,7 +711,7 @@ test('settings exposes local data controls and validates malformed restore files
     page.getByRole('button', { name: 'Export JSON backup' }),
   ).toBeVisible()
   await expect(
-    page.getByRole('button', { name: 'Export CSV archive' }),
+    page.getByRole('button', { name: 'Export all fitness data' }),
   ).toBeVisible()
 
   await page.locator('input[type="file"]').setInputFiles({
@@ -800,7 +816,7 @@ test('completes the release workflow through backup restore', async ({
   await page.getByRole('searchbox', { name: 'Search foods' }).fill('audit')
   await page.getByRole('button', { name: 'Select Audit oats' }).click()
   await page.getByRole('textbox', { name: 'Serving amount' }).fill('1.25')
-  await expect(page.getByText(/Preview: 250 kcal/)).toBeVisible()
+  await expect(page.getByLabel('Nutrition preview')).toContainText('250 kcal')
   await page.getByRole('button', { name: 'Log food', exact: true }).click()
   await page.getByRole('button', { name: 'Back to nutrition' }).click()
   await expect(page.getByText(/1.25 cup .* 250 kcal/)).toBeVisible()

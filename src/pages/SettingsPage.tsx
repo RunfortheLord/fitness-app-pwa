@@ -473,7 +473,7 @@ export function SettingsPage() {
       const exportResult = await backupService.createCsvArchive()
       downloadBlob(exportResult.blob, exportResult.filename)
       setOperationMessage(
-        `CSV export prepared with ${exportResult.files.length} files.`,
+        `Fitness data export prepared with ${exportResult.files.length} spreadsheet-ready CSV files.`,
       )
     } catch {
       setOperationError('CSV export could not be created.')
@@ -1055,11 +1055,11 @@ export function SettingsPage() {
               </div>
             </dl>
             <div className="button-row">
+              <PrimaryButton type="button" onClick={exportCsvArchive}>
+                {t('Export all fitness data')}
+              </PrimaryButton>
               <SecondaryButton type="button" onClick={exportJsonBackup}>
                 Export JSON backup
-              </SecondaryButton>
-              <SecondaryButton type="button" onClick={exportCsvArchive}>
-                Export CSV archive
               </SecondaryButton>
               <SecondaryButton
                 disabled={isDestructiveOperationRunning}

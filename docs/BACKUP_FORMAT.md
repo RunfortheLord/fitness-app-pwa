@@ -84,7 +84,8 @@ Replace restore validates first, then writes all restored user data in one Dexie
 
 ## CSV Export
 
-CSV export creates a local TAR archive containing one CSV file per exported table:
+The user-facing **Export all fitness data** action creates a local TAR archive
+containing one spreadsheet-ready CSV file per exported table:
 
 - `userSettings.csv`
 - `nutritionTargets.csv`

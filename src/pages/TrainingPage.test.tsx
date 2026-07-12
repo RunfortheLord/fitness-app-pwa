@@ -751,9 +751,9 @@ describe('TrainingPage', () => {
     await user.click(screen.getByRole('button', { name: 'Complete set 1' }))
 
     expect(
-      screen.getByRole('button', { name: 'Mark incomplete set 1' }),
+      await screen.findByRole('button', { name: 'Mark incomplete set 1' }),
     ).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByLabelText('Rest timer')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Rest timer')).toBeInTheDocument()
 
     releasePersistence()
     await waitFor(async () => {
@@ -826,12 +826,13 @@ describe('TrainingPage', () => {
       ),
     ).toBeInTheDocument()
     expect(
-      within(
-        screen.getByRole('dialog', { name: 'Finish workout?' }),
-      ).queryByRole('checkbox', {
-        name: 'Save all live workout changes to my program',
-      }),
-    ).not.toBeInTheDocument()
+      within(screen.getByRole('dialog', { name: 'Finish workout?' })).getByRole(
+        'checkbox',
+        {
+          name: 'Save all live workout changes to my program',
+        },
+      ),
+    ).not.toBeChecked()
     await user.click(
       within(screen.getByRole('dialog', { name: 'Finish workout?' })).getByRole(
         'button',
@@ -897,7 +898,66 @@ describe('TrainingPage', () => {
     ])
   })
 
-  it('hides the save-to-program checkbox when the live workout has no structural changes', async () => {
+  it('saves a program change that finishes persisting after the finish dialog opens', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await workoutRepository.updateWorkoutSet(started.sets[0].id, {
+      completed: true,
+    })
+
+    const addSet = workoutRepository.addSet.bind(workoutRepository)
+    let releaseAdd: (() => void) | undefined
+    let markAddStarted: (() => void) | undefined
+    const addStarted = new Promise<void>((resolve) => {
+      markAddStarted = resolve
+    })
+    vi.spyOn(workoutRepository, 'addSet').mockImplementation(
+      (workoutExerciseId) =>
+        new Promise((resolve, reject) => {
+          markAddStarted?.()
+          releaseAdd = () => {
+            void addSet(workoutExerciseId).then(resolve, reject)
+          }
+        }),
+    )
+    renderTraining(['/workout'])
+
+    await user.click(await screen.findByRole('button', { name: 'Add Set' }))
+    await addStarted
+    await user.click(screen.getByRole('button', { name: 'Finish' }))
+    const finishDialog = screen.getByRole('dialog', {
+      name: 'Finish workout?',
+    })
+    await user.click(
+      within(finishDialog).getByRole('checkbox', {
+        name: 'Save all live workout changes to my program',
+      }),
+    )
+    await user.click(
+      within(finishDialog).getByRole('button', { name: 'Finish Workout' }),
+    )
+
+    await expect(db.workoutHistoryEntries.count()).resolves.toBe(0)
+    releaseAdd?.()
+
+    expect(await screen.findByText('Date completed')).toBeInTheDocument()
+    await expect(
+      db.activeCycleWorkoutExercises.get(active.exercises[0].id),
+    ).resolves.toMatchObject({ targetSetCount: 3 })
+    await expect(
+      db.templateWorkoutExercises.get(program.exercises[0].id),
+    ).resolves.toMatchObject({ targetSetCount: 3 })
+  })
+
+  it('keeps save-to-program available for changes detected during completion', async () => {
     const user = userEvent.setup()
     const program = await seedProgram(db)
     const active = await createProgramRepository(db).activateTemplate(
@@ -919,10 +979,10 @@ describe('TrainingPage', () => {
     })
 
     expect(
-      within(finishDialog).queryByRole('checkbox', {
+      within(finishDialog).getByRole('checkbox', {
         name: 'Save all live workout changes to my program',
       }),
-    ).not.toBeInTheDocument()
+    ).not.toBeChecked()
   })
 
   it('automatically prompts to finish once every set is completed', async () => {
@@ -948,10 +1008,10 @@ describe('TrainingPage', () => {
       within(finishDialog).getByRole('button', { name: 'Finish Workout' }),
     ).toBeInTheDocument()
     expect(
-      within(finishDialog).queryByRole('checkbox', {
+      within(finishDialog).getByRole('checkbox', {
         name: 'Save all live workout changes to my program',
       }),
-    ).not.toBeInTheDocument()
+    ).not.toBeChecked()
   })
 
   it('saves all live workout changes when selected at finish', async () => {

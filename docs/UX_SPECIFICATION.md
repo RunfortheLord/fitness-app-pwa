@@ -54,8 +54,8 @@
   - View Graph route to History
 - Training card:
   - current active program
-  - selected workout-day entry point
-  - start workout action
+  - next unchecked workout day by name
+  - direct start action for that named day
   - resume workout action when an active workout exists
 - Compact header actions:
   - View all history
@@ -343,7 +343,9 @@
 - Finish Workout waits for pending live edits, then saves the historical
   workout first.
 - The confirmation includes one "Save all live workout changes to my program"
-  checkbox. It is unchecked every time the confirmation opens.
+  checkbox. It is always available and unchecked every time the confirmation
+  opens so changes that finish persisting after the dialog opens can still be
+  applied deliberately.
 - Leaving the checkbox unchecked saves the completed workout but rejects all
   detected program changes, preserving the source cycle and template.
 - Checking it applies every detected structural change and progression

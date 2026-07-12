@@ -91,6 +91,7 @@ const spanishTranslations: Record<string, string> = {
   'Local data': 'Datos locales',
   'Export JSON backup': 'Exportar copia JSON',
   'Export CSV archive': 'Exportar archivo CSV',
+  'Export all fitness data': 'Exportar todos los datos de fitness',
   'Restore JSON': 'Restaurar JSON',
   'Clear all data': 'Borrar todos los datos',
   'Cloud backup': 'Copia en la nube',
@@ -105,6 +106,9 @@ const spanishTranslations: Record<string, string> = {
   'Not now': 'Ahora no',
   'Skip to content': 'Saltar al contenido',
   'Choose workout day': 'Elegir día de entrenamiento',
+  'Start {day}': 'Iniciar {day}',
+  'Starting...': 'Iniciando...',
+  'Week {week} · Next workout': 'Semana {week} · Próximo entrenamiento',
   'Select the workout day you want to perform.':
     'Selecciona el día de entrenamiento que quieres realizar.',
   'Send feedback': 'Enviar comentarios',
