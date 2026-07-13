@@ -71,6 +71,12 @@ type LoadState = {
   status: LoadStatus
 }
 
+let cachedTrainingLoadState: LoadState | undefined
+
+export function clearCachedTrainingPageData() {
+  cachedTrainingLoadState = undefined
+}
+
 export function TrainingPage() {
   const { t } = useLanguage()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -99,13 +105,16 @@ export function TrainingPage() {
     week: number
     checkedDayIds: string[]
   }>({ week: 1, checkedDayIds: [] })
-  const [loadState, setLoadState] = useState<LoadState>({
-    exercises: [],
-    templates: [],
-    exerciseUsage: {},
-    currentCycle: undefined,
-    status: 'loading',
-  })
+  const [loadState, setLoadState] = useState<LoadState>(
+    () =>
+      cachedTrainingLoadState ?? {
+        exercises: [],
+        templates: [],
+        exerciseUsage: {},
+        currentCycle: undefined,
+        status: 'loading',
+      },
+  )
   const activeSheet =
     searchParams.get('createExercise') === '1'
       ? ({ type: 'exercise', exercise: null } satisfies SheetState)
@@ -181,7 +190,7 @@ export function TrainingPage() {
           return
         }
 
-        setLoadState({
+        const nextLoadState: LoadState = {
           exercises:
             view === 'hidden'
               ? exercises.filter((exercise) => exercise.status !== 'active')
@@ -190,7 +199,9 @@ export function TrainingPage() {
           exerciseUsage,
           currentCycle,
           status: 'ready',
-        })
+        }
+        cachedTrainingLoadState = nextLoadState
+        setLoadState(nextLoadState)
 
         if (currentCycle) {
           const allChecks = await programRepository.listAllActiveCycleDayChecks(

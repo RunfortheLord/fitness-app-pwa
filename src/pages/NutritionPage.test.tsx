@@ -23,10 +23,14 @@ import { recommendationMealTypeForDate } from '@domain/meals'
 import { snapshotFood } from '@domain/snapshots'
 import { HomePage } from '@pages/HomePage'
 import { createSearchSections } from '@domain/foodSearchSections'
-import { NutritionPage } from '@pages/NutritionPage'
+import {
+  clearCachedNutritionPageData,
+  NutritionPage,
+} from '@pages/NutritionPage'
 import { createFoodRepository } from '@repositories/foodRepository'
 import { settingsRepository } from '@repositories/settingsRepository'
 import { initializeAppData } from '@services/appInitializationService'
+import { nutritionSummaryService } from '@services/nutritionSummaryService'
 import {
   FoodProviderClientError,
   searchProviderFoods,
@@ -63,6 +67,7 @@ const mockSearchProviderFoods = vi.mocked(searchProviderFoods)
 const mockAnalyzeMealPhoto = vi.mocked(analyzeMealPhoto)
 
 beforeEach(async () => {
+  clearCachedNutritionPageData()
   mockSearchProviderFoods.mockReset()
   mockSearchProviderFoods.mockResolvedValue({
     provider: 'usda',
@@ -78,10 +83,28 @@ beforeEach(async () => {
 
 afterEach(async () => {
   cleanup()
+  clearCachedNutritionPageData()
   await db.delete()
 })
 
 describe('NutritionPage', () => {
+  it('keeps loaded dashboard data in place when returning to Nutrition', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await waitFor(() =>
+      expect(screen.queryByText('Loading nutrition')).not.toBeInTheDocument(),
+    )
+    await user.click(screen.getByRole('link', { name: 'Home' }))
+    vi.spyOn(nutritionSummaryService, 'getDailySummary').mockImplementation(
+      () => new Promise(() => undefined),
+    )
+    await user.click(screen.getByRole('link', { name: 'Nutrition' }))
+
+    expect(screen.queryByText('Loading nutrition')).not.toBeInTheDocument()
+    expect(screen.getByText('Daily nutrition totals')).toBeInTheDocument()
+  })
+
   it('keeps camera options open through scrolling and resets on navigation', async () => {
     const user = userEvent.setup()
     renderNutrition()

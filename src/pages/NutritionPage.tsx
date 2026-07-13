@@ -119,6 +119,17 @@ type LoadState = {
   status: 'loading' | 'ready' | 'error'
 }
 
+type CachedNutritionPageData = {
+  selectedDate: string
+  loadState: LoadState
+}
+
+let cachedNutritionPageData: CachedNutritionPageData | undefined
+
+export function clearCachedNutritionPageData() {
+  cachedNutritionPageData = undefined
+}
+
 function isNutritionMode(value: string | null): value is NutritionMode {
   return value === 'day' || value === 'foods' || value === 'targets'
 }
@@ -144,17 +155,32 @@ export function NutritionPage() {
     apiKey: null,
     status: 'not_configured',
   })
-  const [loadState, setLoadState] = useState<LoadState>({
-    foods: [],
-    logs: [],
-    recentFoods: [],
-    recommendedFoods: [],
-    favoriteFoods: [],
-    foodUnitPreferences: {},
-    savedMeals: [],
-    summary: null,
-    status: 'loading',
-  })
+  const [loadState, setLoadState] = useState<LoadState>(() =>
+    cachedNutritionPageData?.selectedDate === selectedDate
+      ? cachedNutritionPageData.loadState
+      : {
+          foods: [],
+          logs: [],
+          recentFoods: [],
+          recommendedFoods: [],
+          favoriteFoods: [],
+          foodUnitPreferences: {},
+          savedMeals: [],
+          summary: null,
+          status: 'loading',
+        },
+  )
+
+  const updateLoadState = useCallback(
+    (update: (current: LoadState) => LoadState) => {
+      setLoadState((current) => {
+        const next = update(current)
+        cachedNutritionPageData = { selectedDate, loadState: next }
+        return next
+      })
+    },
+    [selectedDate],
+  )
   const [savedMealToDelete, setSavedMealToDelete] = useState<SavedMeal | null>(
     null,
   )
@@ -397,7 +423,7 @@ export function NutritionPage() {
           return
         }
 
-        setLoadState((current) => ({
+        updateLoadState((current) => ({
           ...current,
           logs,
           summary,
@@ -409,13 +435,13 @@ export function NutritionPage() {
           return
         }
 
-        setLoadState((current) => ({ ...current, status: 'error' }))
+        updateLoadState((current) => ({ ...current, status: 'error' }))
       })
 
     return () => {
       isCurrent = false
     }
-  }, [revision, selectedDate])
+  }, [revision, selectedDate, updateLoadState])
 
   useEffect(() => {
     let isCurrent = true
@@ -424,19 +450,19 @@ export function NutritionPage() {
       .searchFoods(query)
       .then((foods) => {
         if (isCurrent) {
-          setLoadState((current) => ({ ...current, foods }))
+          updateLoadState((current) => ({ ...current, foods }))
         }
       })
       .catch(() => {
         if (isCurrent) {
-          setLoadState((current) => ({ ...current, status: 'error' }))
+          updateLoadState((current) => ({ ...current, status: 'error' }))
         }
       })
 
     return () => {
       isCurrent = false
     }
-  }, [libraryRevision, query])
+  }, [libraryRevision, query, updateLoadState])
 
   useEffect(() => {
     let isCurrent = true
@@ -464,7 +490,7 @@ export function NutritionPage() {
           if (!isCurrent) {
             return
           }
-          setLoadState((current) => ({
+          updateLoadState((current) => ({
             ...current,
             recentFoods,
             recommendedFoods,
@@ -481,14 +507,14 @@ export function NutritionPage() {
       )
       .catch(() => {
         if (isCurrent) {
-          setLoadState((current) => ({ ...current, status: 'error' }))
+          updateLoadState((current) => ({ ...current, status: 'error' }))
         }
       })
 
     return () => {
       isCurrent = false
     }
-  }, [libraryRevision, today])
+  }, [libraryRevision, today, updateLoadState])
 
   useEffect(() => {
     let isCurrent = true
@@ -1116,7 +1142,7 @@ export function NutritionPage() {
             if (searchOpen && sheet.type === 'select') {
               appendAddedItem(sheet.result, entry)
             }
-            setLoadState((current) => ({
+            updateLoadState((current) => ({
               ...current,
               foodUnitPreferences: {
                 ...current.foodUnitPreferences,

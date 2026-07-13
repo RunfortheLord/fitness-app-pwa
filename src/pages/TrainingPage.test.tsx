@@ -15,14 +15,18 @@ import { db } from '@db/database'
 import { HistoryPage } from '@pages/HistoryPage'
 import { HomePage } from '@pages/HomePage'
 import { LiveWorkoutPage } from '@pages/LiveWorkoutPage'
-import { TrainingPage } from '@pages/TrainingPage'
+import { clearCachedTrainingPageData, TrainingPage } from '@pages/TrainingPage'
 import { createProgramRepository } from '@repositories/programRepository'
-import { createExerciseRepository } from '@repositories/exerciseRepository'
+import {
+  createExerciseRepository,
+  exerciseRepository,
+} from '@repositories/exerciseRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
 import { initializeAppData } from '@services/appInitializationService'
 import { seedExercise, seedProgram, testLocalDate } from '@test/seedFactories'
 
 beforeEach(async () => {
+  clearCachedTrainingPageData()
   await db.delete()
   await db.open()
   await initializeAppData()
@@ -31,10 +35,29 @@ beforeEach(async () => {
 afterEach(async () => {
   cleanup()
   vi.restoreAllMocks()
+  clearCachedTrainingPageData()
   await db.delete()
 })
 
 describe('TrainingPage', () => {
+  it('keeps loaded dashboard data in place when returning to Training', async () => {
+    const user = userEvent.setup()
+    renderTraining()
+
+    await screen.findByRole('button', { name: 'Exercise Library' })
+    await user.click(screen.getByRole('button', { name: 'Exercise Library' }))
+    expect(await screen.findByText('Barbell Bench Press')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('link', { name: 'Home' }))
+    vi.spyOn(exerciseRepository, 'searchExercises').mockImplementation(
+      () => new Promise(() => undefined),
+    )
+    await user.click(screen.getByRole('link', { name: 'Training' }))
+    await user.click(screen.getByRole('button', { name: 'Exercise Library' }))
+
+    expect(screen.getByText('Barbell Bench Press')).toBeInTheDocument()
+  })
+
   it('creates, searches, edits, normalizes rest inputs, and warns on duplicate exercise names', async () => {
     const user = userEvent.setup()
     renderTraining()
