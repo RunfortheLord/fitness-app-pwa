@@ -111,7 +111,8 @@ repo `*.test.ts`, use `fake-indexeddb`.
 ## Conventions / gotchas
 
 - Every behavior change needs unit/component/integration/e2e coverage (see TEST_STRATEGY.md).
-- Tests run **serially** (`fileParallelism: false`).
+- Vitest files run with at most four workers. Keep each test file isolated from
+  shared browser globals and use its own fake IndexedDB lifecycle.
 - E2E in `e2e/app.spec.ts`, config `playwright.config.ts`.
 - Don't broaden scope / add undocumented features (AGENTS.md). Record assumptions in `docs/DECISIONS.md`.
 - 44×44px min touch targets; avoid horizontal scroll; safe-area insets; dark theme only.

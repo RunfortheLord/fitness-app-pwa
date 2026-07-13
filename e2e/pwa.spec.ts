@@ -63,70 +63,74 @@ test('registers the service worker in the production build', async ({
   )
 })
 
-test('loads cached app shell and navigates while offline', async ({
-  browserName,
-  context,
-  page,
-}) => {
-  test.skip(
-    browserName !== 'chromium',
-    'Offline service worker coverage runs in Chromium.',
-  )
+test(
+  'loads cached app shell and navigates while offline',
+  {
+    tag: '@smoke',
+  },
+  async ({ browserName, context, page }) => {
+    test.skip(
+      browserName !== 'chromium',
+      'Offline service worker coverage runs in Chromium.',
+    )
 
-  await installControlledServiceWorker(page, context)
-  await expectCachedShell(page)
+    await installControlledServiceWorker(page, context)
+    await expectCachedShell(page)
 
-  await context.setOffline(true)
-  await page.goto('/nutrition')
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Nutrition' }),
-  ).toBeVisible()
-  await expect(
-    page.getByText('Offline. Changes stay on this device.'),
-  ).toBeVisible()
+    await context.setOffline(true)
+    await page.goto('/nutrition')
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Nutrition' }),
+    ).toBeVisible()
+    await expect(
+      page.getByText('Offline. Changes stay on this device.'),
+    ).toBeVisible()
 
-  await page.goto('/training')
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Training' }),
-  ).toBeVisible()
-  await page.getByRole('button', { name: 'Exercise Library' }).click()
-  await expect(
-    page.getByText('Barbell Bench Press', { exact: true }),
-  ).toBeVisible()
+    await page.goto('/training')
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Training' }),
+    ).toBeVisible()
+    await page.getByRole('button', { name: 'Exercise Library' }).click()
+    await expect(
+      page.getByText('Barbell Bench Press', { exact: true }),
+    ).toBeVisible()
 
-  await page.goto('/history')
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'History' }),
-  ).toBeVisible()
-})
+    await page.goto('/history')
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'History' }),
+    ).toBeVisible()
+  },
+)
 
-test('persists IndexedDB records created while offline', async ({
-  browserName,
-  context,
-  page,
-}) => {
-  test.skip(
-    browserName !== 'chromium',
-    'Offline service worker coverage runs in Chromium.',
-  )
+test(
+  'persists IndexedDB records created while offline',
+  {
+    tag: '@smoke',
+  },
+  async ({ browserName, context, page }) => {
+    test.skip(
+      browserName !== 'chromium',
+      'Offline service worker coverage runs in Chromium.',
+    )
 
-  await installControlledServiceWorker(page, context)
-  await context.setOffline(true)
+    await installControlledServiceWorker(page, context)
+    await context.setOffline(true)
 
-  await page.goto('/training')
-  await waitForExerciseLibrary(page)
-  await page.getByLabel('Create exercise').click()
-  await page.getByRole('textbox', { name: 'Name' }).fill('Offline DB press')
-  await fillRestInputs(page, '90')
-  await page.getByRole('button', { name: 'Save exercise' }).click()
-  await expect(page.getByText('Offline DB press')).toBeVisible({
-    timeout: 15_000,
-  })
+    await page.goto('/training')
+    await waitForExerciseLibrary(page)
+    await page.getByLabel('Create exercise').click()
+    await page.getByRole('textbox', { name: 'Name' }).fill('Offline DB press')
+    await fillRestInputs(page, '90')
+    await page.getByRole('button', { name: 'Save exercise' }).click()
+    await expect(page.getByText('Offline DB press')).toBeVisible({
+      timeout: 15_000,
+    })
 
-  await page.reload()
-  await waitForExerciseLibrary(page)
-  await expect(page.getByText('Offline DB press')).toBeVisible()
-})
+    await page.reload()
+    await waitForExerciseLibrary(page)
+    await expect(page.getByText('Offline DB press')).toBeVisible()
+  },
+)
 
 test('shows and applies the update availability action', async ({ page }) => {
   await page.goto('/?pwaTest=1')
@@ -171,31 +175,33 @@ test('shows and applies the update availability action', async ({ page }) => {
   await expect(page.getByText(/close the app and open it again/)).toBeVisible()
 })
 
-test('recovers an active workout after an offline reload', async ({
-  browserName,
-  context,
-  page,
-}) => {
-  test.skip(
-    browserName !== 'chromium',
-    'Offline service worker coverage runs in Chromium.',
-  )
+test(
+  'recovers an active workout after an offline reload',
+  {
+    tag: '@smoke',
+  },
+  async ({ browserName, context, page }) => {
+    test.skip(
+      browserName !== 'chromium',
+      'Offline service worker coverage runs in Chromium.',
+    )
 
-  await installControlledServiceWorker(page, context)
-  await createActiveWorkout(page)
-  await context.setOffline(true)
+    await installControlledServiceWorker(page, context)
+    await createActiveWorkout(page)
+    await context.setOffline(true)
 
-  await page.reload()
-  await expect(
-    page.getByRole('textbox', { name: 'Workout notes' }),
-  ).toHaveCount(0)
-  await expect(page.getByRole('textbox', { name: 'Set 1 Weight' })).toHaveValue(
-    '105',
-  )
-  await expect(page.getByRole('textbox', { name: 'Set 1 Reps' })).toHaveValue(
-    '8',
-  )
-})
+    await page.reload()
+    await expect(
+      page.getByRole('textbox', { name: 'Workout notes' }),
+    ).toHaveCount(0)
+    await expect(
+      page.getByRole('textbox', { name: 'Set 1 Weight' }),
+    ).toHaveValue('105')
+    await expect(page.getByRole('textbox', { name: 'Set 1 Reps' })).toHaveValue(
+      '8',
+    )
+  },
+)
 
 async function installControlledServiceWorker(
   page: Page,

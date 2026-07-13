@@ -76,7 +76,8 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    fileParallelism: false,
+    fileParallelism: true,
+    maxWorkers: 4,
     globals: true,
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['e2e/**', 'node_modules/**', 'dist/**'],

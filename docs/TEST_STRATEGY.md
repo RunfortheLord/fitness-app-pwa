@@ -6,6 +6,34 @@
 - Protect IndexedDB persistence, snapshot behavior, workout completion, detected-change review, and backup/restore integrity.
 - Keep first-release scope clear by testing that excluded features are absent.
 
+## Command Workflow
+
+Normal development uses the smallest check that covers the change:
+
+- `npm run dev` starts the Vite development server.
+- `npm run format` formats tracked project files.
+- `npm run test:watch` reruns affected Vitest tests while editing.
+- `npm run test:unit` runs domain, repository, service, server, and database
+  tests without mounting page components.
+- `npm run test:components` runs component, page, feature, hook, and app tests.
+- `npm run test -- path/to/file.test.ts` runs a focused test file once.
+- `npm run build` and `npm run preview` verify production output when needed.
+
+Pre-deployment smoke verification uses `npm run check:smoke`. It runs format,
+lint, type, unit, and production-build checks once, then exercises tagged core
+flows in the iPhone-sized Chromium project against that existing build.
+
+Comprehensive release validation uses `npm run check`. It retains the complete
+unit and three-project Playwright suites. `npm run test:coverage` remains a
+separate, intentionally slower coverage report and is not required after every
+small edit. Coverage runs test files serially because instrumentation combined
+with concurrent jsdom and IndexedDB work makes UI timing assertions unreliable;
+normal unit and component test commands still use up to four workers.
+
+Playwright owns a project-specific preview port and never reuses an arbitrary
+existing server. This prevents a stale or unrelated local application from
+being mistaken for Fitness Log during E2E verification.
+
 ## Unit Tests
 
 - Date utilities for local `YYYY-MM-DD` behavior.

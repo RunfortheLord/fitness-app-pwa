@@ -6,18 +6,18 @@ export default defineConfig({
   // Retry transient failures (e.g. occasional WebKit timing flakes under full
   // parallel load). Genuine failures still fail every attempt; the trace is
   // captured on the first retry for diagnosis.
-  retries: 2,
+  retries: process.env.CI ? 2 : 0,
   fullyParallel: true,
   workers: 4,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL: 'http://127.0.0.1:4187',
     trace: 'on-first-retry',
   },
   webServer: {
-    command: 'npm run build && npm run preview -- --host 127.0.0.1 --port 4173',
-    url: 'http://127.0.0.1:4173',
-    reuseExistingServer: !process.env.CI,
+    command: 'npm run preview -- --host 127.0.0.1 --port 4187',
+    url: 'http://127.0.0.1:4187',
+    reuseExistingServer: false,
   },
   projects: [
     {

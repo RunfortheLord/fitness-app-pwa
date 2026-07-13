@@ -127,10 +127,10 @@ describe('TrainingPage', () => {
     await user.click(screen.getByRole('button', { name: 'Save exercise' }))
     expect(
       await screen.findByText(/Reps only - 150s rest/, undefined, {
-        timeout: 5_000,
+        timeout: 15_000,
       }),
     ).toBeInTheDocument()
-  })
+  }, 30_000)
 
   it('hides and restores custom exercises without offering hide for built-ins', async () => {
     const user = userEvent.setup()

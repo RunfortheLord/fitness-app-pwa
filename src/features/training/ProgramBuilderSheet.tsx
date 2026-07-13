@@ -1,5 +1,5 @@
 import { Check, Copy, Edit2, Plus, Settings2, Trash2, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import {
   SortableArea,
@@ -98,10 +98,17 @@ export function ProgramBuilderSheet({
     useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [currentWeek, setCurrentWeek] = useState('1')
+  const isMountedRef = useRef(true)
 
   const mode: BuilderMode = target.mode
   const rirEnabled = useRirTracking()
   const trackRirEverySet = structure?.record.trackRirEverySet ?? false
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   useEffect(() => {
     let isCurrent = true
@@ -179,6 +186,9 @@ export function ProgramBuilderSheet({
       void programRepository
         .getTemplateStructure(target.templateId)
         .then((loaded) => {
+          if (!isMountedRef.current) {
+            return
+          }
           const record = loaded.template
           setStructure({
             record,
@@ -193,10 +203,22 @@ export function ProgramBuilderSheet({
           setNameForm(programFormFromRecord(record))
           onChanged()
         })
+        .catch((caught: unknown) => {
+          if (isMountedRef.current) {
+            setError(
+              caught instanceof Error
+                ? caught.message
+                : 'Program could not refresh.',
+            )
+          }
+        })
     } else {
       void programRepository
         .getActiveCycleStructure(target.cycleId)
         .then((loaded) => {
+          if (!isMountedRef.current) {
+            return
+          }
           const record = loaded.cycle
           setStructure({
             record,
@@ -211,6 +233,15 @@ export function ProgramBuilderSheet({
           setNameForm(programFormFromRecord(record))
           setCurrentWeek(String(record.currentWeekNumber ?? 1))
           onChanged()
+        })
+        .catch((caught: unknown) => {
+          if (isMountedRef.current) {
+            setError(
+              caught instanceof Error
+                ? caught.message
+                : 'Program could not refresh.',
+            )
+          }
         })
     }
   }
