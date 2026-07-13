@@ -55,10 +55,12 @@ export function FoodLibraryRow({
           {display.brand ? (
             <span className="brand-badge">{display.brand}</span>
           ) : null}
-          <small>{display.serving}</small>
-        </span>
-        <span className="food-result-calories">
-          {roundMacro(display.calories)} kcal
+          <span className="food-result-meta">
+            <small>{display.serving}</small>
+            <span className="food-result-calories">
+              {roundMacro(display.calories)} kcal
+            </span>
+          </span>
         </span>
       </button>
       <div className="row-actions">

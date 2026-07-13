@@ -990,11 +990,21 @@ describe('NutritionPage', () => {
     await screen.findByText('Connected')
 
     await user.type(await openFoodSearch(user), 'chicken')
-    await user.click(
-      await screen.findByRole('button', {
-        name: 'Select Chicken breast cooked',
-      }),
+    const providerResult = await screen.findByRole('button', {
+      name: 'Select Chicken breast cooked',
+    })
+    const resultMeta =
+      within(providerResult).getByText('198 kcal').parentElement
+    if (!resultMeta) {
+      throw new Error('Expected provider result metadata row')
+    }
+    expect(resultMeta).toHaveClass('food-result-meta')
+    expect(within(resultMeta).getByText('4 oz cooked')).toBeInTheDocument()
+    expect(resultMeta).not.toContainElement(
+      within(providerResult).getByText('USDA Test Kitchen'),
     )
+
+    await user.click(providerResult)
 
     expect(
       screen.getByRole('dialog', { name: 'Food details' }),
