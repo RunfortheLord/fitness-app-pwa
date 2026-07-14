@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -37,6 +37,44 @@ beforeEach(() => {
 })
 
 describe('App', () => {
+  it('releases input focus when the app moves to the background', () => {
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <App />,
+          children: [
+            {
+              index: true,
+              element: <input aria-label="Workout entry" />,
+            },
+          ],
+        },
+      ],
+      { initialEntries: ['/'] },
+    )
+
+    render(<RouterProvider router={router} />)
+    const input = screen.getByRole('textbox', { name: 'Workout entry' })
+    input.focus()
+    expect(input).toHaveFocus()
+
+    const originalVisibilityState = document.visibilityState
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'hidden',
+    })
+    try {
+      fireEvent(document, new Event('visibilitychange'))
+      expect(input).not.toHaveFocus()
+    } finally {
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        value: originalVisibilityState,
+      })
+    }
+  })
+
   it('renders the mobile shell and home route', async () => {
     const router = createMemoryRouter(
       [

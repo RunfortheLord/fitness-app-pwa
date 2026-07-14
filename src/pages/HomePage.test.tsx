@@ -74,6 +74,29 @@ function renderHomeWithNutritionRoute() {
 }
 
 describe('HomePage', () => {
+  it('refreshes the live workout banner when the app resumes', async () => {
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    renderHome()
+    await waitForDashboardReady()
+
+    await createWorkoutRepository(db).startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    fireEvent(window, new Event('pageshow'))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Workout in progress' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Resume workout' }),
+    ).toBeInTheDocument()
+  })
+
   it('renders empty dashboard cards from local services', async () => {
     renderHome()
 

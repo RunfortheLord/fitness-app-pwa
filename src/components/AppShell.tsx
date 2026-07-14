@@ -86,8 +86,12 @@ function AppShellContent({ children }: AppShellProps) {
   const [automaticBackupBlocked, setAutomaticBackupBlocked] = useState(false)
   const mainRef = useRef<HTMLElement>(null)
   const previousPathRef = useRef(location.pathname)
-  const { bodyweightSheet, closeBodyweightSheet, openBodyweightSheet } =
-    useDashboardContext()
+  const {
+    bodyweightSheet,
+    closeBodyweightSheet,
+    openBodyweightSheet,
+    refreshDashboard,
+  } = useDashboardContext()
   const { signIn, status: authStatus } = useAuth()
   const navigate = useNavigate()
 
@@ -133,25 +137,52 @@ function AppShellContent({ children }: AppShellProps) {
 
   useEffect(() => {
     let isCurrent = true
-    void Promise.all([
-      workoutRepository.getActiveWorkout(),
-      runRepository.getActiveRun(),
-    ]).then(([workout, run]) => {
-      if (!isCurrent) {
+
+    function refreshActiveActivity() {
+      void Promise.all([
+        workoutRepository.getActiveWorkout(),
+        runRepository.getActiveRun(),
+      ]).then(([workout, run]) => {
+        if (!isCurrent) {
+          return
+        }
+        setActiveActivity(
+          workout
+            ? { type: 'workout', id: workout.id }
+            : run
+              ? { type: 'run', id: run.id }
+              : null,
+        )
+      })
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'hidden') {
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur()
+        }
         return
       }
-      setActiveActivity(
-        workout
-          ? { type: 'workout', id: workout.id }
-          : run
-            ? { type: 'run', id: run.id }
-            : null,
-      )
-    })
+
+      refreshDashboard()
+      refreshActiveActivity()
+    }
+
+    function handlePageShow() {
+      refreshDashboard()
+      refreshActiveActivity()
+    }
+
+    refreshActiveActivity()
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('pageshow', handlePageShow)
+
     return () => {
       isCurrent = false
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('pageshow', handlePageShow)
     }
-  }, [location.pathname])
+  }, [location.pathname, refreshDashboard])
 
   useEffect(() => {
     function updateOnlineStatus() {

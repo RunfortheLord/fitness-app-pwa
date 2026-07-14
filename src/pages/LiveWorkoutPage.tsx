@@ -732,7 +732,23 @@ export function LiveWorkoutPage() {
                 }),
             )
           }}
-          onDeleteSet={(setId) => run(workoutRepository.deleteSet(setId))}
+          onDeleteSet={(setId) => {
+            const deletingLastSet = activeSets.at(-1)?.id === setId
+            const timerIsActive =
+              state.workout.activeRestTimer?.status === 'running' ||
+              state.workout.activeRestTimer?.status === 'paused'
+            run(
+              workoutRepository.deleteSet(setId).then(async () => {
+                if (!deletingLastSet || !timerIsActive) {
+                  return
+                }
+                const timer = await workoutRepository.dismissRestTimer(
+                  state.workout.id,
+                )
+                await syncNativeRestTimer(timer)
+              }),
+            )
+          }}
           onMoveExercise={(offset) => {
             const ids = state.exercises.map((entry) => entry.id)
             const target = activeIndex + offset

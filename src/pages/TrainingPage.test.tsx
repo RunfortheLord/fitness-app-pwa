@@ -717,6 +717,35 @@ describe('TrainingPage', () => {
     })
   })
 
+  it('dismisses the penultimate-set timer when the last set is deleted', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await workoutRepository.updateWorkoutSet(started.sets[0].id, {
+      metricValues: { weight: 185, reps: 8 },
+      completed: true,
+    })
+    await workoutRepository.setRestTimer(started.workout.id, 90)
+
+    renderTraining(['/workout'])
+    expect(await screen.findByLabelText('Rest timer')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Delete set 2' }))
+
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Rest timer')).not.toBeInTheDocument(),
+    )
+    expect(
+      (await workoutRepository.getActiveWorkout())?.activeRestTimer?.status,
+    ).toBe('dismissed')
+  })
+
   it('checks off a set and shows timer controls before persistence finishes', async () => {
     const user = userEvent.setup()
     const exerciseRepository = createExerciseRepository(db)
