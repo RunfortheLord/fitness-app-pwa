@@ -1576,14 +1576,33 @@ textarea:focus-visible {
 }
 
 .exercise-navigator h2 {
-  margin-bottom: var(--space-2);
+  margin: 0;
   font-size: 16px;
+}
+
+.exercise-navigator-compact {
+  gap: var(--space-2);
+  padding: 10px;
+  overflow: hidden;
+}
+
+.exercise-navigator-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.exercise-navigator-heading small {
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .exercise-tab-list {
   display: flex;
   flex-wrap: nowrap;
-  gap: var(--space-2);
+  gap: 6px;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scroll-padding-inline: var(--space-1);
@@ -1592,25 +1611,38 @@ textarea:focus-visible {
   -webkit-overflow-scrolling: touch;
 }
 
+.exercise-tab-list > .sortable-item {
+  flex: 0 0 clamp(96px, 29vw, 132px);
+}
+
 .exercise-tab-list::-webkit-scrollbar {
   display: none;
 }
 
 .exercise-tab-list button {
-  flex: 0 0 min(68vw, 220px);
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
+  width: 100%;
+  grid-template-columns: 22px minmax(0, 1fr) 14px;
   align-items: center;
-  gap: var(--space-2);
+  gap: 5px;
   min-height: 44px;
   max-width: 100%;
-  padding: var(--space-2);
+  padding: 5px 6px;
   border: 1px solid var(--color-border-soft);
   border-radius: var(--radius-sm);
   background: var(--color-surface-strong);
   color: var(--color-text);
+  cursor: grab;
   text-align: left;
   scroll-snap-align: start;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+}
+
+.exercise-tab-list button:active {
+  cursor: grabbing;
 }
 
 .exercise-tab-list button[aria-current='true'] {
@@ -1621,8 +1653,8 @@ textarea:focus-visible {
 
 .exercise-tab-list span {
   display: inline-grid;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   place-items: center;
   border-radius: 999px;
   background: var(--color-surface);
@@ -1634,26 +1666,38 @@ textarea:focus-visible {
   min-width: 0;
   overflow: hidden;
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.exercise-sort-grip {
+  color: var(--color-muted);
+}
+
+.exercise-tab-list .sortable-item-dragging .exercise-sort-card {
+  border-color: var(--color-accent);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 52%);
+  cursor: grabbing;
+}
+
 .exercise-workspace {
   display: grid;
   gap: var(--space-3);
+  transform: translate3d(var(--exercise-swipe-x, 0), 0, 0);
   touch-action: pan-y;
+  will-change: transform;
+}
+
+.exercise-workspace.is-swiping {
+  box-shadow: 0 18px 38px rgb(0 0 0 / 46%);
+  cursor: grabbing;
+  user-select: none;
 }
 
 .exercise-workspace.skipped {
   opacity: 0.72;
-}
-
-.exercise-stepper {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
 }
 
 .set-list {
@@ -2074,12 +2118,16 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
+  min-width: 0;
   gap: var(--space-3);
 }
 
 .added-items-row {
   display: flex;
+  flex: 1 1 auto;
   flex-wrap: nowrap;
+  min-width: 0;
   gap: var(--space-2);
   overflow-x: auto;
   padding-bottom: 2px;
@@ -2264,6 +2312,7 @@ textarea:focus-visible {
 
 .amount-stepper input {
   flex: 1 1 auto;
+  min-width: 0;
   text-align: center;
 }
 
@@ -2288,7 +2337,7 @@ textarea:focus-visible {
   align-items: center;
   justify-content: center;
   min-width: 44px;
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: 999px;
@@ -3070,8 +3119,124 @@ input::placeholder {
 
 .food-serving-controls {
   display: grid;
-  grid-template-columns: minmax(96px, 0.8fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
+}
+
+.portion-editor {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-surface-strong) 72%, transparent);
+}
+
+.portion-editor-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.portion-editor-heading > div:first-child {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.portion-editor-heading h3,
+.portion-editor-heading p,
+.portion-memory-note {
+  margin: 0;
+}
+
+.portion-editor-heading h3 {
+  font-size: 17px;
+}
+
+.portion-source-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-accent);
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.portion-reset-button {
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  font-size: 12px;
+}
+
+.portion-quick-chips {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.portion-quick-chips .quantity-chip {
+  min-width: 0;
+  padding: 0 var(--space-1);
+}
+
+.portion-memory-note {
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.food-log-actions {
+  position: sticky;
+  bottom: calc(-1 * (env(safe-area-inset-bottom) + var(--space-5)));
+  z-index: 3;
+  display: grid;
+  padding: var(--space-3) 0 calc(env(safe-area-inset-bottom) + var(--space-3));
+  border-top: 1px solid var(--color-border-soft);
+  margin-top: var(--space-2);
+  background: var(--color-sheet);
+}
+
+.food-form-section {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-lg);
+  margin: 0 0 var(--space-4);
+  background: var(--color-surface-strong);
+}
+
+.food-form-section legend {
+  padding: 0 var(--space-1);
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.food-form-section > .field-help,
+.serving-size-summary {
+  margin: 0;
+}
+
+.serving-size-summary {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+@media (min-width: 360px) {
+  .food-serving-controls {
+    grid-template-columns: minmax(190px, 1.4fr) minmax(96px, 0.8fr);
+  }
 }
 
 .food-log-preview {
@@ -4056,6 +4221,35 @@ body.food-search-open .bottom-nav {
   line-height: 1.1;
 }
 
+.bodyweight-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.bodyweight-chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.bodyweight-chart-legend span::before {
+  width: 18px;
+  border-top: 2px solid var(--color-accent);
+  content: '';
+}
+
+.bodyweight-chart-legend .bodyweight-measurement-legend::before {
+  border-top-style: dashed;
+}
+
+.bodyweight-chart-legend .bodyweight-trend-legend::before {
+  border-top-color: #f2b84b;
+  border-top-width: 3px;
+}
+
 .bodyweight-chart {
   position: relative;
   width: 100%;
@@ -4114,6 +4308,17 @@ body.food-search-open .bottom-nav {
   stroke-linejoin: round;
   stroke-width: 1.8;
   vector-effect: non-scaling-stroke;
+}
+
+.bodyweight-chart path.bodyweight-measurement-line {
+  stroke-dasharray: 3 3;
+  stroke-width: 1.2;
+  opacity: 0.72;
+}
+
+.bodyweight-chart path.bodyweight-trend-line {
+  stroke: #f2b84b;
+  stroke-width: 2.4;
 }
 
 .bodyweight-chart circle {
@@ -4584,6 +4789,10 @@ body.food-search-open .bottom-nav {
     justify-self: end;
     margin-top: 0;
   }
+
+  .food-serving-controls {
+    grid-template-columns: minmax(150px, 1fr) minmax(0, 1fr);
+  }
 }
 
 @media (min-width: 760px) {
@@ -4615,6 +4824,15 @@ body.food-search-open .bottom-nav {
   .bottom-sheet--page,
   .subpage-enter {
     animation: subpage-enter 0.24s cubic-bezier(0.22, 0.8, 0.32, 1);
+  }
+
+  .exercise-workspace-enter-next {
+    animation: exercise-card-enter-next 180ms cubic-bezier(0.2, 0.82, 0.22, 1);
+  }
+
+  .exercise-workspace-enter-previous {
+    animation: exercise-card-enter-previous 180ms
+      cubic-bezier(0.2, 0.82, 0.22, 1);
   }
 
   .sheet-backdrop.is-closing {
@@ -4759,5 +4977,29 @@ body.food-search-open .bottom-nav {
   to {
     opacity: 0;
     transform: translateX(18%);
+  }
+}
+
+@keyframes exercise-card-enter-next {
+  from {
+    opacity: 0.68;
+    transform: translate3d(32px, 0, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes exercise-card-enter-previous {
+  from {
+    opacity: 0.68;
+    transform: translate3d(-32px, 0, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
   }
 }

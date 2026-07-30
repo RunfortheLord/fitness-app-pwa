@@ -10,6 +10,16 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-07-19-calorie-insights-and-workout-polish',
+    date: '2026-07-19',
+    title: 'Calorie insights and smoother logging',
+    items: [
+      'Switch the Home calorie graph between one week and one month, then open View more for three-month history, logging consistency, and average calories versus target.',
+      "Restaurant foods keep their listed item or count serving; the Chick-fil-A Chicken Sandwich and six-piece McDonald's Chicken McNuggets now use reviewed official U.S. menu nutrition.",
+      'The bodyweight graph now includes a trend line, skipped workout exercises no longer block finishing, and exact recipe searches ignore word order.',
+    ],
+  },
+  {
     id: '2026-07-11-dashboard-food-and-data-export',
     date: '2026-07-11',
     title: 'Faster dashboards and cleaner logging',

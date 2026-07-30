@@ -69,9 +69,14 @@
 
 - Home must include selected-date control, previous-day button, next-day button, and return-to-today action.
 - Home must show calories consumed, calorie target, and calories remaining.
-- Home must replace the prior Nutrition card with a similarly sized seven-day
-  calorie graph: separated bars show calories logged per day and a contrasting
-  line shows the target applicable to each day.
+- Home must replace the prior Nutrition card with a similarly sized calorie
+  graph. The user can switch between one-week and one-month views; separated
+  bars show calories logged per day and a contrasting line shows the target
+  applicable to each day.
+- The Home calorie graph must provide a View more action to a dedicated calorie
+  details subpage. The subpage offers one-week, one-month, and three-month
+  ranges, food-logging consistency, and average logged calories above or below
+  the saved daily target for eligible logged days.
 - Home must include quick bodyweight entry, the latest current bodyweight,
   selected-date bodyweight status, and a compact bodyweight trend summary when
   enough data exists.
@@ -100,6 +105,12 @@
 - History Graphs must include calorie views for one week, one month, and three
   months. Each calendar day retains its logged calorie total and the target
   applicable on that day.
+- Calorie consistency means the share of calendar days in the chosen range with
+  at least one positive-calorie food log. It is a logging-completeness measure,
+  not an adherence or coaching score. Average surplus or deficit is the mean
+  logged-calorie difference from the applicable positive target across logged
+  days that have a target. An exact zero difference is shown as on target; when
+  no logged day has a positive target, the comparison averages are unavailable.
 - English external-food search must use USDA FoodData Central as the primary
   provider. Spanish external-food search must use Open Food Facts multilingual
   data and prefer its Spanish product names and categories.
@@ -195,6 +206,11 @@
   sets, skip exercises, replace exercises, add exercises, reorder exercises
   where practical, edit session exercise notes, change session rest time, and
   discard the active workout with confirmation.
+- Exercise-to-exercise navigation must use horizontal swiping instead of
+  Previous and Next buttons. Skipping an exercise or completing its final
+  incomplete set advances to the adjacent next exercise when one exists.
+  Manually returning to an already-completed exercise must not re-advance it.
+- Scrollable rest-duration wheels must offer seconds in five-second increments.
 - Finishing must wait for pending active-workout edits to persist before the
   completed history snapshot is created.
 - The rest timer must be timestamp-based so remaining time is correct after backgrounding or resuming.

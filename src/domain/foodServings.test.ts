@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   amountStepForUnit,
+  findServingOption,
   formatAmountValue,
   formatCalories,
   formatFoodServingLabel,
@@ -9,6 +10,7 @@ import {
   formatMacroGram,
   formatQuantityChipLabel,
   nextSteppedAmount,
+  portionChipsForUnit,
   quantityChipsForUnit,
   servingOptionsForFood,
 } from './foodServings'
@@ -52,12 +54,12 @@ describe('food serving helpers', () => {
       key: 'oz',
       amount: 4,
       label: '4 oz cooked',
+      unitLabel: 'oz cooked',
       group: 'primary',
     })
-    expect(options.find((option) => option.key === '100g')).toMatchObject({
-      group: 'more',
-    })
+    expect(options.find((option) => option.key === '100g')).toBeUndefined()
     expect(options[0].toServingMultiplier(4)).toBeCloseTo(1.13398, 4)
+    expect(options[0].fromServingMultiplier(1.13398)).toBeCloseTo(4, 4)
   })
 
   it('labels raw chicken breast explicitly as raw', () => {
@@ -110,6 +112,194 @@ describe('food serving helpers', () => {
     expect(options[0].key).not.toBe('oz')
   })
 
+  it('defaults restaurant foods generically to the provider-listed full serving', () => {
+    const steak = {
+      ...providerFood('Oak Street Grill sirloin steak', 255, [
+        {
+          amount: 1,
+          unit: 'steak',
+          description: '1 steak',
+          gramWeight: 255,
+        },
+      ]),
+      brandName: 'Oak Street Grill',
+      foodCategory: 'Restaurant Foods',
+      macrosPerServing: {
+        calories: 540,
+        proteinGrams: 52,
+        carbohydrateGrams: 4,
+        fatGrams: 34,
+      },
+    }
+    const platter = {
+      ...providerFood('River Road Smokehouse beef brisket', 310, [
+        {
+          amount: 1,
+          unit: 'platter',
+          description: '1 platter',
+          gramWeight: 310,
+        },
+      ]),
+      brandName: 'River Road Smokehouse',
+      foodCategory: 'Fast Foods',
+      macrosPerServing: {
+        calories: 680,
+        proteinGrams: 48,
+        carbohydrateGrams: 38,
+        fatGrams: 36,
+      },
+    }
+
+    const steakServing = servingOptionsForFood(steak)[0]
+    const platterServing = servingOptionsForFood(platter)[0]
+    expect(steakServing).toMatchObject({
+      key: 'steak',
+      amount: 1,
+      label: '1 steak',
+    })
+    expect(platterServing).toMatchObject({
+      key: 'platter',
+      amount: 1,
+      label: '1 platter',
+    })
+    expect(
+      steak.macrosPerServing.calories *
+        (steakServing.toServingMultiplier(steakServing.amount) ?? 0),
+    ).toBe(540)
+    expect(
+      platter.macrosPerServing.calories *
+        (platterServing.toServingMultiplier(platterServing.amount) ?? 0),
+    ).toBe(680)
+  })
+
+  it('recognizes localized restaurant categories from the Spanish provider', () => {
+    const platter = {
+      ...providerFood('Casa Norte chicken breast', 240, [
+        {
+          amount: 1,
+          unit: 'platter',
+          description: '1 platter',
+          gramWeight: 240,
+        },
+      ]),
+      brandName: 'Casa Norte',
+      foodCategory: 'Comida rápida',
+    }
+
+    expect(servingOptionsForFood(platter)[0]).toMatchObject({
+      key: 'platter',
+      amount: 1,
+      label: '1 platter',
+    })
+  })
+
+  it('applies listed restaurant calories once for a sandwich or item count', () => {
+    const grilledSandwich = {
+      ...providerFood('Chick-fil-A grilled chicken sandwich', 220, [
+        {
+          amount: 1,
+          unit: 'sandwich',
+          description: '1 sandwich',
+          gramWeight: 220,
+        },
+      ]),
+      brandName: 'Chick-fil-A',
+      foodCategory: 'Restaurant Foods',
+      macrosPerServing: {
+        calories: 390,
+        proteinGrams: 28,
+        carbohydrateGrams: 45,
+        fatGrams: 11,
+      },
+    }
+    const sixNuggets = {
+      ...providerFood("McDonald's Chicken McNuggets", 95, [
+        {
+          amount: 6,
+          unit: 'pieces',
+          description: '6 pieces',
+          gramWeight: 95,
+        },
+      ]),
+      brandName: "McDonald's",
+      foodCategory: 'Fast Foods',
+      macrosPerServing: {
+        calories: 250,
+        proteinGrams: 14,
+        carbohydrateGrams: 15,
+        fatGrams: 15,
+      },
+    }
+
+    const sandwichServing = servingOptionsForFood(grilledSandwich)[0]
+    const nuggetServing = servingOptionsForFood(sixNuggets)[0]
+    expect(sandwichServing).toMatchObject({
+      amount: 1,
+      label: '1 sandwich',
+    })
+    expect(nuggetServing).toMatchObject({ amount: 6, label: '6 pieces' })
+    expect(
+      grilledSandwich.macrosPerServing.calories *
+        (sandwichServing.toServingMultiplier(sandwichServing.amount) ?? 0),
+    ).toBe(390)
+    expect(
+      sixNuggets.macrosPerServing.calories *
+        (nuggetServing.toServingMultiplier(nuggetServing.amount) ?? 0),
+    ).toBe(250)
+  })
+
+  it('keeps restaurant-listed servings after provider foods are saved locally', () => {
+    const steak: Food = {
+      ...baseFood,
+      id: 'saved-restaurant-steak',
+      name: 'Oak Street Grill sirloin steak',
+      brandName: 'Oak Street Grill',
+      foodCategory: 'Restaurant Foods',
+      servingQuantity: 9,
+      servingUnit: 'oz',
+      servingDescription: '1 steak',
+      gramsPerServing: 9 * 28.349523125,
+      ouncesPerServing: 9,
+      providerDataType: 'Survey (FNDDS)',
+      caloriesPerServing: 540,
+    }
+    const platter: Food = {
+      ...baseFood,
+      id: 'saved-fast-food-platter',
+      name: 'River Road Smokehouse beef brisket',
+      brandName: 'River Road Smokehouse',
+      foodCategory: 'Fast Foods',
+      servingQuantity: 310,
+      servingUnit: 'g',
+      servingDescription: '1 platter',
+      gramsPerServing: 310,
+      ouncesPerServing: 310 / 28.349523125,
+      providerDataType: 'Survey (FNDDS)',
+      caloriesPerServing: 680,
+    }
+
+    const steakServing = servingOptionsForFood(steak)[0]
+    const platterServing = servingOptionsForFood(platter)[0]
+    expect(steakServing).toMatchObject({
+      key: 'steak',
+      amount: 1,
+      label: '1 steak',
+    })
+    expect(platterServing).toMatchObject({
+      key: 'platter',
+      amount: 1,
+      label: '1 platter',
+    })
+    expect(
+      steak.caloriesPerServing *
+        (steakServing.toServingMultiplier(steakServing.amount) ?? 0),
+    ).toBe(540)
+    expect(
+      platter.caloriesPerServing *
+        (platterServing.toServingMultiplier(platterServing.amount) ?? 0),
+    ).toBe(680)
+  })
+
   it('defaults cooked rice to one cup', () => {
     const options = servingOptionsForFood({
       ...baseFood,
@@ -123,18 +313,45 @@ describe('food serving helpers', () => {
     })
 
     expect(options[0]).toMatchObject({ key: 'cup', amount: 1, label: '1 cup' })
+    expect(options[0].grams).toBe(158)
+    expect(options[0].toServingMultiplier(1)).toBeCloseTo(1.58)
+  })
+
+  it('keeps an explicit persisted provider household serving ahead of name heuristics', () => {
+    const options = servingOptionsForFood({
+      ...baseFood,
+      id: 'persisted-rice',
+      name: 'Rice, white, cooked',
+      servingQuantity: 1,
+      servingUnit: 'cup',
+      servingDescription: '1 cup',
+      gramsPerServing: 195,
+      ouncesPerServing: 6.8784,
+      providerDataType: 'Foundation',
+      sourceType: 'provider',
+      rawCookedStatus: 'cooked',
+    })
+
+    expect(options[0]).toMatchObject({
+      key: 'serving',
+      amount: 1,
+      label: '1 cup',
+      grams: 195,
+      unitLabel: 'cup',
+    })
+    expect(options[0].toServingMultiplier(1)).toBe(1)
   })
 
   it('defaults common foods to household units while keeping grams available', () => {
     const cases = [
-      ['Egg, whole, cooked', 'egg', '1 egg'],
-      ['Banana, raw', 'medium-banana', '1 medium banana'],
-      ['Waffles, plain', 'waffle', '1 waffle'],
-      ['Bread, whole wheat', 'slice', '1 slice'],
-      ['Tortilla, flour', 'tortilla', '1 tortilla'],
+      ['Egg, whole, cooked', 'egg', '1 egg', 50],
+      ['Banana, raw', 'medium-banana', '1 medium banana', 118],
+      ['Waffles, plain', 'waffle', '1 waffle', 40],
+      ['Bread, whole wheat', 'slice', '1 slice', 28],
+      ['Tortilla, flour', 'tortilla', '1 tortilla', 45],
     ] as const
 
-    for (const [name, key, label] of cases) {
+    for (const [name, key, label, grams] of cases) {
       const options = servingOptionsForFood({
         ...baseFood,
         id: key,
@@ -143,8 +360,9 @@ describe('food serving helpers', () => {
       })
 
       expect(options[0]).toMatchObject({ key, amount: 1, label })
-      expect(options.find((option) => option.key === 'g')).toBeDefined()
-      expect(options[0].toServingMultiplier(2)).toBeGreaterThan(0)
+      expect(options[0].grams).toBe(grams)
+      expect(options[0].toServingMultiplier(1)).toBeCloseTo(grams / 100)
+      expect(options.find((option) => option.controlUnit === 'g')).toBeDefined()
     }
   })
 
@@ -218,8 +436,10 @@ describe('food serving helpers', () => {
 
     const container = options.find((option) => option.key === 'container')!
     expect(container.label).toBe('1 container (170 g)')
+    expect(container.unitLabel).toBe('container')
     // 2 containers = 340 g; the food's serving is 245 g, so 340/245 servings.
     expect(container.toServingMultiplier(2)).toBeCloseTo(340 / 245, 5)
+    expect(container.fromServingMultiplier(340 / 245)).toBeCloseTo(2, 5)
   })
 
   it('caps portion variants to the most common few and drops same-weight duplicates', () => {
@@ -252,7 +472,7 @@ describe('food serving helpers', () => {
     const keys = servingOptionsForFood(food).map((option) => option.key)
     expect(keys.indexOf('bagel')).toBeLessThan(keys.indexOf('oz'))
     expect(keys.indexOf('oz')).toBeLessThan(keys.indexOf('g'))
-    expect(keys.indexOf('g')).toBeLessThan(keys.indexOf('100g'))
+    expect(keys).not.toContain('100g')
   })
 
   it('turns provider serving descriptions into real household units', () => {
@@ -296,7 +516,7 @@ describe('food serving helpers', () => {
     expect(options.find((option) => option.key === 'cup')).toBeDefined()
   })
 
-  it('keeps a gram option and base serving when household portions are primary', () => {
+  it('keeps one gram option and the base serving when household portions are primary', () => {
     const food = providerFood('Vegetable oil', 14, [
       { amount: 1, unit: 'cup', description: '', gramWeight: 224 },
     ])
@@ -305,7 +525,57 @@ describe('food serving helpers', () => {
     expect(keys).toContain('serving')
     expect(keys).toContain('cup')
     expect(keys).toContain('g')
-    expect(keys).toContain('100g')
+    expect(keys).not.toContain('100g')
+  })
+
+  it('does not expose grams without a reliable conversion', () => {
+    const options = servingOptionsForFood({
+      ...baseFood,
+      id: 'unreliable-cup',
+      name: 'Homemade soup',
+      servingQuantity: 1,
+      servingUnit: 'cup',
+      servingDescription: '1 cup',
+      gramsPerServing: undefined,
+      ouncesPerServing: undefined,
+      servingConversionReliable: false,
+      servingConversionSource: undefined,
+    })
+
+    expect(options.map((option) => option.key)).toEqual(['serving'])
+    expect(options[0]).toMatchObject({
+      amount: 1,
+      label: '1 cup',
+      unitLabel: 'cup',
+    })
+  })
+
+  it('resolves legacy mass-unit preferences to concise base controls', () => {
+    const gramOptions = servingOptionsForFood(baseFood)
+    expect(gramOptions.map((option) => option.key)).not.toContain('g')
+    expect(findServingOption(gramOptions, 'g')).toMatchObject({
+      key: 'serving',
+      controlUnit: 'g',
+    })
+    expect(findServingOption(gramOptions, '100g')).toMatchObject({
+      key: 'serving',
+      controlUnit: 'g',
+    })
+
+    const ounceOptions = servingOptionsForFood({
+      ...baseFood,
+      id: 'ounce-serving',
+      name: 'Measured food',
+      servingQuantity: 4,
+      servingUnit: 'oz',
+      servingDescription: '4 oz',
+      gramsPerServing: 4 * 28.3495,
+      ouncesPerServing: 4,
+    })
+    expect(findServingOption(ounceOptions, 'oz')).toMatchObject({
+      key: 'serving',
+      controlUnit: 'oz',
+    })
   })
 
   it('scales popcorn serving amounts from the selected unit base', () => {
@@ -339,7 +609,7 @@ describe('food serving helpers', () => {
 })
 
 describe('quick-amount helpers', () => {
-  it('offers cooking fractions for serving/portion units', () => {
+  it('offers cooking fractions for recipe serving/portion units', () => {
     expect(quantityChipsForUnit('serving')).toEqual([
       0.25,
       1 / 3,
@@ -352,10 +622,16 @@ describe('quick-amount helpers', () => {
     expect(quantityChipsForUnit('egg')).toContain(1)
   })
 
-  it('offers weight steps for mass units instead of fractions', () => {
+  it('offers weight steps for recipe mass units instead of fractions', () => {
     expect(quantityChipsForUnit('oz')).toEqual([1, 2, 3, 4, 6, 8])
     expect(quantityChipsForUnit('g')).toEqual([25, 50, 100, 150, 200])
     expect(quantityChipsForUnit('100g')).toEqual([25, 50, 100, 150, 200])
+  })
+
+  it('keeps the primary serving sheet to four practical quick portions', () => {
+    expect(portionChipsForUnit('portion')).toEqual([0.5, 1, 1.5, 2])
+    expect(portionChipsForUnit('oz')).toEqual([2, 4, 6, 8])
+    expect(portionChipsForUnit('g')).toEqual([50, 100, 150, 200])
   })
 
   it('labels common fractions with glyphs', () => {

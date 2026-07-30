@@ -1,9 +1,15 @@
 import { db, type TrainingLogDatabase } from '@db/database'
 import {
+  GRAMS_PER_OUNCE,
+  isRestaurantFoodCategory,
   queryRelevanceScore,
   MIN_QUERY_RELEVANCE,
   type NormalizedFoodResult,
 } from '@domain/foodProviderModels'
+import {
+  rebaseProviderServingMultiplier,
+  servingOptionsForFood,
+} from '@domain/foodServings'
 import type { LocalDateString } from '@domain/dates'
 import { createId } from '@domain/ids'
 import { mealTypeForDate } from '@domain/meals'
@@ -202,21 +208,43 @@ export function createFoodRepository(
 
       const now = new Date().toISOString()
       const existing = await database.foods.get(input.id)
+      const foodCategory = input.foodCategory ?? existing?.foodCategory ?? null
+      const listedRestaurantServing = isRestaurantFoodCategory(foodCategory)
+        ? servingOptionsForFood({ ...input, foodCategory })[0]
+        : null
+      const listedServingMultiplier = listedRestaurantServing
+        ? listedRestaurantServing.toServingMultiplier(
+            listedRestaurantServing.amount,
+          )
+        : null
+      const macroMultiplier =
+        listedServingMultiplier !== null &&
+        Number.isFinite(listedServingMultiplier) &&
+        listedServingMultiplier > 0
+          ? listedServingMultiplier
+          : 1
+      const listedServingGrams = listedRestaurantServing?.grams ?? null
       const food: Food = {
         id: input.id,
         name: input.name,
         brandName: input.brandName,
-        servingQuantity: input.serving.quantity,
-        servingUnit: input.serving.unit,
-        servingDescription: input.serving.description,
-        gramsPerServing: input.serving.gramsPerServing,
-        ouncesPerServing: input.serving.ouncesPerServing,
+        foodCategory,
+        servingQuantity:
+          listedRestaurantServing?.amount ?? input.serving.quantity,
+        servingUnit: listedRestaurantServing?.unitLabel ?? input.serving.unit,
+        servingDescription:
+          listedRestaurantServing?.label ?? input.serving.description,
+        gramsPerServing: listedServingGrams ?? input.serving.gramsPerServing,
+        ouncesPerServing:
+          listedServingGrams !== null
+            ? listedServingGrams / GRAMS_PER_OUNCE
+            : input.serving.ouncesPerServing,
         servingConversionReliable: input.serving.conversionReliable,
         servingConversionSource: input.serving.conversionSource,
-        caloriesPerServing: macros.calories,
-        proteinGramsPerServing: macros.proteinGrams,
-        carbohydrateGramsPerServing: macros.carbohydrateGrams,
-        fatGramsPerServing: macros.fatGrams,
+        caloriesPerServing: macros.calories * macroMultiplier,
+        proteinGramsPerServing: macros.proteinGrams * macroMultiplier,
+        carbohydrateGramsPerServing: macros.carbohydrateGrams * macroMultiplier,
+        fatGramsPerServing: macros.fatGrams * macroMultiplier,
         sourceType: 'provider',
         provider: input.source.provider,
         providerRecordId: input.source.providerRecordId,
@@ -283,7 +311,11 @@ export function createFoodRepository(
       return repository.logFood({
         foodId: food.id,
         localDate: input.localDate,
-        servingMultiplier: input.servingMultiplier,
+        servingMultiplier: rebaseProviderServingMultiplier(
+          input.food,
+          food,
+          input.servingMultiplier,
+        ),
         mealType: input.mealType,
         notes: input.notes,
       })

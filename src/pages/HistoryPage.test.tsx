@@ -42,6 +42,20 @@ describe('HistoryPage', () => {
     expect(await screen.findByText('No bodyweight data')).toBeInTheDocument()
   })
 
+  it('opens exercise graphs directly from the bodyweight graph category', async () => {
+    const user = userEvent.setup()
+    renderHistory('/history?view=bodyweight')
+
+    await user.click(await screen.findByRole('button', { name: 'Exercises' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Estimated 1 Rep Max' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Open exercise graphs' }),
+    ).not.toBeInTheDocument()
+  })
+
   it('shows bodyweight graph one-point and accessible selected details', async () => {
     const user = userEvent.setup()
     await db.bodyweightEntries.add({
@@ -72,6 +86,11 @@ describe('HistoryPage', () => {
     expect(
       screen.getAllByText(/Add another entry to show a trend/).length,
     ).toBeGreaterThan(0)
+    expect(
+      screen
+        .getByLabelText('Bodyweight graph')
+        .querySelector('.bodyweight-trend-line'),
+    ).toBeNull()
 
     await user.click(
       screen.getByRole('button', { name: '2026-06-19 188.4 lb' }),
@@ -170,6 +189,10 @@ describe('HistoryPage', () => {
     expect(screen.getByLabelText('Graph summary')).not.toHaveTextContent(
       'Range',
     )
+    const graph = screen.getByLabelText('Bodyweight graph')
+    expect(graph.querySelector('.bodyweight-measurement-line')).not.toBeNull()
+    expect(graph.querySelector('.bodyweight-trend-line')).not.toBeNull()
+    expect(graph.querySelectorAll('circle')).toHaveLength(36)
 
     await user.click(screen.getByRole('button', { name: '2026-05-28 215 lb' }))
     expect(screen.getAllByText('215 lb').length).toBeGreaterThan(0)

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import packageJson from '../../package.json'
 import {
   BACKUP_SCHEMA_VERSION,
   DATABASE_SCHEMA_VERSION,
@@ -39,12 +40,13 @@ import type {
   WorkoutHistorySet,
   WorkoutSet,
 } from '@shared-types/app'
+import { createFitnessDataExport } from '@services/dataExportService'
 
 export const BACKUP_FORMAT_VERSION = 1
-export const APPLICATION_VERSION = '0.0.0'
+export const APPLICATION_VERSION = packageJson.version
 export const MAX_BACKUP_FILE_BYTES = 20 * 1024 * 1024
 
-const tableNames = [
+export const BACKUP_TABLE_NAMES = [
   'userSettings',
   'nutritionTargets',
   'foods',
@@ -75,7 +77,7 @@ const tableNames = [
   'runClassifications',
 ] as const
 
-type DataTableName = (typeof tableNames)[number]
+type DataTableName = (typeof BACKUP_TABLE_NAMES)[number]
 
 export type BackupData = {
   userSettings: UserSettings[]
@@ -264,6 +266,7 @@ const foodSnapshotSchema = z.object({
   snapshotId: idSchema.optional(),
   foodName: z.string(),
   brandName: z.union([z.string(), z.null()]).optional().default(null),
+  foodCategory: z.union([z.string(), z.null()]).optional().default(null),
   sourceType: foodSourceTypeSchema.optional().default('local'),
   provider: z.union([foodProviderSchema, z.null()]).optional().default(null),
   providerRecordId: z.union([z.string(), z.null()]).optional().default(null),
@@ -958,16 +961,23 @@ export function createBackupService(database: TrainingLogDatabase = db) {
     async createCsvArchive(now = new Date()) {
       const exportedAt = now.toISOString()
       const data = await readBackupData(database, { includeRunSamples: true })
-      const files = createCsvFiles(data)
-      return {
-        blob: createTarArchive(files),
-        filename: createReadableFilename(
-          'fitness-data-export',
-          exportedAt,
-          'tar',
-        ),
-        files: files.map((file) => file.name),
+      const backup: JsonBackup = {
+        backupFormatVersion: BACKUP_FORMAT_VERSION,
+        databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+        applicationVersion: APPLICATION_VERSION,
+        exportedAt,
+        data,
       }
+      return createFitnessDataExport(backup, {
+        now,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        tableNames: BACKUP_TABLE_NAMES,
+        backupJsonSchema: createBackupJsonSchema(),
+        validateCanonicalBackup(candidate) {
+          const validation = validateBackup(candidate, 'generated export')
+          return validation.ok ? [] : validation.preview.errors
+        },
+      })
     },
   }
 }
@@ -1013,7 +1023,7 @@ async function readBackupData(
 ): Promise<BackupData> {
   return database.transaction(
     'r',
-    tableNames.map((name) => database[name]),
+    BACKUP_TABLE_NAMES.map((name) => database[name]),
     async () => ({
       userSettings: await sortedTable(database.userSettings),
       nutritionTargets: await sortedTable(database.nutritionTargets),
@@ -1068,7 +1078,6 @@ async function sortedTable<T extends { id: string }>(table: {
 }
 
 async function putBackupData(database: TrainingLogDatabase, data: BackupData) {
-  const sanitizedData = sanitizeProgramBackupData(data)
   await database.userSettings.bulkPut(data.userSettings)
   await database.nutritionTargets.bulkPut(data.nutritionTargets)
   await database.foods.bulkPut(data.foods)
@@ -1078,17 +1087,13 @@ async function putBackupData(database: TrainingLogDatabase, data: BackupData) {
   await database.barcodeProductCache.bulkPut(data.barcodeProductCache)
   await database.bodyweightEntries.bulkPut(data.bodyweightEntries)
   await database.exercises.bulkPut(data.exercises)
-  await database.programTemplates.bulkPut(sanitizedData.programTemplates)
-  await database.templateWorkoutDays.bulkPut(sanitizedData.templateWorkoutDays)
-  await database.templateWorkoutExercises.bulkPut(
-    sanitizedData.templateWorkoutExercises,
-  )
-  await database.activeProgramCycles.bulkPut(sanitizedData.activeProgramCycles)
-  await database.activeCycleWorkoutDays.bulkPut(
-    sanitizedData.activeCycleWorkoutDays,
-  )
+  await database.programTemplates.bulkPut(data.programTemplates)
+  await database.templateWorkoutDays.bulkPut(data.templateWorkoutDays)
+  await database.templateWorkoutExercises.bulkPut(data.templateWorkoutExercises)
+  await database.activeProgramCycles.bulkPut(data.activeProgramCycles)
+  await database.activeCycleWorkoutDays.bulkPut(data.activeCycleWorkoutDays)
   await database.activeCycleWorkoutExercises.bulkPut(
-    sanitizedData.activeCycleWorkoutExercises,
+    data.activeCycleWorkoutExercises,
   )
   await database.workouts.bulkPut(data.workouts)
   await database.workoutExercises.bulkPut(data.workoutExercises)
@@ -1105,56 +1110,6 @@ async function putBackupData(database: TrainingLogDatabase, data: BackupData) {
   await database.runClassifications.bulkPut(data.runClassifications)
 }
 
-function sanitizeProgramBackupData(data: BackupData): BackupData {
-  const activeCycles = data.activeProgramCycles.map((cycle) => ({
-    ...cycle,
-    notes: '',
-    status: cycle.status === 'archived' ? 'inactive' : cycle.status,
-  }))
-  const lastActiveByTemplate = new Map<string, string>()
-  for (const cycle of activeCycles) {
-    if (!cycle.sourceTemplateId) {
-      continue
-    }
-    const existing = lastActiveByTemplate.get(cycle.sourceTemplateId)
-    if (!existing || cycle.activatedAt > existing) {
-      lastActiveByTemplate.set(cycle.sourceTemplateId, cycle.activatedAt)
-    }
-  }
-
-  return {
-    ...data,
-    programTemplates: data.programTemplates.map((template) => ({
-      ...template,
-      notes: '',
-      status: 'active',
-      lastActiveAt:
-        template.lastActiveAt ?? lastActiveByTemplate.get(template.id) ?? null,
-    })),
-    templateWorkoutDays: data.templateWorkoutDays.map((day) => ({
-      ...day,
-      notes: '',
-    })),
-    templateWorkoutExercises: data.templateWorkoutExercises.map((exercise) => ({
-      ...exercise,
-      targetDurationSeconds: null,
-      notes: '',
-    })),
-    activeProgramCycles: activeCycles,
-    activeCycleWorkoutDays: data.activeCycleWorkoutDays.map((day) => ({
-      ...day,
-      notes: '',
-    })),
-    activeCycleWorkoutExercises: data.activeCycleWorkoutExercises.map(
-      (exercise) => ({
-        ...exercise,
-        targetDurationSeconds: null,
-        notes: '',
-      }),
-    ),
-  }
-}
-
 function writableTables(database: TrainingLogDatabase) {
   return [
     ...clearableDataTables(database),
@@ -1165,7 +1120,7 @@ function writableTables(database: TrainingLogDatabase) {
 
 function clearableDataTables(database: TrainingLogDatabase) {
   return [
-    ...tableNames.map((name) => database[name]),
+    ...BACKUP_TABLE_NAMES.map((name) => database[name]),
     database.apiKeyIntegrationSettings,
     // Weekly day check-offs are ephemeral state (not part of the backup
     // payload), but must still be wiped on reset/restore so a fresh import
@@ -1176,7 +1131,7 @@ function clearableDataTables(database: TrainingLogDatabase) {
 
 function validateRelationshipIntegrity(data: BackupData) {
   const errors: string[] = []
-  for (const tableName of tableNames) {
+  for (const tableName of BACKUP_TABLE_NAMES) {
     errors.push(...findDuplicateIds(data[tableName], tableName))
   }
 
@@ -1505,7 +1460,10 @@ function createPreview(
   errors: string[],
 ): BackupPreview {
   const counts = Object.fromEntries(
-    tableNames.map((tableName) => [tableName, backup.data[tableName].length]),
+    BACKUP_TABLE_NAMES.map((tableName) => [
+      tableName,
+      backup.data[tableName].length,
+    ]),
   ) as Record<DataTableName, number>
 
   return {
@@ -1542,12 +1500,15 @@ function invalidPreview(
 
 function emptyBackupData(): BackupData {
   return Object.fromEntries(
-    tableNames.map((tableName) => [tableName, []]),
+    BACKUP_TABLE_NAMES.map((tableName) => [tableName, []]),
   ) as unknown as BackupData
 }
 
 function countRecords(data: BackupData) {
-  return tableNames.reduce((sum, tableName) => sum + data[tableName].length, 0)
+  return BACKUP_TABLE_NAMES.reduce(
+    (sum, tableName) => sum + data[tableName].length,
+    0,
+  )
 }
 
 function formatZodIssue(issue: z.core.$ZodIssue) {
@@ -1565,7 +1526,7 @@ export function createReadableFilename(
 }
 
 export function createCsvFiles(data: BackupData) {
-  return tableNames.map((tableName) => ({
+  return BACKUP_TABLE_NAMES.map((tableName) => ({
     name: `${tableName}.csv`,
     content: toCsv(data[tableName]),
   }))
@@ -1607,57 +1568,6 @@ export function csvEscape(value: string) {
   return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value
 }
 
-function createTarArchive(files: Array<{ name: string; content: string }>) {
-  const encoder = new TextEncoder()
-  const chunks: Uint8Array[] = []
-  for (const file of files) {
-    const bytes = encoder.encode(file.content)
-    chunks.push(createTarHeader(file.name, bytes.length))
-    chunks.push(bytes)
-    chunks.push(new Uint8Array((512 - (bytes.length % 512)) % 512))
-  }
-  chunks.push(new Uint8Array(1024))
-  return new Blob(chunks.map(toBlobPart), { type: 'application/x-tar' })
-}
-
-function toBlobPart(chunk: Uint8Array) {
-  const copy = new Uint8Array(chunk.byteLength)
-  copy.set(chunk)
-  return copy.buffer
-}
-
-function createTarHeader(filename: string, size: number) {
-  const header = new Uint8Array(512)
-  writeTarField(header, 0, 100, filename)
-  writeTarField(header, 100, 8, '0000644')
-  writeTarField(header, 108, 8, '0000000')
-  writeTarField(header, 116, 8, '0000000')
-  writeTarField(header, 124, 12, size.toString(8).padStart(11, '0'))
-  writeTarField(
-    header,
-    136,
-    12,
-    Math.floor(Date.now() / 1000)
-      .toString(8)
-      .padStart(11, '0'),
-  )
-  header.fill(32, 148, 156)
-  header[156] = '0'.charCodeAt(0)
-  writeTarField(header, 257, 6, 'ustar')
-  writeTarField(header, 263, 2, '00')
-  const checksum = header.reduce((sum, value) => sum + value, 0)
-  writeTarField(header, 148, 8, checksum.toString(8).padStart(6, '0'))
-  header[154] = 0
-  header[155] = 32
-  return header
-}
-
-function writeTarField(
-  header: Uint8Array,
-  offset: number,
-  length: number,
-  value: string,
-) {
-  const bytes = new TextEncoder().encode(value)
-  header.set(bytes.slice(0, length - 1), offset)
+export function createBackupJsonSchema() {
+  return z.toJSONSchema(jsonBackupSchema, { target: 'draft-7' })
 }

@@ -1,5 +1,57 @@
 # Decisions
 
+## 2026-07-19: Audited Official Restaurant Menu Corrections
+
+- USDA remains the generic provider and provider-category serving behavior
+  applies to every restaurant/fast-food record; there is no restaurant brand
+  allowlist in serving selection or persistence.
+- USDA is not treated as a universal current restaurant-menu feed. An exact FDC
+  record may receive a reviewed correction only when the restaurant's official
+  U.S. source supplies the exact item, serving/count, calories, protein,
+  carbohydrate, and fat. Each correction is keyed by both FDC ID and expected
+  item name and stores its official URL and review date.
+- FDC 170790 is corrected to one Chick-fil-A Chicken Sandwich (420 kcal, 29 g
+  protein, 41 g carbohydrate, 18 g fat). FDC 173297 is corrected to six
+  McDonald's Chicken McNuggets (250 kcal, 14 g protein, 15 g carbohydrate,
+  15 g fat); dipping sauce is not included.
+- Official menu pages for these records do not publish a reliable mass needed
+  for conversion. Corrected results therefore expose only the official
+  item/count serving and do not mix current serving macros with USDA's older
+  gram weight or per-100-gram profile.
+- Corrections update future searches and reusable provider-food upserts. They
+  never mutate completed food-log or saved-meal snapshots. Other restaurant
+  values remain provider estimates, and the product does not promise complete
+  or universally current restaurant coverage.
+
+## 2026-07-16: Nutrition Serving Size And Portion Language
+
+- `Serving size` is the fixed reference that the food's calories and macros
+  describe. `Your portion` is the amount being logged or edited now.
+- The existing food-unit preference remains an automatic last-used value, not a
+  separately configured regular or usual portion. Search rows, calories,
+  accessible quick-log names, and one-tap logging all resolve from that same
+  value. Logging a different portion replaces it. If a provider-only alternate
+  household unit cannot survive provider persistence, its exact gram equivalent
+  is remembered instead of falling back to a nutritionally different portion.
+- The logger uses concise measurement labels, unit-aware steppers and quick
+  portions, and preserves equivalent nutrition when the unit changes. A visible
+  action restores the reference serving size.
+- Logged entries keep the existing immutable snapshot plus serving-multiplier
+  model. Editing presents the resolved amount in the snapshot unit and converts
+  it back internally, so this UX change needs no IndexedDB migration and does
+  not alter historical snapshots.
+- Gram and mass-ounce controls appear only when conversion is reliable. The old
+  `100g` pseudo-unit is represented as a 100 g quick portion; persisted `g`,
+  `oz`, and `100g` keys resolve to their compatible controls for backward
+  compatibility.
+- Provider records with complete per-100-gram nutrition but no usable serving
+  weight use an explicit 100 g reference instead of presenting those values as
+  an undefined `1 serving`.
+- Restaurant handling uses provider categories and portions for every eligible
+  restaurant record, not a hardcoded brand list. A listed whole-item or count
+  serving takes priority over generic meat-weight defaults, and the provider
+  category is retained when the food is saved for later reuse.
+
 ## 2026-07-11: Manual Active-Program Week
 
 - The active program editor exposes a 1-based current-week field bounded by
@@ -561,6 +613,20 @@
 - When Supabase is configured and the user is signed in, the graph's exact
   daily logged and target calorie rows are upserted to `daily_nutrition` under
   row-level security. Graph rendering does not depend on network availability.
+
+## 2026-07-19: Calorie Ranges and Intake Insights
+
+- Home keeps 1W as the default calorie range and adds a 1M option. View more
+  opens a dedicated calorie details route with 1W, 1M, and 3M ranges.
+- Logging consistency is days with positive logged calories divided by all
+  calendar days in the selected range. It is not an adherence score and does
+  not judge whether the user met a target.
+- Average calorie surplus or deficit means average logged intake minus the
+  applicable saved target, using only days that have both positive logged
+  calories and a positive target. The UI describes this as versus target so it
+  is not confused with measured energy expenditure. An exact zero mean is on
+  target; all comparison averages remain unavailable when no eligible day
+  exists.
 
 - The app is a single-user, local-first Progressive Web App.
 - Primary target is iPhone installed through Safari using Add to Home Screen.

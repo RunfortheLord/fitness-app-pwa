@@ -15,7 +15,8 @@ import { db } from '@db/database'
 import { HistoryPage } from '@pages/HistoryPage'
 import { HomePage } from '@pages/HomePage'
 import { LiveWorkoutPage } from '@pages/LiveWorkoutPage'
-import { clearCachedTrainingPageData, TrainingPage } from '@pages/TrainingPage'
+import { TrainingPage } from '@pages/TrainingPage'
+import { clearCachedTrainingPageData } from '@pages/trainingPageCache'
 import { createProgramRepository } from '@repositories/programRepository'
 import {
   createExerciseRepository,
@@ -541,15 +542,16 @@ describe('TrainingPage', () => {
     expect(
       await screen.findByRole('button', { name: 'Finish' }, { timeout: 5_000 }),
     ).toBeInTheDocument()
-    const workoutHeader =
-      firstRender.container.querySelector('.live-workout-hero')
     const sessionBar = firstRender.container.querySelector(
       '.live-workout-session-bar',
     )
     const exerciseWorkspace = firstRender.container.querySelector(
       '.exercise-workspace',
     )
-    expect(workoutHeader).not.toBeNull()
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Upper' }),
+    ).toBeInTheDocument()
+    expect(firstRender.container.querySelector('.live-workout-hero')).toBeNull()
     expect(sessionBar).not.toBeNull()
     expect(exerciseWorkspace).not.toBeNull()
     expect(
@@ -783,9 +785,17 @@ describe('TrainingPage', () => {
 
     const persistSet =
       workoutRepository.updateWorkoutSet.bind(workoutRepository)
+    const persistMetric =
+      workoutRepository.updateWorkoutSetMetricAndPropagate.bind(
+        workoutRepository,
+      )
     let releasePersistence: () => void = () => undefined
+    let releaseMetricPersistence: () => void = () => undefined
     const persistenceGate = new Promise<void>((resolve) => {
       releasePersistence = resolve
+    })
+    const metricPersistenceGate = new Promise<void>((resolve) => {
+      releaseMetricPersistence = resolve
     })
     vi.spyOn(workoutRepository, 'updateWorkoutSet').mockImplementation(
       async (...args) => {
@@ -793,6 +803,13 @@ describe('TrainingPage', () => {
         return persistSet(...args)
       },
     )
+    vi.spyOn(
+      workoutRepository,
+      'updateWorkoutSetMetricAndPropagate',
+    ).mockImplementation(async (...args) => {
+      await metricPersistenceGate
+      return persistMetric(...args)
+    })
 
     renderTraining(['/workout'])
     await user.type(
@@ -806,6 +823,20 @@ describe('TrainingPage', () => {
       await screen.findByRole('button', { name: 'Mark incomplete set 1' }),
     ).toHaveAttribute('aria-pressed', 'true')
     expect(await screen.findByLabelText('Rest timer')).toBeInTheDocument()
+
+    // A late metric save used to reload the still-incomplete IndexedDB row and
+    // erase the optimistic checkmark/timer while completion was still pending.
+    releaseMetricPersistence()
+    await waitFor(async () => {
+      const savedSet = (await db.workoutSets.toArray()).find(
+        (set) => set.setNumber === 1,
+      )
+      expect(savedSet?.metricValues).toMatchObject({ weight: 95, reps: 8 })
+    })
+    expect(
+      screen.getByRole('button', { name: 'Mark incomplete set 1' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Rest timer')).toBeInTheDocument()
 
     releasePersistence()
     await waitFor(async () => {
@@ -1066,6 +1097,169 @@ describe('TrainingPage', () => {
     ).not.toBeChecked()
   })
 
+  it('treats skipped exercises as resolved for navigation and the finish prompt', async () => {
+    const user = userEvent.setup()
+    const exerciseRepository = createExerciseRepository(db)
+    const skippedCarry = await exerciseRepository.createExercise({
+      name: 'Skipped carry',
+      defaultRestSeconds: 0,
+      trackingMethodId: 'distance_duration',
+      notes: '',
+    })
+    const finishedCarry = await exerciseRepository.createExercise({
+      name: 'Finished carry',
+      defaultRestSeconds: 0,
+      trackingMethodId: 'distance_duration',
+      notes: '',
+    })
+    const prescription = {
+      targetSetCount: 1,
+      targetDistance: 100,
+      restSecondsOverride: null,
+    }
+    const program = await createProgramRepository(db).createProgramTemplate({
+      name: 'Skip flow',
+      days: [
+        {
+          name: 'Day',
+          exercises: [
+            { exerciseId: skippedCarry.id, ...prescription },
+            { exerciseId: finishedCarry.id, ...prescription },
+          ],
+        },
+      ],
+    })
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    renderTraining(['/workout'])
+
+    expect(
+      await screen.findByRole('heading', { name: 'Skipped carry' }),
+    ).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Skip Exercise' }))
+    expect(
+      await screen.findByRole('heading', { name: 'Finished carry' }),
+    ).toBeInTheDocument()
+
+    await user.type(
+      screen.getByRole('textbox', { name: 'Set 1 Distance' }),
+      '100',
+    )
+    await user.click(screen.getByRole('button', { name: 'Complete set 1' }))
+
+    const finishDialog = await screen.findByRole('dialog', {
+      name: 'Finish workout?',
+    })
+    await user.click(
+      within(finishDialog).getByRole('button', { name: 'Keep working out' }),
+    )
+    expect(
+      screen.getByRole('heading', { name: 'Finished carry' }),
+    ).toBeInTheDocument()
+
+    await waitFor(async () => {
+      const structure = await workoutRepository.getActiveWorkoutStructure()
+      expect(structure?.exercises[0]).toMatchObject({ skipped: true })
+      expect(
+        structure?.setsByExercise[started.exercises[0].id][0],
+      ).toMatchObject({ completed: false })
+      expect(
+        structure?.setsByExercise[started.exercises[1].id][0],
+      ).toMatchObject({ completed: true })
+    })
+  })
+
+  it('advances to the adjacent exercise after its final set and stays put when swiping back', async () => {
+    const user = userEvent.setup()
+    const exerciseRepository = createExerciseRepository(db)
+    const firstExercise = await exerciseRepository.createExercise({
+      name: 'First press',
+      defaultRestSeconds: 0,
+      trackingMethodId: 'weight_reps',
+      notes: '',
+    })
+    const secondExercise = await exerciseRepository.createExercise({
+      name: 'Second press',
+      defaultRestSeconds: 0,
+      trackingMethodId: 'weight_reps',
+      notes: '',
+    })
+    const prescription = {
+      targetSetCount: 1,
+      targetRepsMin: 6,
+      targetRepsMax: 8,
+      targetRir: null,
+      restSecondsOverride: null,
+    }
+    const program = await createProgramRepository(db).createProgramTemplate({
+      name: 'Advance flow',
+      days: [
+        {
+          name: 'Day',
+          exercises: [
+            { exerciseId: firstExercise.id, ...prescription },
+            { exerciseId: secondExercise.id, ...prescription },
+          ],
+        },
+      ],
+    })
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    const rendered = renderTraining(['/workout'])
+
+    expect(
+      await screen.findByRole('heading', { name: 'First press' }),
+    ).toBeInTheDocument()
+    await user.type(screen.getByRole('textbox', { name: 'Set 1 Weight' }), '95')
+    await user.type(screen.getByRole('textbox', { name: 'Set 1 Reps' }), '8')
+    await user.type(
+      screen.getByRole('textbox', { name: 'Set 1 final RIR' }),
+      '2',
+    )
+    await user.tab()
+    await waitFor(async () => {
+      expect(await db.workoutSets.get(started.sets[0].id)).toMatchObject({
+        metricValues: { weight: 95, reps: 8 },
+        rir: 2,
+      })
+    })
+    await user.click(screen.getByRole('button', { name: 'Complete set 1' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Second press' }),
+    ).toBeInTheDocument()
+    await waitFor(async () => {
+      expect(await db.workoutSets.get(started.sets[0].id)).toMatchObject({
+        completed: true,
+      })
+    })
+
+    const workspace = rendered.container.querySelector('.exercise-workspace')
+    expect(workspace).toBeTruthy()
+    fireEvent.pointerDown(workspace!, { clientX: 24, clientY: 100 })
+    fireEvent.pointerUp(workspace!, { clientX: 140, clientY: 104 })
+
+    expect(
+      await screen.findByRole('heading', { name: 'First press' }),
+    ).toBeInTheDocument()
+    await user.tab()
+    expect(
+      screen.getByRole('heading', { name: 'First press' }),
+    ).toBeInTheDocument()
+  })
+
   it('saves all live workout changes when selected at finish', async () => {
     const user = userEvent.setup()
     const program = await seedProgram(db)
@@ -1178,6 +1372,7 @@ describe('TrainingPage', () => {
       within(upperDay as HTMLElement).getByRole('button', { name: /^Upper/ }),
     )
     const dialog = await screen.findByRole('dialog', { name: 'Upper' })
+    expect(dialog).toHaveClass('bottom-sheet--page')
     const startButton = within(dialog).getByRole('button', {
       name: 'Start Workout',
     })
@@ -1251,8 +1446,7 @@ describe('TrainingPage', () => {
     ).toBeInTheDocument()
   })
 
-  it('reorders exercises during a live workout with the move buttons', async () => {
-    const user = userEvent.setup()
+  it('uses the compact exercise cards as drag targets instead of move buttons', async () => {
     const exerciseRepository = createExerciseRepository(db)
     const press = await exerciseRepository.createExercise({
       name: 'Order press',
@@ -1293,29 +1487,32 @@ describe('TrainingPage', () => {
       dayId: active.days[0].id,
       localDate: testLocalDate,
     })
-    renderTraining(['/workout'])
+    const rendered = renderTraining(['/workout'])
 
     expect(await screen.findByText('Exercise 1 of 2')).toBeInTheDocument()
     expect(
       screen.getByRole('heading', { name: 'Order press' }),
     ).toBeInTheDocument()
-    // The first exercise cannot move further forward.
-    expect(screen.getByRole('button', { name: 'Move Earlier' })).toBeDisabled()
-
-    await user.click(screen.getByRole('button', { name: 'Move Later' }))
-
-    // The moved exercise stays active in its new slot.
-    expect(await screen.findByText('Exercise 2 of 2')).toBeInTheDocument()
+    const exerciseCards = rendered.container.querySelectorAll(
+      '.exercise-tab-list .sortable-item',
+    )
+    expect(exerciseCards).toHaveLength(2)
     expect(
-      screen.getByRole('heading', { name: 'Order press' }),
-    ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Move Later' })).toBeDisabled()
-
-    await user.click(screen.getByRole('button', { name: 'Previous' }))
-    expect(await screen.findByText('Exercise 1 of 2')).toBeInTheDocument()
+      screen.getByRole('button', {
+        name: 'Order press, exercise 1 of 2',
+      }),
+    ).toHaveAttribute('aria-roledescription', 'sortable')
     expect(
-      screen.getByRole('heading', { name: 'Order row' }),
-    ).toBeInTheDocument()
+      screen.getByRole('button', {
+        name: 'Order row, exercise 2 of 2',
+      }),
+    ).toHaveAttribute('aria-roledescription', 'sortable')
+    expect(
+      screen.queryByRole('button', { name: 'Move Earlier' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Move Later' }),
+    ).not.toBeInTheDocument()
   })
 
   it('shows one live exercise workspace and keeps the active exercise stable after edits, swipes, and reload', async () => {
@@ -1409,9 +1606,57 @@ describe('TrainingPage', () => {
       firstActions.compareDocumentPosition(firstNotes) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
+    expect(
+      screen.queryByRole('button', { name: 'Previous' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Next' }),
+    ).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Next' }))
+    fireEvent.pointerDown(firstWorkspace!, {
+      clientX: 100,
+      clientY: 100,
+      pointerId: 1,
+    })
+    fireEvent.pointerMove(firstWorkspace!, {
+      clientX: 130,
+      clientY: 102,
+      pointerId: 1,
+    })
+    expect(
+      Number.parseFloat(
+        (firstWorkspace as HTMLElement).style.getPropertyValue(
+          '--exercise-swipe-x',
+        ),
+      ),
+    ).toBeCloseTo(7.2)
+    fireEvent.pointerUp(firstWorkspace!, {
+      clientX: 130,
+      clientY: 102,
+      pointerId: 1,
+    })
+    expect(firstWorkspace).toHaveStyle({ '--exercise-swipe-x': '0px' })
+
+    fireEvent.pointerDown(firstWorkspace!, {
+      clientX: 140,
+      clientY: 100,
+      pointerId: 2,
+    })
+    fireEvent.pointerMove(firstWorkspace!, {
+      clientX: 72,
+      clientY: 103,
+      pointerId: 2,
+    })
+    expect(firstWorkspace).toHaveStyle({ '--exercise-swipe-x': '-68px' })
+    fireEvent.pointerUp(firstWorkspace!, {
+      clientX: 24,
+      clientY: 104,
+      pointerId: 2,
+    })
     expect(await screen.findByText('Exercise 2 of 2')).toBeInTheDocument()
+    expect(
+      rendered.container.querySelector('.exercise-workspace-enter-next'),
+    ).toBeInTheDocument()
     expect(
       screen.getByRole('heading', { name: 'Live pull-up' }),
     ).toBeInTheDocument()
@@ -1441,7 +1686,15 @@ describe('TrainingPage', () => {
     fireEvent.pointerUp(workspace!, { clientX: 140, clientY: 104 })
     expect(await screen.findByText('Exercise 1 of 2')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Next' }))
+    const firstWorkspaceAgain = rendered.container.querySelector(
+      '.exercise-workspace',
+    )
+    expect(firstWorkspaceAgain).toBeTruthy()
+    fireEvent.pointerDown(firstWorkspaceAgain!, {
+      clientX: 140,
+      clientY: 100,
+    })
+    fireEvent.pointerUp(firstWorkspaceAgain!, { clientX: 24, clientY: 104 })
     rendered.unmount()
     renderTraining(['/workout'])
     expect(await screen.findByText('Exercise 2 of 2')).toBeInTheDocument()

@@ -112,6 +112,7 @@ export function SettingsPage() {
   )
   const [operationMessage, setOperationMessage] = useState<string | null>(null)
   const [operationError, setOperationError] = useState<string | null>(null)
+  const [isFitnessDataExporting, setIsFitnessDataExporting] = useState(false)
   const [isDestructiveOperationRunning, setIsDestructiveOperationRunning] =
     useState(false)
   const [timerSoundEnabled, setTimerSoundEnabled] = useState(true)
@@ -468,15 +469,26 @@ export function SettingsPage() {
   }
 
   async function exportCsvArchive() {
+    if (isFitnessDataExporting) {
+      return
+    }
+    setIsFitnessDataExporting(true)
     setOperationError(null)
+    setOperationMessage(null)
     try {
       const exportResult = await backupService.createCsvArchive()
       downloadBlob(exportResult.blob, exportResult.filename)
       setOperationMessage(
-        `Fitness data export prepared with ${exportResult.files.length} spreadsheet-ready CSV files.`,
+        `Fitness data export prepared: ${formatFileSize(exportResult.byteSize)}, ${exportResult.totalRecordCount} records in ${exportResult.fileCount} files.`,
       )
-    } catch {
-      setOperationError('CSV export could not be created.')
+    } catch (caught) {
+      setOperationError(
+        caught instanceof Error
+          ? `Fitness data export failed: ${caught.message}`
+          : 'Fitness data export could not be created.',
+      )
+    } finally {
+      setIsFitnessDataExporting(false)
     }
   }
 
@@ -1045,7 +1057,7 @@ export function SettingsPage() {
           <Card>
             <p className="muted">
               {t(
-                'Local backup files and CSV exports stay on this device unless you use the separate cloud backup controls below.',
+                'Local backup files and ZIP exports stay on this device unless you use the separate cloud backup controls below.',
               )}
             </p>
             <dl className="settings-list">
@@ -1055,8 +1067,14 @@ export function SettingsPage() {
               </div>
             </dl>
             <div className="button-row">
-              <PrimaryButton type="button" onClick={exportCsvArchive}>
-                {t('Export all fitness data')}
+              <PrimaryButton
+                disabled={isFitnessDataExporting}
+                type="button"
+                onClick={exportCsvArchive}
+              >
+                {isFitnessDataExporting
+                  ? t('Exporting fitness data…')
+                  : t('Export all fitness data')}
               </PrimaryButton>
               <SecondaryButton type="button" onClick={exportJsonBackup}>
                 Export JSON backup
@@ -1591,7 +1609,17 @@ function downloadBlob(blob: Blob, filename: string) {
   document.body.append(link)
   link.click()
   link.remove()
-  URL.revokeObjectURL(url)
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
+}
+
+function formatFileSize(byteSize: number) {
+  if (byteSize < 1024) {
+    return `${byteSize} B`
+  }
+  if (byteSize < 1024 * 1024) {
+    return `${(byteSize / 1024).toFixed(1)} KB`
+  }
+  return `${(byteSize / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function ChangelogList({ entries }: { entries: typeof CHANGELOG }) {

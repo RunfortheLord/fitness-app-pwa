@@ -13,10 +13,7 @@ import { useLanguage } from '@components/languageContextValue'
 import { useSubpageBackGesture } from '@hooks/useSubpageBackGesture'
 import { formatLocalDate } from '@domain/dates'
 import { currentProgramWeek } from '@domain/programWeeks'
-import type {
-  ExerciseTrackingCategory,
-  ExerciseUsageSummary,
-} from '@domain/exerciseSearch'
+import type { ExerciseTrackingCategory } from '@domain/exerciseSearch'
 import {
   BrowseProgramsPage,
   ProgramPreviewPage,
@@ -32,9 +29,7 @@ import {
 import { ProgramOverview } from '@features/training/ProgramOverview'
 import { WorkoutDayDetailSheet } from '@features/training/WorkoutDayDetailSheet'
 import type {
-  CurrentCycleStructure,
   ExerciseView,
-  LoadStatus,
   ProgramSheetTarget,
   SelectedDay,
 } from '@features/training/types'
@@ -49,6 +44,11 @@ import type {
   MuscleGroup,
   ProgramTemplate,
 } from '@shared-types/app'
+import {
+  getCachedTrainingPageData,
+  setCachedTrainingPageData,
+  type TrainingPageLoadState as LoadState,
+} from '@pages/trainingPageCache'
 
 type SheetState =
   | { type: 'exercise'; exercise: Exercise | null }
@@ -62,20 +62,6 @@ type ProgramConfirmation =
   | { type: 'delete-first'; template: ProgramTemplate }
   | { type: 'delete-final'; template: ProgramTemplate }
   | null
-
-type LoadState = {
-  exercises: Exercise[]
-  templates: ProgramTemplate[]
-  exerciseUsage: ExerciseUsageSummary
-  currentCycle: CurrentCycleStructure | undefined
-  status: LoadStatus
-}
-
-let cachedTrainingLoadState: LoadState | undefined
-
-export function clearCachedTrainingPageData() {
-  cachedTrainingLoadState = undefined
-}
 
 export function TrainingPage() {
   const { t } = useLanguage()
@@ -107,7 +93,7 @@ export function TrainingPage() {
   }>({ week: 1, checkedDayIds: [] })
   const [loadState, setLoadState] = useState<LoadState>(
     () =>
-      cachedTrainingLoadState ?? {
+      getCachedTrainingPageData() ?? {
         exercises: [],
         templates: [],
         exerciseUsage: {},
@@ -200,7 +186,7 @@ export function TrainingPage() {
           currentCycle,
           status: 'ready',
         }
-        cachedTrainingLoadState = nextLoadState
+        setCachedTrainingPageData(nextLoadState)
         setLoadState(nextLoadState)
 
         if (currentCycle) {

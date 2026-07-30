@@ -164,6 +164,7 @@ export type Food = {
   id: string
   name: string
   brandName?: string | null
+  foodCategory?: string | null
   servingQuantity: number
   servingUnit: string
   servingDescription: string
@@ -218,6 +219,7 @@ export type FoodSnapshot = {
   snapshotId?: string
   foodName: string
   brandName?: string | null
+  foodCategory?: string | null
   sourceType?: FoodSourceType
   provider?: FoodProviderId | null
   providerRecordId?: string | null

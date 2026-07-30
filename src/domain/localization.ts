@@ -92,6 +92,7 @@ const spanishTranslations: Record<string, string> = {
   'Export JSON backup': 'Exportar copia JSON',
   'Export CSV archive': 'Exportar archivo CSV',
   'Export all fitness data': 'Exportar todos los datos de fitness',
+  'Exporting fitness data…': 'Exportando datos de fitness…',
   'Restore JSON': 'Restaurar JSON',
   'Clear all data': 'Borrar todos los datos',
   'Cloud backup': 'Copia en la nube',
@@ -146,6 +147,35 @@ const spanishTranslations: Record<string, string> = {
   'No active program': 'No hay programa activo',
   'Start workout': 'Iniciar entrenamiento',
   'Calories remaining': 'Calorías restantes',
+  'Home calorie range': 'Rango de calorías en Inicio',
+  'Loading calorie history': 'Cargando historial de calorías',
+  'Calorie history could not load.':
+    'No se pudo cargar el historial de calorías.',
+  'View more': 'Ver más',
+  'Calorie insights': 'Detalles de calorías',
+  'Back to Home': 'Volver a Inicio',
+  'Calorie insights range': 'Rango de detalles de calorías',
+  'Loading calorie insights': 'Cargando detalles de calorías',
+  'Calorie insights could not load.':
+    'No se pudieron cargar los detalles de calorías.',
+  'Try again': 'Intentar de nuevo',
+  'Daily calories': 'Calorías diarias',
+  'No calories logged': 'No hay calorías registradas',
+  'Log food in Nutrition to build calorie insights.':
+    'Registra alimentos en Nutrición para crear detalles de calorías.',
+  'Calorie summary': 'Resumen de calorías',
+  'Logging consistency': 'Constancia de registro',
+  'Days logged': 'Días registrados',
+  of: 'de',
+  'Average intake': 'Consumo promedio',
+  'Average target': 'Objetivo promedio',
+  'Average vs target': 'Promedio frente al objetivo',
+  'Consistency counts days with positive calories logged. Averages compare logged intake with the saved target on comparable days.':
+    'La constancia cuenta los días con calorías positivas registradas. Los promedios comparan el consumo registrado con el objetivo guardado en los días comparables.',
+  'Not available': 'No disponible',
+  'On target': 'En el objetivo',
+  surplus: 'superávit',
+  deficit: 'déficit',
   'Target not set': 'Objetivo no establecido',
   Protein: 'Proteína',
   Carbohydrates: 'Carbohidratos',
@@ -186,8 +216,8 @@ const spanishTranslations: Record<string, string> = {
   Active: 'Activo',
   Workout: 'Entrenamiento',
   'Tap to Resume': 'Toca para reanudar',
-  'Local backup files and CSV exports stay on this device unless you use the separate cloud backup controls below.':
-    'Las copias locales y los archivos CSV permanecen en este dispositivo salvo que uses los controles de copia en la nube.',
+  'Local backup files and ZIP exports stay on this device unless you use the separate cloud backup controls below.':
+    'Las copias locales y los archivos ZIP permanecen en este dispositivo salvo que uses los controles de copia en la nube.',
   'Manual Google-account backup and restore. Local data remains usable while signed out or offline.':
     'Copia y restauración manual con una cuenta de Google. Los datos locales siguen disponibles sin sesión o sin conexión.',
   'Signed-in data is backed up automatically within five minutes of changes and when the app opens or resumes. Local data remains usable while signed out or offline.':
@@ -449,6 +479,8 @@ const spanishTranslations: Record<string, string> = {
   'Logged foods': 'Alimentos registrados',
   'Search or create a food, then log a serving multiplier for this date.':
     'Busca o crea un alimento y registra una cantidad para esta fecha.',
+  'Search or create a food, then choose your portion for this date.':
+    'Busca o crea un alimento y elige tu porción para esta fecha.',
   'No acceptable results': 'No hay resultados válidos',
   'No local or provider foods with calories, protein, total carbohydrates, and fat matched.':
     'No se encontraron alimentos con calorías, proteínas, carbohidratos y grasas.',
@@ -637,6 +669,32 @@ const spanishTranslations: Record<string, string> = {
   'Serving amount': 'Cantidad de la porción',
   'Serving multiplier': 'Multiplicador de porción',
   'Serving unit': 'Unidad de la porción',
+  'Serving size': 'Tamaño de la porción',
+  'Serving size: {serving}': 'Tamaño de la porción: {serving}',
+  'Your portion': 'Tu porción',
+  'Last used': 'Último uso',
+  'Last used: {portion}': 'Último uso: {portion}',
+  'Use serving size': 'Usar tamaño de porción',
+  'Quick portions': 'Porciones rápidas',
+  'Set portion to {amount} {unit}': 'Establecer porción en {amount} {unit}',
+  'Decrease portion': 'Reducir porción',
+  'Increase portion': 'Aumentar porción',
+  'Serving amount must be greater than zero.':
+    'La cantidad de la porción debe ser mayor que cero.',
+  'Your last logged portion is preselected.':
+    'Tu última porción registrada está preseleccionada.',
+  'This becomes your last-used portion for one-tap logging.':
+    'Esta será tu última porción usada para registrarla con un toque.',
+  'Portion weight: {weight}': 'Peso de la porción: {weight}',
+  'Nutrition for this serving': 'Nutrición de esta porción',
+  'Set the amount that the nutrition values below describe.':
+    'Establece la cantidad que describen los valores nutricionales.',
+  'Examples: g, oz, cup, slice, or container.':
+    'Ejemplos: g, oz, taza, rebanada o envase.',
+  'Nutrition below is for {amount} {unit}.':
+    'La nutrición siguiente corresponde a {amount} {unit}.',
+  'Example: 170 g, 2 slices, or 1 container.':
+    'Ejemplo: 170 g, 2 rebanadas o 1 envase.',
   Name: 'Nombre',
   Notes: 'Notas',
   Sex: 'Sexo',

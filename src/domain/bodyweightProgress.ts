@@ -10,7 +10,11 @@ import {
   weightDisplayNumber,
   weightUnitSuffix,
 } from '@domain/weightUnits'
-import { weeklyTimeAwareTrendChange } from '@domain/bodyweightTrend'
+import {
+  latestBodyweightEntryPerCalendarDate,
+  trendWeightSeries,
+  weeklyTimeAwareTrendChange,
+} from '@domain/bodyweightTrend'
 import type { BodyweightEntry, WeightUnit } from '@shared-types/app'
 
 export type BodyweightRange = '1m' | '3m' | '6m' | 'all'
@@ -37,16 +41,25 @@ export type BodyweightChartPoint = {
   y: number
 }
 
+export type BodyweightChartTrendPoint = {
+  localDate: LocalDateString
+  weight: number
+  x: number
+  y: number
+}
+
 export type BodyweightChartModel =
   | {
       status: 'empty'
       entries: []
+      trendPoints: []
       summary: BodyweightTrendSummary
     }
   | {
       status: 'single' | 'ready'
       entries: BodyweightEntry[]
       points: BodyweightChartPoint[]
+      trendPoints: BodyweightChartTrendPoint[]
       minWeight: number
       maxWeight: number
       chartMin: number
@@ -150,18 +163,43 @@ export function summarizeBodyweightTrend(
 export function createBodyweightChartModel(
   entries: BodyweightEntry[],
   unit: WeightUnit = 'lb',
+  trendEntries: BodyweightEntry[] = entries,
 ): BodyweightChartModel {
   const sorted = sortBodyweightEntries(entries)
   const summary = summarizeBodyweightTrend(sorted, unit)
   if (!sorted.length) {
-    return { status: 'empty', entries: [], summary }
+    return { status: 'empty', entries: [], trendPoints: [], summary }
   }
 
-  const weights = sorted.map((entry) => entry.weight)
+  const chartEntries = [...sorted].sort(
+    (left, right) =>
+      chartTime(left) - chartTime(right) || left.id.localeCompare(right.id),
+  )
+  const fullTrendSeries = trendWeightSeries(trendEntries)
+  const firstVisibleDate = sorted[0].localDate
+  const lastVisibleDate = sorted.at(-1)!.localDate
+  const visibleTrendTimeline =
+    fullTrendSeries.length < 2
+      ? []
+      : createBodyweightTrendTimeline(trendEntries, fullTrendSeries).filter(
+          (point) =>
+            point.localDate >= firstVisibleDate &&
+            point.localDate <= lastVisibleDate,
+        )
+  const drawableTrendTimeline =
+    visibleTrendTimeline.length >= 2 ? visibleTrendTimeline : []
+  const weights = [
+    ...sorted.map((entry) => entry.weight),
+    ...drawableTrendTimeline.map((point) => point.weight),
+  ]
   const minWeight = Math.min(...weights)
   const maxWeight = Math.max(...weights)
-  const firstTime = chartTime(sorted[0])
-  const lastTime = chartTime(sorted.at(-1) ?? sorted[0])
+  const chartTimes = [
+    ...chartEntries.map(chartTime),
+    ...drawableTrendTimeline.map((point) => point.timestamp),
+  ]
+  const firstTime = Math.min(...chartTimes)
+  const lastTime = Math.max(...chartTimes)
   const weightSpread = maxWeight - minWeight
   const timeSpread = Math.max(1, lastTime - firstTime)
   const yPadding = weightSpread === 0 ? 2 : weightSpread * 0.12
@@ -175,12 +213,18 @@ export function createBodyweightChartModel(
   return {
     status: sorted.length === 1 ? 'single' : 'ready',
     entries: sorted,
-    points: sorted.map((entry) => ({
+    points: chartEntries.map((entry) => ({
       entry,
       x: isSingleEntry
         ? 50
         : ((chartTime(entry) - firstTime) / timeSpread) * 100,
       y: 100 - ((entry.weight - chartMin) / chartSpread) * 100,
+    })),
+    trendPoints: drawableTrendTimeline.map((point) => ({
+      localDate: point.localDate,
+      weight: point.weight,
+      x: ((point.timestamp - firstTime) / timeSpread) * 100,
+      y: 100 - ((point.weight - chartMin) / chartSpread) * 100,
     })),
     minWeight,
     maxWeight,
@@ -188,6 +232,48 @@ export function createBodyweightChartModel(
     chartMax,
     summary,
   }
+}
+
+function createBodyweightTrendTimeline(
+  entries: BodyweightEntry[],
+  series: ReturnType<typeof trendWeightSeries>,
+) {
+  const observedEntries = latestBodyweightEntryPerCalendarDate(entries)
+  const seriesIndexByDate = new Map(
+    series.map((point, index) => [point.localDate, index]),
+  )
+  const observedPoints = observedEntries.flatMap((entry) => {
+    const seriesIndex = seriesIndexByDate.get(entry.localDate)
+    return seriesIndex === undefined
+      ? []
+      : [{ seriesIndex, timestamp: chartTime(entry) }]
+  })
+
+  let segmentIndex = 0
+  return series.map((point, seriesIndex) => {
+    while (
+      segmentIndex + 1 < observedPoints.length - 1 &&
+      observedPoints[segmentIndex + 1].seriesIndex < seriesIndex
+    ) {
+      segmentIndex += 1
+    }
+    const segmentStart = observedPoints[segmentIndex]
+    const segmentEnd = observedPoints[segmentIndex + 1] ?? segmentStart
+    const segmentLength = segmentEnd.seriesIndex - segmentStart.seriesIndex
+    const segmentProgress =
+      segmentLength === 0
+        ? 0
+        : (seriesIndex - segmentStart.seriesIndex) / segmentLength
+    const timestamp =
+      segmentStart.timestamp +
+      (segmentEnd.timestamp - segmentStart.timestamp) * segmentProgress
+
+    return {
+      localDate: point.localDate,
+      weight: point.trend,
+      timestamp,
+    }
+  })
 }
 
 export function formatWeight(weight: number) {
@@ -218,9 +304,18 @@ export function formatBodyweightWeeklyChange(
 }
 
 function chartTime(entry: BodyweightEntry) {
-  const parsed = Date.parse(entry.updatedAt || entry.createdAt)
-  if (Number.isFinite(parsed)) {
-    return parsed
+  const localDate = parseLocalDate(entry.localDate)
+  const createdAt = Date.parse(entry.createdAt)
+  if (Number.isFinite(createdAt)) {
+    const createdTime = new Date(createdAt)
+    localDate.setHours(
+      createdTime.getHours(),
+      createdTime.getMinutes(),
+      createdTime.getSeconds(),
+      createdTime.getMilliseconds(),
+    )
+    return localDate.getTime()
   }
-  return parseLocalDate(entry.localDate).getTime()
+  localDate.setHours(12, 0, 0, 0)
+  return localDate.getTime()
 }

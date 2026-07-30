@@ -46,6 +46,7 @@ function renderHome() {
         children: [
           { index: true, element: <HomePage /> },
           { path: 'workout', element: <div>Workout route</div> },
+          { path: 'calories', element: <div>Calorie details route</div> },
         ],
       },
     ],
@@ -158,6 +159,32 @@ describe('HomePage', () => {
     expect(bars).toHaveLength(7)
     expect(Number(bars[0].getAttribute('width'))).toBeLessThan(100 / 7)
     expect(chart.querySelector('polyline.calorie-target-line')).not.toBeNull()
+  })
+
+  it('switches the calorie graph to one month and opens more details', async () => {
+    const user = userEvent.setup()
+    renderHome()
+    await waitForDashboardReady()
+
+    const range = screen.getByLabelText('Home calorie range')
+    expect(within(range).getByRole('button', { name: '1W' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+
+    await user.click(within(range).getByRole('button', { name: '1M' }))
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('img', {
+            name: 'Daily calories logged and target graph',
+          })
+          .querySelectorAll('rect.calorie-bar'),
+      ).toHaveLength(30),
+    )
+
+    await user.click(screen.getByRole('button', { name: 'View more' }))
+    expect(await screen.findByText('Calorie details route')).toBeInTheDocument()
   })
 
   it('opens the nutrition day tab from the calories remaining card', async () => {

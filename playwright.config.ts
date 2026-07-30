@@ -15,9 +15,13 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   webServer: {
-    command: 'npm run preview -- --host 127.0.0.1 --port 4187',
+    // Launch Vite directly so Playwright owns the actual server process on
+    // Windows and can terminate it cleanly after the suite. Wrapping it in npm
+    // can orphan the child process and leave an otherwise-finished run hanging.
+    command:
+      'node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 4187',
     url: 'http://127.0.0.1:4187',
-    reuseExistingServer: false,
+    reuseExistingServer: process.env.PLAYWRIGHT_REUSE_SERVER === '1',
   },
   projects: [
     {

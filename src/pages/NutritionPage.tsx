@@ -34,7 +34,7 @@ import {
   createRecipeDraftFromGemini,
   type GeminiMealAnalysis,
 } from '@domain/geminiMealAnalysis'
-import { servingOptionsForFood } from '@domain/foodServings'
+import { findServingOption, servingOptionsForFood } from '@domain/foodServings'
 import { BarcodeScannerSheet } from '@features/nutrition/BarcodeScannerSheet'
 import { EditFoodLogSheet } from '@features/nutrition/EditFoodLogSheet'
 import { FoodFormSheet } from '@features/nutrition/FoodFormSheet'
@@ -46,6 +46,7 @@ import { SelectedFoodSheet } from '@features/nutrition/SelectedFoodSheet'
 import { SetGoalSubpage } from '@features/nutrition/SetGoalSubpage'
 import { TargetsCard } from '@features/nutrition/TargetsCard'
 import {
+  durableServingPreference,
   resultDisplay,
   servingOptionsForResult,
   servingSelectionForFood,
@@ -75,16 +76,17 @@ import {
   FoodProviderClientError,
   searchProviderFoods,
 } from '@services/foodProviderClient'
-import {
-  nutritionSummaryService,
-  type DailyNutritionSummary,
-} from '@services/nutritionSummaryService'
+import { nutritionSummaryService } from '@services/nutritionSummaryService'
 import { AiMealCameraSubpage } from '@pages/AiMealCameraSubpage'
+import {
+  getCachedNutritionPageData,
+  setCachedNutritionPageData,
+  type NutritionPageLoadState as LoadState,
+} from '@pages/nutritionPageCache'
 import type {
   BodyweightEntry,
   Food,
   FoodLogEntry,
-  FoodUnitPreference,
   IntegrationConnectionStatus,
   NutritionGoal,
   SavedMeal,
@@ -105,29 +107,6 @@ type UsdaKeyState = {
   configured: boolean
   apiKey: string | null
   status: IntegrationConnectionStatus
-}
-
-type LoadState = {
-  foods: Food[]
-  logs: FoodLogEntry[]
-  recentFoods: Food[]
-  recommendedFoods: Food[]
-  favoriteFoods: Food[]
-  foodUnitPreferences: Record<string, FoodUnitPreference>
-  savedMeals: SavedMeal[]
-  summary: DailyNutritionSummary | null
-  status: 'loading' | 'ready' | 'error'
-}
-
-type CachedNutritionPageData = {
-  selectedDate: string
-  loadState: LoadState
-}
-
-let cachedNutritionPageData: CachedNutritionPageData | undefined
-
-export function clearCachedNutritionPageData() {
-  cachedNutritionPageData = undefined
 }
 
 function isNutritionMode(value: string | null): value is NutritionMode {
@@ -155,27 +134,26 @@ export function NutritionPage() {
     apiKey: null,
     status: 'not_configured',
   })
-  const [loadState, setLoadState] = useState<LoadState>(() =>
-    cachedNutritionPageData?.selectedDate === selectedDate
-      ? cachedNutritionPageData.loadState
-      : {
-          foods: [],
-          logs: [],
-          recentFoods: [],
-          recommendedFoods: [],
-          favoriteFoods: [],
-          foodUnitPreferences: {},
-          savedMeals: [],
-          summary: null,
-          status: 'loading',
-        },
+  const [loadState, setLoadState] = useState<LoadState>(
+    () =>
+      getCachedNutritionPageData(selectedDate) ?? {
+        foods: [],
+        logs: [],
+        recentFoods: [],
+        recommendedFoods: [],
+        favoriteFoods: [],
+        foodUnitPreferences: {},
+        savedMeals: [],
+        summary: null,
+        status: 'loading',
+      },
   )
 
   const updateLoadState = useCallback(
     (update: (current: LoadState) => LoadState) => {
       setLoadState((current) => {
         const next = update(current)
-        cachedNutritionPageData = { selectedDate, loadState: next }
+        setCachedNutritionPageData(selectedDate, next)
         return next
       })
     },
@@ -683,10 +661,15 @@ export function NutritionPage() {
       .getRememberedFoodUnit(food.id)
       .then((preference) => {
         const options = servingOptionsForFood(food, preference?.unitKey ?? null)
-        const option =
-          options.find((candidate) => candidate.key === preference?.unitKey) ??
-          options[0]
-        const amount = preference?.amount ?? option?.amount ?? 1
+        const rememberedOption =
+          (preference
+            ? findServingOption(options, preference.unitKey)
+            : undefined) ?? null
+        const option = rememberedOption ?? options[0]
+        const amount =
+          rememberedOption && preference
+            ? preference.amount
+            : (option?.amount ?? 1)
         const servingMultiplier = option?.toServingMultiplier(amount) ?? 1
         return foodRepository.logFood({
           foodId: food.id,
@@ -724,6 +707,9 @@ export function NutritionPage() {
     const servingMultiplier =
       rememberedSelection?.servingMultiplier ??
       (defaultMultiplier > 0 ? defaultMultiplier : 1)
+    const selectedOption = rememberedSelection?.option ?? option
+    const selectedAmount =
+      rememberedSelection && preference ? preference.amount : defaultAmount
     const mealType = mealTypeForDate(new Date())
     const action =
       result.type === 'external'
@@ -740,13 +726,35 @@ export function NutritionPage() {
             mealType,
           })
     void action
-      .then((entry) => {
+      .then(async (entry) => {
+        if (entry.foodId && selectedOption) {
+          const persistedFood =
+            result.type === 'external'
+              ? await foodRepository.getFood(entry.foodId)
+              : null
+          const remembered = await foodRepository.rememberFoodUnit({
+            foodId: entry.foodId,
+            ...durableServingPreference(
+              result,
+              selectedOption,
+              selectedAmount,
+              servingMultiplier,
+              persistedFood,
+            ),
+          })
+          updateLoadState((current) => ({
+            ...current,
+            foodUnitPreferences: {
+              ...current.foodUnitPreferences,
+              [remembered.foodId]: remembered,
+            },
+          }))
+        }
         // Mirror the sheet's behaviour: keep the search subpage open and record
         // the item in the "added" tray so several foods can be added in a pass.
         if (searchOpen) {
           appendAddedItem(result, entry)
         }
-        setMessage('Food logged.')
         reloadAfterFoodLog()
       })
       .catch(() => setMessage('Could not log that food.'))
@@ -1109,6 +1117,9 @@ export function NutritionPage() {
         <SelectedFoodSheet
           key={sheet.result.food.id}
           result={sheet.result}
+          rememberedServing={
+            loadState.foodUnitPreferences[sheet.result.food.id]
+          }
           isOpen
           localDate={selectedDate}
           onCreateCopy={(initialForm) =>
@@ -1149,7 +1160,6 @@ export function NutritionPage() {
                 [preference.foodId]: preference,
               },
             }))
-            setMessage('Food logged.')
             setSheet(null)
             reloadAfterFoodLog()
           }}

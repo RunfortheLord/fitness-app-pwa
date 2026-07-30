@@ -1,11 +1,8 @@
 import {
   BellRing,
   Check,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   Clock,
+  GripVertical,
   Minus,
   Pause,
   Pencil,
@@ -23,6 +20,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type FocusEvent,
   type PointerEvent,
   type ReactNode,
@@ -44,6 +42,7 @@ import {
   StatusMessage,
   ValidationMessage,
 } from '@components/ui'
+import { SortableList, SortableListItem } from '@components/SortableList'
 import { RestWheelPicker } from '@components/WheelPicker'
 import { useLanguage } from '@components/languageContextValue'
 import { getRestTimerRemainingSeconds } from '@domain/restTimer'
@@ -54,7 +53,10 @@ import {
   primaryMuscleLabel,
   searchExercises,
 } from '@domain/exerciseSearch'
-import { canSkipWorkoutExercise } from '@domain/workoutSkip'
+import {
+  canSkipWorkoutExercise,
+  hasPendingWorkoutExerciseWork,
+} from '@domain/workoutSkip'
 import { rankedExerciseReplacements } from '@domain/exerciseReplacements'
 import { TRACKING_METHODS } from '@domain/trackingMethods'
 import {
@@ -135,7 +137,11 @@ export function LiveWorkoutPage() {
     soundId: DEFAULT_TIMER_SOUND_ID,
   })
   const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null)
+  const [workspaceEnterDirection, setWorkspaceEnterDirection] = useState<
+    'next' | 'previous' | null
+  >(null)
   const pendingWorkoutMutations = useRef(new Set<Promise<unknown>>())
+  const pendingOptimisticSetMutations = useRef(0)
   const autoFinishPromptedRef = useRef(false)
 
   useEffect(() => {
@@ -227,13 +233,17 @@ export function LiveWorkoutPage() {
     const tracked = action
       .then((result) => {
         setError(null)
-        reload()
+        if (pendingOptimisticSetMutations.current === 0) {
+          reload()
+        }
         return result
       })
       .catch((caught: unknown) => {
         const error = caught instanceof Error ? caught : new Error(failure)
         setError(error.message)
-        reload()
+        if (pendingOptimisticSetMutations.current === 0) {
+          reload()
+        }
         throw error
       })
       .finally(() => pendingWorkoutMutations.current.delete(tracked))
@@ -454,7 +464,36 @@ export function LiveWorkoutPage() {
     if (!next) {
       return
     }
+    setWorkspaceEnterDirection(index > activeIndex ? 'next' : 'previous')
     setActiveExerciseId(next.id)
+  }
+
+  function reorderExercises(orderedIds: string[]) {
+    if (!readyState) {
+      return
+    }
+    const byId = new Map(
+      readyState.exercises.map((exercise) => [exercise.id, exercise]),
+    )
+    const reordered = orderedIds
+      .map((id) => byId.get(id))
+      .filter((exercise): exercise is WorkoutExercise => Boolean(exercise))
+      .map((exercise, orderIndex) => ({ ...exercise, orderIndex }))
+    if (reordered.length !== readyState.exercises.length) {
+      return
+    }
+    setState((current) =>
+      current.status === 'ready'
+        ? { ...current, exercises: reordered }
+        : current,
+    )
+    run(
+      workoutRepository.reorderWorkoutExercises(
+        readyState.workout.id,
+        orderedIds,
+      ),
+      'Exercise order could not be changed.',
+    )
   }
 
   useEffect(() => {
@@ -499,10 +538,17 @@ export function LiveWorkoutPage() {
     if (!readyState) {
       return
     }
-    const sets = Object.values(readyState.setsByExercise).flat()
-    const everySetCompleted =
-      sets.length > 0 && sets.every((set) => set.completed)
-    if (!everySetCompleted) {
+    const hasRecordedResult = readyState.exercises.some((exercise) => {
+      const sets = readyState.setsByExercise[exercise.id] ?? []
+      return exercise.skipped || sets.some((set) => set.completed)
+    })
+    const hasPendingWork = readyState.exercises.some((exercise) =>
+      hasPendingWorkoutExerciseWork(
+        readyState.setsByExercise[exercise.id] ?? [],
+        exercise.skipped,
+      ),
+    )
+    if (!hasRecordedResult || hasPendingWork) {
       autoFinishPromptedRef.current = false
       return
     }
@@ -555,17 +601,6 @@ export function LiveWorkoutPage() {
       <div aria-live="polite" className="visually-hidden">
         {announcement}
       </div>
-      <Card className="live-workout-hero">
-        <div className="live-workout-title-row">
-          <div>
-            <h2>{state.workout.name}</h2>
-            <p className="muted">
-              {state.workout.workoutSnapshot.activeCycleName ?? t('Program')}
-            </p>
-          </div>
-        </div>
-      </Card>
-
       <div className="live-workout-session-bar">
         <span className="live-workout-session-time">
           <Clock aria-hidden="true" size={17} />
@@ -613,20 +648,47 @@ export function LiveWorkoutPage() {
       ) : null}
 
       {state.exercises.length > 1 ? (
-        <Card className="exercise-navigator" title="Exercises">
-          <div className="exercise-tab-list">
-            {state.exercises.map((exercise, index) => (
-              <button
-                aria-current={exercise.id === activeExercise?.id}
-                key={exercise.id}
-                onClick={() => selectExercise(index)}
-                type="button"
-              >
-                <span>{index + 1}</span>
-                <small>{exercise.exerciseSnapshot.exerciseName}</small>
-              </button>
-            ))}
+        <Card className="exercise-navigator exercise-navigator-compact">
+          <div className="exercise-navigator-heading">
+            <h2>{t('Exercises')}</h2>
+            <small>{t('Hold and drag to reorder')}</small>
           </div>
+          <SortableList
+            direction="horizontal"
+            getItemLabel={(id) =>
+              state.exercises.find((exercise) => exercise.id === id)
+                ?.exerciseSnapshot.exerciseName ?? id
+            }
+            itemIds={state.exercises.map((exercise) => exercise.id)}
+            onReorder={reorderExercises}
+          >
+            <div className="exercise-tab-list">
+              {state.exercises.map((exercise, index) => (
+                <SortableListItem id={exercise.id} key={exercise.id}>
+                  {(drag) => (
+                    <button
+                      aria-current={exercise.id === activeExercise?.id}
+                      aria-label={`${exercise.exerciseSnapshot.exerciseName}, exercise ${index + 1} of ${state.exercises.length}`}
+                      className="exercise-sort-card"
+                      onClick={() => selectExercise(index)}
+                      ref={drag.setActivatorNodeRef}
+                      type="button"
+                      {...drag.attributes}
+                      {...(drag.listeners ?? {})}
+                    >
+                      <span>{index + 1}</span>
+                      <small>{exercise.exerciseSnapshot.exerciseName}</small>
+                      <GripVertical
+                        aria-hidden="true"
+                        className="exercise-sort-grip"
+                        size={14}
+                      />
+                    </button>
+                  )}
+                </SortableListItem>
+              ))}
+            </div>
+          </SortableList>
         </Card>
       ) : null}
 
@@ -637,6 +699,7 @@ export function LiveWorkoutPage() {
           exercise={activeExercise}
           exerciseCount={state.exercises.length}
           exerciseIndex={activeIndex}
+          enterDirection={workspaceEnterDirection}
           rirTargetOnEverySet={state.workout.trackRirEverySet ?? false}
           key={activeExercise.id}
           onAddExercise={() => setPicker({ mode: 'add' })}
@@ -649,13 +712,7 @@ export function LiveWorkoutPage() {
             const hasMoreSetsInExercise = activeSets.some(
               (candidate) => candidate.id !== set.id && !candidate.completed,
             )
-            const nextIncompleteExercise = state.exercises.find(
-              (exercise) =>
-                exercise.id !== activeExercise.id &&
-                (state.setsByExercise[exercise.id] ?? []).some(
-                  (candidate) => !candidate.completed,
-                ),
-            )
+            const nextExercise = state.exercises[activeIndex + 1]
             const changedAt = new Date().toISOString()
             const optimisticTimer =
               completed && hasMoreSetsInExercise && restSeconds > 0
@@ -703,34 +760,40 @@ export function LiveWorkoutPage() {
                 },
               }
             })
-            run(
-              workoutRepository
-                .updateWorkoutSet(set.id, { completed })
-                .then(async () => {
-                  if (!completed) {
-                    const timer = await workoutRepository.dismissRestTimer(
-                      state.workout.id,
-                    )
-                    await syncNativeRestTimer(timer)
-                    return
-                  }
-                  if (hasMoreSetsInExercise && restSeconds > 0) {
-                    const timer = await workoutRepository.setRestTimer(
-                      state.workout.id,
-                      restSeconds,
-                    )
-                    await syncNativeRestTimer(timer, true)
-                    return
-                  }
+            if (completed && !hasMoreSetsInExercise && nextExercise) {
+              setActiveExerciseId(nextExercise.id)
+            }
+            pendingOptimisticSetMutations.current += 1
+            const setMutation = workoutRepository
+              .updateWorkoutSet(set.id, { completed })
+              .then(async () => {
+                if (!completed) {
                   const timer = await workoutRepository.dismissRestTimer(
                     state.workout.id,
                   )
                   await syncNativeRestTimer(timer)
-                  if (nextIncompleteExercise) {
-                    setActiveExerciseId(nextIncompleteExercise.id)
-                  }
-                }),
-            )
+                  return
+                }
+                if (hasMoreSetsInExercise && restSeconds > 0) {
+                  const timer = await workoutRepository.setRestTimer(
+                    state.workout.id,
+                    restSeconds,
+                  )
+                  await syncNativeRestTimer(timer, true)
+                  return
+                }
+                const timer = await workoutRepository.dismissRestTimer(
+                  state.workout.id,
+                )
+                await syncNativeRestTimer(timer)
+              })
+              .finally(() => {
+                pendingOptimisticSetMutations.current = Math.max(
+                  0,
+                  pendingOptimisticSetMutations.current - 1,
+                )
+              })
+            run(setMutation)
           }}
           onDeleteSet={(setId) => {
             const deletingLastSet = activeSets.at(-1)?.id === setId
@@ -747,18 +810,6 @@ export function LiveWorkoutPage() {
                 )
                 await syncNativeRestTimer(timer)
               }),
-            )
-          }}
-          onMoveExercise={(offset) => {
-            const ids = state.exercises.map((entry) => entry.id)
-            const target = activeIndex + offset
-            if (target < 0 || target >= ids.length) {
-              return
-            }
-            ;[ids[activeIndex], ids[target]] = [ids[target], ids[activeIndex]]
-            run(
-              workoutRepository.reorderWorkoutExercises(state.workout.id, ids),
-              'Exercise order could not be changed.',
             )
           }}
           onNext={() => selectExercise(activeIndex + 1)}
@@ -792,9 +843,13 @@ export function LiveWorkoutPage() {
               'Exercise notes could not be saved.',
             )
           }
-          onSkip={(skipped) =>
+          onSkip={(skipped) => {
+            const nextExercise = state.exercises[activeIndex + 1]
+            if (skipped && nextExercise) {
+              setActiveExerciseId(nextExercise.id)
+            }
             run(workoutRepository.skipExercise(activeExercise.id, skipped))
-          }
+          }}
           prescription={activePrescription}
           restTimerPanel={
             <RestTimerPanel
@@ -1048,11 +1103,11 @@ function ExerciseWorkspace({
   exercise,
   exerciseCount,
   exerciseIndex,
+  enterDirection,
   onAddExercise,
   onAddSet,
   onCompleteSet,
   onDeleteSet,
-  onMoveExercise,
   onNext,
   onPrevious,
   onReplaceExercise,
@@ -1071,12 +1126,12 @@ function ExerciseWorkspace({
   exercise: WorkoutExercise
   exerciseCount: number
   exerciseIndex: number
+  enterDirection: 'next' | 'previous' | null
   rirTargetOnEverySet: boolean
   onAddExercise: () => void
   onAddSet: () => void
   onCompleteSet: (set: WorkoutSet, completed: boolean) => void
   onDeleteSet: (setId: string) => void
-  onMoveExercise: (offset: 1 | -1) => void
   onNext: () => void
   onPrevious: () => void
   onReplaceExercise: () => void
@@ -1094,7 +1149,12 @@ function ExerciseWorkspace({
 }) {
   const { t } = useLanguage()
   const metrics = exercise.exerciseSnapshot.trackingMetrics
-  const swipe = useSwipeNavigation({ onNext, onPrevious })
+  const swipe = useSwipeNavigation({
+    canGoNext,
+    canGoPrevious,
+    onNext,
+    onPrevious,
+  })
   const weightUnit = useWeightUnit()
   const finalProgrammedSetId = getFinalProgrammedSetId(sets)
   const exerciseNotes = exercise.notes.trim()
@@ -1116,9 +1176,18 @@ function ExerciseWorkspace({
 
   return (
     <Card
-      className={
-        exercise.skipped ? 'exercise-workspace skipped' : 'exercise-workspace'
-      }
+      className={[
+        'exercise-workspace',
+        exercise.skipped ? 'skipped' : '',
+        enterDirection === 'next'
+          ? 'exercise-workspace-enter-next'
+          : enterDirection === 'previous'
+            ? 'exercise-workspace-enter-previous'
+            : '',
+        swipe.isDragging ? 'is-swiping' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
       onKeyDown={(event) => {
         if (isInteractiveElement(event.target)) {
           return
@@ -1133,7 +1202,8 @@ function ExerciseWorkspace({
         }
       }}
       tabIndex={0}
-      {...swipe}
+      style={swipe.style}
+      {...swipe.handlers}
     >
       <div className="exercise-card-header">
         <div className="exercise-title-block">
@@ -1151,23 +1221,6 @@ function ExerciseWorkspace({
         </div>
         {restTimerPanel}
       </div>
-
-      {exerciseCount > 1 ? (
-        <div className="exercise-stepper" aria-label={t('Exercise navigation')}>
-          <SecondaryButton
-            disabled={!canGoPrevious}
-            type="button"
-            onClick={onPrevious}
-          >
-            <ChevronLeft aria-hidden="true" size={18} />
-            {t('Previous')}
-          </SecondaryButton>
-          <SecondaryButton disabled={!canGoNext} type="button" onClick={onNext}>
-            {t('Next')}
-            <ChevronRight aria-hidden="true" size={18} />
-          </SecondaryButton>
-        </div>
-      ) : null}
 
       <div className="set-list">
         {sets.map((set) => (
@@ -1203,22 +1256,6 @@ function ExerciseWorkspace({
         <SecondaryButton type="button" onClick={onReplaceExercise}>
           <RefreshCcw aria-hidden="true" size={16} />
           {t('Swap Exercise')}
-        </SecondaryButton>
-        <SecondaryButton
-          type="button"
-          disabled={exerciseIndex === 0}
-          onClick={() => onMoveExercise(-1)}
-        >
-          <ChevronsLeft aria-hidden="true" size={16} />
-          {t('Move Earlier')}
-        </SecondaryButton>
-        <SecondaryButton
-          type="button"
-          disabled={exerciseIndex >= exerciseCount - 1}
-          onClick={() => onMoveExercise(1)}
-        >
-          {t('Move Later')}
-          <ChevronsRight aria-hidden="true" size={16} />
         </SecondaryButton>
         <SecondaryButton
           className="button-danger"
@@ -2172,55 +2209,153 @@ function exerciseRecordsRepsPerSide(exercise: WorkoutExercise) {
 }
 
 function useSwipeNavigation({
+  canGoNext,
+  canGoPrevious,
   onNext,
   onPrevious,
 }: {
+  canGoNext: boolean
+  canGoPrevious: boolean
   onNext: () => void
   onPrevious: () => void
 }) {
   const pointerStart = useRef<{
+    pointerId: number
     x: number
     y: number
     time: number
-    ignore: boolean
   } | null>(null)
+  const navigationTimeout = useRef<number | null>(null)
+  const [offset, setOffset] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
+  const [isSettling, setIsSettling] = useState(false)
+
+  useEffect(
+    () => () => {
+      if (navigationTimeout.current !== null) {
+        window.clearTimeout(navigationTimeout.current)
+      }
+    },
+    [],
+  )
+
+  function settleAt(nextOffset: number, navigate?: () => void) {
+    setIsDragging(false)
+    setIsSettling(true)
+    setOffset(nextOffset)
+    const duration = swipeAnimationDuration()
+    if (duration === 0) {
+      setIsSettling(false)
+      navigate?.()
+      return
+    }
+    if (!navigate) {
+      navigationTimeout.current = window.setTimeout(() => {
+        setIsSettling(false)
+      }, duration)
+      return
+    }
+    navigationTimeout.current = window.setTimeout(navigate, duration)
+  }
+
+  function reset() {
+    pointerStart.current = null
+    settleAt(0)
+  }
 
   return {
-    onPointerDown(event: PointerEvent<HTMLElement>) {
-      pointerStart.current = {
-        x: event.clientX,
-        y: event.clientY,
-        time: performance.now(),
-        ignore: isInteractiveElement(event.target),
-      }
-    },
-    onPointerUp(event: PointerEvent<HTMLElement>) {
-      const start = pointerStart.current
-      pointerStart.current = null
-      if (!start || start.ignore || isInteractiveElement(event.target)) {
-        return
-      }
-      const dx = event.clientX - start.x
-      const dy = event.clientY - start.y
-      const elapsed = Math.max(1, performance.now() - start.time)
-      const velocity = Math.abs(dx) / elapsed
-      const intentional =
-        Math.abs(dx) >= 64 &&
-        Math.abs(dx) > Math.abs(dy) * 1.35 &&
-        velocity >= 0.25
-      if (!intentional) {
-        return
-      }
-      if (dx < 0) {
-        onNext()
-      } else {
-        onPrevious()
-      }
-    },
-    onPointerCancel() {
-      pointerStart.current = null
+    isDragging,
+    style: {
+      '--exercise-swipe-x': `${offset}px`,
+      transition: isDragging
+        ? 'none'
+        : isSettling
+          ? 'transform 180ms cubic-bezier(0.2, 0.82, 0.22, 1), opacity 180ms ease'
+          : undefined,
+    } as CSSProperties,
+    handlers: {
+      onPointerDown(event: PointerEvent<HTMLElement>) {
+        if (isInteractiveElement(event.target)) {
+          return
+        }
+        if (navigationTimeout.current !== null) {
+          window.clearTimeout(navigationTimeout.current)
+          navigationTimeout.current = null
+        }
+        setIsSettling(false)
+        event.currentTarget.setPointerCapture?.(event.pointerId)
+        pointerStart.current = {
+          pointerId: event.pointerId,
+          x: event.clientX,
+          y: event.clientY,
+          time: performance.now(),
+        }
+      },
+      onPointerMove(event: PointerEvent<HTMLElement>) {
+        const start = pointerStart.current
+        if (!start || start.pointerId !== event.pointerId) {
+          return
+        }
+        const dx = event.clientX - start.x
+        const dy = event.clientY - start.y
+        if (!isDragging && Math.abs(dx) < 7) {
+          return
+        }
+        if (!isDragging && Math.abs(dx) <= Math.abs(dy) * 1.15) {
+          return
+        }
+        event.preventDefault()
+        setIsDragging(true)
+        const movingPastStart = dx > 0 && !canGoPrevious
+        const movingPastEnd = dx < 0 && !canGoNext
+        setOffset(movingPastStart || movingPastEnd ? dx * 0.24 : dx)
+      },
+      onPointerUp(event: PointerEvent<HTMLElement>) {
+        const start = pointerStart.current
+        pointerStart.current = null
+        if (!start || start.pointerId !== event.pointerId) {
+          return
+        }
+        event.currentTarget.releasePointerCapture?.(event.pointerId)
+        const dx = event.clientX - start.x
+        const dy = event.clientY - start.y
+        const elapsed = Math.max(1, performance.now() - start.time)
+        const velocity = Math.abs(dx) / elapsed
+        const intentional =
+          Math.abs(dx) >= 64 &&
+          Math.abs(dx) > Math.abs(dy) * 1.35 &&
+          velocity >= 0.25
+        const width = Math.max(event.currentTarget.clientWidth, 320)
+        if (intentional && dx < 0 && canGoNext) {
+          settleAt(-width * 1.06, onNext)
+          return
+        }
+        if (intentional && dx > 0 && canGoPrevious) {
+          settleAt(width * 1.06, onPrevious)
+          return
+        }
+        reset()
+      },
+      onPointerCancel() {
+        reset()
+      },
+      onLostPointerCapture() {
+        if (pointerStart.current) {
+          reset()
+        }
+      },
     },
   }
+}
+
+function swipeAnimationDuration() {
+  if (
+    import.meta.env.MODE === 'test' ||
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  ) {
+    return 0
+  }
+  return 180
 }
 
 function isInteractiveElement(target: EventTarget | null) {

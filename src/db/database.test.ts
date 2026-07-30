@@ -833,6 +833,185 @@ describe('database', () => {
 
     await destroyTestDatabase(migratedDatabase)
   })
+
+  it('repairs reusable official restaurant foods without mutating historical snapshots when migrating to v16', async () => {
+    const name = `training-log-v16-restaurant-corrections-${crypto.randomUUID()}`
+    const oldDatabase = new Dexie(name)
+    oldDatabase.version(15).stores({
+      appMetadata: '&id',
+      foods: '&id, status, name, updatedAt',
+      foodLogEntries: '&id, localDate, foodId, createdAt',
+      savedMeals: '&id, status, name, updatedAt',
+      foodUnitPreferences: '&id, foodId, updatedAt',
+    })
+    const timestamp = '2026-07-18T12:00:00.000Z'
+    await oldDatabase.table('appMetadata').put({
+      id: 'app',
+      databaseSchemaVersion: 15,
+      backupSchemaVersion: 1,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    await oldDatabase.table('foods').bulkPut([
+      {
+        id: 'usda:170790',
+        name: 'CHICK-FIL-A, chicken sandwich',
+        sourceType: 'provider',
+        provider: 'usda',
+        providerRecordId: '170790',
+        servingQuantity: 1,
+        servingUnit: 'sandwich',
+        servingDescription: '1 sandwich',
+        gramsPerServing: 187,
+        ouncesPerServing: 6.596,
+        servingConversionReliable: true,
+        servingConversionSource: 'provider_portion_weight',
+        caloriesPerServing: 465.63,
+        proteinGramsPerServing: 30.44,
+        carbohydrateGramsPerServing: 39.06,
+        fatGramsPerServing: 20.93,
+        macroBasis: 'both',
+        notes: 'Keep this note.',
+        status: 'active',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      {
+        id: 'usda:173297',
+        name: "McDONALD'S, Chicken McNUGGETS",
+        sourceType: 'provider',
+        provider: 'usda',
+        providerRecordId: '173297',
+        servingQuantity: 6,
+        servingUnit: 'pieces',
+        servingDescription: '6 pieces',
+        gramsPerServing: 95,
+        ouncesPerServing: 3.351,
+        servingConversionReliable: true,
+        servingConversionSource: 'provider_portion_weight',
+        caloriesPerServing: 286.9,
+        proteinGramsPerServing: 15,
+        carbohydrateGramsPerServing: 14.34,
+        fatGramsPerServing: 18.82,
+        macroBasis: 'both',
+        notes: '',
+        status: 'active',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      {
+        id: 'usda:other-restaurant',
+        name: 'Other restaurant burger',
+        sourceType: 'provider',
+        provider: 'usda',
+        providerRecordId: '999999',
+        servingQuantity: 1,
+        servingUnit: 'burger',
+        servingDescription: '1 burger',
+        caloriesPerServing: 500,
+        proteinGramsPerServing: 25,
+        carbohydrateGramsPerServing: 40,
+        fatGramsPerServing: 27,
+        notes: '',
+        status: 'active',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    ])
+    await oldDatabase.table('foodUnitPreferences').bulkPut([
+      {
+        id: 'pref-chick',
+        foodId: 'usda:170790',
+        unitKey: 'g',
+        amount: 187,
+        updatedAt: timestamp,
+      },
+      {
+        id: 'pref-mcd',
+        foodId: 'usda:173297',
+        unitKey: 'g',
+        amount: 95,
+        updatedAt: timestamp,
+      },
+    ])
+    await oldDatabase.table('foodLogEntries').put({
+      id: 'historical-log',
+      foodId: 'usda:170790',
+      localDate: '2026-07-18',
+      foodSnapshot: { caloriesPerServing: 465.63 },
+      createdAt: timestamp,
+    })
+    await oldDatabase.table('savedMeals').put({
+      id: 'historical-meal',
+      name: 'Saved restaurant meal',
+      status: 'active',
+      components: [
+        { foodSnapshot: { caloriesPerServing: 286.9 }, servingMultiplier: 1 },
+      ],
+      updatedAt: timestamp,
+    })
+    oldDatabase.close()
+
+    const migratedDatabase = new TrainingLogDatabase(name)
+
+    await expect(
+      migratedDatabase.foods.get('usda:170790'),
+    ).resolves.toMatchObject({
+      brandName: 'Chick-fil-A',
+      servingQuantity: 1,
+      servingUnit: 'sandwich',
+      gramsPerServing: null,
+      servingConversionReliable: false,
+      caloriesPerServing: 420,
+      proteinGramsPerServing: 29,
+      carbohydrateGramsPerServing: 41,
+      fatGramsPerServing: 18,
+      sourceName: 'Chick-fil-A official U.S. menu',
+      normalizerVersion: 2,
+      notes: 'Keep this note.',
+    })
+    await expect(
+      migratedDatabase.foods.get('usda:173297'),
+    ).resolves.toMatchObject({
+      brandName: "McDonald's",
+      servingQuantity: 6,
+      servingUnit: 'pieces',
+      gramsPerServing: null,
+      caloriesPerServing: 250,
+      proteinGramsPerServing: 14,
+      carbohydrateGramsPerServing: 15,
+      fatGramsPerServing: 15,
+      sourceName: "McDonald's official U.S. menu",
+    })
+    await expect(
+      migratedDatabase.foodUnitPreferences.get('pref-chick'),
+    ).resolves.toMatchObject({ unitKey: 'serving', amount: 1 })
+    await expect(
+      migratedDatabase.foodUnitPreferences.get('pref-mcd'),
+    ).resolves.toMatchObject({ unitKey: 'serving', amount: 6 })
+    await expect(
+      migratedDatabase.foods.get('usda:other-restaurant'),
+    ).resolves.toMatchObject({ caloriesPerServing: 500 })
+    await expect(
+      migratedDatabase.foodLogEntries.get('historical-log'),
+    ).resolves.toMatchObject({
+      foodSnapshot: { caloriesPerServing: 465.63 },
+    })
+    await expect(
+      migratedDatabase.savedMeals.get('historical-meal'),
+    ).resolves.toMatchObject({
+      components: [
+        { foodSnapshot: { caloriesPerServing: 286.9 }, servingMultiplier: 1 },
+      ],
+    })
+    await expect(
+      migratedDatabase.appMetadata.get('app'),
+    ).resolves.toMatchObject({
+      databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+    })
+
+    await destroyTestDatabase(migratedDatabase)
+  })
 })
 
 const v2Stores = {

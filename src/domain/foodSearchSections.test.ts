@@ -283,22 +283,43 @@ describe('createSearchSections', () => {
     expect(recentNames).not.toContain('Oatmeal')
   })
 
-  it('shows one strict matching saved recipe before food sections', () => {
+  it('shows an exact saved recipe first regardless of word order', () => {
     const sections = createSearchSections({
       includeRecentFoods: true,
       localFoods: [],
       providerResults: [],
-      query: 'chicken rice',
+      query: 'RÍCE, CHICKEN!',
       recentFoods: [makeRecentFood('r1', 'Chicken breast')],
       savedMeals: [
-        makeSavedMeal('meal-1', 'Chicken and Rice'),
-        makeSavedMeal('meal-2', 'Chicken Soup'),
+        makeSavedMeal('meal-1', 'Chicken Rice Bowl'),
+        makeSavedMeal('meal-2', 'Chicken and Rice'),
       ],
     })
 
     expect(sections[0]).toMatchObject({
       title: 'Recipes',
       items: [{ type: 'savedMeal', meal: { name: 'Chicken and Rice' } }],
+    })
+  })
+
+  it('preserves duplicate word counts when ranking an exact recipe match', () => {
+    const sections = createSearchSections({
+      includeRecentFoods: false,
+      localFoods: [],
+      providerResults: [],
+      query: 'chocolate chip chocolate',
+      recentFoods: [],
+      savedMeals: [
+        makeSavedMeal('meal-1', 'Chocolate Chip Cookie'),
+        makeSavedMeal('meal-2', 'Chocolate Chocolate Chip'),
+      ],
+    })
+
+    expect(sections[0]).toMatchObject({
+      title: 'Recipes',
+      items: [
+        { type: 'savedMeal', meal: { name: 'Chocolate Chocolate Chip' } },
+      ],
     })
   })
 

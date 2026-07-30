@@ -9,6 +9,7 @@ import {
 } from '@domain/foodProviderModels'
 import { createTestDatabase, destroyTestDatabase } from '@test/database'
 import { snapshotFood } from '@domain/snapshots'
+import { servingOptionsForFood } from '@domain/foodServings'
 import { seedFood, testLocalDate } from '@test/seedFactories'
 import type { TrainingLogDatabase } from '@db/database'
 
@@ -668,6 +669,7 @@ describe('foodRepository', () => {
         provider: 'usda',
         providerRecordId: '123',
         providerDataType: 'Branded',
+        foodCategory: 'Grains',
         caloriesPerServing: 200,
         proteinGramsPerServing: 10,
         carbohydrateGramsPerServing: 45,
@@ -680,6 +682,216 @@ describe('foodRepository', () => {
       },
     })
     expect(storedLog.foodSnapshot.snapshotId).toBeTruthy()
+  })
+
+  it('persists generic restaurant categories so full menu servings survive reuse', async () => {
+    const repository = createFoodRepository(database)
+    const restaurants = [
+      {
+        id: 'usda:restaurant-steak',
+        name: 'Oak Street Grill sirloin steak',
+        brandName: 'Oak Street Grill',
+        foodCategory: 'Restaurant Foods',
+        servingQuantity: 9,
+        servingUnit: 'oz',
+        servingDescription: '1 steak',
+        gramsPerServing: 9 * 28.349523125,
+        expectedKey: 'steak',
+        expectedLabel: '1 steak',
+      },
+      {
+        id: 'usda:fast-food-brisket',
+        name: 'River Road Smokehouse beef brisket',
+        brandName: 'River Road Smokehouse',
+        foodCategory: 'Fast Foods',
+        servingQuantity: 310,
+        servingUnit: 'g',
+        servingDescription: '1 platter',
+        gramsPerServing: 310,
+        expectedKey: 'platter',
+        expectedLabel: '1 platter',
+      },
+    ]
+
+    for (const restaurant of restaurants) {
+      const providerFood = makeProviderFood()
+      await repository.upsertProviderFood({
+        ...providerFood,
+        id: restaurant.id,
+        name: restaurant.name,
+        brandName: restaurant.brandName,
+        foodCategory: restaurant.foodCategory,
+        source: {
+          ...providerFood.source,
+          providerRecordId: restaurant.id,
+        },
+        serving: {
+          ...providerFood.serving,
+          quantity: restaurant.servingQuantity,
+          unit: restaurant.servingUnit,
+          description: restaurant.servingDescription,
+          gramsPerServing: restaurant.gramsPerServing,
+          ouncesPerServing: gramsToOunces(restaurant.gramsPerServing),
+          sourcePortions: [],
+        },
+      })
+
+      const stored = await repository.getFood(restaurant.id)
+      expect(stored).toMatchObject({
+        foodCategory: restaurant.foodCategory,
+        servingDescription: restaurant.servingDescription,
+      })
+      if (!stored) {
+        throw new Error('Expected provider food to persist.')
+      }
+      expect(servingOptionsForFood(stored)[0]).toMatchObject({
+        amount: 1,
+        label: restaurant.expectedLabel,
+      })
+    }
+  })
+
+  it('persists a restaurant item count and keeps its known category on a later sparse upsert', async () => {
+    const repository = createFoodRepository(database)
+    const base = makeProviderFood()
+    const sixNuggets: NormalizedFoodResult = {
+      ...base,
+      id: 'usda:mcnuggets-six-piece',
+      name: "McDonald's Chicken McNuggets",
+      brandName: "McDonald's",
+      foodCategory: 'Fast Foods',
+      source: {
+        ...base.source,
+        providerRecordId: 'mcnuggets-six-piece',
+      },
+      serving: {
+        ...base.serving,
+        quantity: 1,
+        unit: 'serving',
+        description: '',
+        gramsPerServing: 95,
+        ouncesPerServing: gramsToOunces(95),
+        sourcePortions: [
+          {
+            amount: 6,
+            unit: 'pieces',
+            description: '6 pieces',
+            gramWeight: 95,
+          },
+        ],
+      },
+      macrosPerServing: {
+        calories: 250,
+        proteinGrams: 14,
+        carbohydrateGrams: 15,
+        fatGrams: 15,
+      },
+    }
+
+    const first = await repository.upsertProviderFood(sixNuggets)
+    expect(first).toMatchObject({
+      foodCategory: 'Fast Foods',
+      servingQuantity: 6,
+      servingUnit: 'pieces',
+      servingDescription: '6 pieces',
+      caloriesPerServing: 250,
+    })
+    expect(servingOptionsForFood(first)[0]).toMatchObject({
+      amount: 6,
+      label: '6 pieces',
+    })
+
+    const refreshed = await repository.upsertProviderFood({
+      ...sixNuggets,
+      foodCategory: null,
+    })
+    expect(refreshed).toMatchObject({
+      foodCategory: 'Fast Foods',
+      servingQuantity: 6,
+      servingUnit: 'pieces',
+      caloriesPerServing: 250,
+    })
+
+    const log = await repository.logExternalFood({
+      food: sixNuggets,
+      localDate: testLocalDate,
+      servingMultiplier: 1,
+    })
+    expect(log).toMatchObject({
+      computedCalories: 250,
+      foodSnapshot: {
+        foodCategory: 'Fast Foods',
+        servingQuantity: 6,
+        servingUnit: 'pieces',
+        caloriesPerServing: 250,
+      },
+    })
+  })
+
+  it('rebases an external restaurant multiplier after canonicalizing a larger listed portion', async () => {
+    const repository = createFoodRepository(database)
+    const base = makeProviderFood()
+    const platter: NormalizedFoodResult = {
+      ...base,
+      id: 'usda:restaurant-platter',
+      name: 'Market Grill chicken platter',
+      brandName: 'Market Grill',
+      foodCategory: 'Restaurant Foods',
+      source: {
+        ...base.source,
+        providerRecordId: 'restaurant-platter',
+      },
+      serving: {
+        ...base.serving,
+        quantity: 100,
+        unit: 'g',
+        description: '100 g',
+        gramsPerServing: 100,
+        ouncesPerServing: gramsToOunces(100),
+        sourcePortions: [
+          {
+            amount: 1,
+            unit: 'platter',
+            description: '1 platter',
+            gramWeight: 250,
+          },
+        ],
+      },
+      macrosPerServing: {
+        calories: 100,
+        proteinGrams: 10,
+        carbohydrateGrams: 8,
+        fatGrams: 3,
+      },
+      macrosPer100Grams: {
+        calories: 100,
+        proteinGrams: 10,
+        carbohydrateGrams: 8,
+        fatGrams: 3,
+      },
+    }
+    const listedServing = servingOptionsForFood(platter)[0]
+    const providerMultiplier = listedServing.toServingMultiplier(
+      listedServing.amount,
+    )
+    expect(providerMultiplier).toBe(2.5)
+
+    const log = await repository.logExternalFood({
+      food: platter,
+      localDate: testLocalDate,
+      servingMultiplier: providerMultiplier ?? 0,
+    })
+
+    expect(log).toMatchObject({
+      servingMultiplier: 1,
+      computedCalories: 250,
+      computedProteinGrams: 25,
+      foodSnapshot: {
+        servingQuantity: 1,
+        servingUnit: 'platter',
+        caloriesPerServing: 250,
+      },
+    })
   })
 
   it('prevents imported provider foods from being directly edited', async () => {

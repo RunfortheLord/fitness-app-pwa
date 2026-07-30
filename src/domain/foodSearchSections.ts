@@ -213,17 +213,20 @@ function closestMatchingRecipe(
       .map((meal) => {
         const normalizedName = normalizeFoodText(meal.name)
         const mealTokens = recipeTokens(normalizedName)
+        const exactTokenMatch = haveSameRecipeWordMultiset(
+          queryTokens,
+          mealTokens,
+        )
         const tokenMatch =
           queryTokens.length > 0 &&
           queryTokens.every((token) => mealTokens.includes(token))
-        const score =
-          normalizedName === normalizedRecipeQuery
-            ? 100
-            : tokenMatch
-              ? 50 +
-                queryTokens.length -
-                Math.abs(mealTokens.length - queryTokens.length)
-              : 0
+        const score = exactTokenMatch
+          ? 100
+          : tokenMatch
+            ? 50 +
+              queryTokens.length -
+              Math.abs(mealTokens.length - queryTokens.length)
+            : 0
         return { meal, score }
       })
       .filter((candidate) => candidate.score > 0)
@@ -237,4 +240,14 @@ function closestMatchingRecipe(
 
 function recipeTokens(value: string) {
   return value.split(/\s+/).filter((token) => token && token !== 'and')
+}
+
+function haveSameRecipeWordMultiset(left: string[], right: string[]) {
+  if (left.length !== right.length) {
+    return false
+  }
+
+  const sortedLeft = [...left].sort()
+  const sortedRight = [...right].sort()
+  return sortedLeft.every((token, index) => token === sortedRight[index])
 }

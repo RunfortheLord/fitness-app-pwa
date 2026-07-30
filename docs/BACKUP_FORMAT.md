@@ -3,7 +3,7 @@
 ## Current Versions
 
 - Backup format version: `1`
-- Compatible database schema versions: backups with `databaseSchemaVersion` less than or equal to the app's current IndexedDB schema version `8` can be restored after validation.
+- Compatible database schema versions: backups with `databaseSchemaVersion` less than or equal to the app's current IndexedDB schema version `16` can be restored after validation.
 - API key integration settings are not exported in backups. Replacing local data
   from a backup clears the saved API key integration record.
 - Application restore support: application version `0.0.0` can restore backup format version `1`.
@@ -82,40 +82,37 @@ The supported restore mode is replace. Merge restore is unavailable in this rele
 
 Replace restore validates first, then writes all restored user data in one Dexie transaction. If the transaction fails, the original database state is preserved. Required app metadata is reinitialized after a successful restore. Built-in exercises are reseeded idempotently after restore so older backups gain the offline library without duplicating records.
 
-## CSV Export
+## Fitness Data ZIP Export
 
-The user-facing **Export all fitness data** action creates a local TAR archive
-containing one spreadsheet-ready CSV file per exported table:
+The user-facing **Export all fitness data** action creates a conventional ZIP
+archive. Every entry is contained by one timestamped top-level directory. The
+archive contains:
 
-- `userSettings.csv`
-- `nutritionTargets.csv`
-- `foods.csv`
-- `foodLogEntries.csv`
-- `foodUnitPreferences.csv`
-- `barcodeProductCache.csv`
-- `bodyweightEntries.csv`
-- `exercises.csv`
-- `programTemplates.csv`
-- `templateWorkoutDays.csv`
-- `templateWorkoutExercises.csv`
-- `activeProgramCycles.csv`
-- `activeCycleWorkoutDays.csv`
-- `activeCycleWorkoutExercises.csv`
-- `workouts.csv`
-- `workoutExercises.csv`
-- `workoutSets.csv`
-- `workoutHistoryEntries.csv`
-- `workoutHistoryExercises.csv`
-- `workoutHistorySets.csv`
-- `detectedWorkoutChanges.csv`
-- `appliedWorkoutChanges.csv`
-- `runs.csv`
-- `runSamples.csv`
-- `runPauses.csv`
-- `runSplits.csv`
-- `runClassifications.csv`
+- `README.txt`, with versions, units, timezone, inventory, and a privacy warning;
+- `manifest.json`, with export metadata, table counts, table descriptions,
+  generated column metadata, and SHA-256 checksums when Web Crypto is available;
+- `backup/fitness-data-backup.json`, the existing restore-compatible,
+  full-fidelity JSON backup;
+- `backup/schema.json`, generated from the same Zod schema used to validate
+  restore files;
+- one typed JSON array under `backup/` for every explicitly allowlisted backup
+  table, including empty arrays;
+- spreadsheet-oriented reports under `reports/`: workout history, daily
+  nutrition, food log, bodyweight, programs, exercise library, and export
+  summary.
 
-CSV files include headers, stable IDs, parent IDs, ordering fields, timestamps, local dates, archived status, source IDs, and escaped values for commas, quotation marks, line breaks, and empty values. Nested snapshot fields are serialized as JSON inside the CSV cell.
+The complete JSON backup remains authoritative. Individual table JSON files
+preserve nulls, booleans, numbers, arrays, nested objects, stable IDs, and
+relationships without double-stringifying nested values. The schema file and
+manifest retain the complete defined structure when a table has no records.
+`apiKeyIntegrationSettings`, backup audit metadata, transient active-cycle
+check-offs, and object URLs are not exported.
+
+Human-readable CSV reports use explicit headers, RFC 4180 quoting, CRLF line
+endings, Unicode, predictable ordering, normal unit columns, and `true`/`false`
+booleans. Text beginning with `=`, `+`, `-`, or `@` is prefixed with an
+apostrophe in reports to prevent spreadsheet formula injection. Authoritative
+JSON values are never modified for spreadsheet safety.
 
 Bodyweight CSV and JSON exports include every stored bodyweight entry,
 including legacy duplicate-date records restored from older backups. Export
@@ -131,14 +128,20 @@ Estimated one-repetition-maximum graph values are derived from exported
 workout-history sets after restore. They are not a separate backup table and do
 not change the backup format version.
 
-Nutrition CSV and JSON exports use stored historical food-log snapshots. They
+Nutrition report and JSON exports use stored historical food-log snapshots. They
 include enough snapshot information to reconstruct local date, log timestamp,
 food name, optional brand or restaurant, provider identity when known, serving
 definition, consumed multiplier, calories, protein, total carbohydrates, fat,
 and reliable conversion metadata when available. Export never refetches provider
 records.
 
-CSV is intended for readable analysis and spreadsheet use. CSV import is not supported.
+CSV reports are intended for readable analysis and spreadsheet use. CSV import
+is not supported.
+
+Before compression and download, export validation checks required and unique
+paths, manifest record counts, JSON parsing, restore-schema and relationship
+validation, table checksums when supported, and disallowed secret field names.
+An invalid package is not downloaded.
 
 ## Clear All Data
 

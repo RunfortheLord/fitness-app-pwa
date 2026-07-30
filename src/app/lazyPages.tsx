@@ -1,5 +1,11 @@
 import { lazy } from 'react'
 
+export const CalorieInsightsPage = lazy(() =>
+  import('@pages/CalorieInsightsPage').then((module) => ({
+    default: module.CalorieInsightsPage,
+  })),
+)
+
 export const HistoryPage = lazy(() =>
   import('@pages/HistoryPage').then((module) => ({
     default: module.HistoryPage,

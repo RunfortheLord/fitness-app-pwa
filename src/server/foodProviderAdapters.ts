@@ -13,6 +13,7 @@ import {
   type NormalizedFoodPortion,
   type NormalizedFoodResult,
 } from '../domain/foodProviderModels.js'
+import { applyOfficialRestaurantMenuCorrection } from '../domain/officialRestaurantMenuCorrections.js'
 import { ProviderError } from './foodProviderErrors.js'
 
 export type ProviderSearchInput = {
@@ -322,7 +323,7 @@ export function normalizeUsdaFood(
     readIsoDate(record.availableDate) ??
     readIsoDate(record.publicationDate)
 
-  return {
+  return applyOfficialRestaurantMenuCorrection({
     id: stableProviderId('usda', fdcId),
     source: {
       provider: 'usda',
@@ -361,7 +362,7 @@ export function normalizeUsdaFood(
     alternateResultIds: [],
     groupingReasons: [],
     normalizerVersion: FOOD_NORMALIZER_VERSION,
-  }
+  })
 }
 
 export function normalizeOpenFoodFactsFood(
@@ -403,13 +404,33 @@ export function normalizeOpenFoodFactsFood(
     (language === 'es'
       ? 'Producto de Open Food Facts'
       : 'Open Food Facts product')
-  const gramsPerServing = readNumber(record.serving_quantity)
+  const reportedServingSize = readString(record.serving_size)
+  const reportedGrams = readNumber(record.serving_quantity)
+  const reportedGramsPerServing =
+    reportedGrams !== null && reportedGrams > 0 ? reportedGrams : null
+  const parsedServingSize = parsePortionText(reportedServingSize)
+  const usesPer100GramFallback =
+    !perServingValidation.ok &&
+    per100Validation.ok &&
+    reportedGramsPerServing === null
   const serving = createServing({
-    quantity: 1,
-    unit: readString(record.serving_size) ?? 'serving',
-    description: readString(record.serving_size) ?? '',
-    gramsPerServing,
-    conversionSource: 'provider_serving_weight',
+    quantity: usesPer100GramFallback
+      ? 100
+      : (parsedServingSize?.amount ?? reportedGramsPerServing ?? 1),
+    unit: usesPer100GramFallback
+      ? 'g'
+      : (parsedServingSize?.unit ??
+        (reportedGramsPerServing === null ? 'serving' : 'g')),
+    description: usesPer100GramFallback
+      ? '100 g'
+      : (reportedServingSize ??
+        (reportedGramsPerServing === null
+          ? ''
+          : `${reportedGramsPerServing} g`)),
+    gramsPerServing: usesPer100GramFallback ? 100 : reportedGramsPerServing,
+    conversionSource: usesPer100GramFallback
+      ? 'per_100g'
+      : 'provider_serving_weight',
   })
   const macrosPer100Grams = per100Validation.ok
     ? toMacros(per100Validation.macros)

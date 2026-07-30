@@ -1,5 +1,6 @@
 import {
   DndContext,
+  KeyboardCode,
   KeyboardSensor,
   MouseSensor,
   TouchSensor,
@@ -62,6 +63,11 @@ export function SortableArea({
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
+      keyboardCodes: {
+        start: [KeyboardCode.Space],
+        cancel: [KeyboardCode.Esc],
+        end: [KeyboardCode.Space, KeyboardCode.Tab],
+      },
     }),
   )
 

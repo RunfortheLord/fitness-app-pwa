@@ -17,7 +17,7 @@ export type FoodFormState = {
 export const emptyFoodForm: FoodFormState = {
   name: '',
   brandName: '',
-  servingQuantity: '',
+  servingQuantity: '1',
   servingUnit: '',
   caloriesPerServing: '',
   proteinGramsPerServing: '',

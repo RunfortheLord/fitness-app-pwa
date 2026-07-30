@@ -105,6 +105,7 @@ export function WorkoutDayDetailSheet({
         isOpen={isOpen}
         onClose={onClose}
         title={selectedDay.day.name}
+        variant="page"
       >
         <p className="sheet-context">
           {selectedDay.cycle.name} stays on this day until you choose another

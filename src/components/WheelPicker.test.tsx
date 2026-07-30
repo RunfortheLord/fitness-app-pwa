@@ -114,7 +114,7 @@ describe('WheelColumn', () => {
 })
 
 describe('RestWheelPicker', () => {
-  it('reports minute and second changes independently', () => {
+  it('reports minute and five-second changes independently', () => {
     const onChange = vi.fn()
     render(<RestWheelPicker minutes={1} onChange={onChange} seconds={30} />)
 
@@ -133,5 +133,41 @@ describe('RestWheelPicker', () => {
       ),
     )
     expect(onChange).toHaveBeenLastCalledWith(1, 45)
+
+    const secondOptions = within(
+      screen.getByRole('listbox', { name: 'Rest seconds' }),
+    ).getAllByRole('option')
+    expect(secondOptions.map((option) => option.textContent)).toEqual([
+      '00',
+      '05',
+      '10',
+      '15',
+      '20',
+      '25',
+      '30',
+      '35',
+      '40',
+      '45',
+      '50',
+      '55',
+    ])
+  })
+
+  it('normalizes legacy second values to the nearest five-second option', () => {
+    const onChange = vi.fn()
+    render(<RestWheelPicker minutes={1} onChange={onChange} seconds={32} />)
+
+    const seconds = screen.getByRole('listbox', { name: 'Rest seconds' })
+    expect(
+      within(seconds).getByRole('option', { name: '30', selected: true }),
+    ).toBeInTheDocument()
+
+    fireEvent.click(
+      within(screen.getByRole('listbox', { name: 'Rest minutes' })).getByRole(
+        'option',
+        { name: '02' },
+      ),
+    )
+    expect(onChange).toHaveBeenLastCalledWith(2, 30)
   })
 })

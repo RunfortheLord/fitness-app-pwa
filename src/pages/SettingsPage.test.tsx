@@ -158,7 +158,7 @@ describe('SettingsPage', () => {
     await user.click(screen.getByRole('button', { name: 'Data' }))
     expect(
       screen.getByText(
-        /Local backup files and CSV exports stay on this device/,
+        /Local backup files and ZIP exports stay on this device/,
       ),
     ).toBeInTheDocument()
     expect(
@@ -181,6 +181,71 @@ describe('SettingsPage', () => {
     expect(screen.getByText('Not signed in')).toBeInTheDocument()
     expect(screen.queryByText('Nutrition targets')).not.toBeInTheDocument()
     expect(screen.queryByText(/USDA FoodData Central/)).not.toBeInTheDocument()
+  })
+
+  it('disables duplicate export taps and reports ZIP size and record counts', async () => {
+    const user = userEvent.setup()
+    const exportResult = await backupService.createCsvArchive(
+      new Date('2026-07-30T18:15:16.000Z'),
+    )
+    let finishExport: ((result: typeof exportResult) => void) | undefined
+    const pendingExport = new Promise<typeof exportResult>((resolve) => {
+      finishExport = resolve
+    })
+    const exportSpy = vi
+      .spyOn(backupService, 'createCsvArchive')
+      .mockImplementation(() => pendingExport)
+    const createObjectUrl = vi.fn(() => 'blob:fitness-export')
+    const revokeObjectUrl = vi.fn()
+    const originalCreateObjectUrl = URL.createObjectURL
+    const originalRevokeObjectUrl = URL.revokeObjectURL
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: createObjectUrl,
+    })
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: revokeObjectUrl,
+    })
+
+    try {
+      renderSettings()
+      await user.click(screen.getByRole('button', { name: 'Data' }))
+      const exportButton = screen.getByRole('button', {
+        name: 'Export all fitness data',
+      })
+      await user.click(exportButton)
+
+      expect(
+        screen.getByRole('button', { name: 'Exporting fitness data…' }),
+      ).toBeDisabled()
+      await user.click(
+        screen.getByRole('button', { name: 'Exporting fitness data…' }),
+      )
+      expect(exportSpy).toHaveBeenCalledTimes(1)
+
+      finishExport?.(exportResult)
+      expect(
+        await screen.findByText(
+          new RegExp(
+            `Fitness data export prepared: .* ${exportResult.totalRecordCount} records in ${exportResult.fileCount} files`,
+          ),
+        ),
+      ).toBeInTheDocument()
+      expect(createObjectUrl).toHaveBeenCalledWith(exportResult.blob)
+      expect(
+        screen.getByRole('button', { name: 'Export all fitness data' }),
+      ).toBeEnabled()
+    } finally {
+      Object.defineProperty(URL, 'createObjectURL', {
+        configurable: true,
+        value: originalCreateObjectUrl,
+      })
+      Object.defineProperty(URL, 'revokeObjectURL', {
+        configurable: true,
+        value: originalRevokeObjectUrl,
+      })
+    }
   })
 
   it('saves and tests a device-local Gemini key', async () => {
@@ -421,7 +486,7 @@ describe('SettingsPage', () => {
     await user.click(await screen.findByRole('button', { name: 'About' }))
     expect(
       await screen.findByRole('heading', {
-        name: 'Faster dashboards and cleaner logging',
+        name: 'Calorie insights and smoother logging',
       }),
     ).toBeInTheDocument()
     expect(

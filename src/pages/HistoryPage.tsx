@@ -275,6 +275,9 @@ export function HistoryPage() {
   ) {
     return (
       <BodyweightProgressView
+        onShowExerciseGraphs={() => {
+          setSearchParams({ view: 'graphs' })
+        }}
         onShowWorkouts={() => {
           setSearchParams({})
           setRevision((current) => current + 1)
@@ -591,8 +594,10 @@ export function HistoryPage() {
 }
 
 function BodyweightProgressView({
+  onShowExerciseGraphs,
   onShowWorkouts,
 }: {
+  onShowExerciseGraphs: () => void
   onShowWorkouts: () => void
 }) {
   const { t } = useLanguage()
@@ -637,7 +642,7 @@ function BodyweightProgressView({
     range,
     today,
   })
-  const model = createBodyweightChartModel(rangedEntries, weightUnit)
+  const model = createBodyweightChartModel(rangedEntries, weightUnit, entries)
   const selectedEntry =
     rangedEntries.find((entry) => entry.id === selectedEntryId) ??
     rangedEntries.at(-1) ??
@@ -655,7 +660,13 @@ function BodyweightProgressView({
       />
       <SegmentedControl
         label="Graph category"
-        onChange={setGraphCategory}
+        onChange={(value) => {
+          if (value === 'exercises') {
+            onShowExerciseGraphs()
+            return
+          }
+          setGraphCategory(value)
+        }}
         options={[
           { label: 'Body Weight', value: 'bodyweight' },
           { label: 'Exercises', value: 'exercises' },
@@ -663,13 +674,6 @@ function BodyweightProgressView({
         ]}
         value={graphCategory}
       />
-      {graphCategory === 'exercises' ? (
-        <Card title="Exercise graphs">
-          <SecondaryButton type="button" onClick={() => onShowWorkouts()}>
-            Open exercise graphs
-          </SecondaryButton>
-        </Card>
-      ) : null}
       {graphCategory === 'running' ? (
         <Card title="Running">
           <EmptyState
@@ -1299,7 +1303,13 @@ function BodyweightChart({
     )
   }
 
-  const path = model.points
+  const measurementPath = model.points
+    .map(
+      (point, index) =>
+        `${index === 0 ? 'M' : 'L'} ${projectChartX(point.x)} ${projectChartY(point.y)}`,
+    )
+    .join(' ')
+  const trendPath = model.trendPoints
     .map(
       (point, index) =>
         `${index === 0 ? 'M' : 'L'} ${projectChartX(point.x)} ${projectChartY(point.y)}`,
@@ -1350,6 +1360,14 @@ function BodyweightChart({
           </small>
         </span>
       </div>
+      {model.trendPoints.length ? (
+        <div className="bodyweight-chart-legend">
+          <span className="bodyweight-measurement-legend">
+            {t('Bodyweight')}
+          </span>
+          <span className="bodyweight-trend-legend">{t('Trend weight')}</span>
+        </div>
+      ) : null}
       <div className="bodyweight-chart" aria-label={t('Bodyweight graph')}>
         <span className="chart-axis-label chart-axis-label-x">{t('Date')}</span>
         <span className="chart-axis-label chart-axis-label-y">
@@ -1368,7 +1386,12 @@ function BodyweightChart({
             y1={CHART_BASELINE_Y}
             y2={CHART_BASELINE_Y}
           />
-          {model.status === 'ready' ? <path d={path} /> : null}
+          {model.status === 'ready' ? (
+            <path className="bodyweight-measurement-line" d={measurementPath} />
+          ) : null}
+          {model.trendPoints.length ? (
+            <path className="bodyweight-trend-line" d={trendPath} />
+          ) : null}
           {model.points.map((point) => (
             <circle
               cx={projectChartX(point.x)}

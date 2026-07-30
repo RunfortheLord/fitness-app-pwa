@@ -118,6 +118,20 @@
 7. App shows the selected entry's bodyweight, local date, and timestamp.
 8. Empty and one-point states avoid showing a misleading trend.
 
+## Viewing Calorie Insights
+
+1. User opens Home and chooses 1W or 1M on the Calories card.
+2. App redraws the compact logged-calorie bars and applicable target line for
+   the selected range.
+3. User chooses View more.
+4. App opens the calorie details subpage with the selected range retained.
+5. User may choose 1W, 1M, or 3M.
+6. App shows the full calorie chart, days with positive calories logged,
+   logging consistency, average logged calories, average target, and average
+   surplus, deficit, or on-target state for comparable logged days. Comparison
+   averages are unavailable if there are no comparable days.
+7. User returns to Home with the Back action or normal browser navigation.
+
 ## Creating an Exercise
 
 1. User opens Training or taps Add.
@@ -183,11 +197,17 @@
 3. For weighted exercises, user enters weight, reps, optional RIR, and completion status.
 4. App persists changes immediately or near-immediately.
 5. When a set is marked complete, app starts or offers the rest timer using the configured rest duration.
-6. User may pause, skip, extend, or dismiss the rest timer.
-7. If the installed Home Screen PWA has outside-app alerts enabled, each timer
-   change cancels or reschedules its pending Web Push notification.
-8. User may edit completed sets.
-9. User may add or delete sets.
+6. After the final incomplete set in an exercise is completed, app advances to
+   the adjacent next exercise when one exists.
+7. User may swipe between exercises. Swiping back to an already-completed
+   exercise leaves it selected until the user navigates again.
+8. Skipping an exercise records the skip and advances to the adjacent next
+   exercise when one exists.
+9. User may pause, skip, extend, or dismiss the rest timer.
+10. If the installed Home Screen PWA has outside-app alerts enabled, each timer
+    change cancels or reschedules its pending Web Push notification.
+11. User may edit completed sets.
+12. User may add or delete sets.
 
 ## Replacing an Exercise
 

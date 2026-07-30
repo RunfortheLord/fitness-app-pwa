@@ -316,7 +316,7 @@ export function LoggedFoodsCard({
       ) : (
         <EmptyState
           title="No foods logged"
-          message="Search or create a food, then log a serving multiplier for this date."
+          message="Search or create a food, then choose your portion for this date."
         />
       )}
     </Card>

@@ -8,6 +8,7 @@ import {
   latestBodyweight,
   summarizeBodyweightTrend,
 } from '@domain/bodyweightProgress'
+import { currentTrendWeight } from '@domain/bodyweightTrend'
 import type { BodyweightEntry } from '@shared-types/app'
 
 describe('bodyweightProgress', () => {
@@ -75,6 +76,95 @@ describe('bodyweightProgress', () => {
     expect(model.status).toBe('ready')
     expect(model.entries).toHaveLength(40)
     expect(model.status === 'ready' ? model.points : []).toHaveLength(40)
+  })
+
+  it('adds a smoothed trend series without replacing raw chart points', () => {
+    const model = createBodyweightChartModel([
+      entry('first', '2026-06-01', 190, '2026-06-01T12:00:00.000Z'),
+      entry('latest', '2026-06-03', 186, '2026-06-03T12:00:00.000Z'),
+    ])
+
+    expect(model.status).toBe('ready')
+    if (model.status === 'empty') {
+      throw new Error('Expected chart data.')
+    }
+    expect(model.points).toHaveLength(2)
+    expect(model.trendPoints.map((point) => point.localDate)).toEqual([
+      '2026-06-01',
+      '2026-06-02',
+      '2026-06-03',
+    ])
+    expect(model.trendPoints.map((point) => point.x)).toEqual([0, 50, 100])
+    expect(model.trendPoints[1].weight).toBeCloseTo(189.8, 5)
+    expect(model.trendPoints[2].weight).toBeCloseTo(189.42, 5)
+  })
+
+  it('does not create a trend line from same-day raw entries alone', () => {
+    const model = createBodyweightChartModel([
+      entry('early', '2026-06-01', 190, '2026-06-01T12:00:00.000Z'),
+      entry('late', '2026-06-01', 188, '2026-06-01T20:00:00.000Z'),
+    ])
+
+    expect(model.status).toBe('ready')
+    if (model.status === 'empty') {
+      throw new Error('Expected chart data.')
+    }
+    expect(model.points).toHaveLength(2)
+    expect(model.trendPoints).toEqual([])
+  })
+
+  it('smooths full history before clipping the trend to the visible range', () => {
+    const allEntries = [
+      entry('seed', '2026-01-01', 220, '2026-01-01T12:00:00.000Z'),
+      entry('visible-first', '2026-06-01', 190, '2026-06-01T12:00:00.000Z'),
+      entry('visible-latest', '2026-06-03', 188, '2026-06-03T12:00:00.000Z'),
+    ]
+    const model = createBodyweightChartModel(
+      allEntries.slice(1),
+      'lb',
+      allEntries,
+    )
+
+    expect(model.status).toBe('ready')
+    if (model.status === 'empty') {
+      throw new Error('Expected chart data.')
+    }
+    expect(model.trendPoints[0].localDate).toBe('2026-06-01')
+    expect(Number(model.trendPoints.at(-1)?.weight.toFixed(1))).toBe(
+      currentTrendWeight(allEntries),
+    )
+    expect(
+      model.trendPoints.every(
+        (point) =>
+          point.x >= 0 && point.x <= 100 && point.y >= 0 && point.y <= 100,
+      ),
+    ).toBe(true)
+  })
+
+  it('keeps an edited backdated entry between its neighboring chart dates', () => {
+    const edited = {
+      ...entry('edited', '2026-06-02', 189, '2026-07-20T20:00:00.000Z'),
+      createdAt: '2026-06-02T08:00:00.000Z',
+    }
+    const model = createBodyweightChartModel([
+      entry('first', '2026-06-01', 190, '2026-06-01T08:00:00.000Z'),
+      edited,
+      entry('latest', '2026-06-03', 188, '2026-06-03T08:00:00.000Z'),
+    ])
+
+    expect(model.status).toBe('ready')
+    if (model.status === 'empty') {
+      throw new Error('Expected chart data.')
+    }
+    const pointX = (id: string) => {
+      const point = model.points.find((candidate) => candidate.entry.id === id)
+      if (!point) {
+        throw new Error(`Expected chart point ${id}.`)
+      }
+      return point.x
+    }
+    expect(pointX('first')).toBeLessThan(pointX('edited'))
+    expect(pointX('edited')).toBeLessThan(pointX('latest'))
   })
 
   it('centers a lone chart point so it clears the y-axis labels', () => {

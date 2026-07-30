@@ -1,6 +1,6 @@
 # Food Provider Integration
 
-Verification date: 2026-06-27.
+Verification date: 2026-07-19.
 
 ## Sources Reviewed
 
@@ -10,6 +10,8 @@ Verification date: 2026-06-27.
 - Open Food Facts API documentation: https://openfoodfacts.github.io/openfoodfacts-server/api/
 - Open Food Facts data reuse documentation: https://wiki.openfoodfacts.org/Reusing_Open_Food_Facts_Data
 - Open Food Facts API conditions: https://support.openfoodfacts.org/help/en-gb/12-api-data-reuse/94-are-there-conditions-to-use-the-api
+- Chick-fil-A Chicken Sandwich official U.S. nutrition: https://www.chick-fil-a.com/menu/entrees/chick-fil-a-chicken-sandwich
+- McDonald's 6 Piece Chicken McNuggets official U.S. nutrition: https://www.mcdonalds.com/us/en-us/product/chicken-mcnuggets-6-piece.html
 
 ## Provider Decisions
 
@@ -25,6 +27,37 @@ provider-supplied multilingual data; it does not machine-translate user data or
 historical snapshots.
 
 No third provider was accepted in this prompt. Restaurant and fast-food coverage is limited to records that USDA or a permitted fallback actually supplies. The app does not scrape menus and does not fabricate restaurant coverage.
+
+Restaurant serving behavior is provider-driven rather than based on a brand
+allowlist. Any normalized record categorized by the provider as restaurant or
+fast food keeps its listed whole item/count portion (for example a sandwich,
+burger, steak, or nugget count) ahead of generic ingredient heuristics. The app
+recognizes the equivalent English and Spanish provider category labels. The app
+converts USDA's standardized per-100-gram nutrients back to that listed portion
+once, persists that listed portion plus the provider category for reuse, and never
+multiplies calories again merely because the portion label contains an item
+count.
+
+USDA is not a live, authoritative feed for every restaurant menu. Its legacy
+restaurant records can retain older recipes even when they still contain a
+useful item/count portion. A deliberately small, audited correction registry
+may replace an exact USDA record only when all of the following are known: the
+stable FDC ID, expected item name, exact U.S. menu serving, all four required
+macros, the restaurant's official source URL, and a review date. The current
+reviewed corrections are:
+
+- FDC 170790, Chick-fil-A Chicken Sandwich: 420 kcal, 29 g protein, 41 g
+  carbohydrate, and 18 g fat per sandwich.
+- FDC 173297, McDonald's Chicken McNuggets: 250 kcal, 14 g protein, 15 g
+  carbohydrate, and 15 g fat per six pieces; sauce is separate.
+
+These corrected records use the official menu serving only. The app does not
+combine it with an older USDA gram weight or per-100-gram profile. All other
+restaurant records remain best-available provider estimates. Provider
+coverage, region, customization, formulation changes, and freshness are
+external limitations; the app must not claim universal current-menu accuracy,
+scrape arbitrary restaurant sites, infer missing menu values, average
+conflicting records, or substitute one item/size for another.
 
 ## Licensing And Attribution
 

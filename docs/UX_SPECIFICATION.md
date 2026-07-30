@@ -42,9 +42,11 @@
 
 - Header: selected date, previous-day button, next-day button, return-to-today action, Settings access.
 - Calorie history card:
-  - compact seven-day bar graph for logged calories
+  - compact bar graph for logged calories
   - contrasting daily target line
   - visible spacing between daily bars
+  - 1W and 1M range control
+  - View more action to a dedicated calorie details subpage
 - Bodyweight card:
   - current value from the latest timestamped entry or empty state
   - selected-date latest value when available
@@ -118,8 +120,13 @@
 - Brand or restaurant when available.
 - Serving definition.
 - Calories in collapsed search rows.
+- When a local food has a remembered portion, the row labels it `Last used`
+  and calculates calories from that same portion. The row and its one-tap log
+  action must never describe a different amount than they log.
 - Row-level select button for reusable or provider foods.
-- Logged rows show multiplier, computed totals, edit action, and delete action.
+- Logged rows show the resolved amount in the snapshot serving unit, computed
+  totals, edit action, and delete action. Raw serving multipliers are not
+  user-facing.
 - Provider duplicate groups show one primary result and a compact More Results
   control for alternates.
 
@@ -128,23 +135,38 @@
 - The form opens as a full-height subpage.
 - Fields: name, serving quantity, serving unit, calories, protein,
   carbohydrates, and fat. The current form does not collect brand or notes.
+- Serving amount and unit are grouped as `Serving size`, with a live sentence
+  explaining exactly which portion the nutrition values describe. New foods
+  start at an amount of one, while the unit remains explicit.
 - Required fields are marked without excessive copy.
 - Numeric fields reject invalid, negative, or nonnumeric values. Calories are
   required; blank optional macros save as zero.
 - Save remains available and reports inline validation errors when required
-  fields are invalid.
+  fields are invalid. Required-field alerts do not appear before the first save
+  attempt.
 - Editing a reusable food does not rewrite historical log snapshots.
 - Imported provider foods are read-only. Users can create a separate private
   custom copy for corrections.
 
 ### Log Food Sheet
 
-- Shows selected food and serving definition.
+- Separates the fixed nutrition `Serving size` from `Your portion`, the amount
+  being logged now.
 - Selected provider or local food opens a detail sheet with calories, protein,
   total carbohydrates, fat, editable serving amount, and serving unit selector.
-- Practical household servings are primary when reliable. Grams, 100 g, and
-  mass-ounce options are secondary when a reliable gram weight exists. Fluid
-  ounces are not treated as mass ounces.
+- Practical household servings are primary when reliable. Grams and mass
+  ounces are secondary only when a reliable gram weight exists; 100 g is a
+  quick gram portion rather than a duplicate unit. Fluid ounces are not treated
+  as mass ounces.
+- The amount field has 44-pixel decrement/increment controls and four compact,
+  unit-aware quick portions. Switching units preserves the equivalent nutrition
+  amount instead of resetting the portion.
+- The most recently logged portion is synchronously preselected and honestly
+  labeled `Last used`; logging replaces that last-used value. Provider-only
+  household units that are unavailable after import preserve their exact gram
+  equivalent. A `Use serving size` action restores the food's reference portion.
+- Invalid nonblank amounts receive an inline accessible error. The live preview
+  labels any reliable converted gram weight as the portion weight.
 - Preview displays computed calories and macros.
 - Save logs the snapshot to the selected date.
 - Icons in the current-search added-items tray are 44-pixel buttons. Selecting
@@ -256,7 +278,11 @@
 - The live workout shows one active exercise workspace at a time instead of a
   full vertical stack of exercise cards.
 - Exercise position is visible as "Exercise N of M".
-- Previous and Next buttons are available when another exercise exists.
+- Horizontal swiping moves to the adjacent exercise; dedicated Previous and
+  Next buttons are not shown.
+- Skipping an exercise or completing its final incomplete set advances to the
+  adjacent next exercise when one exists. Manually swiping back to an
+  already-completed exercise does not trigger another automatic advance.
 - The active exercise is restored from local UI state for the active workout
   after reload or route return when possible. If that UI state is unavailable,
   the first exercise is selected without mutating workout data.
@@ -307,6 +333,7 @@
 - On resume from background, recalculates remaining time instead of trusting an interval count.
 - Timer state is stored on the active workout and continues while navigating
   between exercises or returning to the workout route.
+- Scrollable rest-duration wheels list seconds in five-second increments.
 - The app shell monitors timer expiry across all routes, so completion feedback
   fires while the user is viewing Home, Nutrition, Training, Run, or Settings.
 - Completion feedback uses UI status, vibration when supported, a short audible
@@ -383,6 +410,12 @@
 - Calories is available from History Graphs with 1W, 1M, and 3M controls.
   Logged calories use separated bars and the daily target uses a contrasting
   line.
+- The calorie details subpage uses the same 1W, 1M, and 3M ranges and displays
+  logging consistency, average intake, average target, and the average calorie
+  surplus or deficit versus the applicable target. Consistency is explicitly
+  labeled as days with positive calories logged, not target adherence. An exact
+  zero average difference is shown as on target, and comparison averages are
+  unavailable when no positive logged day also has a positive target.
 - Strength graph range controls are 1M, 3M, 6M, 1Y, and All.
 - The chart plots one point per completed workout per exercise, selected from
   the highest eligible Epley estimate in that workout.

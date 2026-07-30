@@ -6,7 +6,7 @@ import type {
   RawCookedStatus,
 } from '../types/app.js'
 
-export const FOOD_NORMALIZER_VERSION = 1
+export const FOOD_NORMALIZER_VERSION = 2
 export const GRAMS_PER_OUNCE = 28.349523125
 
 export type MacroKey = 'calories' | 'protein' | 'carbohydrate' | 'fat'
@@ -94,6 +94,20 @@ export function normalizeFoodText(value: string) {
     .replace(/[^a-z0-9%]+/g, ' ')
     .trim()
     .replace(/\s+/g, ' ')
+}
+
+// Provider categories are localized. USDA uses English restaurant/fast-food
+// labels, while Spanish Open Food Facts records can use restaurante or comida
+// rápida. Keep category-driven behavior consistent across both supported
+// provider languages without relying on restaurant brand names.
+export function isRestaurantFoodCategory(category?: string | null) {
+  const normalized = normalizeFoodText(category ?? '')
+  return (
+    normalized.includes('restaurant') ||
+    normalized.includes('fast food') ||
+    normalized.includes('comida rapida') ||
+    normalized.includes('comidas rapidas')
+  )
 }
 
 export function normalizeProviderQuery(query: string) {
@@ -196,7 +210,7 @@ function extractRestaurantBrand(
   displayName: string,
   foodCategory?: string | null,
 ): { name: string; brand: string } | null {
-  if (!/fast food|restaurant/iu.test(foodCategory ?? '')) {
+  if (!isRestaurantFoodCategory(foodCategory)) {
     return null
   }
   const match = displayName.match(/^(.+?),\s+(.+)$/u)
@@ -460,8 +474,7 @@ function providerTypeBonus(food: NormalizedFoodResult, query: string) {
     return 1
   }
   if (type === 'Branded' || type === 'product') {
-    const category = normalizeFoodText(food.foodCategory ?? '')
-    if (category.includes('restaurant') || category.includes('fast food')) {
+    if (isRestaurantFoodCategory(food.foodCategory)) {
       return -1
     }
     return -0.35
@@ -610,7 +623,6 @@ function completeRestaurantItemBonus(
   if (!query || !isBrandedProviderType(food.source.providerDataType)) {
     return 0
   }
-  const categoryText = normalizeFoodText(food.foodCategory ?? '')
   const brand = food.normalizedBrand ?? ''
   // Match a squished brand too, so spaceless variants such as "chickfila"
   // still register brand intent against a brand stored as "chick fil a".
@@ -624,8 +636,7 @@ function completeRestaurantItemBonus(
   const restaurantLike =
     brand.includes(query) ||
     hasBrandToken ||
-    categoryText.includes('restaurant') ||
-    categoryText.includes('fast food')
+    isRestaurantFoodCategory(food.foodCategory)
   if (!restaurantLike) {
     return 0
   }

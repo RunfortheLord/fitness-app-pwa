@@ -50,7 +50,25 @@ as passed from desktop emulation, Playwright, or simulator testing.
 - [ ] Search foods with one character and confirm remote search does not run.
 - [ ] Search foods with two or more characters and confirm loading, results, and empty states fit without horizontal scrolling.
 - [ ] Select a provider food, adjust serving amount, and confirm calories and macros preview correctly.
+- [ ] Confirm one Chick-fil-A sandwich and six McDonald's Chicken McNuggets use
+      one complete restaurant serving and do not multiply the provider calories
+      by the item count.
+- [ ] Repeat the restaurant-serving check with another provider-listed whole
+      item (such as a burger or steak), reuse it from local history, and confirm
+      its original restaurant portion and calories are preserved.
+- [ ] On Home, switch the calorie graph between 1W and 1M and confirm the card
+      remains within the viewport.
+- [ ] Open View more, switch among 1W, 1M, and 3M, and confirm logging
+      consistency and average versus-target values update with the chart.
+- [ ] Confirm Serving size and Your portion are distinct, Last used matches the
+      calories shown, and one-tap logging uses that exact amount.
+- [ ] Use decrement, increment, and all four quick-portion buttons at 390 px and
+      confirm every control is at least 44 CSS pixels without horizontal scroll.
+- [ ] Switch a reliable provider food between a household portion, ounces, and
+      grams and confirm calories remain equivalent.
 - [ ] Confirm grams and mass ounces appear only when a reliable gram weight exists.
+- [ ] Edit a logged food and confirm the amount is shown in its snapshot unit,
+      never as a serving multiplier.
 - [ ] Open More Results for duplicate provider entries and select an alternate.
 - [ ] Create a custom copy of an imported provider food.
 - [ ] Log food.

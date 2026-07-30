@@ -1,5 +1,8 @@
 import {
+  findServingOption,
+  formatAmountValue,
   formatFoodServingLabel,
+  rebaseProviderServingMultiplier,
   servingOptionsForFood,
   type FoodServingOption,
 } from '@domain/foodServings'
@@ -9,6 +12,7 @@ import type { FoodResult, FoodSearchResult } from '@domain/foodSearchSections'
 import type {
   Food,
   FoodLogEntry,
+  FoodSnapshot,
   FoodUnitPreference,
   SavedMeal,
 } from '@shared-types/app'
@@ -27,27 +31,37 @@ export function resultDisplay(
         result.meal.components.length === 1 ? 'item' : 'items'
       }`,
       calories: savedMealCalories(result.meal),
+      servingContext: 'reference' as const,
     }
   }
 
   if (result.type === 'local') {
     const split = splitBrandFromName(result.food.name, result.food.brandName)
-    const servingMultiplier = rememberedServing
+    const rememberedSelection = rememberedServing
       ? servingSelectionForFood(result.food, rememberedServing)
-          ?.servingMultiplier
       : null
+    const defaultMultiplier = defaultServingMultiplier(result.food)
     return {
       name: split.name,
       brand: split.brand,
-      serving: formatFoodServingLabel(result.food),
+      serving: rememberedSelection
+        ? rememberedSelection.portionLabel
+        : formatFoodServingLabel(result.food),
       calories:
-        servingMultiplier == null
-          ? result.food.caloriesPerServing
-          : Math.round(result.food.caloriesPerServing * servingMultiplier),
+        rememberedSelection == null
+          ? Math.round(result.food.caloriesPerServing * defaultMultiplier)
+          : Math.round(
+              result.food.caloriesPerServing *
+                rememberedSelection.servingMultiplier,
+            ),
+      servingContext: rememberedSelection
+        ? ('last-used' as const)
+        : ('reference' as const),
     }
   }
 
   const macros = result.food.macrosPerServing ?? result.food.macrosPer100Grams
+  const defaultMultiplier = defaultServingMultiplier(result.food)
   const split = splitBrandFromName(
     result.food.name,
     result.food.brandName,
@@ -57,8 +71,17 @@ export function resultDisplay(
     name: split.name,
     brand: split.brand,
     serving: formatFoodServingLabel(result.food),
-    calories: macros?.calories ?? 0,
+    calories: (macros?.calories ?? 0) * defaultMultiplier,
+    servingContext: 'reference' as const,
   }
+}
+
+function defaultServingMultiplier(food: Food | NormalizedFoodResult): number {
+  const option = servingOptionsForFood(food)[0]
+  const multiplier = option?.toServingMultiplier(option.amount)
+  return multiplier && Number.isFinite(multiplier) && multiplier > 0
+    ? multiplier
+    : 1
 }
 
 export function savedMealCalories(meal: SavedMeal) {
@@ -85,6 +108,52 @@ export function servingOptionsForResult(
     return servingOptionsForFood(result.food, rememberedUnitKey)
   }
   return servingOptionsForFood(result.food, rememberedUnitKey)
+}
+
+export function durableServingPreference(
+  result: FoodResult,
+  selectedOption: FoodServingOption,
+  amount: number,
+  servingMultiplier: number,
+  persistedFood?: Food | null,
+): Pick<FoodUnitPreference, 'unitKey' | 'amount'> {
+  if (result.type === 'local') {
+    return { unitKey: selectedOption.key, amount }
+  }
+
+  // Provider source portions are richer than the reusable Food record. Resolve
+  // the choice against the options that remain after persistence; when an
+  // alternate household unit will not survive, remember its exact gram
+  // equivalent instead of silently falling back to a different portion.
+  const persistedOptions = servingOptionsForFood(
+    persistedFood ?? {
+      ...result.food,
+      serving: { ...result.food.serving, sourcePortions: [] },
+    },
+  )
+  const persistedServingMultiplier = persistedFood
+    ? rebaseProviderServingMultiplier(
+        result.food,
+        persistedFood,
+        servingMultiplier,
+      )
+    : servingMultiplier
+  const durableOption =
+    findServingOption(persistedOptions, selectedOption.key) ??
+    persistedOptions.find((option) => option.controlUnit === 'g') ??
+    persistedOptions[0]
+  const durableAmount = durableOption?.fromServingMultiplier(
+    persistedServingMultiplier,
+  )
+  if (
+    durableOption &&
+    durableAmount != null &&
+    Number.isFinite(durableAmount) &&
+    durableAmount > 0
+  ) {
+    return { unitKey: durableOption.key, amount: durableAmount }
+  }
+  return { unitKey: selectedOption.key, amount }
 }
 
 export function baseMacrosForResult(result: FoodResult) {
@@ -155,8 +224,9 @@ export function servingSelectionForFood(
   food: Food,
   preference: FoodUnitPreference,
 ) {
-  const option = servingOptionsForFood(food, preference.unitKey).find(
-    (candidate) => candidate.key === preference.unitKey,
+  const option = findServingOption(
+    servingOptionsForFood(food, preference.unitKey),
+    preference.unitKey,
   )
   const servingMultiplier = option?.toServingMultiplier(preference.amount)
   if (
@@ -167,22 +237,48 @@ export function servingSelectionForFood(
   ) {
     return null
   }
-  return { option, servingMultiplier }
+  return {
+    option,
+    portionLabel: `${formatAmountValue(preference.amount)} ${option.unitLabel}`,
+    servingMultiplier,
+  }
 }
 
 export function snapshotServingLabel(entry: FoodLogEntry) {
-  return `${roundMacro(entry.foodSnapshot.servingQuantity)} ${
-    entry.foodSnapshot.servingUnit || entry.foodSnapshot.servingDescription
-  }`
+  const basis = foodSnapshotPortionBasis(entry.foodSnapshot)
+  return `${roundMacro(basis.amount)} ${basis.unit}`.trim()
 }
 
 // The actual logged portion in the food's own unit (multiplier applied), so the
 // list reads "1.25 cup, cooked" instead of an ugly raw "1.744…x" multiplier.
 // Rounded to 2 decimals so quarter/third servings (¼, ⅓, ¾) stay faithful.
 export function formatLoggedAmount(entry: FoodLogEntry) {
-  const snapshot = entry.foodSnapshot
-  const amount =
-    Math.round(entry.servingMultiplier * snapshot.servingQuantity * 100) / 100
-  const unit = snapshot.servingUnit || snapshot.servingDescription
-  return unit ? `${amount} ${unit}` : `${amount}`
+  const basis = foodSnapshotPortionBasis(entry.foodSnapshot)
+  const amount = Math.round(entry.servingMultiplier * basis.amount * 100) / 100
+  return basis.unit ? `${amount} ${basis.unit}` : `${amount}`
+}
+
+export function foodSnapshotPortionBasis(snapshot: FoodSnapshot) {
+  const rawUnit = (
+    snapshot.servingUnit ||
+    snapshot.servingDescription ||
+    'serving'
+  ).trim()
+  if (snapshot.servingQuantity === 1) {
+    const embedded = rawUnit.match(/^(\d+(?:\.\d+)?|\d+\/\d+)\s*([^\d\s].*)$/u)
+    if (embedded) {
+      const amount = embedded[1].includes('/')
+        ? parseFraction(embedded[1])
+        : Number(embedded[1])
+      if (Number.isFinite(amount) && amount > 0) {
+        return { amount, unit: embedded[2].trim() }
+      }
+    }
+  }
+  return { amount: snapshot.servingQuantity, unit: rawUnit }
+}
+
+function parseFraction(value: string) {
+  const [numerator, denominator] = value.split('/').map(Number)
+  return denominator ? numerator / denominator : Number.NaN
 }

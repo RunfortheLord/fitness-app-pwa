@@ -10,6 +10,7 @@ import {
   PageContainer,
   PrimaryButton,
   SecondaryButton,
+  SegmentedControl,
   StatusMessage,
 } from '@components/ui'
 import { CalorieHistoryChart } from '@components/CalorieHistoryChart'
@@ -30,6 +31,11 @@ import {
   dashboardService,
   type DashboardData,
 } from '@services/dashboardService'
+import {
+  calorieHistoryService,
+  type CalorieHistoryRange,
+  type DailyCalorieHistory,
+} from '@services/calorieHistoryService'
 
 type DashboardLoadState =
   | { status: 'loading'; selectedDate: null }
@@ -39,6 +45,22 @@ type DashboardLoadState =
       selectedDate: LocalDateString
       dashboard: DashboardData
     }
+
+type HomeCalorieRange = Extract<CalorieHistoryRange, '1w' | '1m'>
+
+type ExtendedCalorieHistoryState =
+  | {
+      status: 'ready'
+      selectedDate: LocalDateString
+      revision: number
+      history: DailyCalorieHistory[]
+    }
+  | {
+      status: 'error'
+      selectedDate: LocalDateString
+      revision: number
+    }
+  | null
 
 export function HomePage() {
   const { language, t } = useLanguage()
@@ -59,6 +81,9 @@ export function HomePage() {
     },
   )
   const [isStartingWorkout, setIsStartingWorkout] = useState(false)
+  const [calorieRange, setCalorieRange] = useState<HomeCalorieRange>('1w')
+  const [extendedCalorieHistory, setExtendedCalorieHistory] =
+    useState<ExtendedCalorieHistoryState>(null)
   const [startWorkoutError, setStartWorkoutError] = useState<string | null>(
     null,
   )
@@ -95,6 +120,39 @@ export function HomePage() {
     }
   }, [dashboardRevision, selectedDate])
 
+  useEffect(() => {
+    if (calorieRange !== '1m') {
+      return
+    }
+
+    let isCurrent = true
+    void calorieHistoryService
+      .getHistory(selectedDate, calorieRange)
+      .then((history) => {
+        if (isCurrent) {
+          setExtendedCalorieHistory({
+            status: 'ready',
+            selectedDate,
+            revision: dashboardRevision,
+            history,
+          })
+        }
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setExtendedCalorieHistory({
+            status: 'error',
+            selectedDate,
+            revision: dashboardRevision,
+          })
+        }
+      })
+
+    return () => {
+      isCurrent = false
+    }
+  }, [calorieRange, dashboardRevision, selectedDate])
+
   const dashboard =
     dashboardState.status === 'ready' &&
     dashboardState.selectedDate === selectedDate
@@ -110,6 +168,19 @@ export function HomePage() {
   const trendWeight = dashboard
     ? currentTimeAwareTrendWeight(dashboard.bodyweightEntries)
     : null
+  const extendedHistoryMatches =
+    extendedCalorieHistory?.selectedDate === selectedDate &&
+    extendedCalorieHistory.revision === dashboardRevision
+  const calorieHistory =
+    calorieRange === '1w'
+      ? (dashboard?.calorieHistory ?? [])
+      : extendedHistoryMatches && extendedCalorieHistory?.status === 'ready'
+        ? extendedCalorieHistory.history
+        : null
+  const calorieHistoryError =
+    calorieRange === '1m' &&
+    extendedHistoryMatches &&
+    extendedCalorieHistory?.status === 'error'
 
   async function startNextWorkout() {
     const activeProgram = dashboard?.activeProgram
@@ -261,20 +332,46 @@ export function HomePage() {
           </section>
 
           <Card className="home-calories-card" title="Calories">
-            <CalorieHistoryChart
-              compact
-              history={dashboard?.calorieHistory ?? []}
+            <SegmentedControl
+              label={t('Home calorie range')}
+              onChange={(value) => setCalorieRange(value as HomeCalorieRange)}
+              options={[
+                { label: '1W', value: '1w' },
+                { label: '1M', value: '1m' },
+              ]}
+              value={calorieRange}
             />
-            {caloriesConsumed === 0 ? (
-              <div className="button-row">
+            {calorieHistory ? (
+              <CalorieHistoryChart compact history={calorieHistory} />
+            ) : null}
+            {!calorieHistory && !calorieHistoryError ? (
+              <LoadingState label={t('Loading calorie history')} />
+            ) : null}
+            {calorieHistoryError ? (
+              <StatusMessage tone="warning">
+                {t('Calorie history could not load.')}
+              </StatusMessage>
+            ) : null}
+            <div className="button-row home-calorie-actions">
+              {caloriesConsumed === 0 ? (
                 <SecondaryButton
                   type="button"
                   onClick={() => void navigate('/nutrition?logFood=1')}
                 >
                   Log food
                 </SecondaryButton>
-              </div>
-            ) : null}
+              ) : null}
+              <SecondaryButton
+                type="button"
+                onClick={() =>
+                  void navigate(
+                    `/calories?range=${calorieRange}&end=${selectedDate}`,
+                  )
+                }
+              >
+                {t('View more')}
+              </SecondaryButton>
+            </div>
           </Card>
 
           {dashboard.metadata ? (

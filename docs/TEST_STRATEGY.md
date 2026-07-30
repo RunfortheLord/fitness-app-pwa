@@ -30,15 +30,18 @@ small edit. Coverage runs test files serially because instrumentation combined
 with concurrent jsdom and IndexedDB work makes UI timing assertions unreliable;
 normal unit and component test commands still use up to four workers.
 
-Playwright owns a project-specific preview port and never reuses an arbitrary
-existing server. This prevents a stale or unrelated local application from
-being mistaken for Fitness Log during E2E verification.
+The project Playwright runner owns a project-specific preview port, refuses to
+start if another process already occupies it, and closes only the preview it
+started. This prevents a stale or unrelated local application from being
+mistaken for Fitness Log and avoids orphaned Windows preview processes.
 
 ## Unit Tests
 
 - Date utilities for local `YYYY-MM-DD` behavior.
 - Nutrition total calculations from snapshotted food log entries.
 - Decimal serving multiplier calculations.
+- Restaurant listed-serving normalization, persistence, and multiplier rebasing.
+- Calorie-insight 7/30/90-day eligibility, consistency, and average-difference calculations.
 - Bodyweight upsert behavior by local date.
 - Tracking preset field definitions.
 - Rest timer remaining-time calculation from timestamps.
@@ -50,6 +53,8 @@ being mistaken for Fitness Log during E2E verification.
 ## Component Tests
 
 - Home dashboard cards with populated and empty data.
+- Home calorie 1W/1M controls and calorie-insight 1W/1M/3M summaries, retries,
+  stale-request protection, localization, and empty states.
 - Date selector controls.
 - Bottom navigation and center Add sheet.
 - Nutrition search, recent foods, log food sheet, and create/edit food form.
@@ -80,6 +85,8 @@ being mistaken for Fitness Log during E2E verification.
 
 - First launch with empty IndexedDB.
 - Full nutrition flow from food creation through date-based logging.
+- Persist a calorie target and food log, then verify the Home range controls and
+  30/90-day consistency and average deficit on the calorie details subpage.
 - Full bodyweight flow.
 - Full training flow from exercise creation to program activation.
 - Live workout flow with set completion, rest timer, replacement, and finish.
@@ -150,4 +157,5 @@ being mistaken for Fitness Log during E2E verification.
   user-supplied key and never saves or logs without explicit confirmation.
 - No AI coaching, meal recommendations, bundled external food database, or
   micronutrients.
-- No automatic calorie adjustment, training progression, program advancement, estimated 1RM, trend weight, adherence percentage, or graphs.
+- No automatic calorie adjustment, training progression, program advancement,
+  estimated 1RM, calorie-target adherence score, or automatic coaching.

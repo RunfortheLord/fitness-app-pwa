@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { DATABASE_SCHEMA_VERSION, type TrainingLogDatabase } from '@db/database'
 import { BUILT_IN_EXERCISES } from '@domain/exerciseLibrary'
+import { createFoodRepository } from '@repositories/foodRepository'
 import { createSettingsRepository } from '@repositories/settingsRepository'
 import {
   createBackupService,
@@ -599,6 +600,54 @@ describe('backupService', () => {
             records.filter((record) => record.mode === 'import').length,
         ),
     ).resolves.toBe(1)
+  })
+
+  it('round-trips provider food categories while accepting legacy backups without them', async () => {
+    const service = createBackupService(database)
+    const repository = createFoodRepository(database)
+    const food = await seedFood(database)
+    await database.foods.update(food.id, {
+      foodCategory: 'Restaurant Foods',
+    })
+    await repository.logFood({
+      foodId: food.id,
+      localDate: testLocalDate,
+      servingMultiplier: 1,
+    })
+
+    const backup = (await service.createJsonBackup()).backup
+    expect(backup.data.foods[0]?.foodCategory).toBe('Restaurant Foods')
+    expect(backup.data.foodLogEntries[0]?.foodSnapshot.foodCategory).toBe(
+      'Restaurant Foods',
+    )
+
+    const legacyBackup = structuredClone(backup)
+    delete legacyBackup.data.foods[0]?.foodCategory
+    delete legacyBackup.data.foodLogEntries[0]?.foodSnapshot.foodCategory
+    const legacyValidation = validateBackup(legacyBackup, 'legacy-food.json')
+    expect(legacyValidation.ok).toBe(true)
+    if (!legacyValidation.ok) {
+      throw new Error('Expected legacy food backup to validate.')
+    }
+    expect(legacyValidation.backup.data.foods[0]?.foodCategory).toBeNull()
+    expect(
+      legacyValidation.backup.data.foodLogEntries[0]?.foodSnapshot.foodCategory,
+    ).toBeNull()
+
+    await database.foods.clear()
+    await database.foodLogEntries.clear()
+    await service.restoreReplace(backup)
+
+    await expect(database.foods.get(food.id)).resolves.toMatchObject({
+      foodCategory: 'Restaurant Foods',
+    })
+    await expect(database.foodLogEntries.toArray()).resolves.toEqual([
+      expect.objectContaining({
+        foodSnapshot: expect.objectContaining({
+          foodCategory: 'Restaurant Foods',
+        }),
+      }),
+    ])
   })
 
   it('preserves original data when restore transaction fails', async () => {

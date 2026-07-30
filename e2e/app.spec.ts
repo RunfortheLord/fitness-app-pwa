@@ -5,6 +5,7 @@ const routes = [
   { path: '/nutrition', title: 'Nutrition', nav: 'Nutrition' },
   { path: '/training', title: 'Training', nav: 'Training' },
   { path: '/run', title: 'Run', nav: 'Run' },
+  { path: '/calories', title: 'Calories' },
   { path: '/history', title: 'History' },
   { path: '/settings', title: 'Settings' },
 ]
@@ -451,18 +452,32 @@ test(
 
     await page.getByRole('button', { name: 'Search foods' }).click()
     await page.getByRole('searchbox', { name: 'Search foods' }).fill('e2e')
-    await page.getByRole('button', { name: 'Select E2E Rice' }).click()
+    await page.getByRole('button', { name: /^Open E2E Rice,/ }).click()
     const foodDetails = page.getByRole('dialog', { name: 'Food details' })
     await expect(foodDetails.getByLabel('Nutrition preview')).toBeVisible()
     await expect(
-      foodDetails.getByRole('button', { name: 'Decrease amount' }),
-    ).toHaveCount(0)
-    await expect(
-      foodDetails.getByRole('group', { name: 'Quick amounts' }),
-    ).toHaveCount(0)
-    await foodDetails
-      .getByRole('textbox', { name: 'Serving amount' })
-      .fill('1.5')
+      foodDetails.getByRole('button', { name: 'Decrease portion' }),
+    ).toBeVisible()
+    const increasePortion = foodDetails.getByRole('button', {
+      name: 'Increase portion',
+    })
+    await expect(increasePortion).toBeVisible()
+    const quickPortions = foodDetails.getByRole('group', {
+      name: 'Quick portions',
+    })
+    await expect(quickPortions).toBeVisible()
+    await expect(quickPortions.getByRole('button')).toHaveText([
+      '½',
+      '1',
+      '1½',
+      '2',
+    ])
+    await expect(foodDetails.getByLabel('Serving unit')).toHaveText('cup')
+    const servingAmount = foodDetails.getByRole('textbox', {
+      name: 'Serving amount',
+    })
+    await increasePortion.click()
+    await expect(servingAmount).toHaveValue('1.5')
     await expect(foodDetails.getByLabel('Nutrition preview')).toContainText(
       '300 kcal',
     )
@@ -481,8 +496,15 @@ test(
     await expect(page.getByText(/1.5 cup .* 300 kcal/)).toBeVisible()
 
     await page.getByRole('button', { name: 'Edit E2E Rice log' }).click()
-    await page.getByRole('textbox', { name: 'Serving multiplier' }).fill('2')
-    await page.getByRole('button', { name: 'Save log' }).click()
+    const editFoodLog = page.getByRole('dialog', { name: 'Edit food log' })
+    await expect(
+      editFoodLog.getByRole('textbox', { name: 'Serving amount' }),
+    ).toHaveValue('1.5')
+    await expect(
+      editFoodLog.getByRole('textbox', { name: 'Serving unit' }),
+    ).toHaveValue('cup')
+    await editFoodLog.getByRole('textbox', { name: 'Serving amount' }).fill('2')
+    await editFoodLog.getByRole('button', { name: 'Save log' }).click()
     await expect(page.getByText(/2 cup .* 400 kcal/)).toBeVisible()
     await expect(
       page.locator('.metric-value').filter({ hasText: '400 kcal' }),
@@ -680,12 +702,64 @@ test('shows calorie bars and target line on Home and in History Graphs', async (
   await page.goto('/')
   await dismissSignInPrompt(page)
 
+  await page.getByRole('link', { name: 'Nutrition' }).click()
+  await page.getByRole('button', { name: 'Targets' }).click()
+  await page.getByRole('textbox', { name: 'Calories' }).fill('2000')
+  await page.getByRole('button', { name: 'Save targets' }).click()
+  await expect(page.getByText('Nutrition targets saved.')).toBeVisible()
+  await page.getByRole('button', { name: 'Day', exact: true }).click()
+  await page.getByRole('button', { name: 'Quick add nutrition' }).click()
+  const quickAdd = page.getByRole('dialog', { name: 'Quick add nutrition' })
+  await quickAdd.getByRole('textbox', { name: 'Name' }).fill('E2E calorie day')
+  await quickAdd.getByRole('textbox', { name: 'Calories' }).fill('1800')
+  await quickAdd.getByRole('button', { name: 'Log quick add' }).click()
+  await expect(page.getByText('Quick add logged.')).toBeVisible()
+  await page.getByRole('link', { name: 'Home' }).click()
+
   const homeChart = page.getByRole('img', {
     name: 'Daily calories logged and target graph',
   })
   await expect(homeChart).toBeVisible()
   await expect(homeChart.locator('rect.calorie-bar')).toHaveCount(7)
   await expect(homeChart.locator('polyline.calorie-target-line')).toHaveCount(1)
+
+  const homeRange = page.getByLabel('Home calorie range')
+  await expect(homeRange.getByRole('button', { name: '1W' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await homeRange.getByRole('button', { name: '1M' }).click()
+  await expect(homeChart.locator('rect.calorie-bar')).toHaveCount(30)
+
+  await page.getByRole('button', { name: 'View more' }).click()
+  await expect(page).toHaveURL(/\/calories\?range=1m&end=/)
+  await expect(
+    page.getByRole('heading', { name: 'Calorie insights' }),
+  ).toBeVisible()
+  await expect(page.getByText('Logging consistency')).toBeVisible()
+  await expect(page.getByText('Average vs target')).toBeVisible()
+  const calorieSummary = page.getByRole('region', { name: 'Calorie summary' })
+  await expect(calorieSummary.getByText('3%')).toBeVisible()
+  await expect(calorieSummary.getByText('1 of 30')).toBeVisible()
+  await expect(calorieSummary.getByText('1,800 kcal')).toBeVisible()
+  await expect(calorieSummary.getByText('2,000 kcal')).toBeVisible()
+  await expect(calorieSummary.getByText('200 kcal deficit')).toBeVisible()
+  await page
+    .getByLabel('Calorie insights range')
+    .getByRole('button', { name: '3M' })
+    .click()
+  await expect(
+    page
+      .getByRole('img', {
+        name: 'Daily calories logged and target graph',
+      })
+      .locator('rect.calorie-bar'),
+  ).toHaveCount(90)
+  await expect(calorieSummary.getByText('1%')).toBeVisible()
+  await expect(calorieSummary.getByText('1 of 90')).toBeVisible()
+  await expect(calorieSummary.getByText('200 kcal deficit')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Back to Home' }).click()
 
   await page.getByRole('button', { name: 'Graphs' }).click()
   await page.getByRole('button', { name: 'Calories' }).click()
@@ -720,7 +794,7 @@ test('settings exposes local data controls and validates malformed restore files
   await expect(page.getByText('Backup format version')).toBeVisible()
   await page.getByRole('button', { name: 'Data' }).click()
   await expect(
-    page.getByText(/Local backup files and CSV exports stay on this device/),
+    page.getByText(/Local backup files and ZIP exports stay on this device/),
   ).toBeVisible()
   await expect(
     page.getByRole('heading', { name: 'Cloud backup' }),
@@ -733,6 +807,15 @@ test('settings exposes local data controls and validates malformed restore files
   ).toBeVisible()
   await expect(
     page.getByRole('button', { name: 'Export all fitness data' }),
+  ).toBeVisible()
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export all fitness data' }).click()
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toMatch(
+    /^fitness-data-export-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.zip$/,
+  )
+  await expect(
+    page.getByText(/Fitness data export prepared: .* records in 39 files/),
   ).toBeVisible()
 
   await page.locator('input[type="file"]').setInputFiles({
@@ -835,7 +918,7 @@ test('completes the release workflow through backup restore', async ({
   await page.getByRole('button', { name: 'Save food' }).click()
   await page.getByRole('button', { name: 'Search foods' }).click()
   await page.getByRole('searchbox', { name: 'Search foods' }).fill('audit')
-  await page.getByRole('button', { name: 'Select Audit oats' }).click()
+  await page.getByRole('button', { name: /^Open Audit oats,/ }).click()
   await page.getByRole('textbox', { name: 'Serving amount' }).fill('1.25')
   await expect(page.getByLabel('Nutrition preview')).toContainText('250 kcal')
   await page.getByRole('button', { name: 'Log food', exact: true }).click()

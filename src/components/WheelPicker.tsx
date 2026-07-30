@@ -9,10 +9,15 @@ import {
 } from '@components/wheelScroll'
 
 const REST_MINUTE_VALUES = rangeValues(0, 15)
-const REST_SECOND_VALUES = rangeValues(0, 59)
+const REST_SECOND_VALUES = rangeValues(0, 11).map((index) => index * 5)
 
 function padTwo(value: number) {
   return String(value).padStart(2, '0')
+}
+
+function normalizeRestSecondValue(seconds: number) {
+  const clamped = Math.min(Math.max(seconds, 0), 59)
+  return Math.min(55, Math.round(clamped / 5) * 5)
 }
 
 /**
@@ -129,13 +134,15 @@ export function RestWheelPicker({
   onChange: (minutes: number, seconds: number) => void
   seconds: number
 }) {
+  const normalizedSeconds = normalizeRestSecondValue(seconds)
+
   return (
     <div aria-label="Rest time" className="rest-wheel" role="group">
       <div className="wheel-unit-group">
         <WheelColumn
           ariaLabel="Rest minutes"
           formatValue={padTwo}
-          onChange={(nextMinutes) => onChange(nextMinutes, seconds)}
+          onChange={(nextMinutes) => onChange(nextMinutes, normalizedSeconds)}
           value={clampWheelIndex(minutes, REST_MINUTE_VALUES.length)}
           values={REST_MINUTE_VALUES}
         />
@@ -149,7 +156,7 @@ export function RestWheelPicker({
           ariaLabel="Rest seconds"
           formatValue={padTwo}
           onChange={(nextSeconds) => onChange(minutes, nextSeconds)}
-          value={Math.min(Math.max(seconds, 0), 59)}
+          value={normalizedSeconds}
           values={REST_SECOND_VALUES}
         />
         <span className="wheel-unit">sec</span>

@@ -47,7 +47,7 @@ import { automaticCloudBackupService } from '@services/automaticCloudBackupServi
 import { workoutRepository } from '@repositories/workoutRepository'
 
 type ActiveActivity =
-  | { type: 'workout'; id: string }
+  | { type: 'workout'; dayName: string; id: string }
   | { type: 'run'; id: string }
   | null
 
@@ -148,7 +148,11 @@ function AppShellContent({ children }: AppShellProps) {
         }
         setActiveActivity(
           workout
-            ? { type: 'workout', id: workout.id }
+            ? {
+                type: 'workout',
+                dayName: workout.workoutSnapshot.dayName,
+                id: workout.id,
+              }
             : run
               ? { type: 'run', id: run.id }
               : null,
@@ -230,7 +234,11 @@ function AppShellContent({ children }: AppShellProps) {
     })
   }, [authStatus])
 
-  const routeTitle = getRouteTitle(location.pathname)
+  const routeTitle =
+    location.pathname.startsWith('/workout') &&
+    activeActivity?.type === 'workout'
+      ? activeActivity.dayName
+      : getRouteTitle(location.pathname)
   const hasUpdateReady = pendingUpdate !== null
   const isHomeRoute = location.pathname === '/'
   const latestChangelogEntry = LATEST_CHANGELOG_ENTRY
@@ -545,6 +553,10 @@ function AppShellContent({ children }: AppShellProps) {
 }
 
 function getRouteTitle(pathname: string) {
+  if (pathname.startsWith('/calories')) {
+    return 'Calories'
+  }
+
   if (pathname.startsWith('/nutrition')) {
     return 'Nutrition'
   }

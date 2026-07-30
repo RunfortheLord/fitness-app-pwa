@@ -9,6 +9,7 @@ import {
   StatusMessage,
   ValidationMessage,
 } from '@components/ui'
+import { useLanguage } from '@components/languageContextValue'
 import { foodRepository } from '@repositories/foodRepository'
 import type { Food } from '@shared-types/app'
 
@@ -18,6 +19,7 @@ import {
   macroCaloriesFromGrams,
   parseFoodForm,
   parseNonNegativeNumber,
+  parsePositiveNumber,
   validateFoodFormFields,
   type FoodFormState,
 } from './nutritionForms'
@@ -54,17 +56,17 @@ export function FoodFormSheet({
   const [submitAttempted, setSubmitAttempted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const parsed = useMemo(() => parseFoodForm(form), [form])
-  const fieldErrors =
-    submitAttempted || error ? validateFoodFormFields(form) : {}
+  const fieldErrors = submitAttempted ? validateFoodFormFields(form) : {}
 
   function update(field: keyof typeof form, value: string) {
+    setError(null)
     setForm((current) => ({ ...current, [field]: value }))
   }
 
   function saveFood() {
     setSubmitAttempted(true)
     if (!parsed.ok) {
-      setError(parsed.error)
+      setError(null)
       return
     }
 
@@ -127,69 +129,93 @@ export function FoodFormSheet({
           Fix the highlighted food fields and save again.
         </StatusMessage>
       ) : null}
-      <FoodFormFields form={form} update={update} />
+      <FoodFormFields errors={fieldErrors} form={form} update={update} />
     </Sheet>
   )
 }
 
 function FoodFormFields({
+  errors,
   form,
   update,
 }: {
+  errors: Partial<Record<keyof typeof emptyFoodForm, string>>
   form: typeof emptyFoodForm
   update: (field: keyof typeof emptyFoodForm, value: string) => void
 }) {
+  const { t } = useLanguage()
   return (
     <>
-      <FormField
-        id="food-name"
-        label="Name"
-        error={validateFoodFormFields(form).name}
-      >
+      <FormField id="food-name" label="Name" error={errors.name}>
         <input
-          aria-invalid={Boolean(validateFoodFormFields(form).name)}
+          aria-describedby={errors.name ? 'food-name-error' : undefined}
+          aria-invalid={Boolean(errors.name)}
           id="food-name"
           onChange={(event) => update('name', event.target.value)}
           value={form.name}
         />
       </FormField>
-      <FormField
-        id="serving-quantity"
-        label="Serving amount"
-        error={validateFoodFormFields(form).servingQuantity}
-      >
-        <NumericInput
-          aria-invalid={Boolean(validateFoodFormFields(form).servingQuantity)}
-          id="serving-quantity"
-          onChange={(event) => update('servingQuantity', event.target.value)}
-          placeholder="1"
-          value={form.servingQuantity}
-        />
-      </FormField>
-      <FormField
-        id="serving-unit"
-        label="Serving unit"
-        helpText="Use any unit, such as bake, slice, container, oz, or g."
-        error={validateFoodFormFields(form).servingUnit}
-      >
-        <input
-          aria-invalid={Boolean(validateFoodFormFields(form).servingUnit)}
-          id="serving-unit"
-          onChange={(event) => update('servingUnit', event.target.value)}
-          placeholder="bake"
-          value={form.servingUnit}
-        />
-      </FormField>
-      <MacroInputs form={form} update={update} />
-      <FoodCalorieEquation form={form} />
+      <fieldset className="food-form-section serving-size-section">
+        <legend>{t('Serving size')}</legend>
+        <p className="field-help">
+          {t('Set the amount that the nutrition values below describe.')}
+        </p>
+        <div className="food-serving-controls">
+          <FormField
+            id="serving-quantity"
+            label="Serving amount"
+            error={errors.servingQuantity}
+          >
+            <NumericInput
+              aria-describedby={
+                errors.servingQuantity ? 'serving-quantity-error' : undefined
+              }
+              aria-invalid={Boolean(errors.servingQuantity)}
+              id="serving-quantity"
+              onChange={(event) =>
+                update('servingQuantity', event.target.value)
+              }
+              placeholder="1"
+              value={form.servingQuantity}
+            />
+          </FormField>
+          <FormField
+            id="serving-unit"
+            label="Serving unit"
+            helpText="Examples: g, oz, cup, slice, or container."
+            error={errors.servingUnit}
+          >
+            <input
+              aria-describedby={
+                errors.servingUnit
+                  ? 'serving-unit-help serving-unit-error'
+                  : 'serving-unit-help'
+              }
+              aria-invalid={Boolean(errors.servingUnit)}
+              id="serving-unit"
+              onChange={(event) => update('servingUnit', event.target.value)}
+              placeholder="cup"
+              value={form.servingUnit}
+            />
+          </FormField>
+        </div>
+        <ServingSizeSummary form={form} />
+      </fieldset>
+      <fieldset className="food-form-section">
+        <legend>{t('Nutrition for this serving')}</legend>
+        <MacroInputs errors={errors} form={form} update={update} />
+        <FoodCalorieEquation form={form} />
+      </fieldset>
     </>
   )
 }
 
 function MacroInputs({
+  errors,
   form,
   update,
 }: {
+  errors: Partial<Record<keyof typeof emptyFoodForm, string>>
   form: typeof emptyFoodForm
   update: (field: keyof typeof emptyFoodForm, value: string) => void
 }) {
@@ -198,12 +224,13 @@ function MacroInputs({
       <FormField
         id="food-calories"
         label="Calories per serving"
-        error={validateFoodFormFields(form).caloriesPerServing}
+        error={errors.caloriesPerServing}
       >
         <NumericInput
-          aria-invalid={Boolean(
-            validateFoodFormFields(form).caloriesPerServing,
-          )}
+          aria-describedby={
+            errors.caloriesPerServing ? 'food-calories-error' : undefined
+          }
+          aria-invalid={Boolean(errors.caloriesPerServing)}
           id="food-calories"
           onChange={(event) => update('caloriesPerServing', event.target.value)}
           value={form.caloriesPerServing}
@@ -212,12 +239,13 @@ function MacroInputs({
       <FormField
         id="food-protein"
         label="Protein per serving"
-        error={validateFoodFormFields(form).proteinGramsPerServing}
+        error={errors.proteinGramsPerServing}
       >
         <NumericInput
-          aria-invalid={Boolean(
-            validateFoodFormFields(form).proteinGramsPerServing,
-          )}
+          aria-describedby={
+            errors.proteinGramsPerServing ? 'food-protein-error' : undefined
+          }
+          aria-invalid={Boolean(errors.proteinGramsPerServing)}
           id="food-protein"
           onChange={(event) =>
             update('proteinGramsPerServing', event.target.value)
@@ -228,12 +256,13 @@ function MacroInputs({
       <FormField
         id="food-carbs"
         label="Carbohydrates per serving"
-        error={validateFoodFormFields(form).carbohydrateGramsPerServing}
+        error={errors.carbohydrateGramsPerServing}
       >
         <NumericInput
-          aria-invalid={Boolean(
-            validateFoodFormFields(form).carbohydrateGramsPerServing,
-          )}
+          aria-describedby={
+            errors.carbohydrateGramsPerServing ? 'food-carbs-error' : undefined
+          }
+          aria-invalid={Boolean(errors.carbohydrateGramsPerServing)}
           id="food-carbs"
           onChange={(event) =>
             update('carbohydrateGramsPerServing', event.target.value)
@@ -244,18 +273,32 @@ function MacroInputs({
       <FormField
         id="food-fat"
         label="Fat per serving"
-        error={validateFoodFormFields(form).fatGramsPerServing}
+        error={errors.fatGramsPerServing}
       >
         <NumericInput
-          aria-invalid={Boolean(
-            validateFoodFormFields(form).fatGramsPerServing,
-          )}
+          aria-describedby={
+            errors.fatGramsPerServing ? 'food-fat-error' : undefined
+          }
+          aria-invalid={Boolean(errors.fatGramsPerServing)}
           id="food-fat"
           onChange={(event) => update('fatGramsPerServing', event.target.value)}
           value={form.fatGramsPerServing}
         />
       </FormField>
     </>
+  )
+}
+
+function ServingSizeSummary({ form }: { form: typeof emptyFoodForm }) {
+  const { t } = useLanguage()
+  const amount = parsePositiveNumber(form.servingQuantity)
+  const unit = form.servingUnit.trim()
+  return (
+    <p className="serving-size-summary" aria-live="polite">
+      {amount && unit
+        ? t('Nutrition below is for {amount} {unit}.', { amount, unit })
+        : t('Example: 170 g, 2 slices, or 1 container.')}
+    </p>
   )
 }
 

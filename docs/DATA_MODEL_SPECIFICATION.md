@@ -94,9 +94,9 @@ and restore payloads.
 - Optional `brandName` for private custom foods. The current custom-food form
   writes `null`.
 - Optional provider metadata: `brandName`, `sourceType`, `provider`,
-  `providerRecordId`, `providerDataType`, `sourceName`, `sourceUrl`, `barcode`,
-  `barcodeSource`, `sourceUpdatedAt`, `providerIngestedAt`, and
-  `normalizerVersion`
+  `providerRecordId`, `providerDataType`, `foodCategory`, `sourceName`,
+  `sourceUrl`, `barcode`, `barcodeSource`, `sourceUpdatedAt`,
+  `providerIngestedAt`, and `normalizerVersion`
 - Optional serving conversion metadata: `gramsPerServing`, `ouncesPerServing`,
   `servingConversionReliable`, and `servingConversionSource`
 - Optional classification metadata: `macroBasis` and `rawCookedStatus`
@@ -171,10 +171,10 @@ record.
 - `carbohydrateGramsPerServing`
 - `fatGramsPerServing`
 - Optional provider snapshot metadata: `snapshotId`, `brandName`, `sourceType`,
-  `provider`, `providerRecordId`, `providerDataType`, `gramsPerServing`,
-  `ouncesPerServing`, `servingConversionReliable`, `servingConversionSource`,
-  `macroBasis`, `rawCookedStatus`, `sourceUpdatedAt`, `providerIngestedAt`, and
-  `normalizerVersion`
+  `provider`, `providerRecordId`, `providerDataType`, `foodCategory`,
+  `gramsPerServing`, `ouncesPerServing`, `servingConversionReliable`,
+  `servingConversionSource`, `macroBasis`, `rawCookedStatus`,
+  `sourceUpdatedAt`, `providerIngestedAt`, and `normalizerVersion`
 - `notes`: legacy-compatible field retained for backups and restore; the
   current live-workout UI does not write exercise-level notes.
 
@@ -567,6 +567,14 @@ not add distance or moving time.
 - Schema version 13 adds run tracking mode, treadmill step count, and treadmill
   stride metadata. Existing runs migrate to GPS mode without changing recorded
   distance, time, samples, splits, pauses, or classifications.
+- Schema version 14 backfills blank active-cycle exercise notes from their
+  source template prescriptions without overwriting nonblank active notes.
+- Schema version 15 derives the current active-program week from persisted day
+  check-offs without changing completed workout history.
+- Schema version 16 repairs only the reusable USDA foods that have reviewed
+  official restaurant-menu corrections and resets their unit preferences to
+  the official item/count serving. It does not rewrite food-log or saved-meal
+  snapshots.
 
 ## Transaction Boundaries
 
@@ -598,7 +606,7 @@ not add distance or moving time.
 - JSON backup is authoritative and full fidelity.
 - CSV export is derived from stores for readability and does not need to support restore.
 - Import preview summarizes counts, schema versions, conflicts, and whether merge or replace is selected.
-- Current backup format version is `1`, separate from IndexedDB schema version `9`.
+- Current backup format version is `1`, separate from IndexedDB schema version `16`.
 - Backup root fields are `backupFormatVersion`, `databaseSchemaVersion`,
   `applicationVersion`, `exportedAt`, and `data`.
 - Restore supports backup format version `1` when the backup database schema
