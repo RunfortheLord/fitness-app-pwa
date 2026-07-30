@@ -454,10 +454,11 @@
   pound of calculation weight, fat is ~25% of goal calories (protected so carbs
   never go negative), and carbs take the reconciled remainder. A
   `GOAL_FORMULA_VERSION` is stored with the goal for reproducibility.
-- Calorie targets never adjust automatically. A manual Update Calories action
-  runs a bounded trend-weight adjustment (regression over up to 14 days, ≥3
-  points spanning ≥7 days, rounded to the nearest 1 kcal, capped at ±200 kcal,
-  50 kcal deadband) and is idempotent via a trend-data signature.
+- Calorie targets never adjust automatically. A manual Update Calories action runs
+  a bounded trend-weight adjustment (regression over up to 14 days, ≥3 points
+  spanning ≥7 days, rounded to the nearest 1 kcal, capped at ±200 kcal, 50 kcal
+  deadband)
+  and is idempotent via a trend-data signature.
 - The goal is stored additively on `userSettings.nutritionGoal` (no schema
   version bump) and included in backups; users without a goal are unaffected.
 

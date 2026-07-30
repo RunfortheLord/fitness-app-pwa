@@ -150,6 +150,7 @@
   recommendations. Local meal-aware recent-food shortcuts are allowed. Spanish
   Open Food Facts search must require an explicit keyboard or on-screen Search
   action and remain server-cached.
+
 ### Bodyweight
 
 - Users must be able to add at most one bodyweight entry per local calendar

@@ -113,6 +113,7 @@
 - The selected weekly rate and estimated goal date update live. Maintenance
   shows an ongoing goal with zero weekly change and no slider.
 - Done saves the goal and calorie/macro targets, then returns to Targets.
+
 ### Food Rows
 
 - Food name.
