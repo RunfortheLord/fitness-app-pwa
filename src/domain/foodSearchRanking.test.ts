@@ -480,6 +480,8 @@ describe('nutrition search ranking (reference acceptance cases)', () => {
       [
         food({ id: 'syrup', name: 'Strawberry drink syrup' }),
         food({ id: 'ice-cream', name: 'Strawberry ice cream' }),
+        food({ id: 'milk-nfs', name: 'Strawberry milk, NFS' }),
+        food({ id: 'milk-whole', name: 'Strawberry milk, whole' }),
         food({
           id: 'raw',
           name: 'Strawberries, raw',

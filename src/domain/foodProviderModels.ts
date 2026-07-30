@@ -485,10 +485,23 @@ function wholeFoodIntentScore(food: NormalizedFoodResult, query: string) {
   if (nameTokens[0] && sameFoodWord(nameTokens[0], queryToken)) {
     score += 0.4
   }
-  if (nameTokens.some((token) => ['whole', 'plain', 'nfs'].includes(token))) {
+  const extraName = nameTokens
+    .filter((token) => !sameFoodWord(token, queryToken))
+    .join(' ')
+  const derivativeName =
+    /\b(applesauce|bar|beverage|cake|candy|casserole|cereal|chips|chowder|cream|cupcake|curry|dessert|dip|drink|flavor|flavored|ice|jam|jelly|juice|milk|mix|mousse|pie|powder|salad|sandwich|sauce|smoothie|soup|syrup|taco|topping|yogurt)\b/u.test(
+      extraName,
+    )
+  if (
+    !derivativeName &&
+    nameTokens.some((token) => ['whole', 'plain', 'nfs'].includes(token))
+  ) {
     score += 1
   }
-  if (nameTokens.some((token) => ['raw', 'fresh'].includes(token))) {
+  if (
+    !derivativeName &&
+    nameTokens.some((token) => ['raw', 'fresh'].includes(token))
+  ) {
     score += 0.6
   }
   if (
@@ -500,11 +513,7 @@ function wholeFoodIntentScore(food: NormalizedFoodResult, query: string) {
   ) {
     score -= 0.5
   }
-  if (
-    /\b(applesauce|bar|beverage|cake|candy|casserole|cereal|chips|chowder|cream|cupcake|curry|dessert|dip|drink|flavor|flavored|ice|jam|jelly|juice|milk|mix|mousse|pie|powder|salad|sandwich|sauce|smoothie|soup|syrup|taco|topping|yogurt)\b/u.test(
-      nameTokens.filter((token) => !sameFoodWord(token, queryToken)).join(' '),
-    )
-  ) {
+  if (derivativeName) {
     score -= 1.5
   }
   if (
