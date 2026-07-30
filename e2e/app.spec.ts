@@ -271,7 +271,7 @@ test('creates, activates, starts the next day, and persists a program cycle', as
   await page.getByRole('link', { name: 'Home' }).click()
   await page.getByRole('button', { name: 'Start Day A' }).click()
   await expect(
-    page.getByRole('heading', { level: 1, name: 'Live Workout' }),
+    page.getByRole('heading', { level: 1, name: 'Day A' }),
   ).toBeVisible()
   await page.getByRole('button', { name: 'Discard workout' }).click()
   await page
@@ -336,7 +336,7 @@ test(
       .click()
 
     await expect(
-      page.getByRole('heading', { level: 1, name: 'Live Workout' }),
+      page.getByRole('heading', { level: 1, name: 'Live A' }),
     ).toBeVisible()
     await expect(
       page.getByRole('textbox', { name: 'Workout notes' }),
@@ -901,7 +901,9 @@ test('completes the release workflow through backup restore', async ({
     testInfo.project.name === 'mobile-webkit',
     'The full release audit is covered in Chromium; mobile WebKit keeps focused flow coverage because this long live-workout replacement path is timing-fragile.',
   )
-  testInfo.setTimeout(180_000)
+  // This audit builds and restores a multi-megabyte backup after exercising
+  // every major local-first flow. Keep enough headroom for parallel CI workers.
+  testInfo.setTimeout(300_000)
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/nutrition')
 
@@ -975,7 +977,7 @@ test('completes the release workflow through backup restore', async ({
     .click()
 
   await expect(
-    page.getByRole('heading', { level: 1, name: 'Live Workout' }),
+    page.getByRole('heading', { level: 1, name: 'Audit A' }),
   ).toBeVisible()
   await page.getByRole('textbox', { name: 'Set 1 Weight' }).first().fill('185')
   await page.getByRole('textbox', { name: 'Set 1 Reps' }).first().fill('8')
@@ -985,15 +987,20 @@ test('completes the release workflow through backup restore', async ({
   await page.getByRole('button', { name: 'Complete set 2' }).click()
   await page.getByRole('textbox', { name: 'Set 3 Weight' }).fill('195')
   await page.getByRole('textbox', { name: 'Set 3 Reps' }).fill('6')
+  await page.getByRole('textbox', { name: 'Set 3 final RIR' }).fill('2')
   await page.getByRole('button', { name: 'Complete set 3' }).click()
-  await page.getByRole('heading', { name: /Audit squat|Audit curl/ }).waitFor()
-  await page.getByRole('button', { name: /1 Audit squat/ }).click()
+  await page.getByRole('heading', { name: 'Audit curl' }).waitFor()
+  await page
+    .getByRole('button', { name: 'Audit squat, exercise 1 of 2' })
+    .click()
   await page.getByRole('button', { name: 'Add Set' }).first().click()
   await page.getByRole('textbox', { name: 'Set 4 Weight' }).fill('200')
   await page.getByRole('textbox', { name: 'Set 4 Reps' }).fill('5')
   await page.getByRole('button', { name: 'Complete set 4' }).click()
-  await page.getByRole('heading', { name: /Audit squat|Audit curl/ }).waitFor()
-  await page.getByRole('button', { name: /1 Audit squat/ }).click()
+  await page.getByRole('heading', { name: 'Audit curl' }).waitFor()
+  await page
+    .getByRole('button', { name: 'Audit squat, exercise 1 of 2' })
+    .click()
   await expect(page.getByRole('heading', { name: 'Audit squat' })).toBeVisible()
   await page.getByRole('button', { name: 'Swap Exercise' }).first().click()
   const replaceSheet = page.getByRole('dialog', { name: 'Swap Exercise' })
@@ -1037,12 +1044,12 @@ test('completes the release workflow through backup restore', async ({
   await page.getByRole('textbox', { name: 'Set 4 Weight' }).fill('160')
   await page.getByRole('textbox', { name: 'Set 4 Reps' }).fill('7')
   await page.getByRole('textbox', { name: 'Set 4 Reps' }).press('Enter')
+  await page.getByRole('textbox', { name: 'Set 4 final RIR' }).fill('2')
   await expect(
     page.getByRole('textbox', { name: 'Set 4 Reps' }),
   ).not.toHaveAttribute('aria-invalid', 'true')
   await page.getByRole('button', { name: 'Complete set 4' }).click()
 
-  await page.getByRole('button', { name: 'Finish' }).click()
   await page
     .getByRole('dialog', { name: 'Finish workout?' })
     .getByRole('button', { name: 'Finish Workout' })
