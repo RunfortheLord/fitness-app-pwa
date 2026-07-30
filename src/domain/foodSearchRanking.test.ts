@@ -475,6 +475,46 @@ describe('nutrition search ranking (reference acceptance cases)', () => {
     expect(ranked[0].name).toBe('Milk, Whole')
   })
 
+  it('strawberry: the raw fruit outranks flavored and processed derivatives', () => {
+    const ranked = rankFoods(
+      [
+        food({ id: 'syrup', name: 'Strawberry drink syrup' }),
+        food({ id: 'ice-cream', name: 'Strawberry ice cream' }),
+        food({
+          id: 'raw',
+          name: 'Strawberries, raw',
+          status: 'raw',
+          type: 'Foundation',
+        }),
+        food({ id: 'canned', name: 'Strawberries, canned' }),
+      ],
+      'strawberry',
+    )
+
+    expect(ranked[0].name).toBe('Strawberries, raw')
+    expect(rankOf(ranked, 'Strawberries, raw')).toBeLessThan(
+      rankOf(ranked, 'Strawberry ice cream'),
+    )
+  })
+
+  it('fish: plain fish options outrank sauces, curries, and sandwiches', () => {
+    const ranked = rankFoods(
+      [
+        food({ id: 'sauce', name: 'Fish sauce' }),
+        food({ id: 'curry', name: 'Fish curry' }),
+        food({ id: 'sandwich', name: 'Fish sandwich, grilled' }),
+        food({ id: 'white', name: 'Fish, white, mixed species, grilled' }),
+        food({ id: 'plain', name: 'Fish, NFS' }),
+      ],
+      'fish',
+    )
+
+    expect(names(ranked).slice(0, 2)).toEqual([
+      'Fish, NFS',
+      'Fish, white, mixed species, grilled',
+    ])
+  })
+
   it('does not fabricate entries for natural-language quantity queries', () => {
     const inputs = [
       food({ id: 'apple', name: 'Apple Raw', status: 'raw' }),

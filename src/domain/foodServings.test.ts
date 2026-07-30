@@ -366,6 +366,56 @@ describe('food serving helpers', () => {
     }
   })
 
+  it('defaults a plain bagel to the provider regular size instead of miniature', () => {
+    const bagel = providerFood('Bagel', 26, [
+      {
+        amount: 1,
+        unit: 'miniature',
+        description: 'miniature',
+        gramWeight: 26,
+      },
+      {
+        amount: 1,
+        unit: 'regular',
+        description: 'regular',
+        gramWeight: 105,
+      },
+    ])
+
+    expect(servingOptionsForFood(bagel)[0]).toMatchObject({
+      key: 'bagel',
+      amount: 1,
+      label: '1 bagel',
+      grams: 105,
+    })
+  })
+
+  it('defaults raw strawberries to a cup while keeping grams available', () => {
+    const strawberries = providerFood('Strawberries, raw', 18, [
+      {
+        amount: 1,
+        unit: 'fruit',
+        description: 'fruit',
+        gramWeight: 18,
+      },
+      {
+        amount: 1,
+        unit: 'cup',
+        description: 'cup',
+        gramWeight: 150,
+      },
+    ])
+    const options = servingOptionsForFood(strawberries)
+
+    expect(options[0]).toMatchObject({
+      key: 'cup',
+      amount: 1,
+      label: '1 cup',
+      grams: 150,
+    })
+    expect(options.find((option) => option.controlUnit === 'g')).toBeDefined()
+  })
+
   it('uses branded label servings and displays two-cookie serving weights', () => {
     const food: Food = {
       ...baseFood,

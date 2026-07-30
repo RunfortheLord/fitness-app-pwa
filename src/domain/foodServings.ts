@@ -493,7 +493,12 @@ function sourceHouseholdPortion(
   if (!portion) {
     return listedBase
   }
-  const key = canonicalServingKey(portion.unit)
+  const portionKey = canonicalServingKey(portion.unit)
+  const plainBagel =
+    /^bagels?$/u.test(normalizeFoodText(parts.name)) &&
+    ['medium', 'regular', 'standard'].includes(portionKey)
+  const displayUnit = plainBagel ? 'bagel' : portion.unit
+  const key = canonicalServingKey(displayUnit)
   return {
     amount: portion.amount,
     controlUnit: 'portion',
@@ -503,7 +508,7 @@ function sourceHouseholdPortion(
           portion.gramWeight!
         : null,
     key,
-    label: `${round(portion.amount)} ${portion.unit}`,
+    label: `${round(portion.amount)} ${displayUnit}`,
     group: 'primary',
     grams: portion.gramWeight,
     toServingMultiplier: (amount) =>
@@ -511,7 +516,7 @@ function sourceHouseholdPortion(
         ? ((amount / portion.amount) * portion.gramWeight!) /
           parts.gramsPerServing
         : null,
-    unitLabel: portion.unit.trim(),
+    unitLabel: displayUnit.trim(),
   }
 }
 
@@ -528,17 +533,39 @@ function preferredSourcePortion(
     /\b(oil|dressing|sauce|syrup|honey|butter|mayo|mayonnaise|spread|dip)\b/u.test(
       text,
     )
-  if (!preferSpoon) {
-    return portions[0] ?? null
+  if (preferSpoon) {
+    return (
+      portions.find((portion) =>
+        SPOON_UNITS.has(canonicalServingKey(portion.unit)),
+      ) ??
+      portions[0] ??
+      null
+    )
   }
 
-  return (
-    portions.find((portion) =>
-      SPOON_UNITS.has(canonicalServingKey(portion.unit)),
-    ) ??
-    portions[0] ??
-    null
-  )
+  // Provider rank is not always the most realistic default: USDA lists a
+  // miniature bagel before a regular one, for example. Prefer a normal-sized
+  // household portion when one is explicitly supplied.
+  if (!isRestaurantFood(parts)) {
+    if (/\b(strawberry|strawberries|berry|berries)\b/u.test(text)) {
+      const cup = portions.find(
+        (portion) => canonicalServingKey(portion.unit) === 'cup',
+      )
+      if (cup) {
+        return cup
+      }
+    }
+    const standardSize = portions.find((portion) =>
+      ['medium', 'regular', 'standard'].includes(
+        canonicalServingKey(portion.unit),
+      ),
+    )
+    if (standardSize) {
+      return standardSize
+    }
+  }
+
+  return portions[0] ?? null
 }
 
 function describedHouseholdPortion(

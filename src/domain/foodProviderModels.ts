@@ -391,6 +391,7 @@ export function rankFoods(
         ...food,
         relevanceScore:
           textualRelevance +
+          wholeFoodIntentScore(food, normalizedQuery) +
           completeRestaurantItemBonus(food, normalizedQuery) +
           brandedCategoryBonus(food, normalizedQuery) +
           cookedMeatBonus(food) +
@@ -445,6 +446,7 @@ function broadGenericBonus(food: NormalizedFoodResult, query: string) {
     'loin',
     'fillet',
     'filet',
+    'white',
     'cup',
     'slice',
     'egg',
@@ -457,6 +459,61 @@ function broadGenericBonus(food: NormalizedFoodResult, query: string) {
   }
   if (food.rawCookedStatus === 'raw') {
     score -= 0.2
+  }
+  return score
+}
+
+// A one-word food search usually means the food itself, not a product or dish
+// that merely uses that flavor/ingredient. Keep those derivatives searchable,
+// but rank a plain/raw/whole form first when the provider supplies one.
+function wholeFoodIntentScore(food: NormalizedFoodResult, query: string) {
+  const queryTokens = tokenize(query)
+  if (queryTokens.length !== 1) {
+    return 0
+  }
+
+  const queryToken = queryTokens[0]
+  const nameTokens = tokenize(food.normalizedSearchName)
+  if (!nameTokens.some((token) => sameFoodWord(token, queryToken))) {
+    return 0
+  }
+
+  let score = 0
+  if (nameTokens.length === 1) {
+    score += 1
+  }
+  if (nameTokens[0] && sameFoodWord(nameTokens[0], queryToken)) {
+    score += 0.4
+  }
+  if (nameTokens.some((token) => ['whole', 'plain', 'nfs'].includes(token))) {
+    score += 1
+  }
+  if (nameTokens.some((token) => ['raw', 'fresh'].includes(token))) {
+    score += 0.6
+  }
+  if (
+    nameTokens.some((token) =>
+      ['canned', 'dried', 'frozen', 'pickled', 'sweetened', 'syrup'].includes(
+        token,
+      ),
+    )
+  ) {
+    score -= 0.5
+  }
+  if (
+    /\b(applesauce|bar|beverage|cake|candy|casserole|cereal|chips|chowder|cream|cupcake|curry|dessert|dip|drink|flavor|flavored|ice|jam|jelly|juice|milk|mix|mousse|pie|powder|salad|sandwich|sauce|smoothie|soup|syrup|taco|topping|yogurt)\b/u.test(
+      nameTokens.filter((token) => !sameFoodWord(token, queryToken)).join(' '),
+    )
+  ) {
+    score -= 1.5
+  }
+  if (
+    queryToken === 'fish' &&
+    /\b(bass|cod|fillet|filet|halibut|nfs|tilapia|white|whiting)\b/u.test(
+      food.normalizedSearchName,
+    )
+  ) {
+    score += 0.8
   }
   return score
 }
@@ -813,6 +870,9 @@ function bestTokenMatch(queryToken: string, nameTokens: string[]): number {
     if (nameToken === queryToken) {
       return 1
     }
+    if (sameFoodWord(nameToken, queryToken)) {
+      return 0.95
+    }
     let score = 0
     if (queryToken.length >= 3 && nameToken.startsWith(queryToken)) {
       score = 0.75
@@ -832,6 +892,26 @@ function bestTokenMatch(queryToken: string, nameTokens: string[]): number {
     }
   }
   return best
+}
+
+// USDA commonly indexes the same food under singular and plural forms
+// ("strawberry" vs "strawberries"). Compare a conservative noun stem so the
+// actual food does not lose to an exact flavor word.
+function sameFoodWord(left: string, right: string) {
+  return foodWordStem(left) === foodWordStem(right)
+}
+
+function foodWordStem(token: string) {
+  if (token.length > 4 && token.endsWith('ies')) {
+    return `${token.slice(0, -3)}y`
+  }
+  if (token.length > 4 && token.endsWith('es')) {
+    return token.slice(0, -2)
+  }
+  if (token.length > 3 && token.endsWith('s')) {
+    return token.slice(0, -1)
+  }
+  return token
 }
 
 // Token-aware, typo-tolerant relevance of a food name to the query. Preserves

@@ -207,6 +207,35 @@ describe('food provider API core', () => {
     expect(usdaCalls).toHaveLength(2)
   })
 
+  it('requests a wider canonical candidate pool for first-page UI searches', async () => {
+    const requestBodies: Array<{ dataType?: string[]; pageSize?: number }> = []
+    const fetcher = vi.fn(
+      async (_url: URL | RequestInfo, init?: RequestInit) => {
+        requestBodies.push(
+          JSON.parse(String(init?.body ?? '{}')) as {
+            dataType?: string[]
+            pageSize?: number
+          },
+        )
+        return jsonResponse({ foods: [] })
+      },
+    )
+
+    await handleFoodSearch(
+      { query: 'strawberry', provider: 'usda', page: 1, pageSize: 20 },
+      { usdaApiKey: 'USDA_FDC_API_KEY_TEST_SENTINEL', fetcher },
+    )
+
+    expect(
+      requestBodies.find((body) => !body.dataType?.includes('Branded'))
+        ?.pageSize,
+    ).toBe(50)
+    expect(
+      requestBodies.find((body) => body.dataType?.includes('Branded'))
+        ?.pageSize,
+    ).toBe(20)
+  })
+
   it('coalesces concurrent identical cache misses and evicts by bounded size', async () => {
     let now = 1_000
     const cache = new TtlCache<string>(2, 100, () => now)

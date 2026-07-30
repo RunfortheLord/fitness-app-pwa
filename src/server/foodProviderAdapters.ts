@@ -92,7 +92,10 @@ export function createUsdaAdapter(
           input.query,
           ['Foundation', 'SR Legacy', 'Survey (FNDDS)'],
           input.page,
-          input.pageSize,
+          // The provider's first 20 canonical matches can be dominated by
+          // flavored/prepared derivatives. Give the ranker a wider candidate
+          // pool for the normal first-page UI search so the plain food can win.
+          input.page === 1 && input.pageSize >= 20 ? 50 : input.pageSize,
           input.signal,
         ),
         fetchRecords(
