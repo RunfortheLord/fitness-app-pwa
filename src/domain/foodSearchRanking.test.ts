@@ -517,6 +517,69 @@ describe('nutrition search ranking (reference acceptance cases)', () => {
     ])
   })
 
+  it.each([
+    {
+      query: 'milk',
+      expected: 'Milk, whole',
+      alternatives: [
+        'Milk, dry, reconstituted, whole',
+        'Milk, evaporated, whole',
+        'Milk, lactose free, whole',
+      ],
+    },
+    {
+      query: 'potato',
+      expected: 'Potato, NFS',
+      alternatives: ['Potato skins, NFS', 'Potato tots, NFS'],
+    },
+    {
+      query: 'broccoli',
+      expected: 'Broccoli, raw',
+      alternatives: [
+        'Broccoli raab, raw',
+        'Broccoli, chinese, raw',
+        'Broccoli, fresh, cooked with oil',
+      ],
+    },
+    {
+      query: 'bread',
+      expected: 'Bread, white',
+      alternatives: ['Bread, egg', 'Bread, cheese'],
+    },
+    {
+      query: 'oatmeal',
+      expected: 'Oatmeal, NFS',
+      alternatives: ['Oatmeal, fast food, plain', 'Oatmeal, multigrain'],
+    },
+  ])(
+    '$query: a broad search prefers the least-specific common form',
+    ({ alternatives, expected, query }) => {
+      const ranked = rankFoods(
+        [
+          food({ id: 'expected', name: expected }),
+          ...alternatives.map((name, index) =>
+            food({ id: `alternative-${index}`, name }),
+          ),
+        ],
+        query,
+      )
+
+      expect(ranked[0].name).toBe(expected)
+    },
+  )
+
+  it('does not penalize a subtype the user explicitly includes in the query', () => {
+    const ranked = rankFoods(
+      [
+        food({ id: 'plain', name: 'Potato, NFS' }),
+        food({ id: 'skins', name: 'Potato skins, NFS' }),
+      ],
+      'potato skins',
+    )
+
+    expect(ranked[0].name).toBe('Potato skins, NFS')
+  })
+
   it('does not fabricate entries for natural-language quantity queries', () => {
     const inputs = [
       food({ id: 'apple', name: 'Apple Raw', status: 'raw' }),

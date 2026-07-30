@@ -466,6 +466,39 @@ function broadGenericBonus(food: NormalizedFoodResult, query: string) {
 // A one-word food search usually means the food itself, not a product or dish
 // that merely uses that flavor/ingredient. Keep those derivatives searchable,
 // but rank a plain/raw/whole form first when the provider supplies one.
+const NEUTRAL_FOOD_DESCRIPTION_TOKENS = new Set([
+  'added',
+  'and',
+  'any',
+  'as',
+  'baked',
+  'boiled',
+  'broiled',
+  'cooked',
+  'for',
+  'fresh',
+  'from',
+  'grilled',
+  'in',
+  'nfs',
+  'no',
+  'ns',
+  'of',
+  'on',
+  'or',
+  'plain',
+  'raw',
+  'roasted',
+  'steamed',
+  'the',
+  'to',
+  'type',
+  'unprepared',
+  'white',
+  'whole',
+  'with',
+])
+
 function wholeFoodIntentScore(food: NormalizedFoodResult, query: string) {
   const queryTokens = tokenize(query)
   if (queryTokens.length !== 1) {
@@ -504,6 +537,16 @@ function wholeFoodIntentScore(food: NormalizedFoodResult, query: string) {
   ) {
     score += 0.6
   }
+  if (nameTokens[0] && sameFoodWord(nameTokens[0], queryToken)) {
+    const meaningfulExtraTokens = new Set(
+      nameTokens.filter(
+        (token) =>
+          !sameFoodWord(token, queryToken) &&
+          !NEUTRAL_FOOD_DESCRIPTION_TOKENS.has(token),
+      ),
+    )
+    score -= Math.min(meaningfulExtraTokens.size, 4) * 0.35
+  }
   if (
     nameTokens.some((token) =>
       ['canned', 'dried', 'frozen', 'pickled', 'sweetened', 'syrup'].includes(
@@ -515,14 +558,6 @@ function wholeFoodIntentScore(food: NormalizedFoodResult, query: string) {
   }
   if (derivativeName) {
     score -= 1.5
-  }
-  if (
-    queryToken === 'fish' &&
-    /\b(bass|cod|fillet|filet|halibut|nfs|tilapia|white|whiting)\b/u.test(
-      food.normalizedSearchName,
-    )
-  ) {
-    score += 0.8
   }
   return score
 }
