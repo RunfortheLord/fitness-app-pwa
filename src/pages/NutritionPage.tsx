@@ -28,7 +28,7 @@ import {
   type FoodResult,
   type FoodSearchResult,
 } from '@domain/foodSearchSections'
-import { mealTypeForDate, recommendationMealTypeForDate } from '@domain/meals'
+import { mealTypeForDate } from '@domain/meals'
 import { snapshotFood } from '@domain/snapshots'
 import {
   createRecipeDraftFromGemini,
@@ -447,11 +447,9 @@ export function NutritionPage() {
 
     void Promise.all([
       foodRepository.listRecentFoods(50),
-      foodRepository.listRecentFoodsForMeal({
-        startDate: addLocalDays(today, -6),
-        endDate: today,
-        mealType: recommendationMealTypeForDate(new Date()),
-        limit: 4,
+      foodRepository.listFoodsLoggedNearTime({
+        before: new Date(),
+        limit: 8,
       }),
       foodRepository.listFavoriteFoods(),
       foodRepository.listSavedMeals(),

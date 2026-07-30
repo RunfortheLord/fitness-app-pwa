@@ -797,27 +797,43 @@ export function createFoodRepository(
       return Array.from(foods.values())
     },
 
-    async listRecentFoodsForMeal({
-      endDate,
-      limit = 4,
-      mealType,
-      startDate,
+    async listFoodsLoggedNearTime({
+      before,
+      limit = 8,
     }: {
-      endDate: LocalDateString
+      before: Date
       limit?: number
-      mealType: MealType
-      startDate: LocalDateString
     }) {
       if (limit <= 0) {
         return []
       }
 
-      const logs = await database.foodLogEntries
-        .where('localDate')
-        .between(startDate, endDate, true, true)
-        .filter((entry) => entry.mealType === mealType && Boolean(entry.foodId))
-        .toArray()
-      logs.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      const beforeTimestamp = before.toISOString()
+      const targetMinutes = before.getHours() * 60 + before.getMinutes()
+      const logs = (await database.foodLogEntries.toArray())
+        .filter(
+          (entry) =>
+            Boolean(entry.foodId) && entry.createdAt <= beforeTimestamp,
+        )
+        .sort((left, right) => {
+          const leftDate = new Date(left.createdAt)
+          const rightDate = new Date(right.createdAt)
+          const leftMinutes = leftDate.getHours() * 60 + leftDate.getMinutes()
+          const rightMinutes =
+            rightDate.getHours() * 60 + rightDate.getMinutes()
+          const leftDistance = circularMinuteDistance(
+            targetMinutes,
+            leftMinutes,
+          )
+          const rightDistance = circularMinuteDistance(
+            targetMinutes,
+            rightMinutes,
+          )
+          return (
+            leftDistance - rightDistance ||
+            right.createdAt.localeCompare(left.createdAt)
+          )
+        })
 
       const foodIds: string[] = []
       const seenFoodIds = new Set<string>()
@@ -840,3 +856,8 @@ export function createFoodRepository(
 }
 
 export const foodRepository = createFoodRepository()
+
+function circularMinuteDistance(left: number, right: number) {
+  const distance = Math.abs(left - right)
+  return Math.min(distance, 24 * 60 - distance)
+}

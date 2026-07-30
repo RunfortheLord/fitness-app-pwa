@@ -1283,13 +1283,13 @@ describe('NutritionPage', () => {
     await expect(db.foodLogEntries.count()).resolves.toBe(1)
   })
 
-  it('recommends the four most recent foods for the current meal until search begins', async () => {
+  it('recommends up to eight foods logged nearest this time until search begins', async () => {
     const user = userEvent.setup()
     const repository = createFoodRepository(db)
     const today = formatLocalDate(new Date())
     const mealType = recommendationMealTypeForDate(new Date())
 
-    for (let index = 0; index < 5; index += 1) {
+    for (let index = 0; index < 9; index += 1) {
       const food = await repository.createFood({
         name: `Meal choice ${index + 1}`,
         servingQuantity: 1,
@@ -1309,24 +1309,6 @@ describe('NutritionPage', () => {
       })
     }
 
-    const oldFood = await repository.createFood({
-      name: 'Old meal choice',
-      servingQuantity: 1,
-      servingUnit: 'serving',
-      servingDescription: '',
-      caloriesPerServing: 90,
-      proteinGramsPerServing: 9,
-      carbohydrateGramsPerServing: 9,
-      fatGramsPerServing: 2,
-      notes: '',
-    })
-    await repository.logFood({
-      foodId: oldFood.id,
-      localDate: addLocalDays(today, -7),
-      servingMultiplier: 1,
-      mealType,
-    })
-
     renderNutrition()
     const search = await openFoodSearch(user)
     const recommended = await screen.findByRole('region', {
@@ -1335,22 +1317,10 @@ describe('NutritionPage', () => {
     const recommendedRows = within(recommended).getAllByRole('button', {
       name: /^Open Meal choice/,
     })
-    expect(recommendedRows).toHaveLength(4)
-    expect(
-      recommendedRows.map((row) => row.getAttribute('aria-label')),
-    ).toEqual([
-      'Open Meal choice 5, 1 serving, 104 calories',
-      'Open Meal choice 4, 1 serving, 103 calories',
-      'Open Meal choice 3, 1 serving, 102 calories',
-      'Open Meal choice 2, 1 serving, 101 calories',
-    ])
+    expect(recommendedRows).toHaveLength(8)
     expect(
       within(recommended).queryByText('Meal choice 1'),
     ).not.toBeInTheDocument()
-    expect(
-      within(recommended).queryByText('Old meal choice'),
-    ).not.toBeInTheDocument()
-
     await user.type(search, 'Meal choice 1')
     await waitFor(() =>
       expect(

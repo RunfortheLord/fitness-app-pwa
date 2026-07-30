@@ -498,7 +498,7 @@ describe('foodRepository', () => {
     ])
   })
 
-  it('lists distinct recent foods for one meal inside a local-date range', async () => {
+  it('lists distinct foods closest to the current clock time', async () => {
     const repository = createFoodRepository(database)
     const rice = await seedFood(database)
     const oats = await repository.createFood({
@@ -555,14 +555,30 @@ describe('foodRepository', () => {
       mealType: 'breakfast',
     })
 
+    const logs = await database.foodLogEntries.toArray()
+    const createdAtByFood = new Map([
+      [eggs.id, '2026-06-18T17:55:00.000Z'],
+      [rice.id, '2026-06-18T18:05:00.000Z'],
+      [oats.id, '2026-06-18T15:00:00.000Z'],
+    ])
+    await database.foodLogEntries.bulkPut(
+      logs.map((log) => ({
+        ...log,
+        createdAt:
+          (log.foodId && createdAtByFood.get(log.foodId)) ?? log.createdAt,
+      })),
+    )
+
     await expect(
-      repository.listRecentFoodsForMeal({
-        startDate: '2026-06-12',
-        endDate: '2026-06-18',
-        mealType: 'breakfast',
-        limit: 4,
+      repository.listFoodsLoggedNearTime({
+        before: new Date('2026-06-19T18:00:00.000Z'),
+        limit: 8,
       }),
-    ).resolves.toMatchObject([{ id: rice.id }, { id: oats.id }])
+    ).resolves.toMatchObject([
+      { id: rice.id },
+      { id: eggs.id },
+      { id: oats.id },
+    ])
   })
 
   it('rejects invalid foods and serving multipliers', async () => {

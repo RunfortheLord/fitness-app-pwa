@@ -19,7 +19,7 @@ export type FoodSearchResult =
 // showing all of them made the lists overwhelmingly long. Cap each section to a
 // concise number of its most relevant entries.
 const RECENT_SECTION_CAP = 3
-const RECOMMENDED_SECTION_CAP = 4
+const RECOMMENDED_SECTION_CAP = 8
 const COMMON_SECTION_CAP = 5
 const BRANDED_SECTION_CAP = 3
 const OTHER_SECTION_CAP = 5

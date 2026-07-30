@@ -126,8 +126,8 @@ function section(
 }
 
 describe('createSearchSections', () => {
-  it('shows at most four recommended foods only while the query is blank', () => {
-    const recommendedFoods = Array.from({ length: 5 }, (_, index) =>
+  it('shows at most eight recommended foods only while the query is blank', () => {
+    const recommendedFoods = Array.from({ length: 9 }, (_, index) =>
       makeRecentFood(`r${index}`, `Meal food ${index}`),
     )
     const blankSections = createSearchSections({
@@ -141,7 +141,7 @@ describe('createSearchSections', () => {
 
     expect(blankSections).toHaveLength(1)
     expect(blankSections[0]).toMatchObject({ title: 'Recommended foods' })
-    expect(blankSections[0].items).toHaveLength(4)
+    expect(blankSections[0].items).toHaveLength(8)
 
     const searchedSections = createSearchSections({
       includeRecentFoods: true,
