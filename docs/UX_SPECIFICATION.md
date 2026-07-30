@@ -113,12 +113,6 @@
 - The selected weekly rate and estimated goal date update live. Maintenance
   shows an ongoing goal with zero weekly change and no slider.
 - Done saves the goal and calorie/macro targets, then returns to Targets.
-- Goal progress offers a manual Update Calories action after enough recent
-  weigh-in and logged-calorie history exists. It sets a whole-calorie target
-  from estimated maintenance, observed trend-weight change, the desired weight,
-  and the selected weekly rate. Reaching the desired weight switches the update
-  to estimated maintenance.
-
 ### Food Rows
 
 - Food name.

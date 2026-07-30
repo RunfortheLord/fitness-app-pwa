@@ -150,12 +150,6 @@
   recommendations. Local meal-aware recent-food shortcuts are allowed. Spanish
   Open Food Facts search must require an explicit keyboard or on-screen Search
   action and remain server-cached.
-- A user-created nutrition goal may expose a manual Update Calories action. With
-  sufficient recent weigh-in and logged-calorie history, it must estimate
-  maintenance from observed intake and trend-weight change, combine that with
-  the desired weight and selected weekly rate, and set the resulting target to
-  the nearest whole calorie. It must never run automatically.
-
 ### Bodyweight
 
 - Users must be able to add at most one bodyweight entry per local calendar
