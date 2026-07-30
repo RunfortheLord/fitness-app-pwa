@@ -454,11 +454,14 @@
   pound of calculation weight, fat is ~25% of goal calories (protected so carbs
   never go negative), and carbs take the reconciled remainder. A
   `GOAL_FORMULA_VERSION` is stored with the goal for reproducibility.
-- Calorie targets never adjust automatically. A manual Update Calories action runs
-  a bounded trend-weight adjustment (regression over up to 14 days, ≥3 points
-  spanning ≥7 days, rounded to the nearest 1 kcal, capped at ±200 kcal, 50 kcal
-  deadband)
-  and is idempotent via a trend-data signature.
+- Calorie targets never adjust automatically. A manual Update Calories action
+  estimates maintenance from recent logged-calorie history and the observed
+  trend-weight regression (up to 14 days, ≥3 points spanning ≥7 days), then adds
+  the selected goal-rate energy delta. It sets that estimated target directly,
+  rounded to the nearest 1 kcal with a 1,200 kcal floor; there is no coarse
+  increment, deadband, or per-click adjustment cap. The desired goal weight
+  determines direction, and reaching it switches the estimate to maintenance.
+  Updates remain idempotent via a trend-data signature.
 - The goal is stored additively on `userSettings.nutritionGoal` (no schema
   version bump) and included in backups; users without a goal are unaffected.
 
@@ -588,6 +591,16 @@
   workout records.
 - Repetition counts above 12 are excluded from the graph because high-rep Epley
   estimates can be misleading for this app's first strength-progress view.
+
+## 2026-07-30: Total Volume Strength Graphs
+
+- Strength history keeps Estimated 1RM as the default metric and adds Total
+  volume as a user-selected alternative.
+- A total-volume point is derived per exercise and completed workout by summing
+  `weight × repetitions` across all completed weighted-repetition sets.
+- Volume includes completed high-repetition sets that are intentionally
+  ineligible for Epley estimation. The graph remains derived from immutable
+  workout history and adds no persisted records or automatic coaching.
 
 ## Architecture and Scope Decisions
 

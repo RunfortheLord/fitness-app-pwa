@@ -113,6 +113,11 @@
 - The selected weekly rate and estimated goal date update live. Maintenance
   shows an ongoing goal with zero weekly change and no slider.
 - Done saves the goal and calorie/macro targets, then returns to Targets.
+- Goal progress offers a manual Update Calories action after enough recent
+  weigh-in and logged-calorie history exists. It sets a whole-calorie target
+  from estimated maintenance, observed trend-weight change, the desired weight,
+  and the selected weekly rate. Reaching the desired weight switches the update
+  to estimated maintenance.
 
 ### Food Rows
 
@@ -417,11 +422,15 @@
   zero average difference is shown as on target, and comparison averages are
   unavailable when no positive logged day also has a positive target.
 - Strength graph range controls are 1M, 3M, 6M, 1Y, and All.
-- The chart plots one point per completed workout per exercise, selected from
-  the highest eligible Epley estimate in that workout.
+- Strength graph metric controls are Estimated 1RM and Total volume.
+- Estimated 1RM plots one point per completed workout per exercise, selected
+  from the highest eligible Epley estimate in that workout.
+- Total volume plots one point per completed workout per exercise by summing
+  `weight × repetitions` across all completed sets for that exercise.
 - Empty, one-point, tap detail, and accessible text summary states are shown.
-- The detail view lists local date, completed weight, repetitions, estimated
-  1RM, latest value, and all-time best.
+- The detail view lists local date and metric-specific values. Estimated 1RM
+  shows the source set; Total volume shows completed set count. Both metrics
+  include latest value and all-time best in the accessible summary.
 
 ## Run Screen
 

@@ -150,6 +150,11 @@
   recommendations. Local meal-aware recent-food shortcuts are allowed. Spanish
   Open Food Facts search must require an explicit keyboard or on-screen Search
   action and remain server-cached.
+- A user-created nutrition goal may expose a manual Update Calories action. With
+  sufficient recent weigh-in and logged-calorie history, it must estimate
+  maintenance from observed intake and trend-weight change, combine that with
+  the desired weight and selected weekly rate, and set the resulting target to
+  the nearest whole calorie. It must never run automatically.
 
 ### Bodyweight
 
@@ -303,6 +308,10 @@
   weighted-repetition exercises. The graph uses completed historical sets only,
   applies the Epley formula, plots the highest eligible estimate per workout,
   and does not rewrite workout records.
+- Strength graphs must also offer total volume as a selectable metric. Total
+  volume plots one point per exercise per completed workout by summing
+  `weight × repetitions` across every completed weighted-repetition set in that
+  workout.
 - History must not show weekly adherence score, strength score, automated
   trend, opaque coaching recommendation, or non-history graphs in the first
   release. Completed workouts may show deterministic progression review reasons

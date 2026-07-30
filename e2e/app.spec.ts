@@ -188,6 +188,9 @@ test('quick action sheet traps focus and closes with Escape', async ({
   await page.getByRole('button', { name: 'Open quick actions' }).click()
   const sheet = page.getByRole('dialog', { name: 'Quick actions' })
   await expect(sheet).toBeVisible()
+  await expect(
+    sheet.getByRole('button', { name: 'Close quick actions' }),
+  ).toBeFocused()
 
   await page.keyboard.press('Tab')
   await expect(sheet.getByRole('button', { name: /Log food/ })).toBeFocused()
@@ -662,11 +665,14 @@ test('shows bodyweight progress graph with range controls and tap details', asyn
   await page
     .getByRole('button', { name: 'Log bodyweight', exact: true })
     .click()
-  await page
-    .getByRole('dialog', { name: 'Log bodyweight' })
+  const firstEntryDialog = page.getByRole('dialog', {
+    name: 'Log bodyweight',
+  })
+  await firstEntryDialog
     .getByRole('textbox', { name: 'Bodyweight' })
     .fill('188')
-  await page.getByRole('button', { name: 'Save' }).click()
+  await firstEntryDialog.getByRole('button', { name: 'Save' }).click()
+  await expect(firstEntryDialog).not.toBeVisible()
   await page
     .getByRole('button', { name: 'Log bodyweight', exact: true })
     .click()
@@ -677,7 +683,8 @@ test('shows bodyweight progress graph with range controls and tap details', asyn
   await secondEntryDialog
     .getByRole('textbox', { name: 'Bodyweight' })
     .fill('189')
-  await page.getByRole('button', { name: 'Save' }).click()
+  await secondEntryDialog.getByRole('button', { name: 'Save' }).click()
+  await expect(secondEntryDialog).not.toBeVisible()
 
   await page.getByRole('button', { name: 'View graph' }).click()
   await expect(page).toHaveURL(/\/history\?view=bodyweight/)

@@ -38,10 +38,14 @@ import {
   filterStrengthPointsForRange,
   formatEstimatedMax,
   formatEstimatedWeight,
+  formatTotalVolume,
+  formatTotalVolumeNumber,
   listStrengthExerciseOptions,
   strengthEstimateLimitText,
+  strengthVolumeDescriptionText,
   type StrengthExerciseOption,
   type StrengthGraphPoint,
+  type StrengthMetric,
   type StrengthRange,
 } from '@domain/strengthProgress'
 import {
@@ -745,6 +749,8 @@ function StrengthGraphsView({
   const [graphCategory, setGraphCategory] = useState<'strength' | 'calories'>(
     'strength',
   )
+  const [strengthMetric, setStrengthMetric] =
+    useState<StrengthMetric>('estimated_1rm')
   const [range, setRange] = useState<StrengthRange>('3m')
   const [calorieRange, setCalorieRange] = useState<CalorieHistoryRange>('1w')
   const [calorieHistory, setCalorieHistory] = useState<DailyCalorieHistory[]>(
@@ -825,8 +831,22 @@ function StrengthGraphsView({
 
   useSubpageBackGesture(pickerOpen, () => setPickerOpen(false))
 
-  const options = listStrengthExerciseOptions(points)
-  const selectedExercise = selectedExerciseId || options[0]?.exerciseId || ''
+  const options = listStrengthExerciseOptions(points, strengthMetric)
+  const latestMetricExerciseId =
+    [...points]
+      .filter((point) =>
+        options.some((option) => option.exerciseId === point.exerciseId),
+      )
+      .sort(
+        (left, right) =>
+          right.completedAt.localeCompare(left.completedAt) ||
+          right.localDate.localeCompare(left.localDate),
+      )[0]?.exerciseId ?? ''
+  const selectedExercise = options.some(
+    (option) => option.exerciseId === selectedExerciseId,
+  )
+    ? selectedExerciseId
+    : latestMetricExerciseId || options[0]?.exerciseId || ''
   const selectedExerciseName =
     options.find((option) => option.exerciseId === selectedExercise)
       ?.exerciseName ?? ''
@@ -838,7 +858,11 @@ function StrengthGraphsView({
     range,
     today,
   })
-  const model = createStrengthGraphModel(rangedPoints, weightUnit)
+  const model = createStrengthGraphModel(
+    rangedPoints,
+    weightUnit,
+    strengthMetric,
+  )
   const selectedPoint =
     model.status === 'empty'
       ? null
@@ -847,6 +871,7 @@ function StrengthGraphsView({
   if (pickerOpen) {
     return (
       <StrengthExercisePicker
+        metric={strengthMetric}
         options={options}
         selectedExerciseId={selectedExercise}
         onBack={() => setPickerOpen(false)}
@@ -912,7 +937,7 @@ function StrengthGraphsView({
         </Card>
       ) : null}
       {graphCategory === 'strength' ? (
-        <Card title="Estimated 1 Rep Max">
+        <Card title="Strength Progress">
           {status === 'loading' ? (
             <LoadingState label="Loading strength graphs" />
           ) : null}
@@ -920,6 +945,20 @@ function StrengthGraphsView({
             <StatusMessage tone="warning">
               Strength graphs could not load.
             </StatusMessage>
+          ) : null}
+          {status === 'ready' ? (
+            <SegmentedControl
+              label="Strength graph metric"
+              onChange={(value) => {
+                setStrengthMetric(value as StrengthMetric)
+                setSelectedPointId(null)
+              }}
+              options={[
+                { label: 'Estimated 1RM', value: 'estimated_1rm' },
+                { label: 'Total volume', value: 'volume' },
+              ]}
+              value={strengthMetric}
+            />
           ) : null}
           {status === 'ready' && options.length ? (
             <>
@@ -955,13 +994,21 @@ function StrengthGraphsView({
                 }
                 selectedPoint={selectedPoint}
               />
-              <p className="muted">{strengthEstimateLimitText()}</p>
+              <p className="muted">
+                {strengthMetric === 'volume'
+                  ? strengthVolumeDescriptionText()
+                  : strengthEstimateLimitText()}
+              </p>
             </>
           ) : null}
           {status === 'ready' && !options.length ? (
             <EmptyState
               title="No weighted exercise history"
-              message="Complete weighted-repetition workout sets to build estimated 1RM graphs."
+              message={
+                strengthMetric === 'volume'
+                  ? 'Complete weighted-repetition workout sets to build total volume graphs.'
+                  : 'Complete weighted-repetition workout sets to build estimated 1RM graphs.'
+              }
             />
           ) : null}
         </Card>
@@ -971,11 +1018,13 @@ function StrengthGraphsView({
 }
 
 function StrengthExercisePicker({
+  metric,
   options,
   selectedExerciseId,
   onBack,
   onSelect,
 }: {
+  metric: StrengthMetric
   options: StrengthExerciseOption[]
   selectedExerciseId: string
   onBack: () => void
@@ -1026,10 +1075,15 @@ function StrengthExercisePicker({
                   <small>
                     {option.pointCount}{' '}
                     {option.pointCount === 1 ? 'session' : 'sessions'} · best{' '}
-                    {formatEstimatedWeight(
-                      option.allTimeBest.estimatedOneRepMax,
-                      weightUnit,
-                    )}
+                    {metric === 'volume'
+                      ? formatTotalVolume(
+                          option.allTimeBest.totalVolume,
+                          weightUnit,
+                        )
+                      : formatEstimatedWeight(
+                          option.allTimeBest.estimatedOneRepMax!,
+                          weightUnit,
+                        )}
                   </small>
                 </button>
               ))}
@@ -1071,6 +1125,7 @@ function StrengthChart({
     )
   }
 
+  const isVolume = model.metric === 'volume'
   const path = model.points
     .map(
       (point, index) =>
@@ -1079,7 +1134,9 @@ function StrengthChart({
     .join(' ')
   const yTicks = projectAxisTicks(
     buildValueAxisTicks(model.chartMin, model.chartMax, (value) =>
-      formatAxisWeight(value),
+      isVolume
+        ? formatTotalVolumeNumber(value, weightUnit)
+        : formatAxisWeight(value),
     ),
     projectChartY,
   )
@@ -1096,10 +1153,15 @@ function StrengthChart({
       <p className="visually-hidden" aria-live="polite">
         {model.summary}
       </p>
-      <div className="bodyweight-chart" aria-label="Estimated 1 Rep Max graph">
+      <div
+        className="bodyweight-chart"
+        aria-label={
+          isVolume ? 'Total volume graph' : 'Estimated 1 Rep Max graph'
+        }
+      >
         <span className="chart-axis-label chart-axis-label-x">Date</span>
         <span className="chart-axis-label chart-axis-label-y">
-          Estimated 1RM ({unitSuffix})
+          {isVolume ? 'Total volume' : 'Estimated 1RM'} ({unitSuffix})
         </span>
         <ChartAxisTicks yTicks={yTicks} xTicks={xTicks} />
         <svg
@@ -1126,10 +1188,17 @@ function StrengthChart({
         </svg>
         {model.points.map((point) => (
           <button
-            aria-label={`${point.localDate} ${formatEstimatedWeight(
-              point.estimatedOneRepMax,
-              weightUnit,
-            )} estimated one-repetition maximum`}
+            aria-label={
+              isVolume
+                ? `${point.localDate} ${formatTotalVolume(
+                    point.totalVolume,
+                    weightUnit,
+                  )} total volume`
+                : `${point.localDate} ${formatEstimatedWeight(
+                    point.estimatedOneRepMax!,
+                    weightUnit,
+                  )} estimated one-repetition maximum`
+            }
             aria-pressed={selectedPoint?.id === point.id}
             className="bodyweight-point-button"
             key={point.id}
@@ -1158,14 +1227,20 @@ function StrengthChart({
               top: `${projectChartY(tooltipPoint.y)}%`,
             }}
           >
-            {formatEstimatedWeight(tooltipPoint.estimatedOneRepMax, weightUnit)}
+            {isVolume
+              ? formatTotalVolume(tooltipPoint.totalVolume, weightUnit)
+              : formatEstimatedWeight(
+                  tooltipPoint.estimatedOneRepMax!,
+                  weightUnit,
+                )}
           </span>
         ) : null}
       </div>
       <p className="muted">{model.summary}</p>
       {model.status === 'single' ? (
         <StatusMessage>
-          One estimated 1RM point is saved. Add another workout to show a line.
+          One {isVolume ? 'total volume' : 'estimated 1RM'} point is saved. Add
+          another workout to show a line.
         </StatusMessage>
       ) : null}
       {selectedPoint ? (
@@ -1174,22 +1249,39 @@ function StrengthChart({
             <dt>Date</dt>
             <dd>{selectedPoint.localDate}</dd>
           </div>
-          <div>
-            <dt>Completed set</dt>
-            <dd>
-              {formatEstimatedWeight(selectedPoint.weight, weightUnit)} x{' '}
-              {selectedPoint.repetitions}
-            </dd>
-          </div>
-          <div>
-            <dt>Estimated 1RM</dt>
-            <dd>
-              {formatEstimatedWeight(
-                selectedPoint.estimatedOneRepMax,
-                weightUnit,
-              )}
-            </dd>
-          </div>
+          {isVolume ? (
+            <>
+              <div>
+                <dt>Completed sets</dt>
+                <dd>{selectedPoint.completedSetCount}</dd>
+              </div>
+              <div>
+                <dt>Total volume</dt>
+                <dd>
+                  {formatTotalVolume(selectedPoint.totalVolume, weightUnit)}
+                </dd>
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <dt>Completed set</dt>
+                <dd>
+                  {formatEstimatedWeight(selectedPoint.weight, weightUnit)} x{' '}
+                  {selectedPoint.repetitions}
+                </dd>
+              </div>
+              <div>
+                <dt>Estimated 1RM</dt>
+                <dd>
+                  {formatEstimatedWeight(
+                    selectedPoint.estimatedOneRepMax!,
+                    weightUnit,
+                  )}
+                </dd>
+              </div>
+            </>
+          )}
         </dl>
       ) : null}
     </div>

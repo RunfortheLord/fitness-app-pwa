@@ -49,7 +49,7 @@ describe('HistoryPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Exercises' }))
 
     expect(
-      await screen.findByRole('heading', { name: 'Estimated 1 Rep Max' }),
+      await screen.findByRole('heading', { name: 'Strength Progress' }),
     ).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'Open exercise graphs' }),
@@ -222,7 +222,10 @@ describe('HistoryPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Graphs' }),
     ).toBeInTheDocument()
-    expect(await screen.findByText('Estimated 1 Rep Max')).toBeInTheDocument()
+    expect(await screen.findByText('Strength Progress')).toBeInTheDocument()
+    expect(
+      await screen.findByLabelText('Strength graph metric'),
+    ).toBeInTheDocument()
     expect(
       (await screen.findAllByText(/latest estimated 1 rep max: 120 lb/i))
         .length,
@@ -234,6 +237,48 @@ describe('HistoryPage', () => {
     )
     expect(screen.getAllByText('Estimated 1RM').length).toBeGreaterThan(0)
     expect(screen.getAllByText('120 lb').length).toBeGreaterThan(0)
+  })
+
+  it('graphs total completed-set volume per exercise and workout', async () => {
+    const user = userEvent.setup()
+    const repository = createWorkoutRepository(db)
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    for (const workoutSet of started.sets) {
+      await repository.updateWorkoutSet(workoutSet.id, {
+        metricValues: { weight: 100, reps: 5 },
+        rir: 2,
+        completed: true,
+      })
+    }
+    await repository.completeWorkout({
+      workoutId: started.workout.id,
+      completedAt: new Date(
+        Date.parse(started.workout.startedAt) + 25 * 60 * 1000,
+      ).toISOString(),
+    })
+
+    renderHistory('/history?view=graphs')
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Total volume' }),
+    )
+    expect(screen.getByLabelText('Total volume graph')).toBeInTheDocument()
+    await user.click(
+      screen.getByRole('button', {
+        name: '2026-06-18 1,000 lb total volume',
+      }),
+    )
+    expect(screen.getByText('Completed sets')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
+    expect(screen.getAllByText('1,000 lb').length).toBeGreaterThan(0)
   })
 
   it('defaults strength graphs to the exercise completed most recently', async () => {

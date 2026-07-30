@@ -6,6 +6,7 @@ import {
   estimateOneRepMax,
   filterStrengthPointsForRange,
   formatEstimatedWeight,
+  formatTotalVolume,
   listStrengthExerciseOptions,
 } from './strengthProgress'
 import type {
@@ -50,6 +51,8 @@ describe('strength progress calculations', () => {
       workoutId: 'workout-1',
       setNumber: 2,
       estimatedOneRepMax: 128.33333333333334,
+      totalVolume: 11_050,
+      completedSetCount: 3,
     })
     expect(points[1]).toMatchObject({
       workoutId: 'workout-2',
@@ -115,6 +118,51 @@ describe('strength progress calculations', () => {
     expect(kgModel.status !== 'empty' ? kgModel.summary : '').toContain('50 kg')
     expect(kgModel.status !== 'empty' ? kgModel.summary : '').not.toContain(
       ' lb',
+    )
+  })
+
+  it('sums completed set volume per exercise and workout', () => {
+    const points = createStrengthGraphPoints([
+      structure({
+        workoutId: 'volume-session',
+        completedAt: '2026-06-01T12:00:00.000Z',
+        sets: [
+          set({ id: 's1', weight: 100, reps: 5 }),
+          set({ id: 's2', weight: 100, reps: 5 }),
+          set({ id: 's3', weight: 100, reps: 5, completed: false }),
+        ],
+      }),
+    ])
+
+    expect(points[0]).toMatchObject({
+      totalVolume: 1_000,
+      completedSetCount: 2,
+    })
+    expect(listStrengthExerciseOptions(points, 'volume')).toHaveLength(1)
+    const model = createStrengthGraphModel(points, 'lb', 'volume')
+    expect(model.status).toBe('single')
+    expect(model.status === 'empty' ? '' : model.summary).toContain(
+      'latest total volume: 1,000 lb',
+    )
+    expect(formatTotalVolume(1_000, 'kg')).toBe('453.6 kg')
+  })
+
+  it('includes high-repetition completed sets in volume without estimating 1RM', () => {
+    const points = createStrengthGraphPoints([
+      structure({
+        workoutId: 'high-rep-session',
+        completedAt: '2026-06-01T12:00:00.000Z',
+        sets: [set({ id: 's1', weight: 50, reps: 20 })],
+      }),
+    ])
+
+    expect(points[0]).toMatchObject({
+      estimatedOneRepMax: null,
+      totalVolume: 1_000,
+    })
+    expect(createStrengthGraphModel(points).status).toBe('empty')
+    expect(createStrengthGraphModel(points, 'lb', 'volume').status).toBe(
+      'single',
     )
   })
 })
