@@ -131,20 +131,29 @@ export function AccountDeletionPage() {
 
 export function SupportPage() {
   const supportEmail = import.meta.env.VITE_SUPPORT_EMAIL?.trim()
+  const feedbackEnabled =
+    import.meta.env.VITE_FEEDBACK_ENABLED?.trim().toLowerCase() === 'true'
   return (
     <PublicPage title="Vigorune Support">
-      <p>
-        For help, open <strong>Settings → About → Send feedback</strong> and
-        describe the problem. Include what you expected, what happened, and the
-        steps that reproduce it. Do not include passwords, API keys, or private
-        authentication codes.
-      </p>
-      {supportEmail ? (
+      {feedbackEnabled ? (
         <p>
-          You can also email{' '}
-          <a href={`mailto:${supportEmail}`}>{supportEmail}</a>.
+          For help, open <strong>Settings → About → Send feedback</strong> and
+          describe the problem. Include what you expected, what happened, and
+          the steps that reproduce it. Do not include passwords, API keys, or
+          private authentication codes.
         </p>
       ) : null}
+      {supportEmail ? (
+        <p>
+          For help, email <a href={`mailto:${supportEmail}`}>{supportEmail}</a>.
+        </p>
+      ) : (
+        <p>
+          A public support contact will appear here before the App Store
+          release. The troubleshooting and data-protection guidance below is
+          available now.
+        </p>
+      )}
       <h2>Health information</h2>
       <p>
         Vigorune is a fitness logging tool, not a medical device. It does not

@@ -108,6 +108,20 @@ describe('account deletion', () => {
     ).toBe(false)
     expect(
       isAllowedAppOrigin({
+        host: 'app.example.com@attacker.example',
+        origin: 'https://attacker.example',
+        publicAppOrigin: undefined,
+      }),
+    ).toBe(false)
+    expect(
+      isAllowedAppOrigin({
+        host: 'localhost:5173',
+        origin: 'http://localhost:5173',
+        publicAppOrigin: undefined,
+      }),
+    ).toBe(true)
+    expect(
+      isAllowedAppOrigin({
         host: undefined,
         origin: 'capacitor://localhost',
         publicAppOrigin: undefined,

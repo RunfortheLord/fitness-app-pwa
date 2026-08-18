@@ -171,6 +171,9 @@ describe('SettingsPage', () => {
     expect(screen.getByText('Application version')).toBeInTheDocument()
     expect(screen.getByText('Database schema version')).toBeInTheDocument()
     expect(screen.getByText('Backup format version')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Send feedback' }),
+    ).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Data' }))
     expect(
       screen.getByText(

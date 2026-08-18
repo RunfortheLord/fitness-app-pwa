@@ -265,7 +265,11 @@ export function foodSnapshotPortionBasis(snapshot: FoodSnapshot) {
     'serving'
   ).trim()
   if (snapshot.servingQuantity === 1) {
-    const embedded = rawUnit.match(/^(\d+(?:\.\d+)?|\d+\/\d+)\s*([^\d\s].*)$/u)
+    const embedded = rawUnit.match(
+      // The shared numeric prefix avoids the overlapping alternation in the old form.
+      // eslint-disable-next-line security/detect-unsafe-regex
+      /^(\d+(?:\.\d+|\/\d+)?)\s*([^\d\s].*)$/u,
+    )
     if (embedded) {
       const amount = embedded[1].includes('/')
         ? parseFraction(embedded[1])

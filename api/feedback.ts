@@ -7,8 +7,13 @@ import {
   createRequestObserver,
   readAnonymousClientKey,
   readBoundedJsonObject,
+  readHeader,
 } from '../src/server/serverHttp.js'
-import { createMemoryServerRateLimiter } from '../src/server/serverRateLimiter.js'
+import {
+  createRedisServerRateLimiter,
+  readRedisRateLimiterConfig,
+} from '../src/server/serverRateLimiter.js'
+import { isAllowedAppOrigin } from '../src/server/accountDeletion.js'
 
 type VercelRequest = {
   headers?: Record<string, string | string[] | undefined>
@@ -21,9 +26,13 @@ type VercelResponse = {
   status(code: number): VercelResponse
   setHeader(name: string, value: string): void
   json(value: unknown): void
+  end(): void
 }
 
-const feedbackRateLimiter = createMemoryServerRateLimiter()
+const feedbackRateLimiterConfig = readRedisRateLimiterConfig(process.env)
+const feedbackRateLimiter = feedbackRateLimiterConfig
+  ? createRedisServerRateLimiter(feedbackRateLimiterConfig)
+  : undefined
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const observer = createRequestObserver({
@@ -32,7 +41,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     route: '/api/feedback',
   })
   res.setHeader('Cache-Control', 'no-store')
+  res.setHeader('X-Content-Type-Options', 'nosniff')
   res.setHeader('X-Request-ID', observer.requestId)
+
+  const requestOrigin = readHeader(req.headers, 'origin')
+  const originAllowed = isAllowedAppOrigin({
+    host: readHeader(req.headers, 'host'),
+    origin: requestOrigin,
+    publicAppOrigin: process.env.PUBLIC_APP_ORIGIN,
+  })
+  if (!originAllowed) {
+    observer.finish({ outcome: 'origin_rejected', status: 403 })
+    res.status(403).json({
+      ok: false,
+      error: { code: 'invalid_request', message: 'Request origin rejected.' },
+    })
+    return
+  }
+  if (requestOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', requestOrigin)
+    res.setHeader('Vary', 'Origin')
+  }
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+  if (req.method === 'OPTIONS') {
+    observer.finish({ outcome: 'preflight', status: 204 })
+    res.status(204).end()
+    return
+  }
 
   if (req.method !== 'POST') {
     observer.finish({ outcome: 'method_not_allowed', status: 405 })

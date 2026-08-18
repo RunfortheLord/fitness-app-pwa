@@ -49,6 +49,7 @@ describe('integration health', () => {
       }),
     ).toMatchObject({
       distributedAiProtection: false,
+      feedback: false,
       mealAnalysis: true,
     })
   })

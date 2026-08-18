@@ -78,6 +78,15 @@
 ## Security and Privacy
 
 - Are secrets absent from the diff?
+- Does `npm run security:check` pass?
+- Do deployed pages retain the CSP, Permissions Policy, referrer, HSTS,
+  MIME-sniffing, and anti-framing headers defined in `vercel.json`?
+- Are new network/provider origins narrowly added to the CSP rather than using
+  broad script or connection allowances?
+- Are server endpoints origin checked where appropriate, input bounded, and
+  protected by a distributed limiter when abuse has cost or destructive impact?
+- Are request bodies, tokens, OAuth codes, PKCE values, GPS samples, meal
+  photographs, and fitness records excluded from operational logs?
 - Is imported JSON validated before writing to IndexedDB?
 - Are destructive actions confirmed?
 - Do local exports remain local unless the user separately enables the approved

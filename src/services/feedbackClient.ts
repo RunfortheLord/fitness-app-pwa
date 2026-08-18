@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core'
+
 // Mirrors the server's feedback error codes (kept local so the client layer does
 // not import from the server proxy layer), plus client-only transport states.
 export type FeedbackClientErrorCode =
@@ -31,9 +33,10 @@ export async function sendFeedback(
   message: string,
   context?: string,
 ): Promise<void> {
+  const endpoint = feedbackEndpoint()
   let response: Response
   try {
-    response = await fetch('/api/feedback', {
+    response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ message, context }),
@@ -64,4 +67,18 @@ export async function sendFeedback(
     'unexpected',
     'Feedback could not be sent. Please try again later.',
   )
+}
+
+function feedbackEndpoint() {
+  if (!Capacitor.isNativePlatform()) {
+    return '/api/feedback'
+  }
+  const configuredOrigin = import.meta.env.VITE_PUBLIC_APP_ORIGIN?.trim()
+  if (!configuredOrigin) {
+    throw new FeedbackClientError(
+      'not_configured',
+      'Feedback is not configured for this app build.',
+    )
+  }
+  return `${configuredOrigin.replace(/\/+$/, '')}/api/feedback`
 }

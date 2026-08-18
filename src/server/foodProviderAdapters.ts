@@ -665,7 +665,11 @@ function parsePortionText(
   if (!trimmed || /quantity not specified/i.test(trimmed)) {
     return null
   }
-  const match = trimmed.match(/^(\d+(?:\.\d+)?|\d+\/\d+)\s+(.+)$/)
+  const match = trimmed.match(
+    // The shared numeric prefix avoids the overlapping alternation in the old form.
+    // eslint-disable-next-line security/detect-unsafe-regex
+    /^(\d+(?:\.\d+|\/\d+)?)\s+(.+)$/,
+  )
   let amount = 1
   let unit = trimmed
   if (match) {

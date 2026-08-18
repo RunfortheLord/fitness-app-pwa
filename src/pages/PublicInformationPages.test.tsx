@@ -42,5 +42,7 @@ describe('public store information pages', () => {
     )
     expect(screen.getByText(/not a medical device/i)).toBeVisible()
     expect(screen.getByText(/qualified healthcare professional/i)).toBeVisible()
+    expect(screen.queryByText(/Settings → About → Send feedback/i)).toBeNull()
+    expect(screen.getByText(/support contact will appear here/i)).toBeVisible()
   })
 })

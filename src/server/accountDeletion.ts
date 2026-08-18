@@ -100,10 +100,11 @@ export function isAllowedAppOrigin({
     return true
   }
   const allowed = new Set<string>()
-  if (host && /^[a-zA-Z0-9.-]+(?::\d{1,5})?$/.test(host)) {
-    allowed.add(`https://${host}`)
-    if (/^(localhost|127\.0\.0\.1)(:\d{1,5})?$/.test(host)) {
-      allowed.add(`http://${host}`)
+  const requestUrl = parseRequestHost(host)
+  if (requestUrl) {
+    allowed.add(requestUrl.httpsOrigin)
+    if (requestUrl.isLocal) {
+      allowed.add(requestUrl.httpOrigin)
     }
   }
   if (publicAppOrigin) {
@@ -114,6 +115,35 @@ export function isAllowedAppOrigin({
     }
   }
   return allowed.has(origin)
+}
+
+function parseRequestHost(host: string | undefined): {
+  httpOrigin: string
+  httpsOrigin: string
+  isLocal: boolean
+} | null {
+  if (!host || host.length > 253) {
+    return null
+  }
+  try {
+    const httpsUrl = new URL(`https://${host}`)
+    if (
+      httpsUrl.host.toLowerCase() !== host.toLowerCase() ||
+      httpsUrl.pathname !== '/' ||
+      httpsUrl.search ||
+      httpsUrl.hash
+    ) {
+      return null
+    }
+    return {
+      httpOrigin: `http://${httpsUrl.host}`,
+      httpsOrigin: httpsUrl.origin,
+      isLocal:
+        httpsUrl.hostname === 'localhost' || httpsUrl.hostname === '127.0.0.1',
+    }
+  } catch {
+    return null
+  }
 }
 
 function hasAppleIdentity(user: User) {

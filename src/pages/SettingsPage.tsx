@@ -76,6 +76,9 @@ type SettingsSection =
   | 'data'
   | 'about'
 
+const FEEDBACK_ENABLED =
+  import.meta.env.VITE_FEEDBACK_ENABLED?.trim().toLowerCase() === 'true'
+
 export function SettingsPage() {
   const { language, setLanguage, t } = useLanguage()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -1182,40 +1185,46 @@ export function SettingsPage() {
 
       {settingsSection === 'about' ? (
         <>
-          <SectionHeader title="Send feedback" />
-          <Card>
-            <p className="muted">
-              {t(
-                'Found a bug or have an idea? Send it straight to the developer. Your app version and device are included to help with debugging.',
-              )}
-            </p>
-            <FormField id="feedback-message" label="Your feedback">
-              <textarea
-                id="feedback-message"
-                className="feedback-textarea"
-                maxLength={1800}
-                onChange={(event) => setFeedbackText(event.target.value)}
-                placeholder={t(
-                  "What's working, what's not, or what you'd like to see…",
-                )}
-                rows={4}
-                value={feedbackText}
-              />
-            </FormField>
-            {feedbackError ? (
-              <ValidationMessage message={feedbackError} />
-            ) : null}
-            {feedbackMessage ? (
-              <StatusMessage tone="success">{feedbackMessage}</StatusMessage>
-            ) : null}
-            <PrimaryButton
-              type="button"
-              disabled={feedbackSending || !feedbackText.trim()}
-              onClick={() => void submitFeedback()}
-            >
-              {feedbackSending ? 'Sending…' : 'Send feedback'}
-            </PrimaryButton>
-          </Card>
+          {FEEDBACK_ENABLED ? (
+            <>
+              <SectionHeader title="Send feedback" />
+              <Card>
+                <p className="muted">
+                  {t(
+                    'Found a bug or have an idea? Send it straight to the developer. Your app version and device are included to help with debugging.',
+                  )}
+                </p>
+                <FormField id="feedback-message" label="Your feedback">
+                  <textarea
+                    id="feedback-message"
+                    className="feedback-textarea"
+                    maxLength={1800}
+                    onChange={(event) => setFeedbackText(event.target.value)}
+                    placeholder={t(
+                      "What's working, what's not, or what you'd like to see…",
+                    )}
+                    rows={4}
+                    value={feedbackText}
+                  />
+                </FormField>
+                {feedbackError ? (
+                  <ValidationMessage message={feedbackError} />
+                ) : null}
+                {feedbackMessage ? (
+                  <StatusMessage tone="success">
+                    {feedbackMessage}
+                  </StatusMessage>
+                ) : null}
+                <PrimaryButton
+                  type="button"
+                  disabled={feedbackSending || !feedbackText.trim()}
+                  onClick={() => void submitFeedback()}
+                >
+                  {feedbackSending ? 'Sending…' : 'Send feedback'}
+                </PrimaryButton>
+              </Card>
+            </>
+          ) : null}
 
           <div id="settings-whats-new">
             <SectionHeader title="What's new" />

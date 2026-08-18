@@ -182,6 +182,8 @@ function stripLeadingBrand(displayName: string, brand: string): string | null {
         .map(escapeRegExp)
         .join('[^A-Za-z0-9]+')
       const stripped = displayName
+        // Candidate text is escaped above before it enters the expression.
+        // eslint-disable-next-line security/detect-non-literal-regexp
         .replace(new RegExp(`^[^A-Za-z0-9]*${pattern}[^A-Za-z0-9]*`, 'iu'), '')
         .trim()
       if (stripped.length > 0) {

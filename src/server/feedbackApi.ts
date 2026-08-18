@@ -38,7 +38,7 @@ export type FeedbackConfig = {
   clientKey?: string
   webhookUrl: string | undefined
   fetchImpl?: typeof fetch
-  rateLimiter: ServerRateLimiter
+  rateLimiter: ServerRateLimiter | undefined
 }
 
 // Discord caps webhook `content` at 2000 characters; keep the message well under

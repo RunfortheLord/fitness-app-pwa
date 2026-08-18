@@ -304,6 +304,8 @@ export function foodIconKey(
     return 'default'
   }
   for (const rule of ICON_RULES) {
+    // Keywords are a static local list and each value is escaped before use.
+    // eslint-disable-next-line security/detect-non-literal-regexp
     const pattern = new RegExp(
       `\\b(${rule.keywords.map(escapeRegExp).join('|')})\\b`,
       'u',

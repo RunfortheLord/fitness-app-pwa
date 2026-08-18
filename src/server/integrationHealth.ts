@@ -15,7 +15,10 @@ export function readIntegrationHealth(environment: IntegrationEnvironment) {
     ),
     authRelay: cloudBackup && Boolean(readRedisAuthRelayConfig(environment)),
     cloudBackup,
-    feedback: Boolean(environment.FEEDBACK_WEBHOOK_URL),
+    feedback: Boolean(
+      environment.FEEDBACK_WEBHOOK_URL &&
+      readRedisRateLimiterConfig(environment),
+    ),
     foodSearch: Boolean(environment.USDA_FDC_API_KEY),
     distributedAiProtection: Boolean(readRedisRateLimiterConfig(environment)),
     mealAnalysis: Boolean(environment.OPENAI_API_KEY),

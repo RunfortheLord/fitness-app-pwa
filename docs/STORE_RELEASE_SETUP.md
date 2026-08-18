@@ -5,6 +5,10 @@ that must be completed by the app owner. Vigorune remains fully usable offline
 without an account. Keep `com.adamshugart.fitnesslog` and all persisted-data
 identifiers unchanged.
 
+Use `docs/APP_STORE_METADATA.md` for the product-page, reviewer-note, screenshot,
+and privacy-label working draft. Use `docs/SECURITY.md` for threat boundaries,
+release-blocking security checks, monitoring, rotation, and incident response.
+
 ## Public URLs and Support
 
 Before producing a signed native build:
@@ -16,6 +20,8 @@ Before producing a signed native build:
 3. Set `VITE_SUPPORT_EMAIL` to an actively monitored public support address.
 4. Verify the three public pages without signing in and enter their URLs in App
    Store Connect and Play Console.
+5. Keep the in-app feedback form disabled unless both `VITE_FEEDBACK_ENABLED`
+   and the server-only `FEEDBACK_WEBHOOK_URL` are configured and monitored.
 
 ## Supabase Account Deletion
 

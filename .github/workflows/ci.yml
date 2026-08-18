@@ -38,6 +38,12 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
+      - name: Check committed files for secrets
+        run: npm run security:secrets
+
+      - name: Audit production dependencies
+        run: npm run security:audit
+
       - name: Run unit tests
         run: npm run test
 

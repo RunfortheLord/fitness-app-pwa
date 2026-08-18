@@ -3,6 +3,7 @@ import prettierConfig from 'eslint-config-prettier'
 import { defineConfig, globalIgnores } from 'eslint/config'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
+import security from 'eslint-plugin-security'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
@@ -23,12 +24,25 @@ export default defineConfig([
       tseslint.configs.recommended,
       reactHooks.configs.flat.recommended,
       reactRefresh.configs.vite,
+      security.configs.recommended,
     ],
     languageOptions: {
       globals: {
         ...globals.browser,
         ...globals.es2023,
       },
+    },
+    rules: {
+      // This heuristic reports ordinary typed array/record access as a warning.
+      // Keep the remaining security rules enabled and review dynamic access in PRs.
+      'security/detect-object-injection': 'off',
+    },
+  },
+  {
+    files: ['**/*.test.{ts,tsx}', 'e2e/**/*.ts'],
+    rules: {
+      'security/detect-non-literal-fs-filename': 'off',
+      'security/detect-non-literal-regexp': 'off',
     },
   },
   {
