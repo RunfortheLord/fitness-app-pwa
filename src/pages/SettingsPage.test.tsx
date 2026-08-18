@@ -11,36 +11,33 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { App } from '@app/App'
 import { db } from '@db/database'
+import { hasUnseenChangelog, markChangelogSeen } from '@domain/changelog'
 import { SettingsPage } from '@pages/SettingsPage'
 import { settingsRepository } from '@repositories/settingsRepository'
 import { initializeAppData } from '@services/appInitializationService'
 import { backupService } from '@services/backupService'
+import { accountService } from '@services/accountService'
 import { cloudSyncService } from '@services/cloudSyncService'
 import * as nativeTimerNotifications from '@services/nativeRestTimerNotificationService'
 import * as webPushTimerNotifications from '@services/webPushRestTimerNotificationService'
-import { testGeminiApiKey } from '@services/geminiMealAnalysisClient'
 import { seedFood } from '@test/seedFactories'
 
 const authHookMocks = vi.hoisted(() => ({
   signIn: vi.fn(),
+  signInWithApple: vi.fn(),
   signOut: vi.fn(),
   useAuth: vi.fn(),
 }))
 
 const cloudSyncMocks = vi.hoisted(() => ({
   backupToCloud: vi.fn(),
+  deleteCloudData: vi.fn(),
   getCloudBackupInfo: vi.fn(),
   restoreFromCloud: vi.fn(),
 }))
-
-vi.mock('@services/geminiMealAnalysisClient', async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import('@services/geminiMealAnalysisClient')>()
-  return {
-    ...actual,
-    testGeminiApiKey: vi.fn(),
-  }
-})
+const accountServiceMocks = vi.hoisted(() => ({
+  deleteAccount: vi.fn(),
+}))
 
 vi.mock('@hooks/useAuth', () => ({
   useAuth: authHookMocks.useAuth,
@@ -49,29 +46,37 @@ vi.mock('@hooks/useAuth', () => ({
 vi.mock('@services/cloudSyncService', () => ({
   cloudSyncService: cloudSyncMocks,
 }))
+vi.mock('@services/accountService', () => ({
+  accountService: accountServiceMocks,
+}))
 
 const mockCloudSyncService = vi.mocked(cloudSyncService)
-const mockTestGeminiApiKey = vi.mocked(testGeminiApiKey)
+const mockAccountService = vi.mocked(accountService)
 
 beforeEach(async () => {
   authHookMocks.signIn.mockReset()
+  authHookMocks.signInWithApple.mockReset()
   authHookMocks.signOut.mockReset()
   authHookMocks.useAuth.mockReset()
   authHookMocks.useAuth.mockReturnValue({
     signIn: authHookMocks.signIn,
+    signInWithApple: authHookMocks.signInWithApple,
     signOut: authHookMocks.signOut,
     status: 'signedOut',
     user: null,
   })
   mockCloudSyncService.backupToCloud.mockReset()
+  mockCloudSyncService.deleteCloudData.mockReset()
   mockCloudSyncService.getCloudBackupInfo.mockReset()
   mockCloudSyncService.restoreFromCloud.mockReset()
+  mockAccountService.deleteAccount.mockReset()
   mockCloudSyncService.backupToCloud.mockResolvedValue({
     databaseSchemaVersion: 11,
     exportedAt: '2026-01-02T03:04:05.000Z',
     recordCount: 7,
     updatedAt: '2026-01-02T03:04:05.000Z',
   })
+  mockCloudSyncService.deleteCloudData.mockResolvedValue()
   mockCloudSyncService.getCloudBackupInfo.mockResolvedValue(null)
   mockCloudSyncService.restoreFromCloud.mockResolvedValue({
     databaseSchemaVersion: 11,
@@ -79,8 +84,9 @@ beforeEach(async () => {
     recordCount: 7,
     updatedAt: '2026-01-02T03:04:05.000Z',
   })
-  mockTestGeminiApiKey.mockReset()
-  mockTestGeminiApiKey.mockResolvedValue()
+  mockAccountService.deleteAccount.mockResolvedValue({
+    providerRevocation: 'not_required',
+  })
   await db.delete()
   await db.open()
   await initializeAppData()
@@ -108,6 +114,16 @@ function renderSettings(initialEntry = '/settings') {
 }
 
 describe('SettingsPage', () => {
+  it('does not mark an update seen merely by visiting Settings', async () => {
+    markChangelogSeen('an-older-update')
+    expect(hasUnseenChangelog()).toBe(true)
+
+    renderSettings()
+
+    expect(await screen.findByText('Pounds (lb)')).toBeInTheDocument()
+    expect(hasUnseenChangelog()).toBe(true)
+  })
+
   it('scrolls to the What’s new section when deep-linked from the banner', async () => {
     const user = userEvent.setup()
     renderSettings('/settings?section=whats-new')
@@ -248,34 +264,18 @@ describe('SettingsPage', () => {
     }
   })
 
-  it('saves and tests a device-local Gemini key', async () => {
+  it('explains that AI meal analysis uses a server-only OpenAI key', async () => {
     const user = userEvent.setup()
     renderSettings()
 
     await user.click(
       await screen.findByRole('button', { name: 'Integrations' }),
     )
-    await user.type(
-      await screen.findByLabelText('Gemini API key'),
-      'gemini-device-key',
-    )
-    await user.click(screen.getByRole('button', { name: 'Save and test' }))
-
-    await waitFor(() =>
-      expect(mockTestGeminiApiKey).toHaveBeenCalledWith({
-        apiKey: 'gemini-device-key',
-      }),
-    )
-    await expect(
-      settingsRepository.getGeminiApiKeySettings(),
-    ).resolves.toMatchObject({
-      apiKey: 'gemini-device-key',
-      status: 'connected',
-    })
+    expect(await screen.findByText('OpenAI meal analysis')).toBeInTheDocument()
     expect(
-      await screen.findByText('Gemini 3.5 Flash is connected.'),
+      screen.getByText(/OpenAI API key stays on the server/),
     ).toBeInTheDocument()
-    expect(screen.getByLabelText('Gemini API key')).toHaveValue('')
+    expect(screen.queryByLabelText(/API key/)).not.toBeInTheDocument()
   })
 
   it('uses the default iPhone alert instead of bundled sounds for Web Push', async () => {
@@ -455,6 +455,39 @@ describe('SettingsPage', () => {
     ).toBeInTheDocument()
   })
 
+  it('defaults workout tracking preferences and remembers opt-in choices', async () => {
+    const user = userEvent.setup()
+    renderSettings()
+
+    const rir = await screen.findByRole('checkbox', {
+      name: 'Track RIR (reps in reserve)',
+    })
+    const autofill = screen.getByLabelText('Workout set autofill')
+    expect(rir).not.toBeChecked()
+    expect(autofill).toHaveValue('history_copy')
+
+    await user.click(rir)
+    await user.selectOptions(autofill, 'smart_progression')
+    await waitFor(async () => {
+      expect(await settingsRepository.getSettings()).toMatchObject({
+        rirTrackingEnabled: true,
+        workoutAutofillMode: 'smart_progression',
+      })
+    })
+
+    cleanup()
+    renderSettings()
+    const persistedRir = await screen.findByRole('checkbox', {
+      name: 'Track RIR (reps in reserve)',
+    })
+    await waitFor(() => {
+      expect(persistedRir).toBeChecked()
+      expect(screen.getByLabelText('Workout set autofill')).toHaveValue(
+        'smart_progression',
+      )
+    })
+  })
+
   it('switches the interface to Spanish and persists the preference', async () => {
     const user = userEvent.setup()
     renderSettings()
@@ -486,12 +519,12 @@ describe('SettingsPage', () => {
     await user.click(await screen.findByRole('button', { name: 'About' }))
     expect(
       await screen.findByRole('heading', {
-        name: 'Calorie insights and smoother logging',
+        name: 'Targets and programs are clearer',
       }),
     ).toBeInTheDocument()
     expect(
       screen.queryByRole('heading', {
-        name: 'RIR your way and simpler program editing',
+        name: 'Workout defaults are in your control',
       }),
     ).not.toBeInTheDocument()
 
@@ -526,6 +559,7 @@ describe('SettingsPage', () => {
     const user = userEvent.setup()
     authHookMocks.useAuth.mockReturnValue({
       signIn: authHookMocks.signIn,
+      signInWithApple: authHookMocks.signInWithApple,
       signOut: authHookMocks.signOut,
       status: 'signedIn',
       user: { email: 'person@example.com', id: 'user-1' },
@@ -554,6 +588,7 @@ describe('SettingsPage', () => {
     vi.stubGlobal('location', { ...window.location, reload })
     authHookMocks.useAuth.mockReturnValue({
       signIn: authHookMocks.signIn,
+      signInWithApple: authHookMocks.signInWithApple,
       signOut: authHookMocks.signOut,
       status: 'signedIn',
       user: { email: 'person@example.com', id: 'user-1' },
@@ -580,6 +615,82 @@ describe('SettingsPage', () => {
       expect(mockCloudSyncService.restoreFromCloud).toHaveBeenCalled(),
     )
     await waitFor(() => expect(reload).toHaveBeenCalled())
+  })
+
+  it('deletes cloud data without clearing local records', async () => {
+    const user = userEvent.setup()
+    const localFood = await seedFood(db)
+    authHookMocks.useAuth.mockReturnValue({
+      signIn: authHookMocks.signIn,
+      signInWithApple: authHookMocks.signInWithApple,
+      signOut: authHookMocks.signOut,
+      status: 'signedIn',
+      user: { email: 'person@example.com', id: 'user-1' },
+    })
+    renderSettings()
+
+    await user.click(await screen.findByRole('button', { name: 'Data' }))
+    await user.click(screen.getByRole('button', { name: 'Delete cloud data' }))
+    const dialog = screen.getByRole('dialog', { name: 'Delete cloud data?' })
+    await user.type(
+      within(dialog).getByLabelText('Confirmation'),
+      'DELETE CLOUD',
+    )
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Delete cloud data' }),
+    )
+
+    await waitFor(() =>
+      expect(mockCloudSyncService.deleteCloudData).toHaveBeenCalledOnce(),
+    )
+    expect(authHookMocks.signOut).toHaveBeenCalledOnce()
+    expect(await db.foods.get(localFood.id)).toMatchObject({ id: localFood.id })
+    expect(
+      await screen.findByText(
+        'Cloud backup data was deleted. Local data remains on this device.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('permanently deletes the signed-in account without clearing local records', async () => {
+    const user = userEvent.setup()
+    const localFood = await seedFood(db)
+    authHookMocks.useAuth.mockReturnValue({
+      signIn: authHookMocks.signIn,
+      signInWithApple: authHookMocks.signInWithApple,
+      signOut: authHookMocks.signOut,
+      status: 'signedIn',
+      user: { email: 'person@example.com', id: 'user-1' },
+    })
+    renderSettings()
+
+    await user.click(await screen.findByRole('button', { name: 'Data' }))
+    await user.click(screen.getByRole('button', { name: 'Delete account' }))
+    const dialog = screen.getByRole('dialog', {
+      name: 'Permanently delete account?',
+    })
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Delete account' }),
+    )
+    expect(mockAccountService.deleteAccount).not.toHaveBeenCalled()
+
+    await user.type(
+      within(dialog).getByLabelText('Confirmation'),
+      'DELETE ACCOUNT',
+    )
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Delete account' }),
+    )
+
+    await waitFor(() =>
+      expect(mockAccountService.deleteAccount).toHaveBeenCalledOnce(),
+    )
+    expect(await db.foods.get(localFood.id)).toMatchObject({ id: localFood.id })
+    expect(
+      await screen.findByText(
+        'Account and cloud data deleted. Local data remains on this device.',
+      ),
+    ).toBeVisible()
   })
 
   it('previews validation errors for malformed restore files without changing data', async () => {

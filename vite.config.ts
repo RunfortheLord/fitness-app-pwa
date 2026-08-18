@@ -17,8 +17,8 @@ export default defineConfig({
         'icons/icon-512.png',
       ],
       manifest: {
-        name: isDeveloperStable ? 'Fitness Log Dev' : 'Fitness Log',
-        short_name: isDeveloperStable ? 'Fitness Dev' : 'Fitness',
+        name: isDeveloperStable ? 'Vigorune Dev' : 'Vigorune',
+        short_name: isDeveloperStable ? 'Vigorune Dev' : 'Vigorune',
         description: isDeveloperStable
           ? 'Developer-stable local-first fitness training log.'
           : 'A local-first fitness training log.',

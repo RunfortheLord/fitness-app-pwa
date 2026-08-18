@@ -3,7 +3,21 @@ export type CacheEntry<T> = {
   expiresAt: number
 }
 
-export class TtlCache<T> {
+export type CacheOutcome = 'hit' | 'miss' | 'coalesced'
+
+export type CacheLookup<T> = {
+  outcome: CacheOutcome
+  value: T
+}
+
+export type AsyncCacheAdapter<T> = {
+  getOrCreateWithStatus(
+    key: string,
+    create: () => Promise<T>,
+  ): Promise<CacheLookup<T>>
+}
+
+export class TtlCache<T> implements AsyncCacheAdapter<T> {
   private readonly entries = new Map<string, CacheEntry<T>>()
   private readonly inFlight = new Map<string, Promise<T>>()
   private readonly maxEntries: number
@@ -49,14 +63,22 @@ export class TtlCache<T> {
   }
 
   async getOrCreate(key: string, create: () => Promise<T>) {
+    const result = await this.getOrCreateWithStatus(key, create)
+    return result.value
+  }
+
+  async getOrCreateWithStatus(
+    key: string,
+    create: () => Promise<T>,
+  ): Promise<CacheLookup<T>> {
     const cached = this.get(key)
     if (cached !== null) {
-      return cached
+      return { outcome: 'hit', value: cached }
     }
 
     const existing = this.inFlight.get(key)
     if (existing) {
-      return existing
+      return { outcome: 'coalesced', value: await existing }
     }
 
     const promise = create()
@@ -68,7 +90,7 @@ export class TtlCache<T> {
         this.inFlight.delete(key)
       })
     this.inFlight.set(key, promise)
-    return promise
+    return { outcome: 'miss', value: await promise }
   }
 
   get size() {

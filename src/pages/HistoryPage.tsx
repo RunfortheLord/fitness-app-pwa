@@ -6,7 +6,14 @@ import {
   Search,
   Square,
 } from 'lucide-react'
-import { useContext, useEffect, useMemo, useState } from 'react'
+import {
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 
 import {
@@ -26,6 +33,7 @@ import { CalorieHistoryChart } from '@components/CalorieHistoryChart'
 import { DashboardContext } from '@components/dashboardContextValue'
 import { useLanguage } from '@components/languageContextValue'
 import { formatLocalDate } from '@domain/dates'
+import { formatClockDuration as formatDuration } from '@domain/workoutTiming'
 import { currentTrendWeight } from '@domain/bodyweightTrend'
 import {
   createBodyweightChartModel,
@@ -72,6 +80,12 @@ import {
 } from '@services/calorieHistoryService'
 import { runRepository, type RunStructure } from '@repositories/runRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
+import { settingsRepository } from '@repositories/settingsRepository'
+import {
+  getCachedHistoryPageData,
+  setCachedHistoryPageData,
+  type HistoryPageState,
+} from '@pages/historyPageCache'
 import type {
   BodyweightEntry,
   Run,
@@ -79,23 +93,10 @@ import type {
   WorkoutHistoryEntry,
   WorkoutHistoryExercise,
   WorkoutHistorySet,
+  HistorySortMode,
 } from '@shared-types/app'
 
 type HistorySelection = { type: 'workout' | 'run'; id: string } | null
-
-type HistoryState =
-  | { status: 'loading' }
-  | { status: 'empty' }
-  | {
-      status: 'ready'
-      workouts: WorkoutHistoryEntry[]
-      runs: Run[]
-      selected: WorkoutHistoryEntry | null
-      selectedRun: RunStructure | null
-      exercises: WorkoutHistoryExercise[]
-      setsByExercise: Record<string, WorkoutHistorySet[]>
-    }
-  | { status: 'error'; message: string }
 
 const bodyweightRangeOptions: Array<{
   label: string
@@ -132,12 +133,32 @@ export function HistoryPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [state, setState] = useState<HistoryState>({ status: 'loading' })
+  const [state, setState] = useState<HistoryPageState>(
+    () => getCachedHistoryPageData() ?? { status: 'loading' },
+  )
   const [revision, setRevision] = useState(0)
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedHistory, setSelectedHistory] = useState<HistorySelection>(null)
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [historySortMode, setHistorySortMode] =
+    useState<HistorySortMode>('recent')
+  const [historyProgramId, setHistoryProgramId] = useState<string | null>(null)
+  const historyScrollPositionRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    let isCurrent = true
+    void settingsRepository.ensureSettings().then((settings) => {
+      if (!isCurrent) {
+        return
+      }
+      setHistorySortMode(settings.historySortMode ?? 'recent')
+      setHistoryProgramId(settings.historyProgramId ?? null)
+    })
+    return () => {
+      isCurrent = false
+    }
+  }, [])
 
   useEffect(() => {
     if (
@@ -157,7 +178,9 @@ export function HistoryPage() {
           return
         }
         if (!workouts.length && !runs.length) {
-          setState({ status: 'empty' })
+          const nextState = { status: 'empty' } as const
+          setCachedHistoryPageData(nextState)
+          setState(nextState)
           return
         }
 
@@ -178,7 +201,7 @@ export function HistoryPage() {
         if (!isCurrent) {
           return
         }
-        setState({
+        const nextState: HistoryPageState = {
           status: 'ready',
           workouts,
           runs,
@@ -186,7 +209,11 @@ export function HistoryPage() {
           selectedRun,
           exercises: selectedStructure?.exercises ?? [],
           setsByExercise: selectedStructure?.setsByExercise ?? {},
-        })
+        }
+        if (!requestedId && !requestedRunId) {
+          setCachedHistoryPageData(nextState)
+        }
+        setState(nextState)
       })
       .catch((caught: unknown) => {
         if (!isCurrent) {
@@ -206,6 +233,22 @@ export function HistoryPage() {
     }
   }, [location.pathname, revision, searchParams])
 
+  useLayoutEffect(() => {
+    if (
+      state.status !== 'ready' ||
+      state.selected ||
+      state.selectedRun ||
+      searchParams.has('workout') ||
+      searchParams.has('run') ||
+      historyScrollPositionRef.current === null
+    ) {
+      return
+    }
+    const scrollTop = historyScrollPositionRef.current
+    historyScrollPositionRef.current = null
+    window.scrollTo({ top: scrollTop, left: 0, behavior: 'auto' })
+  }, [searchParams, state])
+
   const summary = useMemo(() => {
     if (state.status !== 'ready' || !state.selected) {
       return null
@@ -223,6 +266,15 @@ export function HistoryPage() {
 
   function reload() {
     setRevision((current) => current + 1)
+  }
+
+  function saveHistoryPreference(
+    sortMode: HistorySortMode,
+    programId: string | null,
+  ) {
+    setHistorySortMode(sortMode)
+    setHistoryProgramId(programId)
+    void settingsRepository.saveHistoryPreference({ sortMode, programId })
   }
 
   function toggleSelectionMode() {
@@ -304,7 +356,7 @@ export function HistoryPage() {
   if (state.status === 'loading') {
     return (
       <PageContainer>
-        <LoadingState label="Loading workout history" />
+        <LoadingState label="Loading workout history" variant="cards" />
       </PageContainer>
     )
   }
@@ -362,9 +414,17 @@ export function HistoryPage() {
   const setHistoryParams = (params: Record<string, string>) => {
     setSearchParams(isHomeHistory ? { ...params, source: 'home' } : params)
   }
+  const openHistoryDetail = (params: Record<string, string>) => {
+    historyScrollPositionRef.current = window.scrollY
+    setHistoryParams(params)
+  }
   const selectedItemLabel = selectedHistory
     ? historySelectionLabel(selectedHistory, state.workouts, state.runs)
     : 'this day'
+  const programGroups = groupWorkoutHistoryByProgram(state.workouts)
+  const selectedProgram = historyProgramId
+    ? (programGroups.find((group) => group.id === historyProgramId) ?? null)
+    : null
 
   return (
     <PageContainer>
@@ -438,96 +498,156 @@ export function HistoryPage() {
         {!selectedWorkout && !state.selectedRun ? (
           <section aria-label="History" className="history-card-section">
             {!isHomeHistory ? <h2>Completed activity</h2> : null}
+            <SegmentedControl
+              label="History sort"
+              onChange={(value) =>
+                saveHistoryPreference(
+                  value === 'program' ? 'program' : 'recent',
+                  historyProgramId,
+                )
+              }
+              options={[
+                { label: 'Most recent', value: 'recent' },
+                { label: 'By program', value: 'program' },
+              ]}
+              value={historySortMode}
+            />
+            {historySortMode === 'program' && selectedProgram ? (
+              <div className="history-program-heading">
+                <SecondaryButton
+                  type="button"
+                  onClick={() => saveHistoryPreference('program', null)}
+                >
+                  All programs
+                </SecondaryButton>
+                <h3>{selectedProgram.name}</h3>
+              </div>
+            ) : null}
             <div className="history-list history-card-list">
-              {listHistoryItems(state.workouts, state.runs).map((item) =>
-                item.type === 'run' ? (
-                  <button
-                    aria-label={`${formatHistoryDate(item.run.localDate)} Run`}
-                    aria-pressed={
-                      selectionMode
-                        ? selectedHistory?.type === 'run' &&
-                          selectedHistory.id === item.run.id
-                        : undefined
-                    }
-                    className={`history-item-card history-run-card${
-                      selectionMode ? ' history-item-selectable' : ''
-                    }`}
-                    key={item.run.id}
-                    onClick={() =>
-                      selectionMode
-                        ? selectHistoryEntry({ type: 'run', id: item.run.id })
-                        : setHistoryParams({ run: item.run.id })
-                    }
-                    type="button"
-                  >
-                    <span>
-                      <strong>{formatHistoryDate(item.run.localDate)}</strong>
-                      <small>{formatRunType(item.run)}</small>
-                    </span>
-                    <span>
-                      <strong>{formatDistance(item.run.distanceMeters)}</strong>
+              {historySortMode === 'program' && !selectedProgram
+                ? programGroups.map((group) => (
+                    <button
+                      aria-label={`View ${group.name} history`}
+                      className="history-item-card history-program-card"
+                      key={group.id}
+                      onClick={() => saveHistoryPreference('program', group.id)}
+                      type="button"
+                    >
+                      <span className="history-item-main">
+                        <strong>{group.name}</strong>
+                        <span>
+                          {group.workouts.length}{' '}
+                          {group.workouts.length === 1 ? 'workout' : 'workouts'}
+                        </span>
+                      </span>
                       <small>
-                        {formatRunDuration(item.run.elapsedSeconds)} ·{' '}
-                        {formatPace(item.run.averageMovingPaceSecondsPerMile)}
+                        Latest {formatHistoryDate(group.workouts[0].localDate)}
                       </small>
-                    </span>
-                    {selectionMode ? (
-                      <span
-                        aria-hidden="true"
-                        className="history-selection-check"
+                    </button>
+                  ))
+                : listHistoryItems(
+                    selectedProgram?.workouts ?? state.workouts,
+                    historySortMode === 'program' ? [] : state.runs,
+                  ).map((item) =>
+                    item.type === 'run' ? (
+                      <button
+                        aria-label={`${formatHistoryDate(item.run.localDate)} Run`}
+                        aria-pressed={
+                          selectionMode
+                            ? selectedHistory?.type === 'run' &&
+                              selectedHistory.id === item.run.id
+                            : undefined
+                        }
+                        className={`history-item-card history-run-card${
+                          selectionMode ? ' history-item-selectable' : ''
+                        }`}
+                        key={item.run.id}
+                        onClick={() =>
+                          selectionMode
+                            ? selectHistoryEntry({
+                                type: 'run',
+                                id: item.run.id,
+                              })
+                            : openHistoryDetail({ run: item.run.id })
+                        }
+                        type="button"
                       >
-                        {selectedHistory?.type === 'run' &&
-                        selectedHistory.id === item.run.id
-                          ? 'x'
-                          : ''}
-                      </span>
-                    ) : null}
-                  </button>
-                ) : (
-                  <button
-                    aria-label={`${formatHistoryDate(
-                      item.workout.localDate,
-                    )} ${item.workout.name}`}
-                    aria-pressed={
-                      selectionMode
-                        ? selectedHistory?.type === 'workout' &&
-                          selectedHistory.id === item.workout.id
-                        : undefined
-                    }
-                    className={`history-item-card${
-                      selectionMode ? ' history-item-selectable' : ''
-                    }`}
-                    key={item.workout.id}
-                    onClick={() =>
-                      selectionMode
-                        ? selectHistoryEntry({
-                            type: 'workout',
-                            id: item.workout.id,
-                          })
-                        : setHistoryParams({ workout: item.workout.id })
-                    }
-                    type="button"
-                  >
-                    <span className="history-item-main">
-                      <strong>
-                        {formatHistoryDate(item.workout.localDate)}
-                      </strong>
-                      <span>{item.workout.name}</span>
-                    </span>
-                    {selectionMode ? (
-                      <span
-                        aria-hidden="true"
-                        className="history-selection-check"
+                        <span>
+                          <strong>
+                            {formatHistoryDate(item.run.localDate)}
+                          </strong>
+                          <small>{formatRunType(item.run)}</small>
+                        </span>
+                        <span>
+                          <strong>
+                            {formatDistance(item.run.distanceMeters)}
+                          </strong>
+                          <small>
+                            {formatRunDuration(item.run.elapsedSeconds)} ·{' '}
+                            {formatPace(
+                              item.run.averageMovingPaceSecondsPerMile,
+                            )}
+                          </small>
+                        </span>
+                        {selectionMode ? (
+                          <span
+                            aria-hidden="true"
+                            className="history-selection-check"
+                          >
+                            {selectedHistory?.type === 'run' &&
+                            selectedHistory.id === item.run.id
+                              ? 'x'
+                              : ''}
+                          </span>
+                        ) : null}
+                      </button>
+                    ) : (
+                      <button
+                        aria-label={`${formatHistoryDate(
+                          item.workout.localDate,
+                        )} ${item.workout.name}`}
+                        aria-pressed={
+                          selectionMode
+                            ? selectedHistory?.type === 'workout' &&
+                              selectedHistory.id === item.workout.id
+                            : undefined
+                        }
+                        className={`history-item-card${
+                          selectionMode ? ' history-item-selectable' : ''
+                        }`}
+                        key={item.workout.id}
+                        onClick={() =>
+                          selectionMode
+                            ? selectHistoryEntry({
+                                type: 'workout',
+                                id: item.workout.id,
+                              })
+                            : openHistoryDetail({
+                                workout: item.workout.id,
+                              })
+                        }
+                        type="button"
                       >
-                        {selectedHistory?.type === 'workout' &&
-                        selectedHistory.id === item.workout.id
-                          ? 'x'
-                          : ''}
-                      </span>
-                    ) : null}
-                  </button>
-                ),
-              )}
+                        <span className="history-item-main">
+                          <strong>
+                            {formatHistoryDate(item.workout.localDate)}
+                          </strong>
+                          <span>{item.workout.name}</span>
+                        </span>
+                        {selectionMode ? (
+                          <span
+                            aria-hidden="true"
+                            className="history-selection-check"
+                          >
+                            {selectedHistory?.type === 'workout' &&
+                            selectedHistory.id === item.workout.id
+                              ? 'x'
+                              : ''}
+                          </span>
+                        ) : null}
+                      </button>
+                    ),
+                  )}
             </div>
           </section>
         ) : null}
@@ -1694,6 +1814,39 @@ function listHistoryItems(workouts: WorkoutHistoryEntry[], runs: Run[]) {
   ].sort((left, right) => right.completedAt.localeCompare(left.completedAt))
 }
 
+function groupWorkoutHistoryByProgram(workouts: WorkoutHistoryEntry[]) {
+  const groups = new Map<
+    string,
+    { id: string; name: string; workouts: WorkoutHistoryEntry[] }
+  >()
+  for (const workout of workouts) {
+    const id =
+      workout.sourceTemplateId ??
+      workout.sourceActiveCycleId ??
+      `program-name:${workout.workoutSnapshot.activeCycleName ?? 'other'}`
+    const name =
+      workout.workoutSnapshot.activeCycleName ??
+      workout.workoutSnapshot.templateName ??
+      'Other workouts'
+    const existing = groups.get(id)
+    if (existing) {
+      existing.workouts.push(workout)
+    } else {
+      groups.set(id, { id, name, workouts: [workout] })
+    }
+  }
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      workouts: [...group.workouts].sort((left, right) =>
+        right.completedAt.localeCompare(left.completedAt),
+      ),
+    }))
+    .sort((left, right) =>
+      right.workouts[0].completedAt.localeCompare(left.workouts[0].completedAt),
+    )
+}
+
 function formatRunType(run: Run) {
   if (run.trackingMode === 'treadmill') {
     return 'Treadmill run'
@@ -1893,12 +2046,6 @@ function ordinalSuffix(day: number) {
     default:
       return 'th'
   }
-}
-
-function formatDuration(totalSeconds: number) {
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
 
 function formatMetricInput(value: WorkoutHistorySet['metricValues'][string]) {

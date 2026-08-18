@@ -6,6 +6,8 @@ export type ExerciseStatus = EntityStatus | 'hidden'
 export type WeightUnit = 'lb' | 'kg'
 export type AppLanguage = 'en' | 'es'
 export type EnergyUnit = 'kcal'
+export type WorkoutAutofillMode = 'history_copy' | 'smart_progression'
+export type HistorySortMode = 'recent' | 'program'
 export type FoodSourceType = 'local' | 'provider'
 export type FoodProviderId = 'usda' | 'open_food_facts'
 export type IntegrationProviderId = 'usda_fooddata_central' | 'google_gemini'
@@ -60,6 +62,9 @@ export type AppMetadata = {
   storagePersistenceCheckedAt?: IsoTimestamp | null
   /** When the automatic cloud backup last succeeded, used to detect staleness. */
   lastAutomaticBackupAt?: IsoTimestamp | null
+  /** Account-scoped hashes used to avoid re-upserting unchanged calorie days. */
+  dailyNutritionSyncUserId?: string | null
+  dailyNutritionSyncFingerprints?: Record<string, string>
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }
@@ -84,8 +89,14 @@ export type UserSettings = {
   timerSoundEnabled?: boolean
   selectedTimerSoundId?: string
   timerBannersEnabled?: boolean
-  /** RIR fields and prompts hide everywhere when false. Defaults to true. */
+  /** RIR fields and prompts hide everywhere when false. Defaults to false. */
   rirTrackingEnabled?: boolean
+  /** How prior completed sets prefill a newly started workout. */
+  workoutAutofillMode?: WorkoutAutofillMode
+  /** Persisted History list organization. */
+  historySortMode?: HistorySortMode
+  /** Persisted program drilldown while History is organized by program. */
+  historyProgramId?: string | null
   /**
    * Legacy user-wide rest-timer preference retained for older local data. New
    * rest default edits are stored on each exercise.
@@ -447,6 +458,10 @@ export type ProgramTemplate = {
   goal?: string | null
   /** Planned length of the program in weeks (built-ins default to 10). */
   durationWeeks?: number | null
+  /** 1-based scheduled deload weeks within the program duration. */
+  deloadWeekNumbers?: number[]
+  /** Whether the deload-week schedule is shown and applied. Defaults to false. */
+  deloadSchedulingEnabled?: boolean
   /**
    * When true, live workouts for this program prompt for RIR on every set
    * (and prefill the exercise's target RIR on each), instead of the final set
@@ -498,8 +513,12 @@ export type ActiveProgramCycle = {
   activatedAt: IsoTimestamp
   /** Planned length in weeks, snapshotted from the template at activation. */
   durationWeeks?: number | null
-  /** User-controlled current week; completed check-offs can advance it. */
+  /** User-selected week; completing all of its days can advance it. */
   currentWeekNumber?: number | null
+  /** Scheduled deload weeks snapshotted from the template at activation. */
+  deloadWeekNumbers?: number[]
+  /** Whether the snapshotted deload-week schedule is active. */
+  deloadSchedulingEnabled?: boolean
   /** Track RIR on every set, snapshotted from the template at activation. */
   trackRirEverySet?: boolean
   createdAt: IsoTimestamp
@@ -577,10 +596,16 @@ export type Workout = {
   completedAt: IsoTimestamp | null
   durationSeconds: number | null
   elapsedPausedSeconds: number
+  /** Current session-level pause. Missing on records created before schema 17. */
+  pausedAt?: IsoTimestamp | null
   activeRestTimer: RestTimerState | null
   status: 'active' | 'completed' | 'cancelled'
   /** Snapshotted at start: prompt RIR on every set, not just the final set. */
   trackRirEverySet?: boolean
+  /** Selected program week snapshotted when the workout starts. */
+  programWeekNumber?: number | null
+  /** Whether this workout started from a scheduled deload week. */
+  isDeload?: boolean
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }
@@ -602,6 +627,12 @@ export type WorkoutExercise = {
   notes: string
   skipped: boolean
   replacementOfExerciseId: string | null
+  /** Active-workout rep target. Missing on records created before schema 18. */
+  sessionTargetRepsMin?: number | null
+  /** Active-workout rep target. Missing on records created before schema 18. */
+  sessionTargetRepsMax?: number | null
+  /** Active-workout RIR target, including a deload adjustment when applicable. */
+  sessionTargetRir?: number | null
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }

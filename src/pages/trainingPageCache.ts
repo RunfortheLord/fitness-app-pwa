@@ -4,6 +4,8 @@ import type {
   LoadStatus,
 } from '@features/training/types'
 import type { Exercise, ProgramTemplate } from '@shared-types/app'
+import { exerciseRepository } from '@repositories/exerciseRepository'
+import { programRepository } from '@repositories/programRepository'
 
 export type TrainingPageLoadState = {
   exercises: Exercise[]
@@ -25,4 +27,28 @@ export function setCachedTrainingPageData(loadState: TrainingPageLoadState) {
 
 export function clearCachedTrainingPageData() {
   cachedTrainingLoadState = undefined
+}
+
+export async function preloadTrainingPageData() {
+  const [exercises, templates, currentCycle, exerciseUsage] = await Promise.all(
+    [
+      exerciseRepository.searchExercises({
+        includeArchived: false,
+        query: '',
+      }),
+      programRepository.listProgramTemplates(),
+      programRepository.getCurrentActiveCycleStructure(),
+      programRepository.getExerciseUsageSummary(),
+    ],
+  )
+
+  const loadState: TrainingPageLoadState = {
+    exercises,
+    templates,
+    exerciseUsage,
+    currentCycle,
+    status: 'ready',
+  }
+  setCachedTrainingPageData(loadState)
+  return loadState
 }

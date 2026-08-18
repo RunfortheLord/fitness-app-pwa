@@ -17,6 +17,10 @@ const appMetadataSchema = z.object({
     .optional(),
   storagePersistenceCheckedAt: z.string().datetime().nullable().optional(),
   lastAutomaticBackupAt: z.string().datetime().nullable().optional(),
+  dailyNutritionSyncUserId: z.string().max(200).nullable().optional(),
+  dailyNutritionSyncFingerprints: z
+    .record(z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.string().max(200))
+    .optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 })
@@ -73,6 +77,57 @@ export function createAppMetadataRepository(
         ...existing,
         lastAutomaticBackupAt: at,
         updatedAt: at,
+      }
+      const parsed = appMetadataSchema.parse(metadata)
+      await database.appMetadata.put(parsed)
+      return parsed
+    },
+
+    async getDailyNutritionSyncState() {
+      const existing = await database.appMetadata.get('app')
+      return {
+        fingerprints: existing?.dailyNutritionSyncFingerprints ?? {},
+        userId: existing?.dailyNutritionSyncUserId ?? null,
+      }
+    },
+
+    async recordDailyNutritionSync(
+      userId: string,
+      fingerprints: Record<string, string>,
+    ) {
+      const existing = await this.ensureAppMetadata()
+      const merged =
+        existing.dailyNutritionSyncUserId === userId
+          ? {
+              ...(existing.dailyNutritionSyncFingerprints ?? {}),
+              ...fingerprints,
+            }
+          : fingerprints
+      const bounded = Object.fromEntries(
+        Object.entries(merged)
+          .sort(([left], [right]) => right.localeCompare(left))
+          .slice(0, 366),
+      )
+      const now = new Date().toISOString()
+      const metadata: AppMetadata = {
+        ...existing,
+        dailyNutritionSyncFingerprints: bounded,
+        dailyNutritionSyncUserId: userId,
+        updatedAt: now,
+      }
+      const parsed = appMetadataSchema.parse(metadata)
+      await database.appMetadata.put(parsed)
+      return parsed
+    },
+
+    async clearDailyNutritionSyncState() {
+      const existing = await this.ensureAppMetadata()
+      const now = new Date().toISOString()
+      const metadata: AppMetadata = {
+        ...existing,
+        dailyNutritionSyncFingerprints: {},
+        dailyNutritionSyncUserId: null,
+        updatedAt: now,
       }
       const parsed = appMetadataSchema.parse(metadata)
       await database.appMetadata.put(parsed)

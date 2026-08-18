@@ -10,8 +10,8 @@ import {
 describe('built-in exercise library', () => {
   it('contains a validated seed set comparable to a large commercial library', () => {
     expect(() => validateBuiltInExercises()).not.toThrow()
-    expect(BUILT_IN_EXERCISES.length).toBeGreaterThanOrEqual(1_000)
-    expect(BUILT_IN_EXERCISES.length).toBeLessThanOrEqual(1_200)
+    expect(BUILT_IN_EXERCISES.length).toBeGreaterThanOrEqual(800)
+    expect(BUILT_IN_EXERCISES.length).toBeLessThanOrEqual(900)
   })
 
   it('uses stable built-in IDs and covers required equipment categories', () => {
@@ -203,10 +203,7 @@ describe('built-in exercise library', () => {
       id: 'builtin:three-second-eccentric-pull-up',
       trackingMethodId: 'added_weight_reps',
     })
-    expect(byName.get('1.5-Rep Dumbbell Lateral Raise')).toMatchObject({
-      id: 'builtin:one-and-a-half-rep-dumbbell-lateral-raise',
-      primaryMuscleGroups: ['shoulders'],
-    })
+    expect(byName.has('1.5-Rep Dumbbell Lateral Raise')).toBe(false)
   })
 
   it('rejects duplicate IDs and invalid records during validation', () => {

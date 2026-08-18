@@ -46,4 +46,35 @@ describe('appMetadataRepository', () => {
 
     expect(await repository.getLastAutomaticBackupAt()).toBe(at)
   })
+
+  it('stores bounded account-scoped daily nutrition fingerprints', async () => {
+    const repository = createAppMetadataRepository(database)
+    const fingerprints = Object.fromEntries(
+      Array.from({ length: 370 }, (_, index) => {
+        const date = new Date(Date.UTC(2026, 0, 1 + index))
+          .toISOString()
+          .slice(0, 10)
+        return [date, `fingerprint-${index}`]
+      }),
+    )
+
+    await repository.recordDailyNutritionSync('user-1', fingerprints)
+    const state = await repository.getDailyNutritionSyncState()
+    expect(state.userId).toBe('user-1')
+    expect(Object.keys(state.fingerprints)).toHaveLength(366)
+
+    await repository.recordDailyNutritionSync('user-2', {
+      '2026-06-27': 'replacement',
+    })
+    await expect(repository.getDailyNutritionSyncState()).resolves.toEqual({
+      fingerprints: { '2026-06-27': 'replacement' },
+      userId: 'user-2',
+    })
+
+    await repository.clearDailyNutritionSyncState()
+    await expect(repository.getDailyNutritionSyncState()).resolves.toEqual({
+      fingerprints: {},
+      userId: null,
+    })
+  })
 })

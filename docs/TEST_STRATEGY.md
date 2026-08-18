@@ -4,7 +4,8 @@
 
 - Verify the app works as a local-first, offline-capable iPhone PWA.
 - Protect IndexedDB persistence, snapshot behavior, workout completion, detected-change review, and backup/restore integrity.
-- Keep first-release scope clear by testing that excluded features are absent.
+- Keep first-release scope clear by testing both the approved optional release
+  surfaces and the absence of excluded feature expansion.
 
 ## Command Workflow
 
@@ -33,7 +34,7 @@ normal unit and component test commands still use up to four workers.
 The project Playwright runner owns a project-specific preview port, refuses to
 start if another process already occupies it, and closes only the preview it
 started. This prevents a stale or unrelated local application from being
-mistaken for Fitness Log and avoids orphaned Windows preview processes.
+mistaken for Vigorune and avoids orphaned Windows preview processes.
 
 ## Unit Tests
 
@@ -46,7 +47,7 @@ mistaken for Fitness Log and avoids orphaned Windows preview processes.
 - Tracking preset field definitions.
 - Rest timer remaining-time calculation from timestamps.
 - Structural change detection.
-- Destination selection mapping for detected changes.
+- Checked and unchecked save-all behavior for detected workout changes.
 - Archive versus hard-delete eligibility.
 - Backup schema validation.
 
@@ -63,7 +64,7 @@ mistaken for Fitness Log and avoids orphaned Windows preview processes.
 - Program builder cards and prescribed exercise editor.
 - Live workout exercise card and set rows for every tracking preset.
 - Rest timer controls.
-- Detected-change checklist.
+- Workout-finish save-all confirmation and its unchecked default.
 - History detail view.
 - Settings backup/restore forms.
 - Signed-out launch prompt and signed-in automatic-backup lifecycle.
@@ -76,7 +77,8 @@ mistaken for Fitness Log and avoids orphaned Windows preview processes.
 - Create exercise, add to program, activate program, and verify active cycle is independent.
 - Start workout from manually selected workout day.
 - Edit active workout, refresh app, verify session resumes.
-- Complete workout, save history, review detected changes, apply selected destinations transactionally.
+- Complete workout, save history, review detected changes, and apply all or none
+  transactionally according to explicit user choice.
 - Archive referenced exercise and verify history/program display remains intact.
 - Export JSON backup and restore into a clean database.
 - Restore failure leaves existing data unchanged.
@@ -90,7 +92,7 @@ mistaken for Fitness Log and avoids orphaned Windows preview processes.
 - Full bodyweight flow.
 - Full training flow from exercise creation to program activation.
 - Live workout flow with set completion, rest timer, replacement, and finish.
-- Detected-change review with cycle-only, template-only, both, and neither choices.
+- Detected-change review with unchecked and checked save-all outcomes.
 - Workout history detail and safe edit of performance values.
 - Backup export, clear data, restore, and verify records.
 - Offline launch after service worker installation.
@@ -103,8 +105,10 @@ mistaken for Fitness Log and avoids orphaned Windows preview processes.
 - User data is not stored in service-worker cache.
 - App opens offline after installation.
 - Food, bodyweight, and workout edits persist offline.
-- Service-worker update notification appears when a new version is available.
-- App avoids infinite stale-cache behavior by allowing update activation.
+- A waiting service-worker update activates automatically without a manual
+  update button.
+- App avoids infinite stale-cache behavior by reloading under the updated
+  worker, after which the versioned What’s New banner is available.
 
 ## Persistence Tests
 
@@ -147,15 +151,25 @@ mistaken for Fitness Log and avoids orphaned Windows preview processes.
 - Start a workout, background the app, reopen, and confirm elapsed time and rest timer correctness.
 - Turn on airplane mode after installation and complete food, bodyweight, and workout flows.
 - Export and restore a JSON backup using iOS file/share flows.
+- Validate native release builds on supported iOS and Android devices before
+  public store submission, including upgrade preservation and offline launch.
 
 ## Regression Scope Checks
 
 - No account or backend requirement for core offline use.
-- No realtime multi-device cloud sync or automatic cloud restore.
+- Optional Google and Apple authentication never blocks signed-out local use.
+- Optional cloud backup remains replaceable snapshot backup, with no realtime
+  multi-device sync or automatic cloud restore.
+- In-app app-account and cloud-data deletion is distinct from local Clear all
+  data and requires destructive confirmation.
 - No subscriptions or ads.
 - Barcode and AI camera actions remain separate. AI photo analysis requires a
   user-supplied key and never saves or logs without explicit confirmation.
 - No AI coaching, meal recommendations, bundled external food database, or
   micronutrients.
-- No automatic calorie adjustment, training progression, program advancement,
-  estimated 1RM, calorie-target adherence score, or automatic coaching.
+- No automatic calorie adjustment, automatic training/program advancement,
+  calorie-target adherence score, or automatic coaching. Approved deterministic
+  local estimates remain user-invoked or opt-in, explainable, editable, and
+  unapplied until explicit review.
+- Public App Store and Google Play builds preserve IndexedDB authority and
+  existing compatibility identifiers.

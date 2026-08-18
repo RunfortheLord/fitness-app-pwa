@@ -1,5 +1,5 @@
 import { Plus } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 import {
@@ -31,11 +31,10 @@ import {
 import { mealTypeForDate } from '@domain/meals'
 import { snapshotFood } from '@domain/snapshots'
 import {
-  createRecipeDraftFromGemini,
-  type GeminiMealAnalysis,
-} from '@domain/geminiMealAnalysis'
+  createRecipeDraftFromMealAnalysis,
+  type MealAnalysis,
+} from '@domain/mealAnalysis'
 import { findServingOption, servingOptionsForFood } from '@domain/foodServings'
-import { BarcodeScannerSheet } from '@features/nutrition/BarcodeScannerSheet'
 import { EditFoodLogSheet } from '@features/nutrition/EditFoodLogSheet'
 import { FoodFormSheet } from '@features/nutrition/FoodFormSheet'
 import { FoodSearchSubpage } from '@features/nutrition/FoodSearchSubpage'
@@ -77,7 +76,6 @@ import {
   searchProviderFoods,
 } from '@services/foodProviderClient'
 import { nutritionSummaryService } from '@services/nutritionSummaryService'
-import { AiMealCameraSubpage } from '@pages/AiMealCameraSubpage'
 import {
   getCachedNutritionPageData,
   setCachedNutritionPageData,
@@ -100,8 +98,19 @@ type SheetState =
   | { type: 'recipeComponent'; index: number }
   | { type: 'entry'; entry: FoodLogEntry }
   | { type: 'quickAdd' }
-  | { type: 'scanner' }
   | null
+
+const BarcodeScannerSubpage = lazy(() =>
+  import('@features/nutrition/BarcodeScannerSubpage').then((module) => ({
+    default: module.BarcodeScannerSubpage,
+  })),
+)
+
+const AiMealCameraSubpage = lazy(() =>
+  import('@pages/AiMealCameraSubpage').then((module) => ({
+    default: module.AiMealCameraSubpage,
+  })),
+)
 
 type UsdaKeyState = {
   configured: boolean
@@ -175,7 +184,9 @@ export function NutritionPage() {
   const [saveAiRecipe, setSaveAiRecipe] = useState(false)
   const [aiCameraOpen, setAiCameraOpen] = useState(false)
   const [aiCameraReturnToSearch, setAiCameraReturnToSearch] = useState(false)
-  const [geminiApiKey, setGeminiApiKey] = useState<string | null>(null)
+  const [barcodeOpen, setBarcodeOpen] = useState(false)
+  const [barcodeReturnToSearch, setBarcodeReturnToSearch] = useState(false)
+  const [nutritionOverviewRevision, setNutritionOverviewRevision] = useState(0)
   const [searchParams, setSearchParams] = useSearchParams()
   const [goalData, setGoalData] = useState<{
     goal: NutritionGoal | null
@@ -195,6 +206,22 @@ export function NutritionPage() {
   }, [aiCameraReturnToSearch])
 
   useSubpageBackGesture(aiCameraOpen, closeAiCamera)
+
+  const closeBarcodeScanner = useCallback(() => {
+    setBarcodeOpen(false)
+    setNutritionOverviewRevision((current) => current + 1)
+    if (barcodeReturnToSearch) {
+      setSearchOpen(true)
+    }
+  }, [barcodeReturnToSearch])
+
+  useSubpageBackGesture(barcodeOpen, closeBarcodeScanner)
+
+  const openBarcodeScanner = useCallback(() => {
+    setBarcodeReturnToSearch(searchOpen)
+    setSearchOpen(false)
+    setBarcodeOpen(true)
+  }, [searchOpen])
 
   const openSearch = useCallback(() => {
     setQuery('')
@@ -259,8 +286,8 @@ export function NutritionPage() {
     setAiCameraOpen(true)
   }, [searchOpen])
 
-  const useGeminiRecipeDraft = useCallback((analysis: GeminiMealAnalysis) => {
-    const generated = createRecipeDraftFromGemini(analysis)
+  const useAiRecipeDraft = useCallback((analysis: MealAnalysis) => {
+    const generated = createRecipeDraftFromMealAnalysis(analysis)
     setRecipeDraft({
       editingId: null,
       name: generated.name,
@@ -279,12 +306,12 @@ export function NutritionPage() {
   useEffect(() => {
     document.body.classList.toggle(
       'food-search-open',
-      searchOpen || aiCameraOpen,
+      searchOpen || aiCameraOpen || barcodeOpen,
     )
     return () => {
       document.body.classList.remove('food-search-open')
     }
-  }, [aiCameraOpen, searchOpen])
+  }, [aiCameraOpen, barcodeOpen, searchOpen])
 
   const addRecipeComponent = useCallback(
     (food: Food, servingMultiplier: number) => {
@@ -511,18 +538,6 @@ export function NutritionPage() {
 
   useEffect(() => {
     let isCurrent = true
-    void settingsRepository.getGeminiApiKeySettings().then((settings) => {
-      if (isCurrent) {
-        setGeminiApiKey(settings?.apiKey ?? null)
-      }
-    })
-    return () => {
-      isCurrent = false
-    }
-  }, [revision])
-
-  useEffect(() => {
-    let isCurrent = true
     void Promise.all([
       settingsRepository.getNutritionGoal(),
       bodyweightRepository.listBodyweightEntries(),
@@ -655,7 +670,7 @@ export function NutritionPage() {
   // representative portion) and file it under the current time-of-day meal, with
   // no sheet to confirm.
   const quickLog = (food: Food) => {
-    void foodRepository
+    return foodRepository
       .getRememberedFoodUnit(food.id)
       .then((preference) => {
         const options = servingOptionsForFood(food, preference?.unitKey ?? null)
@@ -680,7 +695,10 @@ export function NutritionPage() {
         setMessage('Logged again.')
         reloadAfterFoodLog()
       })
-      .catch(() => setMessage('Could not log that food.'))
+      .catch((caught: unknown) => {
+        setMessage('Could not log that food.')
+        throw caught
+      })
   }
 
   // Trailing "+" on a search row: log the food immediately at its displayed
@@ -688,8 +706,7 @@ export function NutritionPage() {
   // banner still opens the sheet for adjusting serving size.
   const quickAddResult = (result: FoodSearchResult) => {
     if (result.type === 'savedMeal') {
-      logSavedMeal(result.meal)
-      return
+      return logSavedMeal(result.meal)
     }
     const preference =
       result.type === 'local'
@@ -723,7 +740,7 @@ export function NutritionPage() {
             servingMultiplier,
             mealType,
           })
-    void action
+    return action
       .then(async (entry) => {
         if (entry.foodId && selectedOption) {
           const persistedFood =
@@ -755,11 +772,14 @@ export function NutritionPage() {
         }
         reloadAfterFoodLog()
       })
-      .catch(() => setMessage('Could not log that food.'))
+      .catch((caught: unknown) => {
+        setMessage('Could not log that food.')
+        throw caught
+      })
   }
 
   const logSavedMeal = (meal: SavedMeal) => {
-    void foodRepository
+    return foodRepository
       .logSavedMeal({ savedMealId: meal.id, localDate: selectedDate })
       .then((entries) => {
         setMessage(`Logged ${meal.name} (${entries.length} items).`)
@@ -863,12 +883,34 @@ export function NutritionPage() {
   return (
     <PageContainer>
       <Toast message={message} onDismiss={() => setMessage(null)} />
-      {aiCameraOpen ? (
-        <AiMealCameraSubpage
-          apiKey={geminiApiKey}
-          onAnalyzed={useGeminiRecipeDraft}
-          onBack={closeAiCamera}
-        />
+      {barcodeOpen ? (
+        <Suspense fallback={<LoadingState label="Opening scanner…" />}>
+          <BarcodeScannerSubpage
+            apiKey={usdaKey.apiKey}
+            onBack={closeBarcodeScanner}
+            onCreateCustom={(barcode) => {
+              setBarcodeOpen(false)
+              setSearchOpen(barcodeReturnToSearch)
+              setSheet({
+                type: 'food',
+                food: null,
+                initialForm: { ...emptyFoodForm, barcode },
+              })
+            }}
+            onFound={(result) => {
+              setBarcodeOpen(false)
+              setSearchOpen(barcodeReturnToSearch)
+              setSheet({ type: 'select', result })
+            }}
+          />
+        </Suspense>
+      ) : aiCameraOpen ? (
+        <Suspense fallback={<LoadingState label="Opening camera…" />}>
+          <AiMealCameraSubpage
+            onAnalyzed={useAiRecipeDraft}
+            onBack={closeAiCamera}
+          />
+        </Suspense>
       ) : searchOpen ? (
         <FoodSearchSubpage
           providerSearch={providerSearch}
@@ -906,7 +948,7 @@ export function NutritionPage() {
           }}
           onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
           onOpenAiCamera={openAiCamera}
-          onOpenScanner={() => setSheet({ type: 'scanner' })}
+          onOpenScanner={openBarcodeScanner}
           onSelectResult={(result) => {
             if (result.type === 'savedMeal') {
               logSavedMeal(result.meal)
@@ -925,7 +967,7 @@ export function NutritionPage() {
           setQuery={setQuery}
         />
       ) : (
-        <>
+        <div className="nutrition-overview" key={nutritionOverviewRevision}>
           <DateSelector
             dateLabel={formatSelectedDateLabel(selectedDate, language)}
             onNext={() => setSelectedDate(addLocalDays(selectedDate, 1))}
@@ -945,7 +987,7 @@ export function NutritionPage() {
           />
 
           {loadState.status === 'loading' ? (
-            <LoadingState label="Loading nutrition" />
+            <LoadingState label="Loading nutrition" variant="cards" />
           ) : null}
           {loadState.status === 'error' ? (
             <StatusMessage tone="warning">
@@ -966,7 +1008,7 @@ export function NutritionPage() {
                 onOpenAiCamera={openAiCamera}
                 onCreateFood={() => setSheet({ type: 'food', food: null })}
                 onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
-                onOpenScanner={() => setSheet({ type: 'scanner' })}
+                onOpenScanner={openBarcodeScanner}
                 onOpenRecipe={startRecipe}
               />
               <LoggedFoodsCard
@@ -994,7 +1036,7 @@ export function NutritionPage() {
                 onOpen={openSearch}
                 onOpenAiCamera={openAiCamera}
                 onOpenQuickAdd={() => setSheet({ type: 'quickAdd' })}
-                onOpenScanner={() => setSheet({ type: 'scanner' })}
+                onOpenScanner={openBarcodeScanner}
                 onOpenRecipe={startRecipe}
               />
               {loadState.savedMeals.length ? (
@@ -1063,6 +1105,9 @@ export function NutritionPage() {
                 <TargetsCard
                   key={targetKey(summary?.targets ?? null)}
                   currentTargets={summary?.targets ?? null}
+                  estimatedMaintenanceCalories={
+                    goalData.goal?.maintenanceCalories ?? null
+                  }
                   onSaved={() => {
                     setMessage('Nutrition targets saved.')
                     reload()
@@ -1094,7 +1139,7 @@ export function NutritionPage() {
               </>
             )
           ) : null}
-        </>
+        </div>
       )}
 
       {sheet?.type === 'food' ? (
@@ -1200,23 +1245,6 @@ export function NutritionPage() {
             setSheet(null)
             reload()
           }}
-        />
-      ) : null}
-
-      {sheet?.type === 'scanner' ? (
-        <BarcodeScannerSheet
-          apiKey={usdaKey.apiKey}
-          isOpen
-          localDate={selectedDate}
-          onClose={() => setSheet(null)}
-          onCreateCustom={(barcode) =>
-            setSheet({
-              type: 'food',
-              food: null,
-              initialForm: { ...emptyFoodForm, barcode },
-            })
-          }
-          onFound={(result) => setSheet({ type: 'select', result })}
         />
       ) : null}
 

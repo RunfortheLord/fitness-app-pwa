@@ -28,6 +28,7 @@ export function createCalorieHistoryService(
     async getHistory(
       endDate: LocalDateString,
       range: CalorieHistoryRange,
+      requestOptions: { syncToCloud?: boolean } = {},
     ): Promise<DailyCalorieHistory[]> {
       const dates = createDateRange(endDate, rangeDays[range])
       const startDate = dates[0]
@@ -72,7 +73,10 @@ export function createCalorieHistoryService(
         }
       })
 
-      if (options.syncToCloud !== false) {
+      if (
+        options.syncToCloud !== false &&
+        requestOptions.syncToCloud !== false
+      ) {
         // Cloud persistence is supplementary. A network or Supabase failure
         // must not make the local-first graph unavailable.
         try {

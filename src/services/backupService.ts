@@ -8,7 +8,13 @@ import {
   type TrainingLogDatabase,
 } from '@db/database'
 import { getTrackingMethod } from '@domain/trackingMethods'
+import {
+  BUILT_IN_EXERCISES,
+  BUILT_IN_EXERCISE_SEED_VERSION,
+} from '@domain/exerciseLibrary'
+import { BUILT_IN_PROGRAM_SEED_VERSION } from '@domain/programLibrarySeed'
 import { createExerciseRepository } from '@repositories/exerciseRepository'
+import { createBuiltInProgramSeedRecords } from '@repositories/programRepository'
 import type {
   ActiveCycleWorkoutDay,
   ActiveCycleWorkoutExercise,
@@ -43,6 +49,7 @@ import type {
 import { createFitnessDataExport } from '@services/dataExportService'
 
 export const BACKUP_FORMAT_VERSION = 1
+export const CLOUD_SNAPSHOT_FORMAT_VERSION = 1
 export const APPLICATION_VERSION = packageJson.version
 export const MAX_BACKUP_FILE_BYTES = 20 * 1024 * 1024
 
@@ -117,6 +124,21 @@ export type JsonBackup = {
   exportedAt: string
   data: BackupData
 }
+
+export type CompactCloudSnapshot = {
+  cloudSnapshotFormatVersion: number
+  sourceBackupFormatVersion: number
+  databaseSchemaVersion: number
+  applicationVersion: string
+  exportedAt: string
+  seedManifest: {
+    builtInExerciseSeedVersion: number
+    builtInProgramSeedVersion: number
+  }
+  data: BackupData
+}
+
+export type CloudSnapshot = JsonBackup | CompactCloudSnapshot
 
 export type BackupPreview = {
   filename: string
@@ -253,7 +275,13 @@ const userSettingsSchema = z.object({
   timerSoundEnabled: z.boolean().optional().default(true),
   selectedTimerSoundId: z.string().optional().default('rest-complete-chime'),
   timerBannersEnabled: z.boolean().optional().default(true),
-  rirTrackingEnabled: z.boolean().optional().default(true),
+  rirTrackingEnabled: z.boolean().optional().default(false),
+  workoutAutofillMode: z
+    .enum(['history_copy', 'smart_progression'])
+    .optional()
+    .default('history_copy'),
+  historySortMode: z.enum(['recent', 'program']).optional().default('recent'),
+  historyProgramId: nullableId.optional().default(null),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })
@@ -438,6 +466,12 @@ const programTemplateSchema = z.object({
   isBuiltIn: z.boolean().optional(),
   level: z.union([z.string(), z.null()]).optional(),
   goal: z.union([z.string(), z.null()]).optional(),
+  durationWeeks: z.union([z.number().int().positive(), z.null()]).optional(),
+  deloadWeekNumbers: z
+    .array(z.number().int().positive())
+    .optional()
+    .default([1]),
+  deloadSchedulingEnabled: z.boolean().optional().default(false),
   trackRirEverySet: z.boolean().optional(),
   builtInSeedVersion: z.union([z.number(), z.null()]).optional(),
   createdAt: isoTimestampSchema,
@@ -482,7 +516,17 @@ const activeProgramCycleSchema = z.object({
   currentWeekNumber: z
     .union([z.number().int().positive(), z.null()])
     .optional(),
+  deloadWeekNumbers: z
+    .array(z.number().int().positive())
+    .optional()
+    .default([1]),
+  deloadSchedulingEnabled: z.boolean().optional().default(false),
   trackRirEverySet: z.boolean().optional(),
+  programWeekNumber: z
+    .union([z.number().int().positive(), z.null()])
+    .optional()
+    .default(null),
+  isDeload: z.boolean().optional().default(false),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })
@@ -585,6 +629,7 @@ const workoutSchema = z.object({
   completedAt: z.union([isoTimestampSchema, z.null()]),
   durationSeconds: z.union([nonNegativeInteger, z.null()]),
   elapsedPausedSeconds: nonNegativeInteger,
+  pausedAt: z.union([isoTimestampSchema, z.null()]).optional().default(null),
   activeRestTimer: z.union([restTimerStateSchema, z.null()]),
   status: z.enum(['active', 'completed', 'cancelled']),
   trackRirEverySet: z.boolean().optional(),
@@ -601,6 +646,18 @@ const workoutExerciseSchema = z.object({
   notes: z.string(),
   skipped: z.boolean(),
   replacementOfExerciseId: nullableId,
+  sessionTargetRepsMin: z
+    .union([nonNegativeInteger, z.null()])
+    .optional()
+    .default(null),
+  sessionTargetRepsMax: z
+    .union([nonNegativeInteger, z.null()])
+    .optional()
+    .default(null),
+  sessionTargetRir: z
+    .union([nonNegativeNumber, z.null()])
+    .optional()
+    .default(null),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })
@@ -806,6 +863,19 @@ const jsonBackupSchema = z.object({
   data: backupDataSchema,
 })
 
+const compactCloudSnapshotSchema = z.object({
+  cloudSnapshotFormatVersion: z.number().int().positive(),
+  sourceBackupFormatVersion: z.number().int().positive(),
+  databaseSchemaVersion: z.number().int().positive(),
+  applicationVersion: z.string().min(1),
+  exportedAt: isoTimestampSchema,
+  seedManifest: z.object({
+    builtInExerciseSeedVersion: z.number().int().positive(),
+    builtInProgramSeedVersion: z.number().int().positive(),
+  }),
+  data: backupDataSchema,
+})
+
 export function createBackupService(database: TrainingLogDatabase = db) {
   return {
     async createJsonBackup(now = new Date()) {
@@ -845,12 +915,24 @@ export function createBackupService(database: TrainingLogDatabase = db) {
     async createCloudBackup(now = new Date()) {
       const exportedAt = now.toISOString()
       const data = await readBackupData(database, { includeRunSamples: false })
-      const backup: JsonBackup = {
+      const restorableBackup: JsonBackup = {
         backupFormatVersion: BACKUP_FORMAT_VERSION,
         databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
         applicationVersion: APPLICATION_VERSION,
         exportedAt,
         data,
+      }
+      const backup: CompactCloudSnapshot = {
+        cloudSnapshotFormatVersion: CLOUD_SNAPSHOT_FORMAT_VERSION,
+        sourceBackupFormatVersion: BACKUP_FORMAT_VERSION,
+        databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+        applicationVersion: APPLICATION_VERSION,
+        exportedAt,
+        seedManifest: {
+          builtInExerciseSeedVersion: BUILT_IN_EXERCISE_SEED_VERSION,
+          builtInProgramSeedVersion: BUILT_IN_PROGRAM_SEED_VERSION,
+        },
+        data: compactCloudBackupData(data),
       }
 
       await database.backupMetadata.put({
@@ -867,6 +949,7 @@ export function createBackupService(database: TrainingLogDatabase = db) {
 
       return {
         backup,
+        restorableBackup,
         filename: createReadableFilename(
           'training-log-cloud-backup',
           exportedAt,
@@ -1017,6 +1100,68 @@ export function validateBackup(
     : { ok: true, backup, preview }
 }
 
+export function validateCloudSnapshot(
+  input: unknown,
+  filename: string,
+): ParsedBackupResult {
+  if (!isUnknownRecord(input) || !('cloudSnapshotFormatVersion' in input)) {
+    return validateBackup(input, filename)
+  }
+
+  const version = input.cloudSnapshotFormatVersion
+  if (version !== CLOUD_SNAPSHOT_FORMAT_VERSION) {
+    const displayedVersion =
+      typeof version === 'number' && Number.isFinite(version)
+        ? String(version)
+        : 'unknown'
+    return invalidPreview(filename, [
+      `Cloud snapshot format version ${displayedVersion} is not supported.`,
+    ])
+  }
+
+  const parsed = compactCloudSnapshotSchema.safeParse(input)
+  if (!parsed.success) {
+    return invalidPreview(filename, parsed.error.issues.map(formatZodIssue))
+  }
+  if (parsed.data.sourceBackupFormatVersion !== BACKUP_FORMAT_VERSION) {
+    return invalidPreview(filename, [
+      `Backup format version ${parsed.data.sourceBackupFormatVersion} is not supported.`,
+    ])
+  }
+  if (
+    parsed.data.seedManifest.builtInExerciseSeedVersion >
+      BUILT_IN_EXERCISE_SEED_VERSION ||
+    parsed.data.seedManifest.builtInProgramSeedVersion >
+      BUILT_IN_PROGRAM_SEED_VERSION
+  ) {
+    return invalidPreview(filename, [
+      'Cloud snapshot seed version is newer than this app supports.',
+    ])
+  }
+
+  const expanded: JsonBackup = {
+    backupFormatVersion: parsed.data.sourceBackupFormatVersion,
+    databaseSchemaVersion: parsed.data.databaseSchemaVersion,
+    applicationVersion: parsed.data.applicationVersion,
+    exportedAt: parsed.data.exportedAt,
+    data: expandCompactCloudBackupData(parsed.data.data as BackupData),
+  }
+  const validation = validateBackup(expanded, filename)
+  if (parsed.data.data.runSamples.length === 0 || !validation.ok) {
+    return validation
+  }
+  return {
+    ok: false,
+    preview: {
+      ...validation.preview,
+      errors: [
+        ...validation.preview.errors,
+        'Compact cloud snapshots cannot contain GPS run samples.',
+      ],
+    },
+  }
+}
+
 async function readBackupData(
   database: TrainingLogDatabase,
   options: { includeRunSamples: boolean },
@@ -1108,6 +1253,108 @@ async function putBackupData(database: TrainingLogDatabase, data: BackupData) {
   await database.runPauses.bulkPut(data.runPauses)
   await database.runSplits.bulkPut(data.runSplits)
   await database.runClassifications.bulkPut(data.runClassifications)
+}
+
+function compactCloudBackupData(data: BackupData): BackupData {
+  const seeds = deterministicBuiltInBackupRecords()
+  return {
+    ...data,
+    exercises: omitExactSeedRecords(data.exercises, seeds.exercises),
+    programTemplates: omitExactSeedRecords(
+      data.programTemplates,
+      seeds.programTemplates,
+    ),
+    templateWorkoutDays: omitExactSeedRecords(
+      data.templateWorkoutDays,
+      seeds.templateWorkoutDays,
+    ),
+    templateWorkoutExercises: omitExactSeedRecords(
+      data.templateWorkoutExercises,
+      seeds.templateWorkoutExercises,
+    ),
+  }
+}
+
+function expandCompactCloudBackupData(data: BackupData): BackupData {
+  const seeds = deterministicBuiltInBackupRecords()
+  return {
+    ...data,
+    exercises: mergeSeedRecords(seeds.exercises, data.exercises),
+    programTemplates: mergeSeedRecords(
+      seeds.programTemplates,
+      data.programTemplates,
+    ),
+    templateWorkoutDays: mergeSeedRecords(
+      seeds.templateWorkoutDays,
+      data.templateWorkoutDays,
+    ),
+    templateWorkoutExercises: mergeSeedRecords(
+      seeds.templateWorkoutExercises,
+      data.templateWorkoutExercises,
+    ),
+  }
+}
+
+function deterministicBuiltInBackupRecords() {
+  const programRecords = createBuiltInProgramSeedRecords(BUILT_IN_EXERCISES)
+  return {
+    exercises: [...BUILT_IN_EXERCISES],
+    ...programRecords,
+  }
+}
+
+function omitExactSeedRecords<T extends { id: string }>(
+  records: T[],
+  seeds: readonly T[],
+) {
+  const seedsById = new Map(seeds.map((seed) => [seed.id, seed]))
+  return records.filter((record) => {
+    const seed = seedsById.get(record.id)
+    return !seed || !deepEqual(record, seed)
+  })
+}
+
+function mergeSeedRecords<T extends { id: string }>(
+  seeds: readonly T[],
+  records: T[],
+) {
+  const merged = new Map(seeds.map((seed) => [seed.id, seed]))
+  for (const record of records) {
+    merged.set(record.id, record)
+  }
+  return [...merged.values()].toSorted((left, right) =>
+    left.id.localeCompare(right.id),
+  )
+}
+
+function deepEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) {
+    return true
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => deepEqual(value, right[index]))
+    )
+  }
+  if (!isUnknownRecord(left) || !isUnknownRecord(right)) {
+    return false
+  }
+  const leftKeys = Object.keys(left).toSorted()
+  const rightKeys = Object.keys(right).toSorted()
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) =>
+        key === rightKeys[index] && deepEqual(left[key], right[key]),
+    )
+  )
+}
+
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function writableTables(database: TrainingLogDatabase) {

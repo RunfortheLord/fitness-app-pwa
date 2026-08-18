@@ -1,20 +1,18 @@
 import {
-  BellRing,
   Check,
   Clock,
-  GripVertical,
+  Ellipsis,
   Minus,
+  NotebookPen,
   Pause,
   Pencil,
   Play,
   Plus,
   RefreshCcw,
   Search,
-  Settings2,
   Square,
   TimerOff,
   Trash2,
-  X,
 } from 'lucide-react'
 import {
   useEffect,
@@ -23,7 +21,6 @@ import {
   type CSSProperties,
   type FocusEvent,
   type PointerEvent,
-  type ReactNode,
 } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -42,11 +39,19 @@ import {
   StatusMessage,
   ValidationMessage,
 } from '@components/ui'
-import { SortableList, SortableListItem } from '@components/SortableList'
+import {
+  SortableDragHandle,
+  SortableList,
+  SortableListItem,
+} from '@components/SortableList'
 import { RestWheelPicker } from '@components/WheelPicker'
 import { useLanguage } from '@components/languageContextValue'
-import { getRestTimerRemainingSeconds } from '@domain/restTimer'
+import {
+  getRestTimerRemainingSeconds,
+  restartRestTimerWithDuration,
+} from '@domain/restTimer'
 import { DEFAULT_TIMER_SOUND_ID, preloadTimerSound } from '@domain/timerSounds'
+import { buildSetMetricPropagationUpdates } from '@domain/setPropagation'
 import {
   defaultExerciseResults,
   hasSearchableQuery,
@@ -57,6 +62,10 @@ import {
   canSkipWorkoutExercise,
   hasPendingWorkoutExerciseWork,
 } from '@domain/workoutSkip'
+import {
+  formatClockDuration as formatDuration,
+  workoutElapsedSeconds,
+} from '@domain/workoutTiming'
 import { rankedExerciseReplacements } from '@domain/exerciseReplacements'
 import { TRACKING_METHODS } from '@domain/trackingMethods'
 import {
@@ -68,14 +77,8 @@ import { useRirTracking } from '@hooks/useRirTracking'
 import { useWeightUnit } from '@hooks/useWeightUnit'
 import { exerciseRepository } from '@repositories/exerciseRepository'
 import { settingsRepository } from '@repositories/settingsRepository'
-import {
-  nativeRestTimerNotificationService,
-  type NativeRestTimerNotificationStatus,
-} from '@services/nativeRestTimerNotificationService'
-import {
-  webPushRestTimerNotificationService,
-  type WebPushRestTimerNotificationStatus,
-} from '@services/webPushRestTimerNotificationService'
+import { nativeRestTimerNotificationService } from '@services/nativeRestTimerNotificationService'
+import { webPushRestTimerNotificationService } from '@services/webPushRestTimerNotificationService'
 import {
   workoutRepository,
   type WorkoutSetMetricValue,
@@ -109,6 +112,22 @@ type ExercisePickerState =
   | { mode: 'replace'; workoutExerciseId: string; exerciseId: string | null }
   | null
 
+type LiveExercisePrescription = Pick<
+  ActiveCycleWorkoutExercise,
+  | 'targetSetCount'
+  | 'targetWeight'
+  | 'targetDurationSeconds'
+  | 'targetDistance'
+  | 'targetRepsMin'
+  | 'targetRepsMax'
+  | 'targetRir'
+>
+
+type LivePrescriptionInput = Pick<
+  LiveExercisePrescription,
+  'targetSetCount' | 'targetRepsMin' | 'targetRepsMax'
+>
+
 declare global {
   interface Window {
     webkitAudioContext?: typeof AudioContext
@@ -122,10 +141,9 @@ export function LiveWorkoutPage() {
   const [revision, setRevision] = useState(0)
   const [now, setNow] = useState(() => new Date())
   const [error, setError] = useState<string | null>(null)
-  const [nativeTimerMessage, setNativeTimerMessage] = useState<string | null>(
-    null,
-  )
   const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const [isDiscarding, setIsDiscarding] = useState(false)
+  const [isWorkoutPauseBusy, setIsWorkoutPauseBusy] = useState(false)
   const [confirmFinish, setConfirmFinish] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
   const [picker, setPicker] = useState<ExercisePickerState>(null)
@@ -141,8 +159,33 @@ export function LiveWorkoutPage() {
     'next' | 'previous' | null
   >(null)
   const pendingWorkoutMutations = useRef(new Set<Promise<unknown>>())
-  const pendingOptimisticSetMutations = useRef(0)
+  const restDurationMutationChain = useRef<Promise<void>>(Promise.resolve())
+  const deletingSetIds = useRef(new Set<string>())
+  const discardInProgressRef = useRef(false)
+  const finishInProgressRef = useRef(false)
+  const pendingOptimisticMutations = useRef(0)
   const autoFinishPromptedRef = useRef(false)
+  const exerciseTabListRef = useRef<HTMLDivElement>(null)
+  const [exerciseTabOverflow, setExerciseTabOverflow] = useState({
+    left: false,
+    right: false,
+  })
+
+  useEffect(() => {
+    const isReady = state.status === 'ready'
+    document.documentElement.style.removeProperty(
+      '--live-workout-viewport-offset',
+    )
+    document.documentElement.classList.toggle('live-workout-open', isReady)
+    document.body.classList.toggle('live-workout-open', isReady)
+    return () => {
+      document.documentElement.style.removeProperty(
+        '--live-workout-viewport-offset',
+      )
+      document.documentElement.classList.remove('live-workout-open')
+      document.body.classList.remove('live-workout-open')
+    }
+  }, [state.status])
 
   useEffect(() => {
     let isCurrent = true
@@ -150,7 +193,7 @@ export function LiveWorkoutPage() {
     void workoutRepository
       .getActiveWorkoutStructure()
       .then((loaded) => {
-        if (!isCurrent) {
+        if (!isCurrent || discardInProgressRef.current) {
           return
         }
         if (!loaded) {
@@ -178,7 +221,7 @@ export function LiveWorkoutPage() {
         })
       })
       .catch((caught: unknown) => {
-        if (!isCurrent) {
+        if (!isCurrent || discardInProgressRef.current) {
           return
         }
         setState({
@@ -194,6 +237,51 @@ export function LiveWorkoutPage() {
       isCurrent = false
     }
   }, [revision])
+
+  useEffect(() => {
+    const list = exerciseTabListRef.current
+    if (!list || state.status !== 'ready') {
+      return
+    }
+
+    const updateOverflow = () => {
+      const maxScrollLeft = Math.max(0, list.scrollWidth - list.clientWidth)
+      const left = list.scrollLeft > 2
+      const right = list.scrollLeft < maxScrollLeft - 2
+      setExerciseTabOverflow((current) => {
+        if (current.left === left && current.right === right) {
+          return current
+        }
+        return { left, right }
+      })
+    }
+    updateOverflow()
+    list.addEventListener('scroll', updateOverflow, { passive: true })
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(updateOverflow)
+    resizeObserver?.observe(list)
+    return () => {
+      list.removeEventListener('scroll', updateOverflow)
+      resizeObserver?.disconnect()
+    }
+  }, [state])
+
+  useEffect(() => {
+    if (!activeExerciseId) {
+      return
+    }
+    const list = exerciseTabListRef.current
+    const activeTab = list?.querySelector<HTMLElement>(
+      `[data-exercise-id="${activeExerciseId}"]`,
+    )
+    activeTab?.scrollIntoView?.({
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+      block: 'nearest',
+      inline: 'nearest',
+    })
+  }, [activeExerciseId])
 
   useEffect(() => {
     let isCurrent = true
@@ -223,6 +311,9 @@ export function LiveWorkoutPage() {
   }, [])
 
   function reload() {
+    if (discardInProgressRef.current) {
+      return
+    }
     setRevision((current) => current + 1)
   }
 
@@ -233,7 +324,7 @@ export function LiveWorkoutPage() {
     const tracked = action
       .then((result) => {
         setError(null)
-        if (pendingOptimisticSetMutations.current === 0) {
+        if (pendingOptimisticMutations.current === 0) {
           reload()
         }
         return result
@@ -241,7 +332,7 @@ export function LiveWorkoutPage() {
       .catch((caught: unknown) => {
         const error = caught instanceof Error ? caught : new Error(failure)
         setError(error.message)
-        if (pendingOptimisticSetMutations.current === 0) {
+        if (pendingOptimisticMutations.current === 0) {
           reload()
         }
         throw error
@@ -255,13 +346,139 @@ export function LiveWorkoutPage() {
     void trackWorkoutMutation(action, failure).catch(() => undefined)
   }
 
+  function trackOptimisticMutation<T>(action: Promise<T>) {
+    pendingOptimisticMutations.current += 1
+    return action.finally(() => {
+      pendingOptimisticMutations.current = Math.max(
+        0,
+        pendingOptimisticMutations.current - 1,
+      )
+    })
+  }
+
+  function updateSetMetricOptimistically(
+    setId: string,
+    metricKey: string,
+    value: WorkoutSetMetricValue,
+  ) {
+    const updatedAt = new Date().toISOString()
+    setState((current) => {
+      if (current.status !== 'ready') {
+        return current
+      }
+      const sourceSet = Object.values(current.setsByExercise)
+        .flat()
+        .find((set) => set.id === setId)
+      if (!sourceSet) {
+        return current
+      }
+      const allSets = current.setsByExercise[sourceSet.workoutExerciseId] ?? []
+      const updatesById = new Map(
+        buildSetMetricPropagationUpdates({
+          allSets,
+          sourceSet,
+          metricKey,
+          value,
+        }).map((update) => [update.setId, update]),
+      )
+      return {
+        ...current,
+        setsByExercise: {
+          ...current.setsByExercise,
+          [sourceSet.workoutExerciseId]: allSets.map((set) => {
+            const update = updatesById.get(set.id)
+            return update
+              ? {
+                  ...set,
+                  metricValues: update.metricValues,
+                  metricValueSources: update.metricValueSources,
+                  updatedAt,
+                }
+              : set
+          }),
+        },
+      }
+    })
+  }
+
+  function updateSetRirOptimistically(setId: string, rir: number | null) {
+    const updatedAt = new Date().toISOString()
+    setState((current) => {
+      if (current.status !== 'ready') {
+        return current
+      }
+      const setsByExercise = Object.fromEntries(
+        Object.entries(current.setsByExercise).map(([exerciseId, sets]) => [
+          exerciseId,
+          sets.map((set) =>
+            set.id === setId ? { ...set, rir, updatedAt } : set,
+          ),
+        ]),
+      )
+      return { ...current, setsByExercise }
+    })
+  }
+
+  function deleteSetOptimistically(workoutExerciseId: string, setId: string) {
+    setState((current) => {
+      if (current.status !== 'ready') {
+        return current
+      }
+      const remaining = (current.setsByExercise[workoutExerciseId] ?? [])
+        .filter((set) => set.id !== setId)
+        .map((set, index) => ({ ...set, setNumber: index + 1 }))
+      return {
+        ...current,
+        setsByExercise: {
+          ...current.setsByExercise,
+          [workoutExerciseId]: remaining,
+        },
+      }
+    })
+  }
+
+  function addSetAndShowImmediately(workoutExerciseId: string) {
+    run(
+      workoutRepository.addSet(workoutExerciseId).then((added) => {
+        setState((current) => {
+          if (current.status !== 'ready') {
+            return current
+          }
+          const currentSets = current.setsByExercise[workoutExerciseId] ?? []
+          if (currentSets.some((set) => set.id === added.id)) {
+            return current
+          }
+          return {
+            ...current,
+            setsByExercise: {
+              ...current.setsByExercise,
+              [workoutExerciseId]: [...currentSets, added].sort(
+                (left, right) => left.setNumber - right.setNumber,
+              ),
+            },
+          }
+        })
+        return added
+      }),
+    )
+  }
+
   async function waitForPendingWorkoutMutations() {
     while (pendingWorkoutMutations.current.size > 0) {
       await Promise.all([...pendingWorkoutMutations.current])
     }
   }
 
+  function runAfterPendingWorkoutMutations<T>(action: () => Promise<T>) {
+    const pending = [...pendingWorkoutMutations.current]
+    return Promise.all(pending).then(action)
+  }
+
   async function finishActiveWorkout(workout: Workout) {
+    if (finishInProgressRef.current) {
+      return
+    }
+    finishInProgressRef.current = true
     setConfirmFinish(false)
     setIsFinishing(true)
     try {
@@ -298,7 +515,32 @@ export function LiveWorkoutPage() {
         caught instanceof Error ? caught.message : 'Workout could not finish.',
       )
     } finally {
+      finishInProgressRef.current = false
       setIsFinishing(false)
+    }
+  }
+
+  async function discardActiveWorkout(workout: Workout) {
+    if (discardInProgressRef.current) {
+      return
+    }
+
+    discardInProgressRef.current = true
+    setIsDiscarding(true)
+    setError(null)
+    try {
+      await workoutRepository.discardWorkout(workout.id)
+      void cancelNativeRestTimer()
+      setConfirmDiscard(false)
+      navigate('/training', { replace: true })
+    } catch (caught) {
+      discardInProgressRef.current = false
+      setIsDiscarding(false)
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : 'Workout could not be discarded.',
+      )
     }
   }
 
@@ -313,29 +555,29 @@ export function LiveWorkoutPage() {
             soundEnabled: timerSound.enabled,
           })
         : await nativeRestTimerNotificationService.cancel()
-      const webPushStatus =
-        nativeStatus === 'unavailable'
-          ? timerSound.bannersEnabled
-            ? await webPushRestTimerNotificationService.sync(timer)
-            : await webPushRestTimerNotificationService.cancel()
-          : 'unavailable'
-      setNativeTimerMessage(
-        nativeTimerStatusMessage(nativeStatus) ??
-          webPushTimerStatusMessage(webPushStatus),
-      )
+      if (nativeStatus === 'unavailable') {
+        if (timerSound.bannersEnabled) {
+          await webPushRestTimerNotificationService.sync(timer)
+        } else {
+          await webPushRestTimerNotificationService.cancel()
+        }
+      }
     } catch {
-      setNativeTimerMessage(
-        'The outside-app timer alert could not be scheduled.',
-      )
+      // Outside-app alert delivery is optional and must never block or cover
+      // live set entry. Settings remains the place to inspect alert status.
     }
   }
 
   function runRestTimerMutation(
-    action: Promise<RestTimerState>,
+    action: Promise<RestTimerState | null>,
     requestPermission = false,
   ) {
     run(
-      action.then((timer) => syncNativeRestTimer(timer, requestPermission)),
+      action.then((timer) =>
+        timer
+          ? syncNativeRestTimer(timer, requestPermission)
+          : cancelNativeRestTimer(),
+      ),
       'Rest timer could not be updated.',
     )
   }
@@ -359,55 +601,79 @@ export function LiveWorkoutPage() {
 
   function updateRestTimerImmediately(
     update: (timer: RestTimerState) => RestTimerState,
-    persist: () => Promise<RestTimerState>,
+    persist: () => Promise<RestTimerState | null>,
   ) {
     showRestTimerImmediately(update)
     runRestTimerMutation(persist())
   }
 
-  function saveActiveExerciseDefaultRest(seconds: number) {
-    if (!activeExercise?.exerciseId) {
+  function changeActiveExerciseRest(seconds: number) {
+    if (!readyState || !activeExercise?.exerciseId) {
       setError('Exercise default rest time could not be saved.')
       return
     }
+    const normalizedSeconds = clampRestPickerSeconds(seconds)
+    const changedAt = new Date().toISOString()
     const exerciseId = activeExercise.exerciseId
     const workoutExerciseId = activeExercise.id
-    void Promise.all([
-      exerciseRepository.updateExerciseDefaultRest(exerciseId, seconds),
-      workoutRepository.updateWorkoutExerciseDefaultRest(
-        workoutExerciseId,
-        seconds,
-      ),
-    ])
-      .then(() => {
-        setError(null)
-        setState((current) => {
-          if (current.status !== 'ready') {
-            return current
-          }
-          return {
-            ...current,
-            exercises: current.exercises.map((exercise) =>
-              exercise.id === workoutExerciseId
-                ? {
-                    ...exercise,
-                    exerciseSnapshot: {
-                      ...exercise.exerciseSnapshot,
-                      defaultRestSeconds: seconds,
-                    },
-                  }
-                : exercise,
-            ),
-          }
-        })
-      })
-      .catch((caught: unknown) => {
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : 'Exercise default rest time could not be saved.',
+    const workoutId = readyState.workout.id
+    const shouldRestartTimer = Boolean(
+      readyState.workout.activeRestTimer &&
+      readyState.workout.activeRestTimer.status !== 'dismissed',
+    )
+
+    setState((current) => {
+      if (current.status !== 'ready' || current.workout.id !== workoutId) {
+        return current
+      }
+      return {
+        ...current,
+        workout: {
+          ...current.workout,
+          activeRestTimer:
+            shouldRestartTimer && current.workout.activeRestTimer
+              ? restartRestTimerWithDuration(
+                  current.workout.activeRestTimer,
+                  normalizedSeconds,
+                  changedAt,
+                )
+              : current.workout.activeRestTimer,
+        },
+        exercises: current.exercises.map((exercise) =>
+          exercise.id === workoutExerciseId
+            ? {
+                ...exercise,
+                exerciseSnapshot: {
+                  ...exercise.exerciseSnapshot,
+                  defaultRestSeconds: normalizedSeconds,
+                },
+              }
+            : exercise,
+        ),
+      }
+    })
+
+    const mutation = restDurationMutationChain.current.then(async () => {
+      await Promise.all([
+        exerciseRepository.updateExerciseDefaultRest(
+          exerciseId,
+          normalizedSeconds,
+        ),
+        workoutRepository.updateWorkoutExerciseDefaultRest(
+          workoutExerciseId,
+          normalizedSeconds,
+        ),
+      ])
+      if (shouldRestartTimer) {
+        const timer = await workoutRepository.setRestTimerDuration(
+          workoutId,
+          normalizedSeconds,
         )
-      })
+        await syncNativeRestTimer(timer)
+      }
+    })
+    restDurationMutationChain.current = mutation.catch(() => undefined)
+    run(mutation, 'Exercise rest duration could not be saved.')
   }
 
   async function cancelNativeRestTimer() {
@@ -416,22 +682,57 @@ export function LiveWorkoutPage() {
       if (nativeStatus === 'unavailable') {
         await webPushRestTimerNotificationService.cancel()
       }
-      setNativeTimerMessage(null)
     } catch {
-      setNativeTimerMessage(
-        'The pending outside-app timer alert could not be canceled.',
+      // Keep local timer controls usable even if notification cleanup fails.
+    }
+  }
+
+  async function dismissRestTimerIfPresent(workout: Workout) {
+    const timer = workout.activeRestTimer
+    if (!timer || timer.status === 'dismissed') {
+      await cancelNativeRestTimer()
+      return
+    }
+
+    const dismissedTimer = await workoutRepository.dismissRestTimer(workout.id)
+    if (dismissedTimer) {
+      await syncNativeRestTimer(dismissedTimer)
+    } else {
+      await cancelNativeRestTimer()
+    }
+  }
+
+  async function toggleWorkoutPause(workout: Workout) {
+    if (isWorkoutPauseBusy) {
+      return
+    }
+    setIsWorkoutPauseBusy(true)
+    setError(null)
+    try {
+      const changedAt = new Date().toISOString()
+      const updated = workout.pausedAt
+        ? await workoutRepository.resumeWorkout(workout.id, changedAt)
+        : await workoutRepository.pauseWorkout(workout.id, changedAt)
+      setState((current) =>
+        current.status === 'ready' && current.workout.id === updated.id
+          ? { ...current, workout: updated }
+          : current,
       )
+      window.dispatchEvent(new CustomEvent('fitness-log:workout-pause-changed'))
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : 'The workout timer could not be changed.',
+      )
+    } finally {
+      setIsWorkoutPauseBusy(false)
     }
   }
 
   const readyState = state.status === 'ready' ? state : null
   const elapsedSeconds = readyState
-    ? Math.max(
-        0,
-        Math.floor(
-          (now.getTime() - Date.parse(readyState.workout.startedAt)) / 1000,
-        ) - readyState.workout.elapsedPausedSeconds,
-      )
+    ? workoutElapsedSeconds(readyState.workout, now)
     : 0
   const restRemaining = getRestTimerRemainingSeconds(
     readyState?.workout.activeRestTimer ?? null,
@@ -445,7 +746,7 @@ export function LiveWorkoutPage() {
     readyState && activeExercise
       ? (readyState.setsByExercise[activeExercise.id] ?? [])
       : []
-  const activePrescription =
+  const activeSourcePrescription =
     readyState && activeExercise
       ? readyState.sourcePrescriptionsByExercise[activeExercise.id]
       : undefined
@@ -522,14 +823,26 @@ export function LiveWorkoutPage() {
       }
     }
 
+    function reloadWorkoutPause() {
+      setRevision((current) => current + 1)
+    }
+
     window.addEventListener(
       'fitness-log:rest-timer-completed',
       reloadCompletedTimer,
+    )
+    window.addEventListener(
+      'fitness-log:workout-pause-changed',
+      reloadWorkoutPause,
     )
     return () => {
       window.removeEventListener(
         'fitness-log:rest-timer-completed',
         reloadCompletedTimer,
+      )
+      window.removeEventListener(
+        'fitness-log:workout-pause-changed',
+        reloadWorkoutPause,
       )
     }
   }, [readyState])
@@ -562,7 +875,7 @@ export function LiveWorkoutPage() {
   if (state.status === 'loading') {
     return (
       <PageContainer>
-        <LoadingState label="Loading active workout" />
+        <LoadingState label="Loading active workout" variant="cards" />
       </PageContainer>
     )
   }
@@ -596,63 +909,99 @@ export function LiveWorkoutPage() {
     )
   }
 
+  const currentWorkoutId = state.workout.id
+
+  function addRestTimerTime() {
+    updateRestTimerImmediately(
+      (timer) =>
+        timer.status === 'completed'
+          ? {
+              ...timer,
+              startedAt: new Date().toISOString(),
+              durationSeconds: 30,
+              pausedAt: null,
+              accumulatedPausedSeconds: 0,
+              status: 'running',
+            }
+          : { ...timer, durationSeconds: timer.durationSeconds + 30 },
+      () => workoutRepository.addRestTimerSeconds(currentWorkoutId, 30),
+    )
+  }
+
+  function subtractRestTimerTime() {
+    updateRestTimerImmediately(
+      (timer) => ({
+        ...timer,
+        durationSeconds: Math.max(0, timer.durationSeconds - 30),
+      }),
+      () => workoutRepository.addRestTimerSeconds(currentWorkoutId, -30),
+    )
+  }
+
+  function dismissCurrentRestTimer() {
+    updateRestTimerImmediately(
+      (timer) => ({ ...timer, pausedAt: null, status: 'dismissed' }),
+      () => workoutRepository.dismissRestTimer(currentWorkoutId),
+    )
+  }
+
+  function pauseCurrentRestTimer() {
+    updateRestTimerImmediately(
+      (timer) =>
+        timer.status === 'running'
+          ? {
+              ...timer,
+              pausedAt: new Date().toISOString(),
+              status: 'paused',
+            }
+          : timer,
+      () => workoutRepository.pauseRestTimer(currentWorkoutId),
+    )
+  }
+
+  function resumeCurrentRestTimer() {
+    updateRestTimerImmediately(
+      (timer) => {
+        if (timer.status !== 'paused' || !timer.pausedAt) {
+          return timer
+        }
+        const resumedAt = new Date().toISOString()
+        return {
+          ...timer,
+          accumulatedPausedSeconds:
+            timer.accumulatedPausedSeconds +
+            Math.max(
+              0,
+              Math.round(
+                (Date.parse(resumedAt) - Date.parse(timer.pausedAt)) / 1000,
+              ),
+            ),
+          pausedAt: null,
+          status: 'running',
+        }
+      },
+      () => workoutRepository.resumeRestTimer(currentWorkoutId),
+    )
+  }
+
   return (
-    <PageContainer>
+    <div className="page-container live-workout-page">
       <div aria-live="polite" className="visually-hidden">
         {announcement}
       </div>
-      <div className="live-workout-session-bar">
-        <span className="live-workout-session-time">
-          <Clock aria-hidden="true" size={17} />
-          {formatDuration(elapsedSeconds)}
-        </span>
-        <SecondaryButton
-          className="button-danger live-workout-discard"
-          type="button"
-          onClick={() => setConfirmDiscard(true)}
-        >
-          <Trash2 aria-hidden="true" size={16} />
-          {t('Discard workout')}
-        </SecondaryButton>
-        <PrimaryButton
-          className="live-workout-finish"
-          disabled={isFinishing}
-          type="button"
-          onClick={() => {
-            setSaveAllChanges(false)
-            setConfirmFinish(true)
-          }}
-        >
-          {isFinishing ? t('Saving...') : t('Finish')}
-        </PrimaryButton>
-      </div>
-
       {error ? <ValidationMessage message={error} /> : null}
-      {nativeTimerMessage ? (
-        <div className="live-timer-notice" role="status">
-          <BellRing aria-hidden="true" size={17} />
-          <span>{nativeTimerMessage}</span>
-          <button
-            type="button"
-            onClick={() => void navigate('/settings?section=notifications')}
-          >
-            {t('Timer settings')}
-          </button>
-          <IconButton
-            aria-label={t('Dismiss timer notice')}
-            onClick={() => setNativeTimerMessage(null)}
-          >
-            <X aria-hidden="true" size={16} />
-          </IconButton>
-        </div>
-      ) : null}
 
       {state.exercises.length > 1 ? (
-        <Card className="exercise-navigator exercise-navigator-compact">
-          <div className="exercise-navigator-heading">
-            <h2>{t('Exercises')}</h2>
-            <small>{t('Hold and drag to reorder')}</small>
-          </div>
+        <section
+          aria-label={t('Exercises')}
+          className={[
+            'exercise-navigator',
+            exerciseTabOverflow.left ? 'can-scroll-left' : '',
+            exerciseTabOverflow.right ? 'can-scroll-right' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
           <SortableList
             direction="horizontal"
             getItemLabel={(id) =>
@@ -662,34 +1011,37 @@ export function LiveWorkoutPage() {
             itemIds={state.exercises.map((exercise) => exercise.id)}
             onReorder={reorderExercises}
           >
-            <div className="exercise-tab-list">
+            <div className="exercise-tab-list" ref={exerciseTabListRef}>
               {state.exercises.map((exercise, index) => (
                 <SortableListItem id={exercise.id} key={exercise.id}>
                   {(drag) => (
-                    <button
-                      aria-current={exercise.id === activeExercise?.id}
-                      aria-label={`${exercise.exerciseSnapshot.exerciseName}, exercise ${index + 1} of ${state.exercises.length}`}
-                      className="exercise-sort-card"
-                      onClick={() => selectExercise(index)}
-                      ref={drag.setActivatorNodeRef}
-                      type="button"
-                      {...drag.attributes}
-                      {...(drag.listeners ?? {})}
+                    <div
+                      className={`exercise-sort-card${
+                        exercise.id === activeExercise?.id ? ' is-active' : ''
+                      }${exercise.skipped ? ' is-skipped' : ''}`}
+                      data-exercise-id={exercise.id}
                     >
-                      <span>{index + 1}</span>
-                      <small>{exercise.exerciseSnapshot.exerciseName}</small>
-                      <GripVertical
-                        aria-hidden="true"
-                        className="exercise-sort-grip"
-                        size={14}
+                      <button
+                        aria-current={exercise.id === activeExercise?.id}
+                        aria-label={`${exercise.exerciseSnapshot.exerciseName}, exercise ${index + 1} of ${state.exercises.length}`}
+                        className="exercise-sort-select"
+                        onClick={() => selectExercise(index)}
+                        type="button"
+                      >
+                        <span>{index + 1}</span>
+                        <small>{exercise.exerciseSnapshot.exerciseName}</small>
+                      </button>
+                      <SortableDragHandle
+                        drag={drag}
+                        label={`Reorder ${exercise.exerciseSnapshot.exerciseName}`}
                       />
-                    </button>
+                    </div>
                   )}
                 </SortableListItem>
               ))}
             </div>
           </SortableList>
-        </Card>
+        </section>
       ) : null}
 
       {activeExercise ? (
@@ -699,12 +1051,18 @@ export function LiveWorkoutPage() {
           exercise={activeExercise}
           exerciseCount={state.exercises.length}
           exerciseIndex={activeIndex}
+          elapsedSeconds={elapsedSeconds}
           enterDirection={workspaceEnterDirection}
+          forceRir={state.workout.isDeload === true}
+          isWorkoutPauseBusy={isWorkoutPauseBusy}
           rirTargetOnEverySet={state.workout.trackRirEverySet ?? false}
           key={activeExercise.id}
           onAddExercise={() => setPicker({ mode: 'add' })}
-          onAddSet={() => run(workoutRepository.addSet(activeExercise.id))}
+          onAddSet={() => addSetAndShowImmediately(activeExercise.id)}
           onCompleteSet={(set, completed) => {
+            if (deletingSetIds.current.has(set.id)) {
+              return
+            }
             const restSeconds =
               set.restSecondsUsed ??
               activeExercise.exerciseSnapshot.defaultRestSeconds ??
@@ -763,44 +1121,38 @@ export function LiveWorkoutPage() {
             if (completed && !hasMoreSetsInExercise && nextExercise) {
               setActiveExerciseId(nextExercise.id)
             }
-            pendingOptimisticSetMutations.current += 1
-            const setMutation = workoutRepository
-              .updateWorkoutSet(set.id, { completed })
-              .then(async () => {
-                if (!completed) {
-                  const timer = await workoutRepository.dismissRestTimer(
-                    state.workout.id,
-                  )
-                  await syncNativeRestTimer(timer)
-                  return
-                }
-                if (hasMoreSetsInExercise && restSeconds > 0) {
-                  const timer = await workoutRepository.setRestTimer(
-                    state.workout.id,
-                    restSeconds,
-                  )
-                  await syncNativeRestTimer(timer, true)
-                  return
-                }
-                const timer = await workoutRepository.dismissRestTimer(
-                  state.workout.id,
-                )
-                await syncNativeRestTimer(timer)
-              })
-              .finally(() => {
-                pendingOptimisticSetMutations.current = Math.max(
-                  0,
-                  pendingOptimisticSetMutations.current - 1,
-                )
-              })
+            const setMutation = trackOptimisticMutation(
+              workoutRepository
+                .updateWorkoutSet(set.id, { completed })
+                .then(async () => {
+                  if (!completed) {
+                    await dismissRestTimerIfPresent(state.workout)
+                    return
+                  }
+                  if (hasMoreSetsInExercise && restSeconds > 0) {
+                    const timer = await workoutRepository.setRestTimer(
+                      state.workout.id,
+                      restSeconds,
+                    )
+                    await syncNativeRestTimer(timer, true)
+                    return
+                  }
+                  await dismissRestTimerIfPresent(state.workout)
+                }),
+            )
             run(setMutation)
           }}
           onDeleteSet={(setId) => {
+            if (deletingSetIds.current.has(setId)) {
+              return
+            }
+            deletingSetIds.current.add(setId)
+            deleteSetOptimistically(activeExercise.id, setId)
             const deletingLastSet = activeSets.at(-1)?.id === setId
             const timerIsActive =
               state.workout.activeRestTimer?.status === 'running' ||
               state.workout.activeRestTimer?.status === 'paused'
-            run(
+            const deletion = runAfterPendingWorkoutMutations(() =>
               workoutRepository.deleteSet(setId).then(async () => {
                 if (!deletingLastSet || !timerIsActive) {
                   return
@@ -808,9 +1160,14 @@ export function LiveWorkoutPage() {
                 const timer = await workoutRepository.dismissRestTimer(
                   state.workout.id,
                 )
-                await syncNativeRestTimer(timer)
+                if (timer) {
+                  await syncNativeRestTimer(timer)
+                } else {
+                  await cancelNativeRestTimer()
+                }
               }),
-            )
+            ).finally(() => deletingSetIds.current.delete(setId))
+            run(trackOptimisticMutation(deletion))
           }}
           onNext={() => selectExercise(activeIndex + 1)}
           onPrevious={() => selectExercise(activeIndex - 1)}
@@ -822,18 +1179,39 @@ export function LiveWorkoutPage() {
             })
           }
           onRemoveExercise={() => setConfirmRemove(true)}
+          onChangeExerciseDefaultRest={changeActiveExerciseRest}
+          onDismissRestTimer={dismissCurrentRestTimer}
+          onPauseRestTimer={pauseCurrentRestTimer}
+          onResumeRestTimer={resumeCurrentRestTimer}
           onSetMetric={(set, metricValues) => {
+            if (deletingSetIds.current.has(set.id)) {
+              return
+            }
+            updateSetMetricOptimistically(
+              set.id,
+              metricValues.key,
+              metricValues.value,
+            )
             run(
-              workoutRepository.updateWorkoutSetMetricAndPropagate(
-                set.id,
-                metricValues.key,
-                metricValues.value,
+              trackOptimisticMutation(
+                workoutRepository.updateWorkoutSetMetricAndPropagate(
+                  set.id,
+                  metricValues.key,
+                  metricValues.value,
+                ),
               ),
             )
           }}
-          onSetRir={(set, rir) =>
-            run(workoutRepository.updateWorkoutSet(set.id, { rir }))
-          }
+          onSetRir={(set, rir) => {
+            if (!deletingSetIds.current.has(set.id)) {
+              updateSetRirOptimistically(set.id, rir)
+              run(
+                trackOptimisticMutation(
+                  workoutRepository.updateWorkoutSet(set.id, { rir }),
+                ),
+              )
+            }
+          }}
           onSaveNotes={(notes) =>
             trackWorkoutMutation(
               workoutRepository.updateWorkoutExerciseNotes(
@@ -843,6 +1221,15 @@ export function LiveWorkoutPage() {
               'Exercise notes could not be saved.',
             )
           }
+          onSavePrescription={(input) =>
+            trackWorkoutMutation(
+              workoutRepository.updateLiveExercisePrescription({
+                workoutExerciseId: activeExercise.id,
+                ...input,
+              }),
+              'Exercise target could not be saved.',
+            )
+          }
           onSkip={(skipped) => {
             const nextExercise = state.exercises[activeIndex + 1]
             if (skipped && nextExercise) {
@@ -850,100 +1237,16 @@ export function LiveWorkoutPage() {
             }
             run(workoutRepository.skipExercise(activeExercise.id, skipped))
           }}
-          prescription={activePrescription}
-          restTimerPanel={
-            <RestTimerPanel
-              onAddTime={() => {
-                updateRestTimerImmediately(
-                  (timer) =>
-                    timer.status === 'completed'
-                      ? {
-                          ...timer,
-                          startedAt: new Date().toISOString(),
-                          durationSeconds: 30,
-                          pausedAt: null,
-                          accumulatedPausedSeconds: 0,
-                          status: 'running',
-                        }
-                      : {
-                          ...timer,
-                          durationSeconds: timer.durationSeconds + 30,
-                        },
-                  () =>
-                    workoutRepository.addRestTimerSeconds(state.workout.id, 30),
-                )
-              }}
-              onSubtractTime={() => {
-                updateRestTimerImmediately(
-                  (timer) => ({
-                    ...timer,
-                    durationSeconds: Math.max(0, timer.durationSeconds - 30),
-                  }),
-                  () =>
-                    workoutRepository.addRestTimerSeconds(
-                      state.workout.id,
-                      -30,
-                    ),
-                )
-              }}
-              onDismiss={() => {
-                updateRestTimerImmediately(
-                  (timer) => ({
-                    ...timer,
-                    pausedAt: null,
-                    status: 'dismissed',
-                  }),
-                  () => workoutRepository.dismissRestTimer(state.workout.id),
-                )
-              }}
-              onPause={() => {
-                updateRestTimerImmediately(
-                  (timer) =>
-                    timer.status === 'running'
-                      ? {
-                          ...timer,
-                          pausedAt: new Date().toISOString(),
-                          status: 'paused',
-                        }
-                      : timer,
-                  () => workoutRepository.pauseRestTimer(state.workout.id),
-                )
-              }}
-              onResume={() => {
-                updateRestTimerImmediately(
-                  (timer) => {
-                    if (timer.status !== 'paused' || !timer.pausedAt) {
-                      return timer
-                    }
-                    const resumedAt = new Date().toISOString()
-                    return {
-                      ...timer,
-                      accumulatedPausedSeconds:
-                        timer.accumulatedPausedSeconds +
-                        Math.max(
-                          0,
-                          Math.round(
-                            (Date.parse(resumedAt) -
-                              Date.parse(timer.pausedAt)) /
-                              1000,
-                          ),
-                        ),
-                      pausedAt: null,
-                      status: 'running',
-                    }
-                  },
-                  () => workoutRepository.resumeRestTimer(state.workout.id),
-                )
-              }}
-              remainingSeconds={restRemaining}
-              timer={state.workout.activeRestTimer}
-              exerciseDefaultRestSeconds={
-                activeExercise.exerciseSnapshot.defaultRestSeconds ?? 0
-              }
-              onChangeExerciseDefaultRest={saveActiveExerciseDefaultRest}
-            />
-          }
+          onToggleWorkoutPause={() => void toggleWorkoutPause(state.workout)}
+          prescription={liveExercisePrescription(
+            activeExercise,
+            activeSets,
+            activeSourcePrescription,
+          )}
+          restRemainingSeconds={restRemaining}
+          restTimer={state.workout.activeRestTimer}
           sets={activeSets}
+          workoutPaused={Boolean(state.workout.pausedAt)}
         />
       ) : (
         <Card>
@@ -962,7 +1265,33 @@ export function LiveWorkoutPage() {
           />
         </Card>
       )}
-      <div aria-hidden="true" className="live-workout-session-bar-spacer" />
+      <div className="live-workout-session-bar">
+        <RestTimerControls
+          onAddTime={addRestTimerTime}
+          onSubtractTime={subtractRestTimerTime}
+          remainingSeconds={restRemaining}
+          timer={state.workout.activeRestTimer}
+        />
+        <SecondaryButton
+          className="button-danger live-workout-discard"
+          type="button"
+          onClick={() => setConfirmDiscard(true)}
+        >
+          <Trash2 aria-hidden="true" size={16} />
+          {t('Discard')}
+        </SecondaryButton>
+        <PrimaryButton
+          className="live-workout-finish"
+          disabled={isFinishing}
+          type="button"
+          onClick={() => {
+            setSaveAllChanges(false)
+            setConfirmFinish(true)
+          }}
+        >
+          {isFinishing ? t('Saving...') : t('Finish')}
+        </PrimaryButton>
+      </div>
 
       <ExercisePickerSheet
         currentWorkoutId={state.workout.id}
@@ -979,21 +1308,15 @@ export function LiveWorkoutPage() {
       />
 
       <ModalConfirmationDialog
-        confirmLabel="Discard Workout"
+        confirmLabel={isDiscarding ? 'Discarding...' : 'Discard Workout'}
+        isConfirming={isDiscarding}
         isOpen={confirmDiscard}
-        onCancel={() => setConfirmDiscard(false)}
-        onConfirm={() => {
-          run(
-            workoutRepository
-              .discardWorkout(state.workout.id)
-              .then(() => cancelNativeRestTimer())
-              .then(() => {
-                setConfirmDiscard(false)
-                navigate('/training')
-              }),
-            'Workout could not be discarded.',
-          )
+        onCancel={() => {
+          if (!isDiscarding) {
+            setConfirmDiscard(false)
+          }
         }}
+        onConfirm={() => discardActiveWorkout(state.workout)}
         title="Discard workout?"
       >
         {t(
@@ -1045,8 +1368,36 @@ export function LiveWorkoutPage() {
             return
           }
           setConfirmRemove(false)
-          run(
+          const removedIndex = state.exercises.findIndex(
+            (exercise) => exercise.id === activeExercise.id,
+          )
+          const remainingExercises = state.exercises.filter(
+            (exercise) => exercise.id !== activeExercise.id,
+          )
+          const nextExercise =
+            remainingExercises[
+              Math.min(Math.max(removedIndex, 0), remainingExercises.length - 1)
+            ] ?? null
+          setActiveExerciseId(nextExercise?.id ?? null)
+          setState((current) => {
+            if (current.status !== 'ready') {
+              return current
+            }
+            const setsByExercise = { ...current.setsByExercise }
+            delete setsByExercise[activeExercise.id]
+            return {
+              ...current,
+              exercises: current.exercises.filter(
+                (exercise) => exercise.id !== activeExercise.id,
+              ),
+              setsByExercise,
+            }
+          })
+          const removal = runAfterPendingWorkoutMutations(() =>
             workoutRepository.removeExerciseFromLiveWorkout(activeExercise.id),
+          )
+          run(
+            trackOptimisticMutation(removal),
             'Exercise could not be removed.',
           )
         }}
@@ -1057,44 +1408,8 @@ export function LiveWorkoutPage() {
             activeExercise?.exerciseSnapshot.exerciseName ?? t('this exercise'),
         })}
       </ModalConfirmationDialog>
-    </PageContainer>
+    </div>
   )
-}
-
-function nativeTimerStatusMessage(status: NativeRestTimerNotificationStatus) {
-  switch (status) {
-    case 'denied':
-      return 'Outside-app timer alerts are disabled. Allow notifications for this app in iPhone Settings.'
-    case 'permission-required':
-      return 'Allow notifications to receive rest-timer alerts outside the app.'
-    case 'unavailable':
-    case 'granted':
-    case 'scheduled':
-    case 'canceled':
-    case 'expired':
-      return null
-  }
-}
-
-function webPushTimerStatusMessage(status: WebPushRestTimerNotificationStatus) {
-  switch (status) {
-    case 'denied':
-      return 'Outside-app timer alerts are disabled. Allow notifications for this app in iPhone Settings.'
-    case 'install-required':
-      return 'Install this app on the Home Screen before enabling outside-app timer alerts.'
-    case 'permission-required':
-      return 'Enable outside-app timer alerts in Settings before leaving the app.'
-    case 'not-configured':
-      return 'Outside-app timer alerts are not configured on this deployment.'
-    case 'failed':
-      return 'The outside-app timer alert could not be scheduled. Check your internet connection.'
-    case 'unavailable':
-    case 'granted':
-    case 'scheduled':
-    case 'canceled':
-    case 'expired':
-      return null
-  }
 }
 
 function ExerciseWorkspace({
@@ -1103,49 +1418,71 @@ function ExerciseWorkspace({
   exercise,
   exerciseCount,
   exerciseIndex,
+  elapsedSeconds,
   enterDirection,
+  forceRir,
+  isWorkoutPauseBusy,
   onAddExercise,
   onAddSet,
+  onChangeExerciseDefaultRest,
   onCompleteSet,
   onDeleteSet,
+  onDismissRestTimer,
   onNext,
   onPrevious,
   onReplaceExercise,
   onRemoveExercise,
+  onPauseRestTimer,
+  onResumeRestTimer,
   onSetMetric,
   onSetRir,
   onSaveNotes,
+  onSavePrescription,
   onSkip,
+  onToggleWorkoutPause,
   prescription,
-  restTimerPanel,
+  restRemainingSeconds,
+  restTimer,
   rirTargetOnEverySet,
   sets,
+  workoutPaused,
 }: {
   canGoNext: boolean
   canGoPrevious: boolean
   exercise: WorkoutExercise
   exerciseCount: number
   exerciseIndex: number
+  elapsedSeconds: number
   enterDirection: 'next' | 'previous' | null
+  forceRir: boolean
+  isWorkoutPauseBusy: boolean
   rirTargetOnEverySet: boolean
   onAddExercise: () => void
   onAddSet: () => void
+  onChangeExerciseDefaultRest: (seconds: number) => void
   onCompleteSet: (set: WorkoutSet, completed: boolean) => void
   onDeleteSet: (setId: string) => void
+  onDismissRestTimer: () => void
   onNext: () => void
   onPrevious: () => void
   onReplaceExercise: () => void
   onRemoveExercise: () => void
+  onPauseRestTimer: () => void
+  onResumeRestTimer: () => void
   onSetMetric: (
     set: WorkoutSet,
     value: { key: string; value: WorkoutSetMetricValue },
   ) => void
   onSetRir: (set: WorkoutSet, rir: number | null) => void
   onSaveNotes: (notes: string) => Promise<unknown>
+  onSavePrescription: (input: LivePrescriptionInput) => Promise<unknown>
   onSkip: (skipped: boolean) => void
-  prescription: ActiveCycleWorkoutExercise | undefined
-  restTimerPanel: ReactNode
+  onToggleWorkoutPause: () => void
+  prescription: LiveExercisePrescription
+  restRemainingSeconds: number
+  restTimer: Workout['activeRestTimer']
   sets: WorkoutSet[]
+  workoutPaused: boolean
 }) {
   const { t } = useLanguage()
   const metrics = exercise.exerciseSnapshot.trackingMetrics
@@ -1159,6 +1496,25 @@ function ExerciseWorkspace({
   const finalProgrammedSetId = getFinalProgrammedSetId(sets)
   const exerciseNotes = exercise.notes.trim()
   const [isEditingNotes, setIsEditingNotes] = useState(false)
+  const [isExerciseOptionsOpen, setIsExerciseOptionsOpen] = useState(false)
+  const [isEditingPrescription, setIsEditingPrescription] = useState(false)
+  const [isSavingPrescription, setIsSavingPrescription] = useState(false)
+  const [prescriptionError, setPrescriptionError] = useState<string | null>(
+    null,
+  )
+  const [setCountDraft, setSetCountDraft] = useState(
+    String(prescription.targetSetCount),
+  )
+  const [repsMinDraft, setRepsMinDraft] = useState(
+    prescription.targetRepsMin === null
+      ? ''
+      : String(prescription.targetRepsMin),
+  )
+  const [repsMaxDraft, setRepsMaxDraft] = useState(
+    prescription.targetRepsMax === null
+      ? ''
+      : String(prescription.targetRepsMax),
+  )
   const [isSavingNotes, setIsSavingNotes] = useState(false)
   const [notesDraft, setNotesDraft] = useState(exercise.notes)
 
@@ -1174,18 +1530,52 @@ function ExerciseWorkspace({
     }
   }
 
+  function openExerciseOptions() {
+    setSetCountDraft(String(prescription.targetSetCount))
+    setRepsMinDraft(
+      prescription.targetRepsMin === null
+        ? ''
+        : String(prescription.targetRepsMin),
+    )
+    setRepsMaxDraft(
+      prescription.targetRepsMax === null
+        ? ''
+        : String(prescription.targetRepsMax),
+    )
+    setPrescriptionError(null)
+    setIsEditingPrescription(false)
+    setIsExerciseOptionsOpen(true)
+  }
+
+  async function savePrescription() {
+    const parsed = parseLivePrescriptionDraft({
+      setCount: setCountDraft,
+      repsMin: repsMinDraft,
+      repsMax: repsMaxDraft,
+    })
+    if (!parsed.ok) {
+      setPrescriptionError(parsed.error)
+      return
+    }
+    setIsSavingPrescription(true)
+    try {
+      await onSavePrescription(parsed.value)
+      setPrescriptionError(null)
+      setIsEditingPrescription(false)
+    } catch (caught: unknown) {
+      setPrescriptionError(
+        caught instanceof Error
+          ? caught.message
+          : 'Exercise target could not be saved.',
+      )
+    } finally {
+      setIsSavingPrescription(false)
+    }
+  }
+
   return (
-    <Card
-      className={[
-        'exercise-workspace',
-        exercise.skipped ? 'skipped' : '',
-        enterDirection === 'next'
-          ? 'exercise-workspace-enter-next'
-          : enterDirection === 'previous'
-            ? 'exercise-workspace-enter-previous'
-            : '',
-        swipe.isDragging ? 'is-swiping' : '',
-      ]
+    <div
+      className={['exercise-workspace', exercise.skipped ? 'skipped' : '']
         .filter(Boolean)
         .join(' ')}
       onKeyDown={(event) => {
@@ -1202,45 +1592,82 @@ function ExerciseWorkspace({
         }
       }}
       tabIndex={0}
-      style={swipe.style}
-      {...swipe.handlers}
     >
-      <div className="exercise-card-header">
-        <div className="exercise-title-block">
-          <p className="eyebrow">
-            {t('Exercise {current} of {total}', {
-              current: exerciseIndex + 1,
-              total: exerciseCount,
-            })}
-          </p>
-          <h2>{exercise.exerciseSnapshot.exerciseName}</h2>
-          {exercise.skipped ? <p className="muted">{t('Skipped')}</p> : null}
-          <p className="muted">
-            {formatPrescriptionSummary(prescription, weightUnit)}
-          </p>
+      <div
+        className={[
+          'exercise-workspace-swipe-area',
+          enterDirection === 'next'
+            ? 'exercise-workspace-enter-next'
+            : enterDirection === 'previous'
+              ? 'exercise-workspace-enter-previous'
+              : '',
+          swipe.isDragging ? 'is-swiping' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        style={swipe.style}
+        {...swipe.handlers}
+      >
+        <div className="exercise-card-header">
+          <div className="exercise-title-block">
+            <p className="eyebrow">
+              {t('Exercise {current} of {total}', {
+                current: exerciseIndex + 1,
+                total: exerciseCount,
+              })}
+            </p>
+            <div className="exercise-title-line">
+              <div className="exercise-title-main">
+                <h2>{exercise.exerciseSnapshot.exerciseName}</h2>
+              </div>
+              <IconButton
+                aria-label={t('Edit exercise notes')}
+                className={`exercise-notes-button${exerciseNotes ? ' has-notes' : ''}`}
+                onClick={() => setIsEditingNotes(true)}
+                title={t('Exercise notes')}
+              >
+                <NotebookPen aria-hidden="true" size={19} />
+              </IconButton>
+              <IconButton
+                aria-expanded={isExerciseOptionsOpen}
+                aria-haspopup="dialog"
+                aria-label={t('More exercise actions')}
+                className="exercise-options-button"
+                onClick={openExerciseOptions}
+                title={t('More exercise actions')}
+              >
+                <Ellipsis aria-hidden="true" size={20} />
+              </IconButton>
+            </div>
+            {exercise.skipped ? <p className="muted">{t('Skipped')}</p> : null}
+          </div>
         </div>
-        {restTimerPanel}
+
+        <div className="set-list">
+          {sets.map((set) => (
+            <SetRow
+              exercise={exercise}
+              finalProgrammedSetId={finalProgrammedSetId}
+              forceRir={forceRir}
+              key={set.id}
+              metrics={metrics}
+              onComplete={(completed) => onCompleteSet(set, completed)}
+              onDelete={() => onDeleteSet(set.id)}
+              onMetricChange={(key, value) => onSetMetric(set, { key, value })}
+              onRirChange={(rir) => onSetRir(set, rir)}
+              prescription={prescription}
+              rirTargetOnEverySet={rirTargetOnEverySet}
+              set={set}
+            />
+          ))}
+        </div>
       </div>
 
-      <div className="set-list">
-        {sets.map((set) => (
-          <SetRow
-            exercise={exercise}
-            finalProgrammedSetId={finalProgrammedSetId}
-            key={set.id}
-            metrics={metrics}
-            onComplete={(completed) => onCompleteSet(set, completed)}
-            onDelete={() => onDeleteSet(set.id)}
-            onMetricChange={(key, value) => onSetMetric(set, { key, value })}
-            onRirChange={(rir) => onSetRir(set, rir)}
-            prescription={prescription}
-            rirTargetOnEverySet={rirTargetOnEverySet}
-            set={set}
-          />
-        ))}
-      </div>
-
-      <SecondaryButton type="button" onClick={onAddSet}>
+      <SecondaryButton
+        className="exercise-add-set-button"
+        type="button"
+        onClick={onAddSet}
+      >
         <Plus aria-hidden="true" size={18} />
         {t('Add Set')}
       </SecondaryButton>
@@ -1253,10 +1680,6 @@ function ExerciseWorkspace({
           <Plus aria-hidden="true" size={16} />
           {t('Add Exercise')}
         </SecondaryButton>
-        <SecondaryButton type="button" onClick={onReplaceExercise}>
-          <RefreshCcw aria-hidden="true" size={16} />
-          {t('Swap Exercise')}
-        </SecondaryButton>
         <SecondaryButton
           className="button-danger"
           type="button"
@@ -1264,66 +1687,176 @@ function ExerciseWorkspace({
         >
           {t('Remove Exercise')}
         </SecondaryButton>
-        <SecondaryButton
-          type="button"
-          disabled={!exercise.skipped && !canSkipWorkoutExercise(sets)}
-          onClick={() => onSkip(!exercise.skipped)}
-        >
-          {t(exercise.skipped ? 'Unskip' : 'Skip Exercise')}
-        </SecondaryButton>
       </div>
 
-      <aside aria-label={t('Exercise notes')} className="live-exercise-notes">
-        <div className="live-exercise-notes-header">
-          <p className="eyebrow">{t('Exercise notes')}</p>
-          {!isEditingNotes ? (
-            <IconButton
-              aria-label={t('Edit exercise notes')}
-              onClick={() => setIsEditingNotes(true)}
-            >
-              <Pencil aria-hidden="true" size={16} />
-            </IconButton>
-          ) : null}
-        </div>
-        {isEditingNotes ? (
-          <>
-            <textarea
-              aria-label={t('Exercise notes')}
-              onChange={(event) => setNotesDraft(event.currentTarget.value)}
-              rows={3}
-              value={notesDraft}
-            />
-            <div className="live-exercise-notes-actions">
+      <BottomSheet
+        isOpen={isExerciseOptionsOpen}
+        onClose={() => setIsExerciseOptionsOpen(false)}
+        title="Exercise options"
+        variant="page"
+      >
+        {isEditingPrescription ? (
+          <div className="live-prescription-form">
+            <FormField id="live-target-set-count" label="Sets">
+              <NumericInput
+                id="live-target-set-count"
+                max={99}
+                min={1}
+                onChange={(event) =>
+                  setSetCountDraft(event.currentTarget.value)
+                }
+                value={setCountDraft}
+              />
+            </FormField>
+            {metrics.some((metric) => metric.key === 'reps') ? (
+              <div className="live-prescription-rep-fields">
+                <FormField id="live-target-reps-min" label="Minimum reps">
+                  <NumericInput
+                    id="live-target-reps-min"
+                    max={999}
+                    min={1}
+                    onChange={(event) =>
+                      setRepsMinDraft(event.currentTarget.value)
+                    }
+                    value={repsMinDraft}
+                  />
+                </FormField>
+                <FormField id="live-target-reps-max" label="Maximum reps">
+                  <NumericInput
+                    id="live-target-reps-max"
+                    max={999}
+                    min={1}
+                    onChange={(event) =>
+                      setRepsMaxDraft(event.currentTarget.value)
+                    }
+                    value={repsMaxDraft}
+                  />
+                </FormField>
+              </div>
+            ) : null}
+            {prescriptionError ? (
+              <ValidationMessage message={prescriptionError} />
+            ) : null}
+            <div className="button-row">
               <SecondaryButton
-                disabled={isSavingNotes}
+                disabled={isSavingPrescription}
                 type="button"
                 onClick={() => {
-                  setNotesDraft(exercise.notes)
-                  setIsEditingNotes(false)
+                  setPrescriptionError(null)
+                  setIsEditingPrescription(false)
                 }}
               >
-                {t('Cancel')}
+                Cancel
               </SecondaryButton>
               <PrimaryButton
-                disabled={isSavingNotes}
+                aria-busy={isSavingPrescription}
+                disabled={isSavingPrescription}
                 type="button"
-                onClick={() => void saveNotes()}
+                onClick={() => void savePrescription()}
               >
-                {isSavingNotes ? t('Saving...') : t('Save notes')}
+                Save target
               </PrimaryButton>
             </div>
-          </>
+          </div>
         ) : (
-          <p>{exerciseNotes || t('No exercise notes.')}</p>
+          <div className="exercise-options-sheet-actions">
+            <div className="exercise-options-prescription">
+              <div>
+                <p className="eyebrow">Current workout target</p>
+                <h3>{formatPrescriptionSummary(prescription, weightUnit)}</h3>
+              </div>
+              <IconButton
+                aria-label="Edit current workout target"
+                title="Edit current workout target"
+                onClick={() => setIsEditingPrescription(true)}
+              >
+                <Pencil aria-hidden="true" size={18} />
+              </IconButton>
+            </div>
+            <ExerciseOptionsTimerSettings
+              defaultRestSeconds={
+                exercise.exerciseSnapshot.defaultRestSeconds ?? 0
+              }
+              elapsedSeconds={elapsedSeconds}
+              isWorkoutPauseBusy={isWorkoutPauseBusy}
+              onChangeDefaultRest={onChangeExerciseDefaultRest}
+              onDismissRestTimer={onDismissRestTimer}
+              onPauseRestTimer={onPauseRestTimer}
+              onResumeRestTimer={onResumeRestTimer}
+              onToggleWorkoutPause={onToggleWorkoutPause}
+              restRemainingSeconds={restRemainingSeconds}
+              restTimer={restTimer}
+              workoutPaused={workoutPaused}
+            />
+            <SecondaryButton
+              type="button"
+              onClick={() => {
+                setIsExerciseOptionsOpen(false)
+                onReplaceExercise()
+              }}
+            >
+              <RefreshCcw aria-hidden="true" size={18} />
+              {t('Swap Exercise')}
+            </SecondaryButton>
+            <SecondaryButton
+              type="button"
+              disabled={!exercise.skipped && !canSkipWorkoutExercise(sets)}
+              onClick={() => {
+                setIsExerciseOptionsOpen(false)
+                onSkip(!exercise.skipped)
+              }}
+            >
+              {t(exercise.skipped ? 'Unskip' : 'Skip Exercise')}
+            </SecondaryButton>
+          </div>
         )}
-      </aside>
-    </Card>
+      </BottomSheet>
+
+      <BottomSheet
+        isOpen={isEditingNotes}
+        onClose={() => {
+          setNotesDraft(exercise.notes)
+          setIsEditingNotes(false)
+        }}
+        title="Exercise notes"
+      >
+        <div className="live-exercise-notes-editor">
+          <textarea
+            aria-label={t('Exercise notes')}
+            onChange={(event) => setNotesDraft(event.currentTarget.value)}
+            placeholder={t('No exercise notes.')}
+            rows={5}
+            value={notesDraft}
+          />
+          <div className="live-exercise-notes-actions">
+            <SecondaryButton
+              disabled={isSavingNotes}
+              type="button"
+              onClick={() => {
+                setNotesDraft(exercise.notes)
+                setIsEditingNotes(false)
+              }}
+            >
+              {t('Cancel')}
+            </SecondaryButton>
+            <PrimaryButton
+              disabled={isSavingNotes}
+              type="button"
+              onClick={() => void saveNotes()}
+            >
+              {isSavingNotes ? t('Saving...') : t('Save notes')}
+            </PrimaryButton>
+          </div>
+        </div>
+      </BottomSheet>
+    </div>
   )
 }
 
 function SetRow({
   exercise,
   finalProgrammedSetId,
+  forceRir,
   metrics,
   onComplete,
   onDelete,
@@ -1335,12 +1868,13 @@ function SetRow({
 }: {
   exercise: WorkoutExercise
   finalProgrammedSetId: string | null
+  forceRir: boolean
   metrics: TrackingMetric[]
   onComplete: (completed: boolean) => void
   onDelete: () => void
   onMetricChange: (key: string, value: WorkoutSetMetricValue) => void
   onRirChange: (rir: number | null) => void
-  prescription: ActiveCycleWorkoutExercise | undefined
+  prescription: LiveExercisePrescription
   rirTargetOnEverySet: boolean
   set: WorkoutSet
 }) {
@@ -1350,24 +1884,22 @@ function SetRow({
   const [locallyValidMetricKeys, setLocallyValidMetricKeys] = useState(
     () => new Set<string>(),
   )
-  const [rirDraftValid, setRirDraftValid] = useState(false)
+  const [rirDraftValid, setRirDraftValid] = useState(
+    () => set.rir == null || (Number.isFinite(set.rir) && set.rir >= 0),
+  )
   const rirEnabled = useRirTracking()
   const isFinalProgrammedSet = set.id === finalProgrammedSetId
   // RIR is recordable on any set. The prescribed target/required prompt lands
   // on the final programmed set only, unless the program tracks RIR on every
   // set — then every set is a target set.
   const isRirTargetSet = rirTargetOnEverySet || isFinalProgrammedSet
-  const showRir = supportsRir(metrics) && rirEnabled
+  const showRir = supportsRir(metrics) && (rirEnabled || forceRir)
   const repsPerSide = exerciseRecordsRepsPerSide(exercise)
   const invalidMetricKeys = invalidRequiredMetricKeys(set, metrics)
   const effectiveInvalidMetricKeys = new Set(
     [...invalidMetricKeys].filter((key) => !locallyValidMetricKeys.has(key)),
   )
-  const isRirInvalid =
-    showRir &&
-    isRirTargetSet &&
-    (set.rir === null || set.rir === undefined) &&
-    !rirDraftValid
+  const isRirInvalid = showRir && !rirDraftValid
   const weightUnit = useWeightUnit()
   return (
     <div className={set.completed ? 'set-row completed' : 'set-row'}>
@@ -1453,9 +1985,11 @@ function SetRow({
             }
             onBlur={(event) => {
               setRirTouched(true)
-              const rir = parseNullableNumber(event.currentTarget.value)
+              const draft = event.currentTarget.value.trim()
+              const rir = parseNullableNumber(draft)
               setRirDraftValid(
-                typeof rir === 'number' && Number.isFinite(rir) && rir >= 0,
+                draft === '' ||
+                  (typeof rir === 'number' && Number.isFinite(rir) && rir >= 0),
               )
               onRirChange(rir)
             }}
@@ -1596,151 +2130,173 @@ function MetricNumericInput({
   )
 }
 
-function RestTimerPanel({
-  exerciseDefaultRestSeconds,
+function RestTimerControls({
   onAddTime,
-  onChangeExerciseDefaultRest,
-  onDismiss,
-  onPause,
-  onResume,
   onSubtractTime,
   remainingSeconds,
   timer,
 }: {
-  exerciseDefaultRestSeconds: number
   onAddTime: () => void
-  onChangeExerciseDefaultRest: (seconds: number) => void
-  onDismiss: () => void
-  onPause: () => void
-  onResume: () => void
   onSubtractTime: () => void
   remainingSeconds: number
   timer: Workout['activeRestTimer']
 }) {
   const { t } = useLanguage()
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [draftRestSeconds, setDraftRestSeconds] = useState(0)
-
-  if (!timer || timer.status === 'dismissed') {
-    return null
-  }
-
-  function openSettings() {
-    setDraftRestSeconds(clampRestPickerSeconds(exerciseDefaultRestSeconds))
-    setSettingsOpen(true)
-  }
-
-  function saveSettings() {
-    onChangeExerciseDefaultRest(draftRestSeconds)
-    setSettingsOpen(false)
-  }
-
-  const timerStatus =
-    timer.status === 'completed'
+  const isAvailable = Boolean(timer && timer.status !== 'dismissed')
+  const timerStatus = !isAvailable
+    ? t('Rest timer ready')
+    : timer?.status === 'completed'
       ? t('Rest complete')
-      : timer.status === 'paused'
+      : timer?.status === 'paused'
         ? t('Timer paused')
         : t('Timer running')
 
   return (
-    <>
-      <div className="rest-timer-toolbar" aria-label={t('Rest timer')}>
-        <span
-          aria-label={`${timerStatus}: ${formatDuration(remainingSeconds)}`}
-          aria-live="polite"
-          className="rest-timer-readout"
-          title={timerStatus}
-        >
-          <Clock aria-hidden="true" size={17} />
-          <span>{formatDuration(remainingSeconds)}</span>
+    <div
+      className={`live-session-rest-timer${
+        timer?.status === 'running' &&
+        remainingSeconds > 0 &&
+        remainingSeconds <= 5
+          ? ' rest-timer-urgent'
+          : ''
+      }`}
+      aria-label={t('Rest timer')}
+    >
+      <span
+        aria-label={`${timerStatus}: ${formatDuration(remainingSeconds)}`}
+        aria-live="polite"
+        className="rest-timer-readout"
+        title={timerStatus}
+      >
+        <Clock aria-hidden="true" size={17} />
+        <span className="rest-timer-digits">
+          {formatDuration(remainingSeconds)}
         </span>
-        {timer.status === 'completed' ? null : timer.status === 'paused' ? (
-          <IconButton
-            aria-label={t('Resume')}
-            title={t('Resume')}
-            type="button"
-            onClick={onResume}
-          >
-            <Play aria-hidden="true" size={17} />
-          </IconButton>
-        ) : (
-          <IconButton
-            aria-label={t('Pause')}
-            title={t('Pause')}
-            type="button"
-            onClick={onPause}
-          >
-            <Pause aria-hidden="true" size={17} />
-          </IconButton>
-        )}
+      </span>
+      <IconButton
+        aria-label="Subtract 30 seconds"
+        disabled={!isAvailable || remainingSeconds === 0}
+        title="Subtract 30 seconds"
+        type="button"
+        onClick={onSubtractTime}
+      >
+        <Minus aria-hidden="true" size={17} />
+      </IconButton>
+      <IconButton
+        aria-label="Add 30 seconds"
+        disabled={!isAvailable}
+        title="Add 30 seconds"
+        type="button"
+        onClick={onAddTime}
+      >
+        <Plus aria-hidden="true" size={17} />
+      </IconButton>
+    </div>
+  )
+}
+
+function ExerciseOptionsTimerSettings({
+  defaultRestSeconds,
+  elapsedSeconds,
+  isWorkoutPauseBusy,
+  onChangeDefaultRest,
+  onDismissRestTimer,
+  onPauseRestTimer,
+  onResumeRestTimer,
+  onToggleWorkoutPause,
+  restRemainingSeconds,
+  restTimer,
+  workoutPaused,
+}: {
+  defaultRestSeconds: number
+  elapsedSeconds: number
+  isWorkoutPauseBusy: boolean
+  onChangeDefaultRest: (seconds: number) => void
+  onDismissRestTimer: () => void
+  onPauseRestTimer: () => void
+  onResumeRestTimer: () => void
+  onToggleWorkoutPause: () => void
+  restRemainingSeconds: number
+  restTimer: Workout['activeRestTimer']
+  workoutPaused: boolean
+}) {
+  const { t } = useLanguage()
+  const selectedRestSeconds = clampRestPickerSeconds(defaultRestSeconds)
+  const hasCurrentTimer = Boolean(restTimer && restTimer.status !== 'dismissed')
+  const restTimerPaused = restTimer?.status === 'paused'
+
+  return (
+    <div className="exercise-options-timers">
+      <div className="exercise-options-workout-time">
+        <div>
+          <p className="eyebrow">Total workout time</p>
+          <strong>
+            <Clock aria-hidden="true" size={17} />
+            {formatDuration(elapsedSeconds)}
+          </strong>
+        </div>
         <IconButton
-          aria-label="Subtract 30 seconds"
-          disabled={remainingSeconds === 0}
-          title="Subtract 30 seconds"
-          type="button"
-          onClick={onSubtractTime}
+          aria-label={
+            workoutPaused ? t('Resume workout timer') : t('Pause workout timer')
+          }
+          disabled={isWorkoutPauseBusy}
+          onClick={onToggleWorkoutPause}
+          title={
+            workoutPaused ? t('Resume workout timer') : t('Pause workout timer')
+          }
         >
-          <Minus aria-hidden="true" size={17} />
-        </IconButton>
-        <IconButton
-          aria-label="Add 30 seconds"
-          title="Add 30 seconds"
-          type="button"
-          onClick={onAddTime}
-        >
-          <Plus aria-hidden="true" size={17} />
-        </IconButton>
-        <IconButton
-          aria-label="Clear rest timer"
-          title="Clear rest timer"
-          type="button"
-          onClick={onDismiss}
-        >
-          <TimerOff aria-hidden="true" size={17} />
-        </IconButton>
-        <IconButton
-          aria-label="Rest timer settings"
-          aria-expanded={settingsOpen}
-          title="Rest timer settings"
-          type="button"
-          onClick={openSettings}
-        >
-          <Settings2 aria-hidden="true" size={17} />
+          {workoutPaused ? (
+            <Play aria-hidden="true" size={18} />
+          ) : (
+            <Pause aria-hidden="true" size={18} />
+          )}
         </IconButton>
       </div>
-
-      <BottomSheet
-        isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        title="Rest timer settings"
+      <FormField
+        id="exercise-default-rest-seconds"
+        label="Rest duration for this exercise"
       >
-        <div className="rest-timer-settings-form">
-          <FormField
-            id="exercise-default-rest-seconds"
-            label="Exercise default rest"
-          >
-            <RestWheelPicker
-              minutes={Math.floor(draftRestSeconds / 60)}
-              onChange={(minutes, seconds) =>
-                setDraftRestSeconds(minutes * 60 + seconds)
-              }
-              seconds={draftRestSeconds % 60}
-            />
-          </FormField>
-          <div className="button-row">
-            <SecondaryButton
-              type="button"
-              onClick={() => setSettingsOpen(false)}
-            >
-              Cancel
-            </SecondaryButton>
-            <PrimaryButton type="button" onClick={saveSettings}>
-              Save
-            </PrimaryButton>
-          </div>
-        </div>
-      </BottomSheet>
-    </>
+        <RestWheelPicker
+          minutes={Math.floor(selectedRestSeconds / 60)}
+          onChange={(minutes, seconds) =>
+            onChangeDefaultRest(minutes * 60 + seconds)
+          }
+          seconds={selectedRestSeconds % 60}
+        />
+      </FormField>
+      <p className="muted exercise-options-timer-help">
+        Changes apply immediately to the current rest timer and future sets.
+      </p>
+      <div className="exercise-options-rest-actions">
+        <SecondaryButton
+          disabled={!hasCurrentTimer || restTimer?.status === 'completed'}
+          type="button"
+          onClick={restTimerPaused ? onResumeRestTimer : onPauseRestTimer}
+        >
+          {restTimerPaused ? (
+            <Play aria-hidden="true" size={17} />
+          ) : (
+            <Pause aria-hidden="true" size={17} />
+          )}
+          {t(restTimerPaused ? 'Resume rest timer' : 'Pause rest timer')}
+        </SecondaryButton>
+        <SecondaryButton
+          disabled={!hasCurrentTimer}
+          type="button"
+          onClick={onDismissRestTimer}
+        >
+          <TimerOff aria-hidden="true" size={17} />
+          {t('Clear rest timer')}
+        </SecondaryButton>
+      </div>
+      {hasCurrentTimer ? (
+        <p className="visually-hidden" aria-live="polite">
+          {t('Current rest time: {time}', {
+            time: formatDuration(restRemainingSeconds),
+          })}
+        </p>
+      ) : null}
+    </div>
   )
 }
 
@@ -1991,12 +2547,6 @@ function ExercisePickerSheet({
   )
 }
 
-function formatDuration(totalSeconds: number) {
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`
-}
-
 function clampRestPickerSeconds(totalSeconds: number) {
   const maxSeconds = 15 * 60 + 59
   return Math.min(maxSeconds, Math.max(0, Math.round(totalSeconds)))
@@ -2014,13 +2564,80 @@ function getActiveExerciseIndex(
   return index >= 0 ? index : 0
 }
 
+function liveExercisePrescription(
+  exercise: WorkoutExercise,
+  sets: WorkoutSet[],
+  source: ActiveCycleWorkoutExercise | undefined,
+): LiveExercisePrescription {
+  return {
+    targetSetCount: sets.length,
+    targetWeight: source?.targetWeight ?? null,
+    targetDurationSeconds: source?.targetDurationSeconds ?? null,
+    targetDistance: source?.targetDistance ?? null,
+    targetRepsMin:
+      exercise.sessionTargetRepsMin !== undefined
+        ? exercise.sessionTargetRepsMin
+        : (source?.targetRepsMin ?? null),
+    targetRepsMax:
+      exercise.sessionTargetRepsMax !== undefined
+        ? exercise.sessionTargetRepsMax
+        : (source?.targetRepsMax ?? null),
+    targetRir:
+      exercise.sessionTargetRir !== undefined
+        ? exercise.sessionTargetRir
+        : (source?.targetRir ?? null),
+  }
+}
+
+function parseLivePrescriptionDraft(draft: {
+  setCount: string
+  repsMin: string
+  repsMax: string
+}): { ok: true; value: LivePrescriptionInput } | { ok: false; error: string } {
+  const targetSetCount = Number(draft.setCount)
+  if (
+    !Number.isInteger(targetSetCount) ||
+    targetSetCount < 1 ||
+    targetSetCount > 99
+  ) {
+    return { ok: false, error: 'Sets must be a whole number from 1 to 99.' }
+  }
+  const parseReps = (value: string) =>
+    value.trim() === '' ? null : Number(value)
+  const targetRepsMin = parseReps(draft.repsMin)
+  const targetRepsMax = parseReps(draft.repsMax)
+  if (
+    [targetRepsMin, targetRepsMax].some(
+      (value) =>
+        value !== null &&
+        (!Number.isInteger(value) || value < 1 || value > 999),
+    )
+  ) {
+    return {
+      ok: false,
+      error: 'Rep targets must be whole numbers from 1 to 999.',
+    }
+  }
+  if (
+    targetRepsMin !== null &&
+    targetRepsMax !== null &&
+    targetRepsMin > targetRepsMax
+  ) {
+    return {
+      ok: false,
+      error: 'Minimum reps cannot be greater than maximum reps.',
+    }
+  }
+  return {
+    ok: true,
+    value: { targetSetCount, targetRepsMin, targetRepsMax },
+  }
+}
+
 function formatPrescriptionSummary(
-  prescription: ActiveCycleWorkoutExercise | undefined,
+  prescription: LiveExercisePrescription,
   unit: WeightUnit = 'lb',
 ) {
-  if (!prescription) {
-    return 'Added during workout'
-  }
   const parts = [`${prescription.targetSetCount} sets`]
   const reps = formatRepTarget(prescription)
   if (reps) {
@@ -2047,22 +2664,14 @@ function formatPrescriptionSummary(
   return parts.join(' - ')
 }
 
-function formatRepTarget(prescription: ActiveCycleWorkoutExercise | undefined) {
-  if (!prescription) {
-    return null
-  }
+function formatRepTarget(prescription: LiveExercisePrescription) {
   return formatRepTargetFromValues(
     prescription.targetRepsMin,
     prescription.targetRepsMax,
   )
 }
 
-function formatRepTargetPlaceholder(
-  prescription: ActiveCycleWorkoutExercise | undefined,
-) {
-  if (!prescription) {
-    return null
-  }
+function formatRepTargetPlaceholder(prescription: LiveExercisePrescription) {
   const min = prescription.targetRepsMin
   const max = prescription.targetRepsMax
   if (min !== null && max !== null) {
@@ -2191,13 +2800,8 @@ function invalidRequiredMetricKeys(set: WorkoutSet, metrics: TrackingMetric[]) {
 function getFinalProgrammedSetId(sets: WorkoutSet[]) {
   const bySetNumber = (first: WorkoutSet, second: WorkoutSet) =>
     first.setNumber - second.setNumber
-  const programmed = sets.filter((set) => set.targetSnapshot).sort(bySetNumber)
-  if (programmed.length) {
-    return programmed.at(-1)?.id ?? null
-  }
-  // Exercises added during a live workout have no programmed target, so no set
-  // carries a targetSnapshot. Still expose the RIR field on the final set so it
-  // can be recorded even when an RIR was never specified.
+  // The live set count is the current workout target, including sets added
+  // during the session, so the final visible row always owns the final RIR.
   return [...sets].sort(bySetNumber).at(-1)?.id ?? null
 }
 
@@ -2275,7 +2879,7 @@ function useSwipeNavigation({
     } as CSSProperties,
     handlers: {
       onPointerDown(event: PointerEvent<HTMLElement>) {
-        if (isInteractiveElement(event.target)) {
+        if (isSwipeBlockedElement(event.target)) {
           return
         }
         if (navigationTimeout.current !== null) {
@@ -2301,10 +2905,16 @@ function useSwipeNavigation({
         if (!isDragging && Math.abs(dx) < 7) {
           return
         }
-        if (!isDragging && Math.abs(dx) <= Math.abs(dy) * 1.15) {
+        if (!isDragging && Math.abs(dx) <= Math.abs(dy) * 1.05) {
           return
         }
         event.preventDefault()
+        if (
+          document.activeElement instanceof HTMLInputElement &&
+          event.currentTarget.contains(document.activeElement)
+        ) {
+          document.activeElement.blur()
+        }
         setIsDragging(true)
         const movingPastStart = dx > 0 && !canGoPrevious
         const movingPastEnd = dx < 0 && !canGoNext
@@ -2316,15 +2926,18 @@ function useSwipeNavigation({
         if (!start || start.pointerId !== event.pointerId) {
           return
         }
-        event.currentTarget.releasePointerCapture?.(event.pointerId)
+        if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+          event.currentTarget.releasePointerCapture?.(event.pointerId)
+        }
         const dx = event.clientX - start.x
         const dy = event.clientY - start.y
         const elapsed = Math.max(1, performance.now() - start.time)
         const velocity = Math.abs(dx) / elapsed
+        const horizontalDistance = Math.abs(dx)
         const intentional =
-          Math.abs(dx) >= 64 &&
-          Math.abs(dx) > Math.abs(dy) * 1.35 &&
-          velocity >= 0.25
+          horizontalDistance > Math.abs(dy) * 1.05 &&
+          (horizontalDistance >= 44 ||
+            (horizontalDistance >= 30 && velocity >= 0.2))
         const width = Math.max(event.currentTarget.clientWidth, 320)
         if (intentional && dx < 0 && canGoNext) {
           settleAt(-width * 1.06, onNext)
@@ -2358,6 +2971,12 @@ function swipeAnimationDuration() {
   return 180
 }
 
+function prefersReducedMotion() {
+  return (
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+  )
+}
+
 function isInteractiveElement(target: EventTarget | null) {
   if (!(target instanceof Element)) {
     return false
@@ -2365,6 +2984,17 @@ function isInteractiveElement(target: EventTarget | null) {
   return Boolean(
     target.closest(
       'button, input, select, textarea, a, [contenteditable="true"], [role="slider"]',
+    ),
+  )
+}
+
+function isSwipeBlockedElement(target: EventTarget | null) {
+  if (!(target instanceof Element)) {
+    return false
+  }
+  return Boolean(
+    target.closest(
+      'button, select, textarea, a, [contenteditable="true"], [role="slider"]',
     ),
   )
 }

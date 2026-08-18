@@ -32,7 +32,7 @@ export function FoodCameraMenu({
   }, [isOpen])
 
   return (
-    <div className="camera-action-menu">
+    <div className={`camera-action-menu${isOpen ? ' is-open' : ''}`}>
       <IconButton
         aria-expanded={isOpen}
         aria-haspopup="menu"

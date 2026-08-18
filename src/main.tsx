@@ -2,11 +2,17 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { RouterProvider } from 'react-router-dom'
 
+import { AuthRelayCallbackPage } from '@app/AuthRelayCallbackPage'
 import { router } from '@app/router'
-import { initializeAppData } from '@services/appInitializationService'
+import {
+  readAuthRelayCallback,
+  scrubAuthRelayCallbackUrl,
+} from '@services/authRelayClient'
+import {
+  initializeAppDataOnce,
+  initializeNonCriticalAppDataOnce,
+} from '@services/appStartupService'
 import '@styles/global.css'
-
-void initializeAppData()
 
 const rootElement = document.getElementById('root')
 
@@ -14,8 +20,21 @@ if (!rootElement) {
   throw new Error('Root element was not found.')
 }
 
-createRoot(rootElement).render(
-  <StrictMode>
-    <RouterProvider router={router} />
-  </StrictMode>,
-)
+const authRelayCallback = readAuthRelayCallback(window.location)
+
+if (authRelayCallback) {
+  scrubAuthRelayCallbackUrl(window.history)
+  createRoot(rootElement).render(
+    <StrictMode>
+      <AuthRelayCallbackPage callback={authRelayCallback} />
+    </StrictMode>,
+  )
+} else {
+  void initializeAppDataOnce()
+  void initializeNonCriticalAppDataOnce()
+  createRoot(rootElement).render(
+    <StrictMode>
+      <RouterProvider router={router} />
+    </StrictMode>,
+  )
+}

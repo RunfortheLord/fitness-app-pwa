@@ -33,7 +33,7 @@ import {
   FoodProviderClientError,
   searchProviderFoods,
 } from '@services/foodProviderClient'
-import { analyzeMealPhoto } from '@services/geminiMealAnalysisClient'
+import { analyzeMealPhoto } from '@services/mealAnalysisClient'
 
 vi.mock('@services/foodProviderClient', () => {
   class MockFoodProviderClientError extends Error {
@@ -52,9 +52,9 @@ vi.mock('@services/foodProviderClient', () => {
   }
 })
 
-vi.mock('@services/geminiMealAnalysisClient', async (importOriginal) => {
+vi.mock('@services/mealAnalysisClient', async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import('@services/geminiMealAnalysisClient')>()
+    await importOriginal<typeof import('@services/mealAnalysisClient')>()
   return {
     ...actual,
     analyzeMealPhoto: vi.fn(),
@@ -148,9 +148,44 @@ describe('NutritionPage', () => {
       await screen.findByRole('heading', { name: 'AI meal camera' }),
     ).toBeInTheDocument()
     expect(
-      screen.getByText(/Add your Gemini API key in Settings/),
+      screen.getByText(/Review every ingredient before logging food/),
     ).toBeInTheDocument()
     await expect(db.savedMeals.count()).resolves.toBe(0)
+  })
+
+  it('opens barcode scanning as a focused subpage', async () => {
+    const user = userEvent.setup()
+    const rendered = renderNutrition()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Open camera options' }),
+    )
+    await user.click(screen.getByRole('menuitem', { name: 'Scan barcode' }))
+
+    expect(
+      await screen.findByRole(
+        'heading',
+        { name: 'Scan barcode' },
+        { timeout: 10_000 },
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Enable camera' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/Video stays on this device/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Back to nutrition' }))
+    const overview = rendered.container.querySelector('.nutrition-overview')
+    expect(overview).not.toBeNull()
+    expect(
+      within(overview as HTMLElement).getByLabelText('Selected date'),
+    ).toBeInTheDocument()
+    expect(
+      within(overview as HTMLElement).getByRole('group', {
+        name: 'Nutrition mode',
+      }),
+    ).toBeInTheDocument()
+    expect(document.body).not.toHaveClass('food-search-open')
   })
 
   it('returns to food search when the AI camera was launched there', async () => {
@@ -175,7 +210,6 @@ describe('NutritionPage', () => {
 
   it('logs a captured meal and only saves the recipe when selected', async () => {
     const user = userEvent.setup()
-    await settingsRepository.saveGeminiApiKey('gemini-test-key', 'connected')
     mockAnalyzeMealPhoto.mockResolvedValue({
       recipeName: 'Photo chicken bowl',
       confidence: 'medium',
@@ -568,7 +602,11 @@ describe('NutritionPage', () => {
     })
 
     await user.click(
-      screen.getByRole('button', { name: 'Edit Gummi worms serving' }),
+      await screen.findByRole(
+        'button',
+        { name: 'Edit Gummi worms serving' },
+        { timeout: 5_000 },
+      ),
     )
     const editDialog = await screen.findByRole('dialog', {
       name: 'Edit food log',
@@ -660,6 +698,7 @@ describe('NutritionPage', () => {
     renderNutrition()
 
     await user.click(screen.getByRole('button', { name: 'Targets' }))
+    expect(screen.queryByText('Estimated maintenance')).not.toBeInTheDocument()
     await user.clear(screen.getByRole('textbox', { name: 'Calories' }))
     await user.type(screen.getByRole('textbox', { name: 'Calories' }), '1800')
     await user.clear(screen.getByRole('textbox', { name: 'Protein target' }))
@@ -779,6 +818,8 @@ describe('NutritionPage', () => {
     expect(
       await screen.findByText('Macros calculated and targets saved.'),
     ).toBeInTheDocument()
+    expect(await screen.findByText('Estimated maintenance')).toBeInTheDocument()
+    expect(screen.getByText('2763 kcal')).toBeInTheDocument()
     // Back on the Targets page with a goal-progress card (loads async).
     expect(await screen.findByText(/Estimated finish:/)).toBeInTheDocument()
     expect(
@@ -1283,7 +1324,7 @@ describe('NutritionPage', () => {
     await expect(db.foodLogEntries.count()).resolves.toBe(1)
   })
 
-  it('recommends up to eight foods logged nearest this time until search begins', async () => {
+  it('recommends up to eight foods from the previous two days until search begins', async () => {
     const user = userEvent.setup()
     const repository = createFoodRepository(db)
     const today = formatLocalDate(new Date())
@@ -1303,7 +1344,8 @@ describe('NutritionPage', () => {
       })
       await repository.logFood({
         foodId: food.id,
-        localDate: addLocalDays(today, -index),
+        localDate:
+          index === 0 ? today : addLocalDays(today, index % 2 === 0 ? -2 : -1),
         servingMultiplier: 1,
         mealType,
       })
@@ -1318,6 +1360,9 @@ describe('NutritionPage', () => {
       name: /^Open Meal choice/,
     })
     expect(recommendedRows).toHaveLength(8)
+    expect(recommended).toHaveTextContent(
+      'From foods logged yesterday and the day before.',
+    )
     expect(
       within(recommended).queryByText('Meal choice 1'),
     ).not.toBeInTheDocument()
@@ -1474,9 +1519,11 @@ describe('NutritionPage', () => {
     const recentCard = await screen.findByRole('region', {
       name: 'Recent foods',
     })
-    await user.click(
-      within(recentCard).getByRole('button', { name: /^Log Yogurt,/ }),
-    )
+    const quickLogButton = within(recentCard).getByRole('button', {
+      name: /^Log Yogurt,/,
+    })
+    await user.click(quickLogButton)
+    await waitFor(() => expect(quickLogButton).toHaveClass('is-confirmed'))
 
     // No serving sheet — the food logs straight to the selected day.
     expect(
@@ -1508,7 +1555,7 @@ function renderNutrition(initialEntry = '/nutrition') {
     { initialEntries: [initialEntry] },
   )
 
-  render(<RouterProvider router={router} />)
+  return render(<RouterProvider router={router} />)
 }
 
 describe('createSearchSections', () => {

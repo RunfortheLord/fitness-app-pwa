@@ -4,7 +4,7 @@ import { settingsRepository } from '@repositories/settingsRepository'
 
 /**
  * Whether RIR fields and prompts should render, kept live so toggling the
- * Settings switch updates open screens immediately. Defaults to enabled
+ * Settings switch updates open screens immediately. Defaults to disabled
  * until settings load.
  */
 export function useRirTracking(): boolean {
@@ -12,5 +12,5 @@ export function useRirTracking(): boolean {
     async () => (await settingsRepository.getSettings())?.rirTrackingEnabled,
     [],
   )
-  return enabled ?? true
+  return enabled ?? false
 }

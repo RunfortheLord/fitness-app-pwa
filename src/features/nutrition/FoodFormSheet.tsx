@@ -1,4 +1,4 @@
-import { Archive } from 'lucide-react'
+import { Archive, Flame, Utensils } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import {
@@ -37,6 +37,7 @@ export function FoodFormSheet({
   onClose: () => void
   onSaved: () => void
 }) {
+  const { t } = useLanguage()
   const [form, setForm] = useState(() =>
     food
       ? {
@@ -108,28 +109,45 @@ export function FoodFormSheet({
       title={food ? 'Edit food' : 'Create food'}
       variant="page"
     >
-      <div className="button-row">
-        <PrimaryButton type="button" onClick={saveFood}>
-          Save food
-        </PrimaryButton>
-        {food ? (
-          <SecondaryButton
-            className="button-danger"
-            type="button"
-            onClick={archiveFood}
-          >
-            <Archive aria-hidden="true" size={18} />
-            Archive
-          </SecondaryButton>
+      <div className="food-form-page">
+        <div className="food-form-intro">
+          <span className="food-form-intro-icon">
+            <Utensils aria-hidden="true" size={22} />
+          </span>
+          <div>
+            <strong>
+              {food ? t('Update your reusable food') : t('Add a reusable food')}
+            </strong>
+            <p>
+              {t(
+                'Enter one serving and the nutrition printed for that serving.',
+              )}
+            </p>
+          </div>
+        </div>
+        <div className="button-row food-form-primary-actions">
+          <PrimaryButton type="button" onClick={saveFood}>
+            Save food
+          </PrimaryButton>
+          {food ? (
+            <SecondaryButton
+              className="button-danger"
+              type="button"
+              onClick={archiveFood}
+            >
+              <Archive aria-hidden="true" size={18} />
+              Archive
+            </SecondaryButton>
+          ) : null}
+        </div>
+        {error ? <ValidationMessage message={error} /> : null}
+        {Object.keys(fieldErrors).length ? (
+          <StatusMessage tone="warning">
+            Fix the highlighted food fields and save again.
+          </StatusMessage>
         ) : null}
+        <FoodFormFields errors={fieldErrors} form={form} update={update} />
       </div>
-      {error ? <ValidationMessage message={error} /> : null}
-      {Object.keys(fieldErrors).length ? (
-        <StatusMessage tone="warning">
-          Fix the highlighted food fields and save again.
-        </StatusMessage>
-      ) : null}
-      <FoodFormFields errors={fieldErrors} form={form} update={update} />
     </Sheet>
   )
 }
@@ -145,18 +163,31 @@ function FoodFormFields({
 }) {
   const { t } = useLanguage()
   return (
-    <>
-      <FormField id="food-name" label="Name" error={errors.name}>
-        <input
-          aria-describedby={errors.name ? 'food-name-error' : undefined}
-          aria-invalid={Boolean(errors.name)}
-          id="food-name"
-          onChange={(event) => update('name', event.target.value)}
-          value={form.name}
-        />
-      </FormField>
+    <div className="food-form-fields">
+      <section className="food-form-section food-identity-section">
+        <div className="food-form-section-heading">
+          <span>1</span>
+          <div>
+            <strong>{t('Food details')}</strong>
+            <small>{t('Use the name you will recognize while logging.')}</small>
+          </div>
+        </div>
+        <FormField id="food-name" label="Name" error={errors.name}>
+          <input
+            aria-describedby={errors.name ? 'food-name-error' : undefined}
+            aria-invalid={Boolean(errors.name)}
+            id="food-name"
+            onChange={(event) => update('name', event.target.value)}
+            placeholder={t('Example: Greek yogurt')}
+            value={form.name}
+          />
+        </FormField>
+      </section>
       <fieldset className="food-form-section serving-size-section">
-        <legend>{t('Serving size')}</legend>
+        <legend>
+          <span>2</span>
+          {t('Serving size')}
+        </legend>
         <p className="field-help">
           {t('Set the amount that the nutrition values below describe.')}
         </p>
@@ -201,12 +232,19 @@ function FoodFormFields({
         </div>
         <ServingSizeSummary form={form} />
       </fieldset>
-      <fieldset className="food-form-section">
-        <legend>{t('Nutrition for this serving')}</legend>
+      <fieldset className="food-form-section food-nutrition-section">
+        <legend>
+          <span>3</span>
+          {t('Nutrition for this serving')}
+        </legend>
+        <div className="food-nutrition-callout">
+          <Flame aria-hidden="true" size={18} />
+          <span>{t('Use values for the serving size above.')}</span>
+        </div>
         <MacroInputs errors={errors} form={form} update={update} />
         <FoodCalorieEquation form={form} />
       </fieldset>
-    </>
+    </div>
   )
 }
 
@@ -220,7 +258,7 @@ function MacroInputs({
   update: (field: keyof typeof emptyFoodForm, value: string) => void
 }) {
   return (
-    <>
+    <div className="food-macro-input-grid">
       <FormField
         id="food-calories"
         label="Calories per serving"
@@ -285,7 +323,7 @@ function MacroInputs({
           value={form.fatGramsPerServing}
         />
       </FormField>
-    </>
+    </div>
   )
 }
 

@@ -2227,13 +2227,6 @@ const EXERCISE_VARIANTS: ExerciseVariant[] = [
     namePrefix: 'Paused',
     include: (seed) => PAUSED_VARIANT_BASE_IDS.has(seed.id),
   },
-  {
-    idPrefix: 'one-and-a-half-rep',
-    namePrefix: '1.5-Rep',
-    include: (seed) =>
-      supportsControlledRepVariant(seed) &&
-      seed.defaultRestSeconds <= moderateCompound,
-  },
 ]
 
 function buildExerciseVariants(

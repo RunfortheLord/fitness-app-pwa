@@ -4,7 +4,9 @@ import type { LocalDateString } from '@domain/dates'
 import type { BodyweightEntry, NutritionGoal } from '@shared-types/app'
 
 import {
+  ADJUSTMENT_MAX_HISTORY_INFLUENCE,
   type DailyCalorieAdjustmentData,
+  estimateAdaptiveMaintenance,
   evaluateCalorieUpdate,
   roundCalorieAdjustment,
 } from './calorieAdjustment'
@@ -80,13 +82,14 @@ function makeGoal(overrides: Partial<NutritionGoal> = {}): NutritionGoal {
 }
 
 describe('calorieAdjustment', () => {
-  it('rounds, clamps, and deadbands raw adjustments', () => {
-    expect(roundCalorieAdjustment(40)).toBe(0)
-    expect(roundCalorieAdjustment(-40)).toBe(0)
+  it('rounds raw adjustments to single calories without coarse steps', () => {
+    expect(roundCalorieAdjustment(0.6)).toBe(1)
+    expect(roundCalorieAdjustment(-0.6)).toBe(-1)
     expect(roundCalorieAdjustment(60.4)).toBe(60)
     expect(roundCalorieAdjustment(137.6)).toBe(138)
-    expect(roundCalorieAdjustment(260)).toBe(200)
-    expect(roundCalorieAdjustment(-260)).toBe(-200)
+    expect(roundCalorieAdjustment(260)).toBe(260)
+    expect(roundCalorieAdjustment(-260)).toBe(-260)
+    expect(roundCalorieAdjustment(Number.NaN)).toBe(0)
   })
 
   it('reports insufficient data with too few measurements', () => {
@@ -122,17 +125,128 @@ describe('calorieAdjustment', () => {
     expect(result.status).toBe('changed')
     if (result.status === 'changed') {
       // Today is excluded; 2300 kcal average intake and stable weight estimate
-      // maintenance at 2300. Desired -0.9 lb/wk gives a 1850 kcal target, then
-      // the practical update clamps the change to -200.
-      expect(result.averageLoggedCalories).toBe(2300)
-      expect(result.averageTargetCalories).toBe(2300)
+      // maintenance at 2300. Desired -0.9 lb/wk gives the exact 1850 kcal
+      // whole-calorie target.
+      expect(result.averageLoggedCalories).toBeCloseTo(2300)
+      expect(result.averageTargetCalories).toBeCloseTo(2300)
       expect(result.intakeDayCount).toBe(8)
       expect(result.estimatedMaintenanceCalories).toBe(2300)
-      expect(result.deltaKcal).toBe(-200)
-      expect(result.newCalories).toBe(2100)
-      expect(result.newMaintenanceCalories).toBe(2563)
-      expect(result.newTargets.calories).toBe(2100)
+      expect(result.deltaKcal).toBe(-450)
+      expect(result.newCalories).toBe(1850)
+      expect(result.newMaintenanceCalories).toBe(2300)
+      expect(result.newTargets.calories).toBe(1850)
     }
+  })
+
+  it('uses the current target as the baseline and can update by one calorie', () => {
+    const result = evaluateCalorieUpdate({
+      goal: makeGoal({
+        targets: {
+          calories: 2100,
+          proteinGrams: 126,
+          carbohydrateGrams: 255,
+          fatGrams: 58,
+        },
+      }),
+      entries: [entry(0, 180), entry(7, 180), entry(14, 180)],
+      dailyCalories: intakeDays([6, 7, 8, 9, 10, 11, 12, 13], 2551, 2300),
+      asOf: dayString(14),
+    })
+
+    expect(result.status).toBe('changed')
+    if (result.status === 'changed') {
+      // Maintenance is 2551 at stable trend weight; the selected -0.9 lb/week
+      // rate is -450 kcal/day, producing 2101 directly. Historical targets do
+      // not incorrectly push the current target down by another 199 calories.
+      expect(result.averageTargetCalories).toBeCloseTo(2300)
+      expect(result.estimatedMaintenanceCalories).toBe(2551)
+      expect(result.deltaKcal).toBe(1)
+      expect(result.newCalories).toBe(2101)
+      expect(result.newMaintenanceCalories).toBe(2551)
+    }
+  })
+
+  it('estimates maintenance after trend weight reaches the desired goal', () => {
+    const result = evaluateCalorieUpdate({
+      goal: makeGoal(),
+      entries: [entry(0, 170), entry(7, 170), entry(14, 170)],
+      dailyCalories: intakeDays([6, 7, 8, 9, 10, 11, 12, 13], 2300),
+      asOf: dayString(14),
+    })
+
+    expect(result.status).toBe('no_change')
+    if (result.status === 'no_change') {
+      expect(result.estimatedMaintenanceCalories).toBe(2300)
+      expect(result.trendWeightLb).toBe(170)
+    }
+  })
+
+  it('uses the recent signal alone while history is still developing', () => {
+    const estimate = estimateAdaptiveMaintenance({
+      entries: [entry(0, 180), entry(7, 180), entry(14, 180)],
+      dailyCalories: intakeDays(
+        Array.from({ length: 14 }, (_, index) => index),
+        2500,
+      ),
+      asOf: dayString(14),
+    })
+
+    expect(estimate).not.toBeNull()
+    expect(estimate?.historyInfluence).toBe(0)
+    expect(estimate?.estimateConfidence).toBe('developing')
+    expect(estimate?.historyIntakeDayCount).toBe(14)
+    expect(estimate?.estimatedMaintenanceCalories).toBe(2500)
+  })
+
+  it('gives consistent three-month history its full stabilizing influence', () => {
+    const estimate = estimateAdaptiveMaintenance({
+      entries: [
+        ...Array.from({ length: 13 }, (_, index) => entry(index * 7, 180)),
+        entry(90, 180),
+      ],
+      dailyCalories: intakeDays(
+        Array.from({ length: 90 }, (_, index) => index),
+        2500,
+      ),
+      asOf: dayString(90),
+    })
+
+    expect(estimate).not.toBeNull()
+    expect(estimate?.historyInfluence).toBe(ADJUSTMENT_MAX_HISTORY_INFLUENCE)
+    expect(estimate?.estimateConfidence).toBe('strong')
+    expect(estimate?.historyIntakeDayCount).toBe(90)
+    expect(estimate?.historyWeightPointCount).toBe(14)
+    expect(estimate?.estimatedMaintenanceCalories).toBe(2500)
+  })
+
+  it('uses established history to soften a one-week intake outlier', () => {
+    const entries = [
+      ...Array.from({ length: 13 }, (_, index) => entry(index * 7, 180)),
+      entry(90, 180),
+    ]
+    const baselineDays = Array.from({ length: 83 }, (_, index) =>
+      intakeDay(index, 2500),
+    )
+    const outlierDays = Array.from({ length: 7 }, (_, index) =>
+      intakeDay(83 + index, 3500),
+    )
+    const estimate = estimateAdaptiveMaintenance({
+      entries,
+      dailyCalories: [...baselineDays, ...outlierDays],
+      asOf: dayString(90),
+    })
+
+    expect(estimate).not.toBeNull()
+    if (!estimate) {
+      return
+    }
+    expect(estimate.recentMaintenanceCalories).toBeGreaterThan(
+      estimate.estimatedMaintenanceCalories,
+    )
+    expect(estimate.estimatedMaintenanceCalories).toBeGreaterThan(
+      estimate.historicalMaintenanceCalories,
+    )
+    expect(estimate.historyInfluence).toBe(ADJUSTMENT_MAX_HISTORY_INFLUENCE)
   })
 
   it('recommends no change for an on-track maintenance plan', () => {

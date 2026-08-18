@@ -10,7 +10,11 @@ import {
   rebaseProviderServingMultiplier,
   servingOptionsForFood,
 } from '@domain/foodServings'
-import type { LocalDateString } from '@domain/dates'
+import {
+  addLocalDays,
+  formatLocalDate,
+  type LocalDateString,
+} from '@domain/dates'
 import { createId } from '@domain/ids'
 import { mealTypeForDate } from '@domain/meals'
 import { snapshotFood } from '@domain/snapshots'
@@ -809,11 +813,16 @@ export function createFoodRepository(
       }
 
       const beforeTimestamp = before.toISOString()
+      const beforeLocalDate = formatLocalDate(before)
+      const earliestLocalDate = addLocalDays(beforeLocalDate, -2)
       const targetMinutes = before.getHours() * 60 + before.getMinutes()
       const logs = (await database.foodLogEntries.toArray())
         .filter(
           (entry) =>
-            Boolean(entry.foodId) && entry.createdAt <= beforeTimestamp,
+            Boolean(entry.foodId) &&
+            entry.createdAt <= beforeTimestamp &&
+            entry.localDate >= earliestLocalDate &&
+            entry.localDate < beforeLocalDate,
         )
         .sort((left, right) => {
           const leftDate = new Date(left.createdAt)

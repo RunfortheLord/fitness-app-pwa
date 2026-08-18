@@ -108,9 +108,15 @@ export function QuickAddSheet({
       <MealTypeField value={mealType} onChange={setMealType} />
       <p className="muted">Macros are optional. Blank macros log as 0 g.</p>
       {error ? <ValidationMessage message={error} /> : null}
-      <PrimaryButton disabled={!parsed.ok} type="button" onClick={saveQuickAdd}>
-        Log quick add
-      </PrimaryButton>
+      <div className="food-log-actions">
+        <PrimaryButton
+          disabled={!parsed.ok}
+          type="button"
+          onClick={saveQuickAdd}
+        >
+          Log quick add
+        </PrimaryButton>
+      </div>
     </Sheet>
   )
 }

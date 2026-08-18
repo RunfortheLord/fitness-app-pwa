@@ -165,6 +165,24 @@ describe('strength progress calculations', () => {
       'single',
     )
   })
+
+  it('excludes deload workouts from both estimated 1RM and volume points', () => {
+    const points = createStrengthGraphPoints([
+      structure({
+        workoutId: 'regular',
+        completedAt: '2026-06-01T12:00:00.000Z',
+        sets: [set({ id: 'regular-set', weight: 100, reps: 5 })],
+      }),
+      structure({
+        workoutId: 'deload',
+        completedAt: '2026-06-08T12:00:00.000Z',
+        isDeload: true,
+        sets: [set({ id: 'deload-set', weight: 90, reps: 5 })],
+      }),
+    ])
+
+    expect(points.map((point) => point.workoutId)).toEqual(['regular'])
+  })
 })
 
 function structure({
@@ -172,12 +190,14 @@ function structure({
   completedAt,
   localDate = completedAt.slice(0, 10) as WorkoutHistoryEntry['localDate'],
   trackingMethodId = 'weight_reps',
+  isDeload = false,
   sets,
 }: {
   workoutId: string
   completedAt: string
   localDate?: WorkoutHistoryEntry['localDate']
   trackingMethodId?: WorkoutHistoryExercise['exerciseSnapshot']['trackingMethodId']
+  isDeload?: boolean
   sets: WorkoutHistorySet[]
 }) {
   const exercise: WorkoutHistoryExercise = {
@@ -220,6 +240,7 @@ function structure({
     elapsedPausedSeconds: 0,
     activeRestTimer: null,
     status: 'completed',
+    isDeload,
     createdAt: completedAt,
     updatedAt: completedAt,
   }

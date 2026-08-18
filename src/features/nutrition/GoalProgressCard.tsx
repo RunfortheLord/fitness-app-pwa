@@ -52,7 +52,7 @@ export function GoalProgressCard({
       try {
         const dailyCalories = await calorieHistoryService.getHistory(
           today,
-          '1m',
+          '3m',
         )
         const evaluation = evaluateCalorieUpdate({
           goal,
@@ -67,7 +67,9 @@ export function GoalProgressCard({
           return
         }
         if (evaluation.status === 'already_applied') {
-          onUpdated('Calories are already up to date for the latest trend.')
+          onUpdated(
+            `Calories are already up to date for the latest trend. Estimate confidence: ${evaluation.estimateConfidence}.`,
+          )
           return
         }
 
@@ -88,7 +90,9 @@ export function GoalProgressCard({
               signature: evaluation.signature,
             },
           })
-          onUpdated('No calorie change recommended.')
+          onUpdated(
+            `No calorie change recommended. Estimate confidence: ${evaluation.estimateConfidence}.`,
+          )
           return
         }
 
@@ -108,8 +112,8 @@ export function GoalProgressCard({
         })
         onUpdated(
           evaluation.deltaKcal > 0
-            ? `Calories increased by ${evaluation.deltaKcal}.`
-            : `Calories decreased by ${Math.abs(evaluation.deltaKcal)}.`,
+            ? `Calories updated to ${evaluation.newCalories} (increased by ${evaluation.deltaKcal}). Estimate confidence: ${evaluation.estimateConfidence}.`
+            : `Calories updated to ${evaluation.newCalories} (decreased by ${Math.abs(evaluation.deltaKcal)}). Estimate confidence: ${evaluation.estimateConfidence}.`,
         )
       } catch (caught) {
         setError(

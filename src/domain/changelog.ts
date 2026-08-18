@@ -10,6 +10,158 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-08-17-maintenance-and-powerbuilding-program',
+    date: '2026-08-17',
+    title: 'Targets and programs are clearer',
+    items: [
+      'Nutrition Targets now shows your estimated maintenance above the calorie target when a saved goal provides one.',
+      'Browse Programs now includes Bodybuilding-Biased Powerbuilding with five training days and two rest days.',
+    ],
+  },
+  {
+    id: '2026-08-13-workout-preferences-and-export',
+    date: '2026-08-13',
+    title: 'Workout defaults are in your control',
+    items: [
+      'RIR tracking now starts off by default, and your choice stays saved after closing or restarting the app.',
+      'Workout set autofill defaults to copying recorded history. You can opt into Smart progression for editable estimates that account for earlier-set fatigue and, when enabled, RIR.',
+      'Export all fitness data now keeps the download available when older records need a validation warning, with the details included inside the ZIP.',
+    ],
+  },
+  {
+    id: '2026-08-13-live-workout-responsiveness',
+    date: '2026-08-13',
+    title: 'Live workout edits respond faster',
+    items: [
+      'New sets appear as soon as they are saved, including on exercises added during the workout, and the first set can reuse estimated weight and reps from exercise history.',
+      'Exercise Options now opens as a full subpage, and its rest wheel starts from the rest duration saved in the workout editor.',
+      'Finishing a workout batches local history writes and checks exercise recommendations together to reduce occasional delays.',
+    ],
+  },
+  {
+    id: '2026-08-05-live-workout-keypad-recovery',
+    date: '2026-08-05',
+    title: 'Workout keypad closes cleanly',
+    items: [
+      'After entering weight, reps, or RIR, closing the iPhone keypad now returns the live workout and bottom navigation to their normal screen position.',
+    ],
+  },
+  {
+    id: '2026-08-05-fast-workout-discard',
+    date: '2026-08-05',
+    title: 'Workout discard is immediate',
+    items: [
+      'Discard returns to Training as soon as the local workout deletion finishes instead of waiting for optional timer-notification work.',
+      'Timer notification cleanup continues safely in the background after the discarded workout is gone.',
+    ],
+  },
+  {
+    id: '2026-08-05-silent-automatic-cloud-backup-retries',
+    date: '2026-08-05',
+    title: 'Cloud backup retries quietly',
+    items: [
+      'Automatic cloud-backup failures and existing-snapshot conflicts no longer place warning messages on Home.',
+      'Automatic backup keeps retrying silently, and manual backup controls remain available in Settings.',
+    ],
+  },
+  {
+    id: '2026-08-05-update-banner-and-live-nav-anchor',
+    date: '2026-08-05',
+    title: 'Updates stay visible and navigation stays anchored',
+    items: [
+      'The What’s New banner now stays visible until you open or dismiss it, including when an active workout is restored.',
+      'Live Workout keeps the bottom navigation anchored while the iPhone keyboard and visual viewport finish closing during a route change.',
+    ],
+  },
+  {
+    id: '2026-08-05-consolidated-rest-timer-controls',
+    date: '2026-08-05',
+    title: 'Rest controls use less workout space',
+    items: [
+      'The bottom workout row now shows the rest countdown with 30-second minus and plus controls beside Discard and Finish.',
+      'Total workout time and rest-duration wheels now live in Exercise Options instead of a separate timer popup.',
+      'Rest-duration changes apply immediately to the current countdown and future sets without Save or Cancel buttons.',
+      'Live Workout now resets stale iPhone keyboard positioning so bottom navigation stays on the same baseline as the other dashboards.',
+    ],
+  },
+  {
+    id: '2026-08-04-live-layout-and-nav-recovery',
+    date: '2026-08-04',
+    title: 'Tighter live workout layout',
+    items: [
+      'Add Set now sits above the Add Exercise and Remove Exercise row.',
+      'Exercise Options can be dismissed by swiping the sheet down, while the workout behind it stays fully blocked.',
+      'Bottom navigation now clears stale iPhone keyboard positioning after app resume and missing viewport events.',
+    ],
+  },
+  {
+    id: '2026-08-04-live-exercise-options',
+    date: '2026-08-04',
+    title: 'Cleaner live exercise controls',
+    items: [
+      'Set and rep targets now live in the exercise options sheet, where they can be edited for the current workout without changing the program.',
+      'Swap and Skip stay available from the three-dot menu while Add Exercise, Remove Exercise, and Add Set use a simpler fixed layout.',
+      'Set rows keep the same height when adding a fourth set.',
+    ],
+  },
+  {
+    id: '2026-08-04-fixed-workout-controls-and-autofill',
+    date: '2026-08-04',
+    title: 'Workout controls stay put',
+    items: [
+      'Only the set rows scroll; Add Set, exercise actions, workout controls, and bottom navigation stay fixed.',
+      'Set deletion and rest-timer cleanup no longer surface stale not-found errors.',
+      'Auto-filled sets follow a changing fatigue sequence instead of repeating identical consecutive values.',
+      'Generated 1.5-Rep exercise variants have been removed from the active exercise library.',
+    ],
+  },
+  {
+    id: '2026-08-04-live-workout-and-food-polish',
+    date: '2026-08-04',
+    title: 'More room to log workouts and food',
+    items: [
+      'Live workouts use the full page width, keep the set list visible, show the set-and-rep target beside the exercise name, and place pause beside elapsed time.',
+      'Set edits finish saving before a set or exercise is removed, preventing stale “workout set not found” errors.',
+      'The timer-settings reminder stays dismissed for the rest of the current workout after you close it once.',
+      'Create Food has a clearer serving-first layout, and the Nutrition camera menu opens with a smoother animation.',
+      'App updates install automatically; after reopening, this What’s New banner summarizes the new version.',
+    ],
+  },
+  {
+    id: '2026-08-03-paid-use-reliability',
+    date: '2026-08-03',
+    title: 'Safer workouts, backups, and scanning',
+    items: [
+      'New workouts leave reps and weight blank until you have exercise history, then estimate the whole set sequence from your rep range, RIR, and normal fatigue across later sets.',
+      'Workout timers keep running during brief backgrounding, then pause when the app closes or after 15 minutes without input, with one-tap pause and resume in the header.',
+      'Long workouts show hours, and paused time is excluded from completed workout duration.',
+      'Cloud backups run less often, explain failures more clearly, and can be permanently deleted without removing local data.',
+      'Cloud backup warnings stay on Home instead of following you through the app.',
+      'Barcode scanning now has a focused camera screen, remembers a successful camera permission on this device, and returns to Nutrition cleanly.',
+      'During a workout, the notes button sits beside the exercise name and only the set list scrolls when it grows.',
+      'Closing exercise notes keeps the workout screen and bottom navigation fixed in place.',
+    ],
+  },
+  {
+    id: '2026-07-30-adaptive-calorie-history',
+    date: '2026-07-30',
+    title: 'Calorie estimates learn from more history',
+    items: [
+      'Update Calories now blends a responsive four-week estimate with up to three months of recency-weighted calorie and weigh-in history.',
+      'Consistent long-term logging progressively stabilizes the estimate without allowing older behavior to overpower recent changes.',
+      'Each update reports developing, moderate, or strong estimate confidence based on the amount and span of supporting history.',
+    ],
+  },
+  {
+    id: '2026-07-30-precise-calorie-updates',
+    date: '2026-07-30',
+    title: 'More precise calorie updates',
+    items: [
+      'Update Calories now uses recent logged intake, the bodyweight trend, your desired weight, and your selected weekly rate to set a whole-calorie target directly instead of moving in coarse repeated steps.',
+      'Once trend weight reaches your desired weight, the same button estimates maintenance calories instead of continuing the previous deficit or surplus.',
+    ],
+  },
+  {
     id: '2026-07-19-calorie-insights-and-workout-polish',
     date: '2026-07-19',
     title: 'Calorie insights and smoother logging',

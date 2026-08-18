@@ -4,6 +4,10 @@ export const DEFAULT_PROGRAM_DURATION_WEEKS = 10
 /** Allowed range for a user-set program length, in weeks. */
 export const MIN_PROGRAM_DURATION_WEEKS = 1
 export const MAX_PROGRAM_DURATION_WEEKS = 104
+export const DEFAULT_DELOAD_RIR_INCREASE = 3
+export const DEFAULT_DELOAD_SET_REDUCTION = 1
+export const DEFAULT_DELOAD_WEEK_NUMBERS = [1] as const
+const DEFAULT_TARGET_RIR = 2
 
 /** The subset of an ActiveCycleDayCheck that week derivation needs. */
 export type ProgramWeekCheck = {
@@ -47,19 +51,103 @@ export function completionProgramWeek(
     : latestWeek
 }
 
-/**
- * Current cycle week with a persisted manual baseline. Check-offs can still
- * advance beyond that baseline when every workout day is completed.
+/** The explicitly selected cycle week. Completion advancement is handled by
+ * nextProgramWeekAfterCompletion so visiting another week never hides its
+ * persisted checks or forces the selected week forward at read time.
  */
 export function currentProgramWeek(
   configuredWeek: number | null | undefined,
   checks: readonly ProgramWeekCheck[],
   dayIds: readonly string[],
 ): number {
-  const baseline = Number.isFinite(configuredWeek)
+  void checks
+  void dayIds
+  return Number.isFinite(configuredWeek)
     ? Math.max(1, Math.round(configuredWeek ?? 1))
     : 1
-  return Math.max(baseline, completionProgramWeek(checks, dayIds))
+}
+
+export function isProgramWeekComplete(
+  checks: readonly ProgramWeekCheck[],
+  dayIds: readonly string[],
+  weekNumber: number,
+) {
+  const expected = new Set(dayIds)
+  if (!expected.size) {
+    return false
+  }
+  const completed = new Set(
+    checks
+      .filter(
+        (check) =>
+          check.checked &&
+          check.weekNumber === weekNumber &&
+          expected.has(check.dayId),
+      )
+      .map((check) => check.dayId),
+  )
+  return completed.size === expected.size
+}
+
+export function nextProgramWeekAfterCompletion({
+  checks,
+  dayIds,
+  durationWeeks,
+  weekNumber,
+}: {
+  checks: readonly ProgramWeekCheck[]
+  dayIds: readonly string[]
+  durationWeeks: number
+  weekNumber: number
+}) {
+  const lastWeek = clampProgramDurationWeeks(durationWeeks)
+  let nextWeek = Math.min(lastWeek, Math.max(1, Math.round(weekNumber)))
+  while (
+    nextWeek < lastWeek &&
+    isProgramWeekComplete(checks, dayIds, nextWeek)
+  ) {
+    nextWeek += 1
+  }
+  return nextWeek
+}
+
+export function normalizeDeloadWeekNumbers(
+  weeks: readonly number[] | null | undefined,
+  durationWeeks: number,
+) {
+  const lastWeek = clampProgramDurationWeeks(durationWeeks)
+  return [...new Set(weeks ?? [])]
+    .filter((week) => Number.isInteger(week) && week >= 1 && week <= lastWeek)
+    .sort((left, right) => left - right)
+}
+
+export function isDeloadWeek(
+  weekNumber: number,
+  deloadWeekNumbers: readonly number[] | null | undefined,
+) {
+  return (deloadWeekNumbers ?? []).includes(weekNumber)
+}
+
+export function formatProgramWeekLabel(
+  weekNumber: number,
+  deloadWeekNumbers: readonly number[] | null | undefined,
+) {
+  const normalized = [...new Set(deloadWeekNumbers ?? [])]
+    .filter((week) => Number.isInteger(week) && week >= 1)
+    .sort((left, right) => left - right)
+  const deloadIndex = normalized.indexOf(Math.round(weekNumber))
+  return deloadIndex >= 0 ? `Deload ${deloadIndex + 1}` : `Week ${weekNumber}`
+}
+
+export function deloadTargetSetCount(targetSetCount: number) {
+  return Math.max(1, targetSetCount - DEFAULT_DELOAD_SET_REDUCTION)
+}
+
+export function deloadTargetRir(targetRir: number | null) {
+  return Math.min(
+    10,
+    (targetRir ?? DEFAULT_TARGET_RIR) + DEFAULT_DELOAD_RIR_INCREASE,
+  )
 }
 
 /**

@@ -1,5 +1,6 @@
 import { Footprints, Pause, Play, Square, Timer } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import {
   Card,
@@ -30,23 +31,36 @@ import {
 import { runRepository, type RunStructure } from '@repositories/runRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
 import type { Run, RunAlertResponse, RunTrackingMode } from '@shared-types/app'
+import {
+  getCachedRunPageData,
+  preloadRunPageData,
+  setCachedRunPageData,
+  type RunPageLoadedState,
+} from '@pages/runPageCache'
 
 type RunPageState =
   | { status: 'loading' }
-  | { status: 'idle' }
-  | { status: 'ready'; structure: RunStructure }
+  | RunPageLoadedState
   | { status: 'error'; message: string }
 
 export function RunPage() {
   const { language, t } = useLanguage()
-  const [state, setState] = useState<RunPageState>({ status: 'loading' })
+  const cachedPageData = getCachedRunPageData()
+  const [state, setState] = useState<RunPageState>(
+    () => cachedPageData?.state ?? { status: 'loading' },
+  )
   const [geoError, setGeoError] = useState<string | null>(null)
   const [finishRequested, setFinishRequested] = useState(false)
   const [discardRequested, setDiscardRequested] = useState(false)
   const [activeWorkoutConflictId, setActiveWorkoutConflictId] = useState<
     string | null
   >(null)
+  const [activeWorkoutId, setActiveWorkoutId] = useState<string | null>(
+    () => cachedPageData?.activeWorkoutId ?? null,
+  )
   const [lowPacePrompt, setLowPacePrompt] = useState(false)
+  // Capture the mount time once; the active-run interval keeps it current.
+  // eslint-disable-next-line react-hooks/purity
   const [clockNow, setClockNow] = useState(Date.now())
   const [manualFormOpen, setManualFormOpen] = useState(false)
   const [treadmillFormOpen, setTreadmillFormOpen] = useState(false)
@@ -64,20 +78,13 @@ export function RunPage() {
 
   useEffect(() => {
     let isCurrent = true
-    void runRepository
-      .getActiveRun()
-      .then(async (run) => {
+    void preloadRunPageData()
+      .then((data) => {
         if (!isCurrent) {
           return
         }
-        setState(
-          run
-            ? {
-                status: 'ready',
-                structure: await runRepository.getRunStructure(run.id),
-              }
-            : { status: 'idle' },
-        )
+        setActiveWorkoutId(data.activeWorkoutId)
+        setState(data.state)
       })
       .catch((caught: unknown) => {
         if (isCurrent) {
@@ -104,7 +111,22 @@ export function RunPage() {
       : null
   const activeTreadmillSteps =
     state.status === 'ready' ? (state.structure.run.treadmillStepCount ?? 0) : 0
-  storedTreadmillSteps.current = activeTreadmillSteps
+
+  useEffect(() => {
+    storedTreadmillSteps.current = activeTreadmillSteps
+  }, [activeTreadmillSteps])
+
+  const reload = useCallback(
+    async (runId: string) => {
+      const nextState: RunPageLoadedState = {
+        status: 'ready',
+        structure: await runRepository.getRunStructure(runId),
+      }
+      setCachedRunPageData({ activeWorkoutId, state: nextState })
+      setState(nextState)
+    },
+    [activeWorkoutId],
+  )
 
   useEffect(() => {
     if (
@@ -193,7 +215,7 @@ export function RunPage() {
     }
     window.addEventListener('devicemotion', onMotion)
     return () => window.removeEventListener('devicemotion', onMotion)
-  }, [activeRunId, activeRunMode, activeRunStatus, state.status])
+  }, [activeRunId, activeRunMode, activeRunStatus, reload, state.status])
 
   useEffect(() => {
     function beforeUnload(event: BeforeUnloadEvent) {
@@ -209,13 +231,6 @@ export function RunPage() {
     window.addEventListener('beforeunload', beforeUnload)
     return () => window.removeEventListener('beforeunload', beforeUnload)
   }, [state])
-
-  async function reload(runId: string) {
-    setState({
-      status: 'ready',
-      structure: await runRepository.getRunStructure(runId),
-    })
-  }
 
   async function startRun() {
     blurActiveControl()
@@ -307,6 +322,7 @@ export function RunPage() {
     }
     await workoutRepository.discardWorkout(activeWorkoutConflictId)
     setActiveWorkoutConflictId(null)
+    setActiveWorkoutId(null)
     await startRun()
   }
 
@@ -363,7 +379,9 @@ export function RunPage() {
     stopGpsTracking(gpsTracker.current)
     gpsTracker.current = null
     setDiscardRequested(false)
-    setState({ status: 'idle' })
+    const nextState: RunPageLoadedState = { status: 'idle' }
+    setCachedRunPageData({ activeWorkoutId, state: nextState })
+    setState(nextState)
   }
 
   async function respondToLowPace(run: Run, response: RunAlertResponse) {
@@ -378,7 +396,7 @@ export function RunPage() {
   if (state.status === 'loading') {
     return (
       <PageContainer>
-        <LoadingState label="Loading run tracker" />
+        <LoadingState label="Loading run tracker" variant="cards" />
       </PageContainer>
     )
   }
@@ -404,28 +422,36 @@ export function RunPage() {
             message="Track outside with GPS, sense treadmill steps, or add a completed run manually."
             action={
               <div className="run-start-actions">
-                <PrimaryButton type="button" onClick={startRun}>
-                  <Play aria-hidden="true" size={18} />
-                  Start Outdoor Run
-                </PrimaryButton>
-                <SecondaryButton
-                  type="button"
-                  onClick={() => {
-                    setTreadmillFormOpen((current) => !current)
-                    setManualFormOpen(false)
-                  }}
-                >
-                  Start Treadmill
-                </SecondaryButton>
-                <SecondaryButton
-                  type="button"
-                  onClick={() => {
-                    setManualFormOpen((current) => !current)
-                    setTreadmillFormOpen(false)
-                  }}
-                >
-                  Log Run Manually
-                </SecondaryButton>
+                {activeWorkoutId ? (
+                  <Link className="button button-primary" to="/workout">
+                    {t('Finish current workout')}
+                  </Link>
+                ) : (
+                  <>
+                    <PrimaryButton type="button" onClick={startRun}>
+                      <Play aria-hidden="true" size={18} />
+                      Start Outdoor Run
+                    </PrimaryButton>
+                    <SecondaryButton
+                      type="button"
+                      onClick={() => {
+                        setTreadmillFormOpen((current) => !current)
+                        setManualFormOpen(false)
+                      }}
+                    >
+                      Start Treadmill
+                    </SecondaryButton>
+                    <SecondaryButton
+                      type="button"
+                      onClick={() => {
+                        setManualFormOpen((current) => !current)
+                        setTreadmillFormOpen(false)
+                      }}
+                    >
+                      Log Run Manually
+                    </SecondaryButton>
+                  </>
+                )}
               </div>
             }
           />

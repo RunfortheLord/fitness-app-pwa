@@ -15,8 +15,8 @@ test('production manifest exposes install metadata and icons', async ({
 
   const manifest = await manifestResponse.json()
   expect(manifest).toMatchObject({
-    name: 'Fitness Log',
-    short_name: 'Fitness',
+    name: 'Vigorune',
+    short_name: 'Vigorune',
     display: 'standalone',
     orientation: 'portrait-primary',
     theme_color: '#101011',
@@ -37,6 +37,62 @@ test('production manifest exposes install metadata and icons', async ({
     'href',
     '/apple-touch-icon.png',
   )
+})
+
+test('handles an installed-app OAuth callback before loading the app shell', async ({
+  page,
+}) => {
+  await page.route('**/api/auth/relay', async (route) => {
+    await route.fulfill({ json: { ok: true }, status: 202 })
+  })
+
+  await page.goto(
+    '/auth/callback/123e4567-e89b-42d3-a456-426614174000?code=one-time-code',
+  )
+
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Sign-in approved' }),
+  ).toBeVisible()
+  await expect(page).toHaveURL('/settings?auth_relay_callback=received')
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Home' }),
+  ).toHaveCount(0)
+})
+
+test('returns a standalone OAuth callback to app Settings', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const browserMatchMedia = window.matchMedia.bind(window)
+    window.matchMedia = (query) =>
+      query === '(display-mode: standalone)'
+        ? {
+            addEventListener: () => undefined,
+            addListener: () => undefined,
+            dispatchEvent: () => false,
+            matches: true,
+            media: query,
+            onchange: null,
+            removeEventListener: () => undefined,
+            removeListener: () => undefined,
+          }
+        : browserMatchMedia(query)
+  })
+  await page.route('**/api/auth/relay', async (route) => {
+    await route.fulfill({ json: { ok: true }, status: 202 })
+  })
+
+  await page.goto(
+    '/auth/callback/123e4567-e89b-42d3-a456-426614174000?code=one-time-code',
+  )
+
+  await expect(
+    page.getByText('Returning to Vigorune Settings to finish your session.'),
+  ).toBeVisible()
+  await expect(page).toHaveURL('/settings?auth_relay_callback=received')
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Settings' }),
+  ).toBeVisible()
 })
 
 test('registers the service worker in the production build', async ({
@@ -88,7 +144,7 @@ test(
 
     await page.goto('/training')
     await expect(
-      page.getByRole('heading', { level: 1, name: 'Training' }),
+      page.getByRole('heading', { level: 1, name: 'Current Program' }),
     ).toBeVisible()
     await page.getByRole('button', { name: 'Exercise Library' }).click()
     await expect(
@@ -132,15 +188,17 @@ test(
   },
 )
 
-test('shows and applies the update availability action', async ({ page }) => {
+test('activates an available update without interrupting the active app', async ({
+  page,
+}) => {
   await page.goto('/?pwaTest=1')
   await expect(
     page.getByRole('heading', { level: 1, name: 'Home' }),
   ).toBeVisible()
   const signInPrompt = page.getByRole('complementary', {
-    name: 'Prevent data loss',
+    name: 'Your data stays local',
   })
-  await signInPrompt.getByRole('button', { name: 'Not now' }).click()
+  await signInPrompt.getByRole('button', { name: 'Continue offline' }).click()
   await expect(signInPrompt).not.toBeVisible()
 
   await page.evaluate(() => {
@@ -159,9 +217,7 @@ test('shows and applies the update availability action', async ({ page }) => {
     )
   })
 
-  await expect(page.getByText('Update available.')).toBeVisible()
-  await page.getByRole('button', { name: 'Update now' }).click()
-  await expect(page.getByRole('button', { name: 'Updating' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Update now' })).toHaveCount(0)
   await expect
     .poll(() =>
       page.evaluate(() => {
@@ -172,7 +228,6 @@ test('shows and applies the update availability action', async ({ page }) => {
       }),
     )
     .toBe(true)
-  await expect(page.getByText(/close the app and open it again/)).toBeVisible()
 })
 
 test(
@@ -200,6 +255,12 @@ test(
     await expect(page.getByRole('textbox', { name: 'Set 1 Reps' })).toHaveValue(
       '8',
     )
+    await page.getByRole('button', { name: 'More exercise actions' }).click()
+    await expect(
+      page
+        .getByRole('dialog', { name: 'Exercise options' })
+        .getByRole('button', { name: 'Resume workout timer' }),
+    ).toBeVisible()
   },
 )
 
@@ -262,7 +323,7 @@ async function createActiveWorkout(page: Page) {
   await page.getByRole('button', { name: 'Save exercise' }).click()
 
   await page
-    .getByLabel('Current active cycle')
+    .getByLabel('Current Program')
     .getByRole('button', { name: 'Create program' })
     .click()
   await page
@@ -292,7 +353,7 @@ async function createActiveWorkout(page: Page) {
   await page.getByRole('textbox', { name: 'Set 1 Weight' }).fill('105')
   await page.getByRole('textbox', { name: 'Set 1 Reps' }).fill('8')
   await page.getByRole('button', { name: 'Complete set 1' }).click()
-  await expect(page.locator('.rest-timer-toolbar')).toBeVisible()
+  await expect(page.locator('.live-session-rest-timer')).toBeVisible()
   await expect(page.getByRole('textbox', { name: 'Set 1 Reps' })).toHaveValue(
     '8',
   )

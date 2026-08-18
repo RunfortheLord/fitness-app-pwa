@@ -51,6 +51,21 @@ describe('buildSetMetricPropagationUpdates', () => {
     })
   })
 
+  it('propagates manually entered reps unchanged to eligible later sets', () => {
+    const sets = [workoutSet(1, {}), workoutSet(2, {}), workoutSet(3, {})]
+
+    const updates = buildSetMetricPropagationUpdates({
+      allSets: sets,
+      sourceSet: sets[0],
+      metricKey: 'reps',
+      value: 10,
+    })
+
+    expect(updates.map((update) => update.metricValues.reps)).toEqual([
+      10, 10, 10,
+    ])
+  })
+
   it('does not clear later fields when the current field is cleared', () => {
     const sets = [
       workoutSet(1, { weight: 100 }),

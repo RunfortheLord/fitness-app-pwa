@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   handleFoodBarcodeLookup,
+  handleFoodResolve,
   handleFoodSearch,
   validateSearchRequest,
 } from './foodProviderApi'
@@ -259,6 +260,78 @@ describe('food provider API core', () => {
     expect(cache.get('b')).toBeNull()
   })
 
+  it('caches normalized USDA search, detail, and barcode results', async () => {
+    const fetcher = vi.fn(async (url: URL | RequestInfo) => {
+      const href = String(url)
+      if (href.includes('/food/123')) {
+        return jsonResponse(usdaFoodRecord(123, 'Cached rice', 'Foundation'))
+      }
+      if (href.includes('openfoodfacts')) {
+        return jsonResponse({ product: null })
+      }
+      return jsonResponse({
+        foods: [
+          {
+            ...usdaFoodRecord(123, 'Cached rice', 'Foundation'),
+            gtinUpc: '012345678905',
+          },
+        ],
+      })
+    })
+    const caches = createTestCaches()
+    const config = {
+      caches,
+      fetcher,
+      usdaApiKey: 'USDA_FDC_API_KEY_TEST_SENTINEL',
+    }
+
+    const firstSearch = await handleFoodSearch(
+      { provider: 'usda', query: 'cached rice' },
+      config,
+    )
+    const secondSearch = await handleFoodSearch(
+      { provider: 'usda', query: '  CACHED   RICE ' },
+      config,
+    )
+    expect(firstSearch).toMatchObject({ meta: { cache: 'miss' } })
+    expect(secondSearch).toMatchObject({ meta: { cache: 'hit' } })
+    expect(fetcher).toHaveBeenCalledTimes(2)
+
+    await handleFoodResolve(
+      { provider: 'usda', providerRecordId: '123' },
+      config,
+    )
+    const cachedDetail = await handleFoodResolve(
+      { provider: 'usda', providerRecordId: '123' },
+      config,
+    )
+    expect(cachedDetail).toMatchObject({ meta: { cache: 'hit' } })
+    expect(fetcher).toHaveBeenCalledTimes(3)
+
+    await handleFoodBarcodeLookup({ barcode: '012345678905' }, config)
+    const cachedBarcode = await handleFoodBarcodeLookup(
+      { barcode: '012345678905' },
+      config,
+    )
+    expect(cachedBarcode).toMatchObject({ meta: { cache: 'hit' } })
+    expect(fetcher).toHaveBeenCalledTimes(6)
+  })
+
+  it('bypasses search cache for API-key connection tests', async () => {
+    const fetcher = vi.fn<typeof fetch>(async () => jsonResponse({ foods: [] }))
+    const config = {
+      bypassCache: true,
+      caches: createTestCaches(),
+      fetcher,
+      usdaApiKey: 'USDA_FDC_API_KEY_TEST_SENTINEL',
+    }
+
+    await handleFoodSearch({ provider: 'usda', query: 'rice' }, config)
+    await handleFoodSearch({ provider: 'usda', query: 'rice' }, config)
+
+    expect(fetcher).toHaveBeenCalledTimes(4)
+  })
+
   it('prefers complete USDA barcode records over Open Food Facts conflicts', async () => {
     const fetcher = vi.fn(async (url: URL | RequestInfo) => {
       const href = String(url)
@@ -345,4 +418,12 @@ function usdaMacros() {
     { nutrientId: 1005, value: 25 },
     { nutrientId: 1004, value: 5 },
   ]
+}
+
+function createTestCaches() {
+  return {
+    barcode: new TtlCache<unknown>(20, 60_000),
+    details: new TtlCache<unknown>(20, 60_000),
+    search: new TtlCache<unknown>(20, 60_000),
+  }
 }

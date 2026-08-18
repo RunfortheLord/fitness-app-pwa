@@ -1012,6 +1012,242 @@ describe('database', () => {
 
     await destroyTestDatabase(migratedDatabase)
   })
+
+  it('initializes workout pause state when migrating from v16 to v17', async () => {
+    const name = `training-log-v17-workout-pause-${crypto.randomUUID()}`
+    const oldDatabase = new Dexie(name)
+    oldDatabase.version(16).stores({
+      appMetadata: '&id',
+      workouts: '&id, status, localDate, sourceActiveCycleId, startedAt',
+      workoutHistoryEntries:
+        '&id, localDate, sourceActiveCycleId, sourceTemplateId, completedAt',
+    })
+    const timestamp = '2026-08-03T10:00:00.000Z'
+    await oldDatabase.table('appMetadata').put({
+      id: 'app',
+      databaseSchemaVersion: 16,
+      backupSchemaVersion: BACKUP_SCHEMA_VERSION,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    await oldDatabase.table('workouts').put({
+      id: 'active-workout',
+      status: 'active',
+      localDate: '2026-08-03',
+      sourceActiveCycleId: null,
+      startedAt: timestamp,
+    })
+    await oldDatabase.table('workoutHistoryEntries').put({
+      id: 'completed-workout',
+      status: 'completed',
+      localDate: '2026-08-02',
+      sourceActiveCycleId: null,
+      sourceTemplateId: null,
+      startedAt: '2026-08-02T10:00:00.000Z',
+      completedAt: '2026-08-02T11:00:00.000Z',
+    })
+    oldDatabase.close()
+
+    const migratedDatabase = new TrainingLogDatabase(name)
+
+    await expect(
+      migratedDatabase.workouts.get('active-workout'),
+    ).resolves.toMatchObject({ pausedAt: null })
+    await expect(
+      migratedDatabase.workoutHistoryEntries.get('completed-workout'),
+    ).resolves.toMatchObject({ pausedAt: null })
+    await expect(
+      migratedDatabase.appMetadata.get('app'),
+    ).resolves.toMatchObject({
+      databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+    })
+
+    await destroyTestDatabase(migratedDatabase)
+  })
+
+  it('initializes live rep targets when migrating from v17 to v18', async () => {
+    const name = `training-log-v18-live-targets-${crypto.randomUUID()}`
+    const oldDatabase = new Dexie(name)
+    oldDatabase.version(17).stores({
+      appMetadata: '&id',
+      activeCycleWorkoutExercises: '&id',
+      workoutExercises: '&id, workoutId',
+      workoutSets: '&id, workoutExerciseId',
+    })
+    const timestamp = '2026-08-04T10:00:00.000Z'
+    await oldDatabase.table('appMetadata').put({
+      id: 'app',
+      databaseSchemaVersion: 17,
+      backupSchemaVersion: BACKUP_SCHEMA_VERSION,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    await oldDatabase.table('activeCycleWorkoutExercises').put({
+      id: 'source-exercise',
+      targetRepsMin: 6,
+      targetRepsMax: 9,
+    })
+    await oldDatabase.table('workoutExercises').put({
+      id: 'workout-exercise',
+      workoutId: 'workout',
+      sourcePrescribedExerciseId: 'source-exercise',
+      updatedAt: timestamp,
+    })
+    oldDatabase.close()
+
+    const migratedDatabase = new TrainingLogDatabase(name)
+    await expect(
+      migratedDatabase.workoutExercises.get('workout-exercise'),
+    ).resolves.toMatchObject({
+      sessionTargetRepsMin: 6,
+      sessionTargetRepsMax: 9,
+    })
+    await expect(
+      migratedDatabase.appMetadata.get('app'),
+    ).resolves.toMatchObject({
+      databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+    })
+
+    await destroyTestDatabase(migratedDatabase)
+  })
+
+  it('initializes workout preferences when migrating from v18 to v19', async () => {
+    const name = `training-log-v19-workout-preferences-${crypto.randomUUID()}`
+    const oldDatabase = new Dexie(name)
+    oldDatabase.version(18).stores({
+      appMetadata: '&id',
+      userSettings: '&id',
+    })
+    const timestamp = '2026-08-13T10:00:00.000Z'
+    await oldDatabase.table('appMetadata').put({
+      id: 'app',
+      databaseSchemaVersion: 18,
+      backupSchemaVersion: BACKUP_SCHEMA_VERSION,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    await oldDatabase.table('userSettings').put({
+      id: 'settings',
+      language: 'en',
+      weightUnit: 'lb',
+      energyUnit: 'kcal',
+      nutritionTargets: {
+        calories: 0,
+        proteinGrams: 0,
+        carbohydrateGrams: 0,
+        fatGrams: 0,
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    oldDatabase.close()
+
+    const migratedDatabase = new TrainingLogDatabase(name)
+    await expect(
+      migratedDatabase.userSettings.get('settings'),
+    ).resolves.toMatchObject({
+      rirTrackingEnabled: false,
+      workoutAutofillMode: 'history_copy',
+    })
+    await expect(
+      migratedDatabase.appMetadata.get('app'),
+    ).resolves.toMatchObject({
+      databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+    })
+
+    await destroyTestDatabase(migratedDatabase)
+  })
+
+  it('initializes opt-in deload scheduling and History preferences when migrating from v19', async () => {
+    const name = `training-log-v20-program-weeks-${crypto.randomUUID()}`
+    const oldDatabase = new Dexie(name)
+    oldDatabase.version(19).stores({
+      appMetadata: '&id',
+      userSettings: '&id',
+      programTemplates: '&id',
+      activeProgramCycles: '&id',
+      workouts: '&id',
+      workoutHistoryEntries: '&id',
+    })
+    const timestamp = '2026-08-17T10:00:00.000Z'
+    await oldDatabase.table('appMetadata').put({
+      id: 'app',
+      databaseSchemaVersion: 19,
+      backupSchemaVersion: BACKUP_SCHEMA_VERSION,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    await oldDatabase.table('userSettings').put({
+      id: 'settings',
+      weightUnit: 'lb',
+      energyUnit: 'kcal',
+      nutritionTargets: {
+        calories: 0,
+        proteinGrams: 0,
+        carbohydrateGrams: 0,
+        fatGrams: 0,
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    await oldDatabase.table('programTemplates').put({
+      id: 'template',
+      name: 'Program',
+      status: 'active',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    await oldDatabase.table('programTemplates').put({
+      id: 'scheduled-template',
+      name: 'Scheduled Program',
+      status: 'active',
+      deloadWeekNumbers: [4],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    await oldDatabase.table('activeProgramCycles').put({
+      id: 'cycle',
+      name: 'Program',
+      status: 'active',
+      activatedAt: timestamp,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    oldDatabase.close()
+
+    const migratedDatabase = new TrainingLogDatabase(name)
+    await expect(
+      migratedDatabase.userSettings.get('settings'),
+    ).resolves.toMatchObject({
+      historySortMode: 'recent',
+      historyProgramId: null,
+    })
+    await expect(
+      migratedDatabase.programTemplates.get('template'),
+    ).resolves.toMatchObject({
+      deloadSchedulingEnabled: false,
+      deloadWeekNumbers: [1],
+    })
+    await expect(
+      migratedDatabase.programTemplates.get('scheduled-template'),
+    ).resolves.toMatchObject({
+      deloadSchedulingEnabled: true,
+      deloadWeekNumbers: [4],
+    })
+    await expect(
+      migratedDatabase.activeProgramCycles.get('cycle'),
+    ).resolves.toMatchObject({
+      deloadSchedulingEnabled: false,
+      deloadWeekNumbers: [1],
+    })
+    await expect(
+      migratedDatabase.appMetadata.get('app'),
+    ).resolves.toMatchObject({
+      databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+    })
+
+    await destroyTestDatabase(migratedDatabase)
+  })
 })
 
 const v2Stores = {

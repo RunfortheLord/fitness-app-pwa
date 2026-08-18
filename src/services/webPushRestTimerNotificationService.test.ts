@@ -115,10 +115,53 @@ describe('webPushRestTimerNotificationService', () => {
       }),
     ).resolves.toBe('scheduled')
 
+    const firstBody = JSON.parse(
+      String(fetchMock.mock.calls[0]?.[1]?.body),
+    ) as { scheduleRevision: number }
     const secondBody = JSON.parse(
       String(fetchMock.mock.calls[1]?.[1]?.body),
-    ) as { previousMessageId: string }
+    ) as { previousMessageId: string; scheduleRevision: number }
+    expect(firstBody.scheduleRevision).toBe(1)
     expect(secondBody.previousMessageId).toBe('message-1')
+    expect(secondBody.scheduleRevision).toBe(2)
+  })
+
+  it('reuses a schedule revision after a failed request', async () => {
+    installWebPushGlobals('granted')
+    mocks.getSubscription.mockResolvedValue(subscription)
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json(
+          { ok: false, error: { code: 'scheduler_failed' } },
+          { status: 502 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ ok: true, messageId: 'message-1' }),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+    const timer = {
+      id: 'timer-1',
+      startedAt: new Date(Date.now() - 10_000).toISOString(),
+      durationSeconds: 90,
+      accumulatedPausedSeconds: 0,
+      pausedAt: null,
+      status: 'running' as const,
+    }
+
+    await expect(webPushRestTimerNotificationService.sync(timer)).resolves.toBe(
+      'failed',
+    )
+    await expect(webPushRestTimerNotificationService.sync(timer)).resolves.toBe(
+      'scheduled',
+    )
+    const revisions = fetchMock.mock.calls.map(
+      ([, init]) =>
+        (JSON.parse(String(init?.body)) as { scheduleRevision: number })
+          .scheduleRevision,
+    )
+    expect(revisions).toEqual([1, 1])
   })
 
   it('does not make network requests when permission has not been granted', async () => {

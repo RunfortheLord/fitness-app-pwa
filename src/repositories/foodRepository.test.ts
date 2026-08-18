@@ -498,7 +498,7 @@ describe('foodRepository', () => {
     ])
   })
 
-  it('lists distinct foods closest to the current clock time', async () => {
+  it('lists distinct foods closest to the current clock time from only the previous two local days', async () => {
     const repository = createFoodRepository(database)
     const rice = await seedFood(database)
     const oats = await repository.createFood({
@@ -523,10 +523,21 @@ describe('foodRepository', () => {
       fatGramsPerServing: 10,
       notes: '',
     })
+    const staleFood = await repository.createFood({
+      name: 'Stale cereal',
+      servingQuantity: 1,
+      servingUnit: 'cup',
+      servingDescription: '',
+      caloriesPerServing: 180,
+      proteinGramsPerServing: 4,
+      carbohydrateGramsPerServing: 36,
+      fatGramsPerServing: 2,
+      notes: '',
+    })
 
     await repository.logFood({
       foodId: eggs.id,
-      localDate: '2026-06-11',
+      localDate: '2026-06-17',
       servingMultiplier: 1,
       mealType: 'breakfast',
     })
@@ -535,6 +546,12 @@ describe('foodRepository', () => {
       localDate: '2026-06-18',
       servingMultiplier: 1,
       mealType: 'lunch',
+    })
+    await repository.logFood({
+      foodId: staleFood.id,
+      localDate: '2026-06-16',
+      servingMultiplier: 1,
+      mealType: 'breakfast',
     })
     await repository.logFood({
       foodId: rice.id,
@@ -560,6 +577,7 @@ describe('foodRepository', () => {
       [eggs.id, '2026-06-18T17:55:00.000Z'],
       [rice.id, '2026-06-18T18:05:00.000Z'],
       [oats.id, '2026-06-18T15:00:00.000Z'],
+      [staleFood.id, '2026-06-18T17:59:00.000Z'],
     ])
     await database.foodLogEntries.bulkPut(
       logs.map((log) => ({

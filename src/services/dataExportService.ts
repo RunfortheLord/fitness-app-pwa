@@ -232,7 +232,16 @@ export async function createFitnessDataExport(
     validateCanonicalBackup: options.validateCanonicalBackup,
   })
   if (!validation.ok) {
-    throw new Error(`Export validation failed: ${validation.errors.join(' ')}`)
+    files.push({
+      path: 'EXPORT_WARNINGS.txt',
+      content: [
+        'The export was created, but some local records did not pass the latest validation rules.',
+        'Your raw records are still included in the backup folder.',
+        '',
+        ...validation.errors.map((error) => `- ${error}`),
+        '',
+      ].join('\n'),
+    })
   }
 
   const archiveBytes = await createZip(folderName, files, options.now)
@@ -1046,13 +1055,17 @@ async function sha256(content: string): Promise<string | undefined> {
   if (!globalThis.crypto?.subtle) {
     return undefined
   }
-  const digest = await globalThis.crypto.subtle.digest(
-    'SHA-256',
-    encoder.encode(content),
-  )
-  return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
+  try {
+    const digest = await globalThis.crypto.subtle.digest(
+      'SHA-256',
+      encoder.encode(content),
+    )
+    return [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('')
+  } catch {
+    return undefined
+  }
 }
 
 function columnsForTable(

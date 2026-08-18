@@ -7,9 +7,12 @@ Use this checklist before reporting completion for implementation work.
 - Relevant docs under `docs/` were read before implementation.
 - The change satisfies the requested behavior and does not add unrequested product scope.
 - The change does not introduce excluded first-release features such as
-  required accounts, realtime multi-device cloud sync, AI recommendations,
-  subscriptions, social features, wearable integrations, adherence scores,
-  automatic calorie adjustment, or automatic progression.
+  required accounts, realtime multi-device cloud sync, AI coaching or automatic
+  AI actions, subscriptions, advertisements, social features, wearable
+  integrations, automatic calorie adjustment, or automatic program
+  advancement. Optional Google/Apple authentication, snapshot backup,
+  user-reviewed AI meal-photo estimates, and public store distribution are
+  approved only within the frozen Version 1 constraints.
 - Any unavoidable product or technical assumption is recorded in `docs/DECISIONS.md`.
 
 ## Data Integrity
@@ -36,12 +39,17 @@ Use this checklist before reporting completion for implementation work.
 
 ## Workout Behavior
 
-- Programs do not auto-advance or choose workout days.
+- Programs do not choose or start workout days automatically. Completion-based
+  week selection does not change prescriptions or start a workout.
 - Active workouts persist across navigation, reload, browser close, and installed PWA restart.
 - Rest timers derive remaining time from timestamps.
-- Load, reps, calories, RIR, and progression are not recommended automatically.
+- Workout-start load and rep estimates are deterministic, history-based,
+  explainable, and editable. They never rewrite completed history or permanent
+  program prescriptions automatically; opaque coaching remains excluded.
 - Workout completion saves history separately from program-change application.
-- Detected structural changes are reviewed individually and are never auto-applied.
+- Detected structural changes are never auto-applied. Version 1's unchecked
+  save-all option must preserve the active cycle and reusable template unless
+  the user explicitly opts in.
 
 ## Testing
 
@@ -75,4 +83,6 @@ If a check cannot run, report the exact reason. Do not describe skipped checks a
 - Temporary debug output was removed.
 - No secrets were committed.
 - Reference video and extracted frame/contact-sheet artifacts were not committed.
+- Public-name changes did not rename platform or persisted compatibility
+  identifiers or make existing local data inaccessible.
 - Changed files and checks run are reported.

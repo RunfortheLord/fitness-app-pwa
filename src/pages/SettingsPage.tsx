@@ -16,11 +16,7 @@ import {
 } from '@components/ui'
 import { useLanguage } from '@components/languageContextValue'
 import { BACKUP_SCHEMA_VERSION, DATABASE_SCHEMA_VERSION } from '@db/database'
-import {
-  CHANGELOG,
-  LATEST_CHANGELOG_ENTRY,
-  markChangelogSeen,
-} from '@domain/changelog'
+import { CHANGELOG, LATEST_CHANGELOG_ENTRY } from '@domain/changelog'
 import {
   DEFAULT_TIMER_SOUND_ID,
   TIMER_SOUNDS,
@@ -29,7 +25,11 @@ import {
 } from '@domain/timerSounds'
 import { APP_LANGUAGE_OPTIONS } from '@domain/localization'
 import { WEIGHT_UNIT_OPTIONS } from '@domain/weightUnits'
-import type { AppLanguage, WeightUnit } from '@shared-types/app'
+import type {
+  AppLanguage,
+  WeightUnit,
+  WorkoutAutofillMode,
+} from '@shared-types/app'
 import { ArrowLeft } from 'lucide-react'
 import { useAuth } from '@hooks/useAuth'
 import { useDashboardContext } from '@hooks/useDashboardContext'
@@ -61,11 +61,7 @@ import {
 } from '@services/cloudSyncService'
 import { automaticCloudBackupService } from '@services/automaticCloudBackupService'
 import { FeedbackClientError, sendFeedback } from '@services/feedbackClient'
-import {
-  geminiConnectionStatusForError,
-  testGeminiApiKey,
-} from '@services/geminiMealAnalysisClient'
-import type { IntegrationConnectionStatus } from '@shared-types/app'
+import { accountService } from '@services/accountService'
 
 type BuildInfo = {
   builtAt: string
@@ -82,12 +78,6 @@ type SettingsSection =
 
 export function SettingsPage() {
   const { language, setLanguage, t } = useLanguage()
-  // Visiting Settings (where the full changelog lives) counts as seeing the
-  // latest update, so the app-wide "What's new" banner clears.
-  useEffect(() => {
-    markChangelogSeen()
-  }, [])
-
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -102,6 +92,12 @@ export function SettingsPage() {
   const [isCloudRestoreConfirmOpen, setIsCloudRestoreConfirmOpen] =
     useState(false)
   const [cloudRestoreConfirmation, setCloudRestoreConfirmation] = useState('')
+  const [isCloudDeleteConfirmOpen, setIsCloudDeleteConfirmOpen] =
+    useState(false)
+  const [cloudDeleteConfirmation, setCloudDeleteConfirmation] = useState('')
+  const [isAccountDeleteConfirmOpen, setIsAccountDeleteConfirmOpen] =
+    useState(false)
+  const [accountDeleteConfirmation, setAccountDeleteConfirmation] = useState('')
   const [cloudBackupInfo, setCloudBackupInfo] =
     useState<CloudBackupInfo | null>(null)
   const [cloudBusy, setCloudBusy] = useState(false)
@@ -130,10 +126,15 @@ export function SettingsPage() {
   const [weightUnitMessage, setWeightUnitMessage] = useState<string | null>(
     null,
   )
-  const [rirTrackingEnabled, setRirTrackingEnabled] = useState(true)
+  const [rirTrackingEnabled, setRirTrackingEnabled] = useState(false)
   const [rirTrackingMessage, setRirTrackingMessage] = useState<string | null>(
     null,
   )
+  const [workoutAutofillMode, setWorkoutAutofillMode] =
+    useState<WorkoutAutofillMode>('history_copy')
+  const [workoutAutofillMessage, setWorkoutAutofillMessage] = useState<
+    string | null
+  >(null)
   const [languageMessage, setLanguageMessage] = useState<string | null>(null)
   const [storagePersistenceStatus, setStoragePersistenceStatus] =
     useState<StoragePersistenceStatus | null>(null)
@@ -142,17 +143,16 @@ export function SettingsPage() {
   const [feedbackSending, setFeedbackSending] = useState(false)
   const [feedbackError, setFeedbackError] = useState<string | null>(null)
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null)
-  const [geminiApiKeyInput, setGeminiApiKeyInput] = useState('')
-  const [geminiConfigured, setGeminiConfigured] = useState(false)
-  const [geminiStatus, setGeminiStatus] =
-    useState<IntegrationConnectionStatus>('not_configured')
-  const [geminiBusy, setGeminiBusy] = useState(false)
-  const [geminiMessage, setGeminiMessage] = useState<string | null>(null)
-  const [geminiError, setGeminiError] = useState<string | null>(null)
   const [whatsNewOpen, setWhatsNewOpen] = useState(
     () => searchParams.get('section') === 'whats-new',
   )
-  const { user, status: authStatus, signIn, signOut } = useAuth()
+  const {
+    user,
+    status: authStatus,
+    signIn,
+    signInWithApple,
+    signOut,
+  } = useAuth()
   const { refreshDashboard } = useDashboardContext()
   const visibleCloudBackupInfo =
     authStatus === 'signedIn' && isOnline ? cloudBackupInfo : null
@@ -203,7 +203,8 @@ export function SettingsPage() {
         settings.selectedTimerSoundId ?? DEFAULT_TIMER_SOUND_ID,
       )
       setWeightUnit(settings.weightUnit ?? 'lb')
-      setRirTrackingEnabled(settings.rirTrackingEnabled ?? true)
+      setRirTrackingEnabled(settings.rirTrackingEnabled ?? false)
+      setWorkoutAutofillMode(settings.workoutAutofillMode ?? 'history_copy')
     })
 
     return () => {
@@ -221,20 +222,6 @@ export function SettingsPage() {
       setStoragePersistenceStatus(metadata?.storagePersistenceStatus ?? null)
     })
 
-    return () => {
-      isCurrent = false
-    }
-  }, [])
-
-  useEffect(() => {
-    let isCurrent = true
-    void settingsRepository.getGeminiApiKeySettings().then((settings) => {
-      if (!isCurrent) {
-        return
-      }
-      setGeminiConfigured(Boolean(settings?.apiKey))
-      setGeminiStatus(settings?.status ?? 'not_configured')
-    })
     return () => {
       isCurrent = false
     }
@@ -365,6 +352,17 @@ export function SettingsPage() {
     })
   }
 
+  function saveWorkoutAutofill(mode: WorkoutAutofillMode) {
+    setWorkoutAutofillMode(mode)
+    void settingsRepository.saveWorkoutAutofillMode(mode).then(() => {
+      setWorkoutAutofillMessage(
+        mode === 'smart_progression'
+          ? 'Smart progression will estimate upcoming sets from completed history.'
+          : 'New workouts will copy matching completed sets from recent history.',
+      )
+    })
+  }
+
   async function saveAppLanguage(nextLanguage: AppLanguage) {
     await setLanguage(nextLanguage)
     setLanguageMessage(
@@ -479,7 +477,9 @@ export function SettingsPage() {
       const exportResult = await backupService.createCsvArchive()
       downloadBlob(exportResult.blob, exportResult.filename)
       setOperationMessage(
-        `Fitness data export prepared: ${formatFileSize(exportResult.byteSize)}, ${exportResult.totalRecordCount} records in ${exportResult.fileCount} files.`,
+        exportResult.validation.ok
+          ? `Fitness data export prepared: ${formatFileSize(exportResult.byteSize)}, ${exportResult.totalRecordCount} records in ${exportResult.fileCount} files.`
+          : `Fitness data export prepared with a warning report: ${formatFileSize(exportResult.byteSize)}, ${exportResult.totalRecordCount} records in ${exportResult.fileCount} files.`,
       )
     } catch (caught) {
       setOperationError(
@@ -496,6 +496,15 @@ export function SettingsPage() {
     setCloudError(null)
     try {
       await signIn()
+    } catch (caught) {
+      setCloudError(cloudErrorMessage(caught))
+    }
+  }
+
+  async function startAppleSignIn() {
+    setCloudError(null)
+    try {
+      await signInWithApple()
     } catch (caught) {
       setCloudError(cloudErrorMessage(caught))
     }
@@ -548,6 +557,54 @@ export function SettingsPage() {
       setCloudBusy(false)
       setIsCloudRestoreConfirmOpen(false)
       setCloudRestoreConfirmation('')
+    }
+  }
+
+  async function deleteCloudData() {
+    if (cloudDeleteConfirmation !== 'DELETE CLOUD') {
+      return
+    }
+
+    setCloudBusy(true)
+    setCloudError(null)
+    setCloudMessage(null)
+    try {
+      await cloudSyncService.deleteCloudData()
+      await signOut()
+      setCloudBackupInfo(null)
+      setCloudMessage(
+        'Cloud backup data was deleted. Local data remains on this device.',
+      )
+    } catch (caught) {
+      setCloudError(cloudErrorMessage(caught))
+    } finally {
+      setCloudBusy(false)
+      setIsCloudDeleteConfirmOpen(false)
+      setCloudDeleteConfirmation('')
+    }
+  }
+
+  async function deleteAccount() {
+    if (accountDeleteConfirmation !== 'DELETE ACCOUNT') {
+      return
+    }
+    setCloudBusy(true)
+    setCloudError(null)
+    setCloudMessage(null)
+    try {
+      const result = await accountService.deleteAccount()
+      setCloudBackupInfo(null)
+      setCloudMessage(
+        result.providerRevocation === 'manual_apple'
+          ? 'Account and cloud data deleted. Local data remains. You can also revoke Vigorune in your Apple Account settings.'
+          : 'Account and cloud data deleted. Local data remains on this device.',
+      )
+    } catch (caught) {
+      setCloudError(cloudErrorMessage(caught))
+    } finally {
+      setCloudBusy(false)
+      setIsAccountDeleteConfirmOpen(false)
+      setAccountDeleteConfirmation('')
     }
   }
 
@@ -648,72 +705,6 @@ export function SettingsPage() {
     }
   }
 
-  async function saveAndTestGeminiKey() {
-    const apiKey = geminiApiKeyInput.trim()
-    if (!apiKey) {
-      setGeminiError('Enter a Gemini API key.')
-      return
-    }
-    setGeminiBusy(true)
-    setGeminiMessage(null)
-    setGeminiError(null)
-    setGeminiStatus('testing')
-    try {
-      await settingsRepository.saveGeminiApiKey(apiKey, 'testing')
-      await testGeminiApiKey({ apiKey })
-      await settingsRepository.updateGeminiApiKeyStatus('connected')
-      setGeminiConfigured(true)
-      setGeminiStatus('connected')
-      setGeminiApiKeyInput('')
-      setGeminiMessage('Gemini 3.5 Flash is connected.')
-    } catch (error) {
-      const status = geminiConnectionStatusForError(error)
-      await settingsRepository.updateGeminiApiKeyStatus(status)
-      setGeminiConfigured(true)
-      setGeminiStatus(status)
-      setGeminiError(geminiSettingsError(status))
-    } finally {
-      setGeminiBusy(false)
-    }
-  }
-
-  async function testSavedGeminiKey() {
-    setGeminiBusy(true)
-    setGeminiMessage(null)
-    setGeminiError(null)
-    setGeminiStatus('testing')
-    try {
-      const settings = await settingsRepository.getGeminiApiKeySettings()
-      if (!settings?.apiKey) {
-        setGeminiConfigured(false)
-        setGeminiStatus('not_configured')
-        setGeminiError('Enter a Gemini API key.')
-        return
-      }
-      await settingsRepository.updateGeminiApiKeyStatus('testing')
-      await testGeminiApiKey({ apiKey: settings.apiKey })
-      await settingsRepository.updateGeminiApiKeyStatus('connected')
-      setGeminiStatus('connected')
-      setGeminiMessage('Gemini 3.5 Flash is connected.')
-    } catch (error) {
-      const status = geminiConnectionStatusForError(error)
-      await settingsRepository.updateGeminiApiKeyStatus(status)
-      setGeminiStatus(status)
-      setGeminiError(geminiSettingsError(status))
-    } finally {
-      setGeminiBusy(false)
-    }
-  }
-
-  async function removeGeminiKey() {
-    await settingsRepository.removeGeminiApiKey()
-    setGeminiApiKeyInput('')
-    setGeminiConfigured(false)
-    setGeminiStatus('not_configured')
-    setGeminiError(null)
-    setGeminiMessage('Gemini API key removed from this device.')
-  }
-
   if (isWhatsNewSubpageOpen) {
     return (
       <PageContainer>
@@ -799,6 +790,40 @@ export function SettingsPage() {
             </FormField>
             {weightUnitMessage ? (
               <StatusMessage tone="success">{weightUnitMessage}</StatusMessage>
+            ) : null}
+            <FormField
+              id="workout-autofill-mode"
+              label="Workout set autofill"
+              helpText="Choose how completed exercise history fills weight and reps in a new workout."
+            >
+              <select
+                id="workout-autofill-mode"
+                onChange={(event) =>
+                  saveWorkoutAutofill(
+                    event.currentTarget.value as WorkoutAutofillMode,
+                  )
+                }
+                value={workoutAutofillMode}
+              >
+                <option value="history_copy">{t('Recorded history')}</option>
+                <option value="smart_progression">
+                  {t('Smart progression')}
+                </option>
+              </select>
+            </FormField>
+            <p className="muted">
+              {workoutAutofillMode === 'smart_progression'
+                ? t(
+                    'Estimates weight and reps across sets using prior performance, fatigue, rep ranges, and RIR when RIR tracking is on.',
+                  )
+                : t(
+                    'Copies weight and reps from matching completed sets in the most recent workout history.',
+                  )}
+            </p>
+            {workoutAutofillMessage ? (
+              <StatusMessage tone="success">
+                {workoutAutofillMessage}
+              </StatusMessage>
             ) : null}
             <label className="checkbox-row">
               <input
@@ -972,81 +997,18 @@ export function SettingsPage() {
           <SectionHeader title="AI meal analysis" />
           <Card>
             <p>
-              <strong>Gemini 3.5 Flash</strong>
+              <strong>OpenAI meal analysis</strong>
             </p>
             <p className="muted">
               {t(
-                'The key stays in local app storage. Meal photos are sent directly from this device to Google for analysis and are never included in app backups. Google may use free-tier requests to improve its products.',
+                'Meal photos are resized on this device and sent through Vigorune’s secure same-origin server route for analysis. The OpenAI API key stays on the server and is never stored in this app, its backups, or its exports.',
               )}
             </p>
-            <FormField
-              id="gemini-api-key"
-              label="Gemini API key"
-              helpText={
-                geminiConfigured
-                  ? 'A key is saved on this device. Enter another key to replace it.'
-                  : 'Create a free key in Google AI Studio.'
-              }
-            >
-              <input
-                autoCapitalize="none"
-                autoComplete="off"
-                id="gemini-api-key"
-                onChange={(event) =>
-                  setGeminiApiKeyInput(event.currentTarget.value)
-                }
-                placeholder={
-                  geminiConfigured
-                    ? t('Key saved on this device')
-                    : t('Paste Gemini API key')
-                }
-                spellCheck={false}
-                type="password"
-                value={geminiApiKeyInput}
-              />
-            </FormField>
             <p className="muted">
-              {t('Status')}: {t(geminiStatusLabel(geminiStatus))}
+              {t(
+                'Analysis runs only after you choose photos and press Analyze meal. Results remain editable estimates and are not logged until you explicitly confirm them.',
+              )}
             </p>
-            {geminiMessage ? (
-              <StatusMessage tone="success">{geminiMessage}</StatusMessage>
-            ) : null}
-            {geminiError ? <ValidationMessage message={geminiError} /> : null}
-            <div className="button-row">
-              <PrimaryButton
-                disabled={geminiBusy}
-                onClick={() => void saveAndTestGeminiKey()}
-                type="button"
-              >
-                {geminiBusy ? 'Testing...' : 'Save and test'}
-              </PrimaryButton>
-              {geminiConfigured ? (
-                <>
-                  <SecondaryButton
-                    disabled={geminiBusy}
-                    onClick={() => void testSavedGeminiKey()}
-                    type="button"
-                  >
-                    Test connection
-                  </SecondaryButton>
-                  <SecondaryButton
-                    disabled={geminiBusy}
-                    onClick={() => void removeGeminiKey()}
-                    type="button"
-                  >
-                    Remove key
-                  </SecondaryButton>
-                </>
-              ) : null}
-              <a
-                className="button button-secondary"
-                href="https://aistudio.google.com/app/apikey"
-                rel="noreferrer"
-                target="_blank"
-              >
-                {t('Get API key')}
-              </a>
-            </div>
           </Card>
         </section>
       ) : null}
@@ -1114,8 +1076,13 @@ export function SettingsPage() {
           <Card className="cloud-backup-card">
             <p className="muted">
               {t(
-                'Signed-in data is backed up automatically within five minutes of changes and when the app opens or resumes. Local data remains usable while signed out or offline.',
+                'Signed-in data is backed up automatically about every fifteen minutes after changes and when the app opens. Local data remains usable while signed out or offline.',
               )}
+            </p>
+            <p className="muted">
+              When cloud backup is enabled, a readable fitness snapshot and
+              daily calorie totals leave this device and are stored for the
+              signed-in account. Camera photos and API keys are not included.
             </p>
             {!isOnline ? (
               <StatusMessage tone="warning">
@@ -1173,15 +1140,40 @@ export function SettingsPage() {
                   >
                     Sign out
                   </SecondaryButton>
+                  <SecondaryButton
+                    className="button-danger"
+                    disabled={cloudBusy || !isOnline}
+                    type="button"
+                    onClick={() => setIsCloudDeleteConfirmOpen(true)}
+                  >
+                    Delete cloud data
+                  </SecondaryButton>
+                  <SecondaryButton
+                    className="button-danger"
+                    disabled={cloudBusy || !isOnline}
+                    type="button"
+                    onClick={() => setIsAccountDeleteConfirmOpen(true)}
+                  >
+                    Delete account
+                  </SecondaryButton>
                 </>
               ) : (
-                <PrimaryButton
-                  disabled={authStatus === 'loading' || !isOnline}
-                  type="button"
-                  onClick={() => void startGoogleSignIn()}
-                >
-                  Sign in with Google
-                </PrimaryButton>
+                <>
+                  <PrimaryButton
+                    disabled={authStatus === 'loading' || !isOnline}
+                    type="button"
+                    onClick={() => void startAppleSignIn()}
+                  >
+                    Sign in with Apple
+                  </PrimaryButton>
+                  <SecondaryButton
+                    disabled={authStatus === 'loading' || !isOnline}
+                    type="button"
+                    onClick={() => void startGoogleSignIn()}
+                  >
+                    Sign in with Google
+                  </SecondaryButton>
+                </>
               )}
             </div>
           </Card>
@@ -1246,6 +1238,14 @@ export function SettingsPage() {
 
           <SectionHeader title="Application" />
           <Card>
+            <nav
+              className="settings-policy-links"
+              aria-label="Policies and support"
+            >
+              <a href="/privacy">Privacy Policy</a>
+              <a href="/account-deletion">Account deletion</a>
+              <a href="/support">Support</a>
+            </nav>
             <dl className="settings-list">
               <div>
                 <dt>{t('Application version')}</dt>
@@ -1319,7 +1319,7 @@ export function SettingsPage() {
       >
         <p>
           {t(
-            'This replaces all local app data on this device with the last cloud backup for the signed-in Google account. Type RESTORE to continue.',
+            'This replaces all local app data on this device with the last cloud backup for the signed-in account. Type RESTORE to continue.',
           )}
         </p>
         <FormField id="cloud-restore-confirmation" label="Confirmation">
@@ -1333,6 +1333,67 @@ export function SettingsPage() {
         </FormField>
         {cloudRestoreConfirmation !== 'RESTORE' ? (
           <ValidationMessage message="Type RESTORE to continue." />
+        ) : null}
+      </ModalConfirmationDialog>
+
+      <ModalConfirmationDialog
+        confirmLabel="Delete cloud data"
+        isOpen={isCloudDeleteConfirmOpen}
+        onCancel={() => {
+          setIsCloudDeleteConfirmOpen(false)
+          setCloudDeleteConfirmation('')
+        }}
+        onConfirm={() => {
+          void deleteCloudData()
+        }}
+        title="Delete cloud data?"
+      >
+        <p>
+          This permanently deletes the signed-in account's cloud backup and
+          daily calorie rows, then signs out. Local data on this device is not
+          changed. Type DELETE CLOUD to continue.
+        </p>
+        <FormField id="cloud-delete-confirmation" label="Confirmation">
+          <input
+            id="cloud-delete-confirmation"
+            value={cloudDeleteConfirmation}
+            onChange={(event) => setCloudDeleteConfirmation(event.target.value)}
+          />
+        </FormField>
+        {cloudDeleteConfirmation !== 'DELETE CLOUD' ? (
+          <ValidationMessage message="Type DELETE CLOUD to continue." />
+        ) : null}
+      </ModalConfirmationDialog>
+
+      <ModalConfirmationDialog
+        confirmLabel="Delete account"
+        isOpen={isAccountDeleteConfirmOpen}
+        onCancel={() => {
+          setIsAccountDeleteConfirmOpen(false)
+          setAccountDeleteConfirmation('')
+        }}
+        onConfirm={() => {
+          void deleteAccount()
+        }}
+        title="Permanently delete account?"
+      >
+        <p>
+          This permanently deletes the signed-in Vigorune account, cloud backup,
+          and daily nutrition cloud rows, then signs out. Local fitness data on
+          this device remains until you separately clear it. Type DELETE ACCOUNT
+          to continue.
+        </p>
+        <FormField id="account-delete-confirmation" label="Confirmation">
+          <input
+            id="account-delete-confirmation"
+            value={accountDeleteConfirmation}
+            onChange={(event) =>
+              setAccountDeleteConfirmation(event.target.value)
+            }
+          />
+        </FormField>
+        {accountDeleteConfirmation !== 'DELETE ACCOUNT' ? (
+          <ValidationMessage message="Type DELETE ACCOUNT to continue." />
         ) : null}
       </ModalConfirmationDialog>
 
@@ -1417,42 +1478,6 @@ function settingsSectionFromQuery(section: string | null): SettingsSection {
     case 'preferences':
     default:
       return 'preferences'
-  }
-}
-
-function geminiStatusLabel(status: IntegrationConnectionStatus) {
-  switch (status) {
-    case 'not_configured':
-      return 'Not configured'
-    case 'testing':
-      return 'Testing'
-    case 'connected':
-      return 'Connected'
-    case 'invalid_key':
-      return 'Invalid key'
-    case 'rate_limited':
-      return 'Rate limited'
-    case 'network_unavailable':
-      return 'Offline'
-    case 'service_unavailable':
-      return 'Unavailable'
-  }
-}
-
-function geminiSettingsError(status: IntegrationConnectionStatus) {
-  switch (status) {
-    case 'invalid_key':
-      return 'Google rejected this Gemini API key.'
-    case 'rate_limited':
-      return 'The Gemini free-tier limit was reached. Try again later.'
-    case 'network_unavailable':
-      return 'Gemini could not be reached. Check your connection and try again.'
-    case 'service_unavailable':
-      return 'Gemini is unavailable right now. Try again later.'
-    case 'not_configured':
-    case 'testing':
-    case 'connected':
-      return 'Gemini connection testing did not complete.'
   }
 }
 

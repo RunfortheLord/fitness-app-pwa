@@ -103,6 +103,7 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
 
     async getDashboardData(
       selectedDate: LocalDateString,
+      options: { syncCalorieHistory?: boolean } = {},
     ): Promise<DashboardData> {
       const [
         nutrition,
@@ -127,7 +128,9 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
         foodRepository.listRecentFoodLogs(5),
         workoutRepository.listRecentCompletedWorkouts(5),
         settingsRepository.getSettings(),
-        calorieHistoryService.getHistory(selectedDate, '1w'),
+        calorieHistoryService.getHistory(selectedDate, '1w', {
+          syncToCloud: options.syncCalorieHistory,
+        }),
       ])
 
       const weightUnit = settings?.weightUnit ?? 'lb'

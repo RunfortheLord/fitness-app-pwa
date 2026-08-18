@@ -4,11 +4,11 @@ import { DATABASE_NAME } from '@db/database'
 import { appMetadataRepository } from '@repositories/appMetadataRepository'
 import { cloudSyncService } from '@services/cloudSyncService'
 
-const DEFAULT_BACKUP_INTERVAL_MS = 5 * 60 * 1_000
-const DEFAULT_RETRY_DELAY_MS = 60_000
-// Only surface a backup warning once backups have been failing for a few days,
-// so transient failures stay silent while the app keeps retrying.
-const DEFAULT_STALE_BACKUP_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1_000
+const DEFAULT_BACKUP_INTERVAL_MS = 15 * 60 * 1_000
+const DEFAULT_RETRY_DELAY_MS = 5 * 60 * 1_000
+// Keep transient failures quiet, but tell a signed-in user when the cloud has
+// been unreachable for long enough that intervention may be useful.
+const DEFAULT_STALE_BACKUP_THRESHOLD_MS = 30 * 60 * 1_000
 
 const ignoredMutationTables = new Set([
   'activeCycleDayChecks',
@@ -57,6 +57,7 @@ export function createAutomaticCloudBackupService({
   let backupQueued = false
   let immediateBackupQueued = false
   let callbacks: AutomaticCloudBackupCallbacks = {}
+  let firstFailureAt: number | null = null
   let lastSuccessfulBackupAt: number | null = null
   let scheduledBackupAt: number | null = null
   let timerId: number | null = null
@@ -117,6 +118,7 @@ export function createAutomaticCloudBackupService({
   }
 
   function markBackupSucceeded(at: number) {
+    firstFailureAt = null
     lastSuccessfulBackupAt = at
     void Promise.resolve(recordSuccessfulBackup(at)).catch(() => undefined)
   }
@@ -129,10 +131,11 @@ export function createAutomaticCloudBackupService({
         lastSuccessfulBackupAt = null
       }
     }
+    const failureReferenceAt = lastSuccessfulBackupAt ?? firstFailureAt
     return (
       active &&
-      lastSuccessfulBackupAt !== null &&
-      Date.now() - lastSuccessfulBackupAt >= staleBackupThresholdMs
+      failureReferenceAt !== null &&
+      Date.now() - failureReferenceAt >= staleBackupThresholdMs
     )
   }
 
@@ -176,6 +179,7 @@ export function createAutomaticCloudBackupService({
       }
     } catch (caught) {
       if (active) {
+        firstFailureAt ??= Date.now()
         backupQueued = true
         if (await isBackupStale()) {
           callbacks.onError?.(toError(caught))
@@ -216,10 +220,13 @@ export function createAutomaticCloudBackupService({
   }
 
   function handleVisibilityChange() {
+    if (document.visibilityState !== 'visible') {
+      return
+    }
     if (backupBlocked) {
       automaticBackupAllowed = null
     }
-    requestBackup(true)
+    requestBackup(false)
   }
 
   return {

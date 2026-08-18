@@ -170,12 +170,22 @@ Duplicate grouping is deterministic and conservative. It compares normalized nam
 
 ## Cache Behavior
 
-Server code caches Open Food Facts fallback results in process memory with
-explicit TTL and bounded size. USDA searches are executed per request with the
-user-supplied key and are not stored in the shared normalized result cache.
-Concurrent identical Open Food Facts fallback calls are coalesced.
+Server code caches normalized USDA and Open Food Facts results in process
+memory. Search entries have a fifteen-minute TTL and a 300-entry bound. Detail
+and barcode entries have a six-hour TTL and respective 500- and 250-entry
+bounds. Cache keys contain only normalized operation inputs, and concurrent
+identical calls are coalesced. Errors are not cached. The provider-key test
+route always bypasses these caches so it verifies the current credential.
 
 This cache is best-effort in serverless environments. Instances may be cold-started or evicted, and caches are not shared across all Vercel regions or invocations. Dynamic provider responses are not added to the service-worker precache.
+
+Food routes bound request bodies to 8 KiB, enforce an overall twelve-second
+deadline, cap normalized search output, and use endpoint-specific per-instance
+rate limits. Because these providers are free/read-only dependencies, limiter
+storage failure is documented as fail-open; normal quota exhaustion still
+returns `429` with `Retry-After`. A distributed cache and distributed limiter
+remain future infrastructure work if multi-instance traffic makes the
+per-instance protection insufficient.
 
 ## Offline And Historical Integrity
 

@@ -18,19 +18,30 @@ import { LiveWorkoutPage } from '@pages/LiveWorkoutPage'
 import { TrainingPage } from '@pages/TrainingPage'
 import { clearCachedTrainingPageData } from '@pages/trainingPageCache'
 import { createProgramRepository } from '@repositories/programRepository'
+import { settingsRepository } from '@repositories/settingsRepository'
 import {
   createExerciseRepository,
   exerciseRepository,
 } from '@repositories/exerciseRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
 import { initializeAppData } from '@services/appInitializationService'
+import { nativeRestTimerNotificationService } from '@services/nativeRestTimerNotificationService'
 import { seedExercise, seedProgram, testLocalDate } from '@test/seedFactories'
 
+const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
+const scrollIntoViewMock = vi.fn()
+
 beforeEach(async () => {
+  scrollIntoViewMock.mockClear()
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+    configurable: true,
+    value: scrollIntoViewMock,
+  })
   clearCachedTrainingPageData()
   await db.delete()
   await db.open()
   await initializeAppData()
+  await settingsRepository.saveRirTrackingEnabled(true)
 })
 
 afterEach(async () => {
@@ -38,6 +49,15 @@ afterEach(async () => {
   vi.restoreAllMocks()
   clearCachedTrainingPageData()
   await db.delete()
+  if (originalScrollIntoView) {
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: originalScrollIntoView,
+    })
+  } else {
+    delete (HTMLElement.prototype as { scrollIntoView?: unknown })
+      .scrollIntoView
+  }
 })
 
 describe('TrainingPage', () => {
@@ -203,7 +223,7 @@ describe('TrainingPage', () => {
       await screen.findByRole('dialog', { name: 'Create exercise' }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('heading', { name: 'Training' }),
+      screen.getByRole('heading', { name: 'Current Program' }),
     ).toBeInTheDocument()
   })
 
@@ -223,7 +243,7 @@ describe('TrainingPage', () => {
       await screen.findByRole('dialog', { name: 'Create program' }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('heading', { name: 'Training' }),
+      screen.getByRole('heading', { name: 'Current Program' }),
     ).toBeInTheDocument()
   })
 
@@ -548,6 +568,8 @@ describe('TrainingPage', () => {
     const exerciseWorkspace = firstRender.container.querySelector(
       '.exercise-workspace',
     )
+    await waitFor(() => expect(document.body).toHaveClass('live-workout-open'))
+    expect(document.documentElement).toHaveClass('live-workout-open')
     expect(
       screen.getByRole('heading', { level: 1, name: 'Upper' }),
     ).toBeInTheDocument()
@@ -561,7 +583,7 @@ describe('TrainingPage', () => {
     ).toBeInTheDocument()
     expect(
       within(sessionBar as HTMLElement).getByRole('button', {
-        name: 'Discard workout',
+        name: 'Discard',
       }),
     ).toBeInTheDocument()
 
@@ -581,20 +603,104 @@ describe('TrainingPage', () => {
     ).toBeInTheDocument()
     expect(
       within(exerciseActions).getByRole('button', {
-        name: 'Swap Exercise',
-      }),
-    ).toBeInTheDocument()
-    expect(
-      within(exerciseActions).getByRole('button', {
         name: 'Remove Exercise',
       }),
     ).toBeInTheDocument()
     expect(
-      within(exerciseActions).getByRole('button', { name: 'Skip Exercise' }),
+      within(exerciseActions).queryByRole('button', {
+        name: 'Swap Exercise',
+      }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(exerciseActions).queryByRole('button', {
+        name: 'Skip Exercise',
+      }),
+    ).not.toBeInTheDocument()
+    const exerciseTitleLine = (exerciseWorkspace as HTMLElement).querySelector(
+      '.exercise-title-line',
+    )
+    expect(exerciseTitleLine).not.toBeNull()
+    expect(
+      within(exerciseTitleLine as HTMLElement).getByRole('button', {
+        name: 'Edit exercise notes',
+      }),
     ).toBeInTheDocument()
     expect(
-      within(exerciseWorkspace as HTMLElement).getByLabelText('Exercise notes'),
-    ).toHaveTextContent('No exercise notes.')
+      (exerciseWorkspace as HTMLElement).querySelector(
+        '.exercise-prescription-inline',
+      ),
+    ).toBeNull()
+    await user.click(
+      within(exerciseTitleLine as HTMLElement).getByRole('button', {
+        name: 'More exercise actions',
+      }),
+    )
+    const exerciseOptions = screen.getByRole('dialog', {
+      name: 'Exercise options',
+    })
+    expect(exerciseOptions).toHaveClass('bottom-sheet--page')
+    expect(addSetButton.inert).toBe(true)
+    expect(
+      (firstRender.container.querySelector('.bottom-nav') as HTMLElement).inert,
+    ).toBe(true)
+    expect(
+      within(exerciseOptions).getByText('2 sets - 8-10 reps'),
+    ).toBeVisible()
+    expect(
+      within(
+        within(exerciseOptions).getByRole('listbox', {
+          name: 'Rest minutes',
+        }),
+      ).getByRole('option', { name: '01' }),
+    ).toHaveAttribute('aria-selected', 'true')
+    expect(
+      within(
+        within(exerciseOptions).getByRole('listbox', {
+          name: 'Rest seconds',
+        }),
+      ).getByRole('option', { name: '30' }),
+    ).toHaveAttribute('aria-selected', 'true')
+    expect(
+      within(exerciseOptions).getByRole('button', { name: 'Swap Exercise' }),
+    ).toBeVisible()
+    expect(
+      within(exerciseOptions).getByRole('button', { name: 'Skip Exercise' }),
+    ).toBeVisible()
+    await user.click(
+      within(exerciseOptions).getByRole('button', {
+        name: 'Edit current workout target',
+      }),
+    )
+    const setsInput = within(exerciseOptions).getByLabelText('Sets')
+    const minimumReps = within(exerciseOptions).getByLabelText('Minimum reps')
+    const maximumReps = within(exerciseOptions).getByLabelText('Maximum reps')
+    await user.clear(setsInput)
+    await user.type(setsInput, '4')
+    await user.clear(minimumReps)
+    await user.type(minimumReps, '6')
+    await user.clear(maximumReps)
+    await user.type(maximumReps, '8')
+    await user.click(
+      within(exerciseOptions).getByRole('button', { name: 'Save target' }),
+    )
+    expect(
+      await within(exerciseOptions).findByText('4 sets - 6-8 reps'),
+    ).toBeVisible()
+    await user.click(
+      within(exerciseOptions).getByRole('button', {
+        name: 'Back from exercise options',
+      }),
+    )
+    expect(
+      screen.queryByRole('dialog', { name: 'Exercise options' }),
+    ).not.toBeInTheDocument()
+    expect(addSetButton.inert).toBe(false)
+    expect(
+      screen.getAllByRole('button', { name: /^Complete set/ }),
+    ).toHaveLength(4)
+    expect(
+      (exerciseWorkspace as HTMLElement).querySelector('.set-list'),
+    ).not.toBeNull()
 
     const initialWeight = screen.getByRole('textbox', {
       name: 'Set 1 Weight',
@@ -623,11 +729,13 @@ describe('TrainingPage', () => {
     ).not.toBeInTheDocument()
     expect(
       firstRender.container.querySelector(
-        '.exercise-workspace .rest-timer-toolbar',
+        '.live-workout-session-bar .live-session-rest-timer',
       ),
     ).toBeInTheDocument()
     expect(
-      firstRender.container.querySelector('.rest-timer-panel'),
+      firstRender.container.querySelector(
+        '.exercise-workspace .live-session-rest-timer',
+      ),
     ).not.toBeInTheDocument()
     firstRender.unmount()
     renderTraining(['/workout'])
@@ -636,6 +744,50 @@ describe('TrainingPage', () => {
       expect(screen.getAllByDisplayValue('185').length).toBeGreaterThan(0),
     )
     expect(screen.getAllByDisplayValue('8').length).toBeGreaterThan(0)
+  })
+
+  it('discards immediately while optional timer notification work is pending', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    vi.spyOn(nativeRestTimerNotificationService, 'sync').mockImplementation(
+      () => new Promise(() => undefined),
+    )
+    vi.spyOn(nativeRestTimerNotificationService, 'cancel').mockImplementation(
+      () => new Promise(() => undefined),
+    )
+    renderTraining(['/workout'])
+
+    await user.type(
+      await screen.findByRole('textbox', { name: 'Set 1 Weight' }),
+      '185',
+    )
+    await user.type(screen.getByRole('textbox', { name: 'Set 1 Reps' }), '8')
+    await user.click(screen.getByRole('button', { name: 'Complete set 1' }))
+    await waitFor(async () =>
+      expect(await db.workouts.get(started.workout.id)).toMatchObject({
+        activeRestTimer: expect.objectContaining({ status: 'running' }),
+      }),
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Discard' }))
+    await user.click(
+      within(
+        screen.getByRole('dialog', { name: 'Discard workout?' }),
+      ).getByRole('button', { name: 'Discard Workout' }),
+    )
+
+    expect(
+      await screen.findByRole('heading', { name: 'Current Program' }),
+    ).toBeInTheDocument()
+    await expect(db.workouts.get(started.workout.id)).resolves.toBeUndefined()
   })
 
   it('starts live rest timers from the exercise default instead of a global setting', async () => {
@@ -688,15 +840,27 @@ describe('TrainingPage', () => {
     })
 
     await user.click(
-      await screen.findByRole('button', { name: 'Rest timer settings' }),
+      await screen.findByRole('button', { name: 'More exercise actions' }),
     )
     const settings = await screen.findByRole('dialog', {
-      name: 'Rest timer settings',
+      name: 'Exercise options',
     })
+    expect(within(settings).getByText('Total workout time')).toBeVisible()
+    expect(
+      within(settings).getByText(
+        'Changes apply immediately to the current rest timer and future sets.',
+      ),
+    ).toBeVisible()
     expect(
       within(settings).queryByRole('textbox', {
         name: 'Exercise default rest (seconds)',
       }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(settings).queryByRole('button', { name: 'Cancel' }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(settings).queryByRole('button', { name: 'Save' }),
     ).not.toBeInTheDocument()
     await user.click(
       within(
@@ -708,15 +872,85 @@ describe('TrainingPage', () => {
         within(settings).getByRole('listbox', { name: 'Rest seconds' }),
       ).getByRole('option', { name: '30' }),
     )
-    await user.click(within(settings).getByRole('button', { name: 'Save' }))
-
     await waitFor(async () => {
       await expect(db.exercises.get(exercise.id)).resolves.toMatchObject({
         defaultRestSeconds: 90,
       })
       const activeExercise = await db.workoutExercises.toCollection().first()
       expect(activeExercise?.exerciseSnapshot.defaultRestSeconds).toBe(90)
+      const workout = await db.workouts.toCollection().first()
+      expect(workout?.activeRestTimer).toMatchObject({
+        durationSeconds: 90,
+        status: 'running',
+      })
     })
+    await user.keyboard('{Escape}')
+    expect(
+      screen.queryByRole('dialog', { name: 'Exercise options' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByLabelText(/Timer running: 1:(29|30)/),
+    ).toBeInTheDocument()
+  })
+
+  it('completes a zero-rest set without requiring RIR or dismissing a missing timer', async () => {
+    const user = userEvent.setup()
+    const exercise = await createExerciseRepository(db).createExercise({
+      name: 'Optional RIR press',
+      defaultRestSeconds: 0,
+      trackingMethodId: 'weight_reps',
+      notes: '',
+    })
+    const program = await createProgramRepository(db).createProgramTemplate({
+      name: 'Optional RIR split',
+      days: [
+        {
+          name: 'Day',
+          exercises: [
+            {
+              exerciseId: exercise.id,
+              targetSetCount: 1,
+              targetRepsMin: 6,
+              targetRepsMax: 10,
+              targetRir: null,
+              restSecondsOverride: null,
+            },
+          ],
+        },
+      ],
+    })
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    const dismissTimer = vi.spyOn(workoutRepository, 'dismissRestTimer')
+    renderTraining(['/workout'])
+
+    await user.type(
+      await screen.findByRole('textbox', { name: 'Set 1 Weight' }),
+      '185',
+    )
+    await user.type(screen.getByRole('textbox', { name: 'Set 1 Reps' }), '8')
+    expect(
+      screen.getByRole('textbox', { name: 'Set 1 final RIR' }),
+    ).toHaveValue('')
+
+    await user.click(screen.getByRole('button', { name: 'Complete set 1' }))
+
+    await waitFor(async () =>
+      expect(await db.workoutSets.get(started.sets[0].id)).toMatchObject({
+        completed: true,
+        rir: null,
+      }),
+    )
+    expect(dismissTimer).not.toHaveBeenCalled()
+    expect(
+      screen.queryByText(/Active rest timer for workout .* was not found/),
+    ).not.toBeInTheDocument()
   })
 
   it('dismisses the penultimate-set timer when the last set is deleted', async () => {
@@ -741,8 +975,13 @@ describe('TrainingPage', () => {
     await user.click(screen.getByRole('button', { name: 'Delete set 2' }))
 
     await waitFor(() =>
-      expect(screen.queryByLabelText('Rest timer')).not.toBeInTheDocument(),
+      expect(
+        screen.getByLabelText('Rest timer ready: 0:00'),
+      ).toBeInTheDocument(),
     )
+    expect(
+      screen.getByRole('button', { name: 'Add 30 seconds' }),
+    ).toBeDisabled()
     expect(
       (await workoutRepository.getActiveWorkout())?.activeRestTimer?.status,
     ).toBe('dismissed')
@@ -889,10 +1128,10 @@ describe('TrainingPage', () => {
 
     renderTraining(['/workout'])
 
-    const notes = await screen.findByLabelText('Exercise notes')
     await user.click(
-      within(notes).getByRole('button', { name: 'Edit exercise notes' }),
+      await screen.findByRole('button', { name: 'Edit exercise notes' }),
     )
+    const notes = screen.getByRole('dialog', { name: 'Exercise notes' })
     const notesInput = within(notes).getByRole('textbox', {
       name: 'Exercise notes',
     })
@@ -1040,6 +1279,325 @@ describe('TrainingPage', () => {
     ).resolves.toMatchObject({ targetSetCount: 3 })
   })
 
+  it('shows an added set without waiting for a workout reload', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    renderTraining(['/workout'])
+
+    await screen.findByRole('textbox', { name: 'Set 2 Weight' })
+    vi.spyOn(workoutRepository, 'getActiveWorkoutStructure').mockImplementation(
+      () => new Promise(() => undefined),
+    )
+    await user.click(screen.getByRole('button', { name: 'Add Set' }))
+
+    expect(
+      await screen.findByRole('textbox', { name: 'Set 3 Weight' }),
+    ).toBeVisible()
+  })
+
+  it('keeps live set values visible while exercise navigation outruns persistence', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const extraExercise = await createExerciseRepository(db).createExercise({
+      name: 'Navigation row',
+      defaultRestSeconds: 0,
+      trackingMethodId: 'reps_only',
+    })
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await workoutRepository.addExercise({
+      workoutId: started.workout.id,
+      exerciseId: extraExercise.id,
+    })
+    const persistMetric =
+      workoutRepository.updateWorkoutSetMetricAndPropagate.bind(
+        workoutRepository,
+      )
+    let releasePersistence: () => void = () => undefined
+    const persistenceGate = new Promise<void>((resolve) => {
+      releasePersistence = resolve
+    })
+    vi.spyOn(
+      workoutRepository,
+      'updateWorkoutSetMetricAndPropagate',
+    ).mockImplementation(async (...args) => {
+      await persistenceGate
+      return persistMetric(...args)
+    })
+
+    renderTraining(['/workout'])
+    await user.type(
+      await screen.findByRole('textbox', { name: 'Set 1 Weight' }),
+      '185',
+    )
+    await user.type(screen.getByRole('textbox', { name: 'Set 1 Reps' }), '8')
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Navigation row, exercise 2 of 2',
+      }),
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Bench press, exercise 1 of 2' }),
+    )
+
+    expect(screen.getByRole('textbox', { name: 'Set 1 Weight' })).toHaveValue(
+      '185',
+    )
+    expect(screen.getByRole('textbox', { name: 'Set 1 Reps' })).toHaveValue('8')
+
+    releasePersistence()
+    await waitFor(async () => {
+      await expect(
+        db.workoutSets.get(started.sets[0].id),
+      ).resolves.toMatchObject({
+        metricValues: expect.objectContaining({ weight: 185, reps: 8 }),
+      })
+    })
+  })
+
+  it('removes a set row immediately and persists the renumbered rows', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    const persistDelete = workoutRepository.deleteSet.bind(workoutRepository)
+    let releaseDelete: () => void = () => undefined
+    const deleteGate = new Promise<void>((resolve) => {
+      releaseDelete = resolve
+    })
+    vi.spyOn(workoutRepository, 'deleteSet').mockImplementation(
+      async (setId) => {
+        await deleteGate
+        return persistDelete(setId)
+      },
+    )
+
+    renderTraining(['/workout'])
+    await screen.findByRole('textbox', { name: 'Set 2 Weight' })
+    await user.click(screen.getByRole('button', { name: 'Delete set 1' }))
+
+    expect(
+      screen.queryByRole('button', { name: 'Delete set 2' }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Set 1 Weight' })).toBeVisible()
+
+    releaseDelete()
+    await waitFor(async () => {
+      const remaining = await db.workoutSets
+        .where({ workoutExerciseId: started.exercises[0].id })
+        .sortBy('setNumber')
+      expect(remaining).toHaveLength(1)
+      expect(remaining[0]).toMatchObject({
+        id: started.sets[1].id,
+        setNumber: 1,
+      })
+    })
+  })
+
+  it('removes the active exercise immediately without freezing on persistence', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const extraExercise = await createExerciseRepository(db).createExercise({
+      name: 'Remaining row',
+      defaultRestSeconds: 0,
+      trackingMethodId: 'reps_only',
+    })
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await workoutRepository.addExercise({
+      workoutId: started.workout.id,
+      exerciseId: extraExercise.id,
+    })
+    await workoutRepository.updateWorkoutSet(started.sets[0].id, {
+      metricValues: { weight: 185, reps: 8 },
+      completed: true,
+    })
+    const persistRemoval =
+      workoutRepository.removeExerciseFromLiveWorkout.bind(workoutRepository)
+    let releaseRemoval: () => void = () => undefined
+    const removalGate = new Promise<void>((resolve) => {
+      releaseRemoval = resolve
+    })
+    vi.spyOn(
+      workoutRepository,
+      'removeExerciseFromLiveWorkout',
+    ).mockImplementation(async (workoutExerciseId) => {
+      await removalGate
+      return persistRemoval(workoutExerciseId)
+    })
+
+    renderTraining(['/workout'])
+    await screen.findByRole('heading', { name: 'Bench press' })
+    await user.click(screen.getByRole('button', { name: 'Remove Exercise' }))
+    await user.click(
+      within(
+        screen.getByRole('dialog', { name: 'Remove exercise?' }),
+      ).getByRole('button', { name: 'Remove Exercise' }),
+    )
+
+    expect(
+      await screen.findByRole('heading', { name: 'Remaining row' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('dialog', { name: 'Remove exercise?' }),
+    ).not.toBeInTheDocument()
+
+    releaseRemoval()
+    await waitFor(async () => {
+      await expect(
+        db.workoutExercises.get(started.exercises[0].id),
+      ).resolves.toBeUndefined()
+      await expect(
+        db.workoutSets
+          .where({ workoutExerciseId: started.exercises[0].id })
+          .count(),
+      ).resolves.toBe(0)
+    })
+  })
+
+  it('restores a live exercise and allows retry after removal persistence fails', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    vi.spyOn(
+      workoutRepository,
+      'removeExerciseFromLiveWorkout',
+    ).mockRejectedValueOnce(new Error('Exercise removal failed.'))
+
+    renderTraining(['/workout'])
+    await screen.findByRole('heading', { name: 'Bench press' })
+    await user.click(screen.getByRole('button', { name: 'Remove Exercise' }))
+    await user.click(
+      within(
+        screen.getByRole('dialog', { name: 'Remove exercise?' }),
+      ).getByRole('button', { name: 'Remove Exercise' }),
+    )
+
+    expect(await screen.findByText('Exercise removal failed.')).toBeVisible()
+    expect(
+      await screen.findByRole('heading', { name: 'Bench press' }),
+    ).toBeInTheDocument()
+    await expect(
+      db.workoutExercises.get(started.exercises[0].id),
+    ).resolves.toBeDefined()
+  })
+
+  it('guards workout completion against duplicate confirmation submissions', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await workoutRepository.updateWorkoutSet(started.sets[0].id, {
+      metricValues: { weight: 185, reps: 8 },
+    })
+    const persistCompletion =
+      workoutRepository.completeWorkout.bind(workoutRepository)
+    let releaseCompletion: () => void = () => undefined
+    const completionGate = new Promise<void>((resolve) => {
+      releaseCompletion = resolve
+    })
+    const completeWorkout = vi
+      .spyOn(workoutRepository, 'completeWorkout')
+      .mockImplementation(async (...args) => {
+        await completionGate
+        return persistCompletion(...args)
+      })
+
+    renderTraining(['/workout'])
+    await user.click(await screen.findByRole('button', { name: 'Finish' }))
+    const confirm = within(
+      screen.getByRole('dialog', { name: 'Finish workout?' }),
+    ).getByRole('button', { name: 'Finish Workout' })
+    fireEvent.click(confirm)
+    fireEvent.click(confirm)
+
+    await waitFor(() => expect(completeWorkout).toHaveBeenCalledTimes(1))
+    releaseCompletion()
+    expect(await screen.findByText('Date completed')).toBeInTheDocument()
+  })
+
+  it('keeps the active workout recoverable when completion fails', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await workoutRepository.updateWorkoutSet(started.sets[0].id, {
+      metricValues: { weight: 185, reps: 8 },
+    })
+    vi.spyOn(workoutRepository, 'completeWorkout').mockRejectedValueOnce(
+      new Error('Workout completion failed.'),
+    )
+
+    renderTraining(['/workout'])
+    await user.click(await screen.findByRole('button', { name: 'Finish' }))
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Finish workout?' })).getByRole(
+        'button',
+        { name: 'Finish Workout' },
+      ),
+    )
+
+    expect(await screen.findByText('Workout completion failed.')).toBeVisible()
+    await expect(db.workouts.get(started.workout.id)).resolves.toMatchObject({
+      status: 'active',
+    })
+    expect(screen.getByRole('button', { name: 'Finish' })).toBeEnabled()
+
+    await user.click(screen.getByRole('button', { name: 'Finish' }))
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Finish workout?' })).getByRole(
+        'button',
+        { name: 'Finish Workout' },
+      ),
+    )
+    expect(await screen.findByText('Date completed')).toBeInTheDocument()
+  })
+
   it('keeps save-to-program available for changes detected during completion', async () => {
     const user = userEvent.setup()
     const program = await seedProgram(db)
@@ -1142,10 +1700,26 @@ describe('TrainingPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Skipped carry' }),
     ).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Skip Exercise' }))
+    await user.click(
+      screen.getByRole('button', { name: 'More exercise actions' }),
+    )
+    await user.click(
+      within(
+        screen.getByRole('dialog', { name: 'Exercise options' }),
+      ).getByRole('button', { name: 'Skip Exercise' }),
+    )
     expect(
       await screen.findByRole('heading', { name: 'Finished carry' }),
     ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('button', {
+            name: 'Skipped carry, exercise 1 of 2',
+          })
+          .closest('.exercise-sort-card'),
+      ).toHaveClass('is-skipped'),
+    )
 
     await user.type(
       screen.getByRole('textbox', { name: 'Set 1 Distance' }),
@@ -1173,6 +1747,16 @@ describe('TrainingPage', () => {
         structure?.setsByExercise[started.exercises[1].id][0],
       ).toMatchObject({ completed: true })
     })
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Skipped carry, exercise 1 of 2',
+      }),
+    )
+    expect(
+      screen
+        .getByRole('heading', { name: 'Skipped carry' })
+        .closest('.exercise-workspace'),
+    ).toHaveClass('skipped')
   })
 
   it('advances to the adjacent exercise after its final set and stays put when swiping back', async () => {
@@ -1246,10 +1830,12 @@ describe('TrainingPage', () => {
       })
     })
 
-    const workspace = rendered.container.querySelector('.exercise-workspace')
-    expect(workspace).toBeTruthy()
-    fireEvent.pointerDown(workspace!, { clientX: 24, clientY: 100 })
-    fireEvent.pointerUp(workspace!, { clientX: 140, clientY: 104 })
+    const swipeArea = rendered.container.querySelector(
+      '.exercise-workspace-swipe-area',
+    )
+    expect(swipeArea).toBeTruthy()
+    fireEvent.pointerDown(swipeArea!, { clientX: 24, clientY: 100 })
+    fireEvent.pointerUp(swipeArea!, { clientX: 140, clientY: 104 })
 
     expect(
       await screen.findByRole('heading', { name: 'First press' }),
@@ -1362,6 +1948,14 @@ describe('TrainingPage', () => {
       .getByText('Upper')
       .closest('.program-day-card')
     expect(upperDay).toBeTruthy()
+    expect(
+      (upperDay as HTMLElement).querySelector('.program-day-card-head'),
+    ).not.toBeInTheDocument()
+    expect(
+      within(upperDay as HTMLElement).getByRole('button', {
+        name: 'Start Workout',
+      }),
+    ).toHaveClass('program-day-start')
     expect(
       within(upperDay as HTMLElement).getByRole('button', {
         name: 'Start Workout',
@@ -1498,14 +2092,52 @@ describe('TrainingPage', () => {
     )
     expect(exerciseCards).toHaveLength(2)
     expect(
+      rendered.container.querySelector('.exercise-navigator.card'),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Exercises' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('region', { name: 'Exercises' }),
+    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(scrollIntoViewMock).toHaveBeenCalledWith({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'nearest',
+      }),
+    )
+    const tabList = rendered.container.querySelector('.exercise-tab-list')
+    expect(tabList).not.toBeNull()
+    Object.defineProperties(tabList as HTMLElement, {
+      clientWidth: { configurable: true, value: 220 },
+      scrollLeft: { configurable: true, value: 0, writable: true },
+      scrollWidth: { configurable: true, value: 440 },
+    })
+    fireEvent.scroll(tabList as HTMLElement)
+    expect(screen.getByRole('region', { name: 'Exercises' })).toHaveClass(
+      'can-scroll-right',
+    )
+    ;(tabList as HTMLElement).scrollLeft = 220
+    fireEvent.scroll(tabList as HTMLElement)
+    expect(screen.getByRole('region', { name: 'Exercises' })).toHaveClass(
+      'can-scroll-left',
+    )
+    expect(
       screen.getByRole('button', {
         name: 'Order press, exercise 1 of 2',
       }),
-    ).toHaveAttribute('aria-roledescription', 'sortable')
+    ).not.toHaveAttribute('aria-roledescription', 'sortable')
     expect(
       screen.getByRole('button', {
         name: 'Order row, exercise 2 of 2',
       }),
+    ).not.toHaveAttribute('aria-roledescription', 'sortable')
+    expect(
+      screen.getByRole('button', { name: 'Reorder Order press' }),
+    ).toHaveAttribute('aria-roledescription', 'sortable')
+    expect(
+      screen.getByRole('button', { name: 'Reorder Order row' }),
     ).toHaveAttribute('aria-roledescription', 'sortable')
     expect(
       screen.queryByRole('button', { name: 'Move Earlier' }),
@@ -1579,7 +2211,9 @@ describe('TrainingPage', () => {
     expect(
       screen.queryByRole('heading', { name: 'Live pull-up' }),
     ).not.toBeInTheDocument()
-    const finalRir = screen.getByRole('textbox', { name: 'Set 2 final RIR' })
+    const finalRir = await screen.findByRole('textbox', {
+      name: 'Set 2 final RIR',
+    })
     expect(finalRir).toBeInTheDocument()
     // The prescribed RIR target applies to the last set only.
     expect(finalRir).toHaveAttribute('placeholder', '1')
@@ -1593,19 +2227,40 @@ describe('TrainingPage', () => {
       '.exercise-workspace',
     )
     expect(firstWorkspace).toBeTruthy()
-    const firstActions = within(firstWorkspace as HTMLElement).getByLabelText(
-      'Exercise actions',
+    const firstSwipeArea = (firstWorkspace as HTMLElement).querySelector(
+      '.exercise-workspace-swipe-area',
     )
-    const firstNotes = within(firstWorkspace as HTMLElement).getByLabelText(
-      'Exercise notes',
+    expect(firstSwipeArea).toBeTruthy()
+    const setPointerCapture = vi.fn()
+    const hasPointerCapture = vi.fn(() => true)
+    const releasePointerCapture = vi.fn()
+    Object.defineProperties(firstSwipeArea!, {
+      hasPointerCapture: { value: hasPointerCapture },
+      releasePointerCapture: { value: releasePointerCapture },
+      setPointerCapture: { value: setPointerCapture },
+    })
+    const firstNotes = within(firstWorkspace as HTMLElement).getByRole(
+      'button',
+      { name: 'Edit exercise notes' },
     )
+    const restoreNotesFocus = vi.spyOn(firstNotes, 'focus')
     expect(
-      within(firstNotes).getByText('Brace hard and pause every first rep.'),
-    ).toBeInTheDocument()
-    expect(
-      firstActions.compareDocumentPosition(firstNotes) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
+      (firstWorkspace as HTMLElement)
+        .querySelector('.exercise-card-header')
+        ?.contains(firstNotes),
     ).toBeTruthy()
+    await user.click(firstNotes)
+    expect(
+      within(screen.getByRole('dialog', { name: 'Exercise notes' })).getByRole(
+        'textbox',
+        { name: 'Exercise notes' },
+      ),
+    ).toHaveValue('Brace hard and pause every first rep.')
+    await user.click(
+      screen.getByRole('button', { name: 'Close exercise notes' }),
+    )
+    expect(restoreNotesFocus).toHaveBeenCalledWith({ preventScroll: true })
+    expect(firstNotes).toHaveFocus()
     expect(
       screen.queryByRole('button', { name: 'Previous' }),
     ).not.toBeInTheDocument()
@@ -1613,45 +2268,61 @@ describe('TrainingPage', () => {
       screen.queryByRole('button', { name: 'Next' }),
     ).not.toBeInTheDocument()
 
-    fireEvent.pointerDown(firstWorkspace!, {
+    fireEvent.pointerDown(firstSwipeArea!, {
       clientX: 100,
       clientY: 100,
       pointerId: 1,
     })
-    fireEvent.pointerMove(firstWorkspace!, {
+    expect(setPointerCapture).toHaveBeenCalledWith(1)
+    fireEvent.pointerMove(firstSwipeArea!, {
       clientX: 130,
       clientY: 102,
       pointerId: 1,
     })
     expect(
       Number.parseFloat(
-        (firstWorkspace as HTMLElement).style.getPropertyValue(
+        (firstSwipeArea as HTMLElement).style.getPropertyValue(
           '--exercise-swipe-x',
         ),
       ),
     ).toBeCloseTo(7.2)
-    fireEvent.pointerUp(firstWorkspace!, {
+    fireEvent.pointerUp(firstSwipeArea!, {
       clientX: 130,
       clientY: 102,
       pointerId: 1,
     })
-    expect(firstWorkspace).toHaveStyle({ '--exercise-swipe-x': '0px' })
+    expect(firstSwipeArea).toHaveStyle({ '--exercise-swipe-x': '0px' })
+    expect(firstWorkspace).not.toHaveStyle({ '--exercise-swipe-x': '0px' })
 
-    fireEvent.pointerDown(firstWorkspace!, {
+    // A vertical set-list gesture must not leave horizontal navigation locked.
+    fireEvent.pointerDown(firstSwipeArea!, {
       clientX: 140,
       clientY: 100,
       pointerId: 2,
     })
-    fireEvent.pointerMove(firstWorkspace!, {
-      clientX: 72,
-      clientY: 103,
+    fireEvent.pointerMove(firstSwipeArea!, {
+      clientX: 142,
+      clientY: 180,
       pointerId: 2,
     })
-    expect(firstWorkspace).toHaveStyle({ '--exercise-swipe-x': '-68px' })
-    fireEvent.pointerUp(firstWorkspace!, {
+    fireEvent.pointerCancel(firstSwipeArea!, { pointerId: 2 })
+
+    fireEvent.pointerDown(firstSetRir, {
+      clientX: 140,
+      clientY: 100,
+      pointerId: 3,
+    })
+    expect(setPointerCapture).toHaveBeenCalledWith(3)
+    fireEvent.pointerMove(firstSetRir, {
+      clientX: 72,
+      clientY: 103,
+      pointerId: 3,
+    })
+    expect(firstSwipeArea).toHaveStyle({ '--exercise-swipe-x': '-68px' })
+    fireEvent.pointerUp(firstSetRir, {
       clientX: 24,
       clientY: 104,
-      pointerId: 2,
+      pointerId: 3,
     })
     expect(await screen.findByText('Exercise 2 of 2')).toBeInTheDocument()
     expect(
@@ -1664,7 +2335,7 @@ describe('TrainingPage', () => {
       screen.getByRole('textbox', { name: 'Set 1 Added' }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('textbox', { name: 'Set 2 final RIR' }),
+      await screen.findByRole('textbox', { name: 'Set 2 final RIR' }),
     ).toBeInTheDocument()
     expect(
       screen.queryByRole('textbox', { name: 'Set 1 final RIR' }),
@@ -1672,29 +2343,40 @@ describe('TrainingPage', () => {
     expect(
       screen.queryByText('Brace hard and pause every first rep.'),
     ).not.toBeInTheDocument()
+    await user.click(
+      screen.getByRole('button', { name: 'Edit exercise notes' }),
+    )
     expect(
-      screen.getByText('Keep the chest tall and reset between reps.'),
-    ).toBeInTheDocument()
+      within(screen.getByRole('dialog', { name: 'Exercise notes' })).getByRole(
+        'textbox',
+        { name: 'Exercise notes' },
+      ),
+    ).toHaveValue('Keep the chest tall and reset between reps.')
+    await user.click(
+      screen.getByRole('button', { name: 'Close exercise notes' }),
+    )
     await user.clear(screen.getByRole('textbox', { name: 'Set 1 Reps' }))
     await user.type(screen.getByRole('textbox', { name: 'Set 1 Reps' }), '12')
     await user.tab()
     expect(screen.getByText('Exercise 2 of 2')).toBeInTheDocument()
 
-    const workspace = rendered.container.querySelector('.exercise-workspace')
-    expect(workspace).toBeTruthy()
-    fireEvent.pointerDown(workspace!, { clientX: 24, clientY: 100 })
-    fireEvent.pointerUp(workspace!, { clientX: 140, clientY: 104 })
+    const swipeArea = rendered.container.querySelector(
+      '.exercise-workspace-swipe-area',
+    )
+    expect(swipeArea).toBeTruthy()
+    fireEvent.pointerDown(swipeArea!, { clientX: 24, clientY: 100 })
+    fireEvent.pointerUp(swipeArea!, { clientX: 140, clientY: 104 })
     expect(await screen.findByText('Exercise 1 of 2')).toBeInTheDocument()
 
-    const firstWorkspaceAgain = rendered.container.querySelector(
-      '.exercise-workspace',
+    const firstSwipeAreaAgain = rendered.container.querySelector(
+      '.exercise-workspace-swipe-area',
     )
-    expect(firstWorkspaceAgain).toBeTruthy()
-    fireEvent.pointerDown(firstWorkspaceAgain!, {
+    expect(firstSwipeAreaAgain).toBeTruthy()
+    fireEvent.pointerDown(firstSwipeAreaAgain!, {
       clientX: 140,
       clientY: 100,
     })
-    fireEvent.pointerUp(firstWorkspaceAgain!, { clientX: 24, clientY: 104 })
+    fireEvent.pointerUp(firstSwipeAreaAgain!, { clientX: 24, clientY: 104 })
     rendered.unmount()
     renderTraining(['/workout'])
     expect(await screen.findByText('Exercise 2 of 2')).toBeInTheDocument()
@@ -1737,7 +2419,15 @@ describe('TrainingPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Browse programs' }))
     expect(
+      screen.queryByRole('heading', { name: 'Current Program' }),
+    ).not.toBeInTheDocument()
+    expect(
       await screen.findByText('Beginner Full Body A/B'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', {
+        name: 'Preview Bodybuilding-Biased Powerbuilding',
+      }),
     ).toBeInTheDocument()
     await user.click(
       screen.getByRole('button', {
@@ -1813,6 +2503,35 @@ describe('TrainingPage', () => {
     ).toBeInTheDocument()
   })
 
+  it('previews the seven-day bodybuilding-biased schedule including rest days', async () => {
+    const user = userEvent.setup()
+    renderTraining()
+
+    await screen.findByText('No saved programs')
+    await user.click(screen.getByRole('button', { name: 'Browse programs' }))
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Preview Bodybuilding-Biased Powerbuilding',
+      }),
+    )
+
+    for (const dayName of [
+      'Day 1 - Upper',
+      'Day 2 - Lower - Heavy Squat',
+      'Day 3 - Rest',
+      'Day 4 - Chest / Back',
+      'Day 5 - Lower - Heavy Deadlift',
+      'Day 6 - Arms / Shoulders',
+      'Day 7 - Rest',
+    ]) {
+      expect(
+        await screen.findByRole('heading', { name: dayName }),
+      ).toBeVisible()
+    }
+    expect(screen.getAllByText('No programmed exercises.')).toHaveLength(2)
+    expect(screen.getByText('Cable Rear Delt Fly')).toBeVisible()
+  })
+
   it('closes the Browse sub-page with the Escape key', async () => {
     const user = userEvent.setup()
     renderTraining()
@@ -1877,7 +2596,7 @@ describe('TrainingPage', () => {
       screen.getByRole('button', { name: 'Edit active program' }),
     )
     const cycleEditor = await screen.findByRole('dialog', {
-      name: 'Edit program',
+      name: 'Program Editor',
     })
     const cycleNameInput = await within(cycleEditor).findByRole('textbox', {
       name: 'Program name',
@@ -1898,7 +2617,64 @@ describe('TrainingPage', () => {
     expect(activeCycle?.notes).toBe('')
   })
 
-  it('manually sets the active program week from the program editor', async () => {
+  it('selects the active week from the program card and remembers each week check-off', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    renderTraining()
+
+    const weekSelector = await screen.findByRole('combobox', {
+      name: 'Select program week',
+    })
+    await user.click(
+      screen.getByRole('button', { name: 'Mark Upper done this week' }),
+    )
+    await user.selectOptions(weekSelector, '4')
+    expect(weekSelector).not.toHaveFocus()
+
+    await waitFor(async () => {
+      await expect(
+        db.activeProgramCycles.get(active.cycle.id),
+      ).resolves.toMatchObject({ currentWeekNumber: 4 })
+    })
+    await waitFor(() => expect(weekSelector).toHaveValue('4'))
+    expect(
+      screen.getByRole('button', { name: 'Mark Upper done this week' }),
+    ).toBeInTheDocument()
+    await user.selectOptions(weekSelector, '1')
+    expect(
+      await screen.findByRole('button', {
+        name: 'Mark Upper not done this week',
+      }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows the deload RIR field even when global RIR tracking is disabled', async () => {
+    await settingsRepository.saveRirTrackingEnabled(false)
+    const program = await seedProgram(db)
+    const programs = createProgramRepository(db)
+    const active = await programs.activateTemplate(program.template.id)
+    await programs.updateActiveCycle(active.cycle.id, {
+      deloadSchedulingEnabled: true,
+      deloadWeekNumbers: [1],
+    })
+    await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+
+    renderTraining(['/workout'])
+
+    const rir = await screen.findByRole('textbox', {
+      name: 'Set 1 final RIR',
+    })
+    expect(rir).toHaveAttribute('placeholder', '5')
+  })
+
+  it('enables deload scheduling in editor settings with a first-week default and ordinal labels', async () => {
     const user = userEvent.setup()
     const program = await seedProgram(db)
     const active = await createProgramRepository(db).activateTemplate(
@@ -1909,22 +2685,59 @@ describe('TrainingPage', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Edit active program' }),
     )
-    const editor = await screen.findByRole('dialog', { name: 'Edit program' })
-    const currentWeek = within(editor).getByRole('spinbutton', {
-      name: 'Current week',
+    const editor = await screen.findByRole('dialog', {
+      name: 'Program Editor',
     })
-    expect(currentWeek).toHaveValue(1)
-    await user.clear(currentWeek)
-    await user.type(currentWeek, '4')
-    await user.tab()
-
+    expect(
+      within(editor).queryByRole('spinbutton', { name: 'Current week' }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(editor).queryByRole('group', { name: 'Schedule deload weeks' }),
+    ).not.toBeInTheDocument()
+    await user.click(
+      within(editor).getByRole('button', { name: 'Program editor settings' }),
+    )
+    const settings = await screen.findByRole('dialog', {
+      name: 'Program settings',
+    })
+    await user.click(
+      within(settings).getByRole('checkbox', {
+        name: 'Schedule deload weeks',
+      }),
+    )
     await waitFor(async () => {
       await expect(
         db.activeProgramCycles.get(active.cycle.id),
-      ).resolves.toMatchObject({ currentWeekNumber: 4 })
+      ).resolves.toMatchObject({
+        deloadSchedulingEnabled: true,
+        deloadWeekNumbers: [1],
+      })
     })
-    expect(currentWeek).toHaveValue(4)
-    await waitFor(() => expect(screen.getByText('Week 4')).toBeInTheDocument())
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: 'Program settings' }),
+      ).not.toBeInTheDocument(),
+    )
+    expect(
+      within(editor).getByText(/Click a week number to make it a deload week/),
+    ).toBeInTheDocument()
+    expect(
+      within(editor).getByRole('button', { name: 'Deload 1' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    await user.click(within(editor).getByRole('button', { name: 'Week 4' }))
+    await waitFor(async () => {
+      await expect(
+        db.activeProgramCycles.get(active.cycle.id),
+      ).resolves.toMatchObject({ deloadWeekNumbers: [1, 4] })
+    })
+    await user.click(
+      within(editor).getByRole('button', {
+        name: 'Back from program editor',
+      }),
+    )
+    expect(
+      await screen.findByRole('option', { name: 'Deload 2' }),
+    ).toBeInTheDocument()
   })
 
   it('routes the Training bottom nav item to the live workout when a workout is active', async () => {

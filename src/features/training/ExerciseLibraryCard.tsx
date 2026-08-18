@@ -267,9 +267,7 @@ export function ExerciseLibraryCard({
 }
 
 function isGeneratedExerciseVariant(exercise: Exercise) {
-  return /^builtin:(?:one-and-a-half-rep|paused|tempo|three-second-eccentric)-/u.test(
-    exercise.id,
-  )
+  return /^builtin:(?:paused|tempo|three-second-eccentric)-/u.test(exercise.id)
 }
 
 function ExerciseLibraryRow({

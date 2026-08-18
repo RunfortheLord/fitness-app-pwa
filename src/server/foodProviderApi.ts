@@ -11,12 +11,24 @@ import {
   resolveUsdaFood,
   type ProviderAdapter,
 } from './foodProviderAdapters.js'
-import { TtlCache } from './foodProviderCache.js'
+import {
+  TtlCache,
+  type AsyncCacheAdapter,
+  type CacheOutcome,
+} from './foodProviderCache.js'
 import { ProviderError, toProviderError } from './foodProviderErrors.js'
 
 export type FoodProviderApiConfig = {
   usdaApiKey?: string
   fetcher?: typeof fetch
+  caches?: FoodProviderCaches
+  bypassCache?: boolean
+}
+
+export type FoodProviderCaches = {
+  barcode: AsyncCacheAdapter<unknown>
+  details: AsyncCacheAdapter<unknown>
+  search: AsyncCacheAdapter<unknown>
 }
 
 export type SearchProviderName = 'usda' | 'open_food_facts' | 'all'
@@ -40,13 +52,21 @@ export type FoodBarcodeRequest = {
 }
 
 export type FoodProviderResponse =
-  | { ok: true; data: unknown }
+  | {
+      ok: true
+      data: unknown
+      meta: { cache: CacheOutcome | 'bypass' }
+    }
   | { ok: false; error: { code: string; message: string } }
 
 const SEARCH_CACHE_TTL_MS = 15 * 60 * 1000
-const OFF_CACHE_TTL_MS = 60 * 60 * 1000
-const searchCache = new TtlCache<unknown>(150, SEARCH_CACHE_TTL_MS)
-const offCache = new TtlCache<NormalizedFoodResult[]>(50, OFF_CACHE_TTL_MS)
+const DETAILS_CACHE_TTL_MS = 6 * 60 * 60 * 1000
+const BARCODE_CACHE_TTL_MS = 6 * 60 * 60 * 1000
+const defaultCaches: FoodProviderCaches = {
+  barcode: new TtlCache<unknown>(250, BARCODE_CACHE_TTL_MS),
+  details: new TtlCache<unknown>(500, DETAILS_CACHE_TTL_MS),
+  search: new TtlCache<unknown>(300, SEARCH_CACHE_TTL_MS),
+}
 
 export async function handleFoodSearch(
   request: FoodSearchRequest,
@@ -60,23 +80,26 @@ export async function handleFoodSearch(
       usda: createUsdaAdapter(config.usdaApiKey, fetcher),
       open_food_facts: createOpenFoodFactsAdapter(fetcher),
     } as const
-    const cacheKey = [
-      'search',
+    const cacheKey = cacheKeyFor('search', [
       input.provider,
-      input.query.toLocaleLowerCase(),
+      input.query.toLowerCase(),
       input.page,
       input.pageSize,
       input.allowFallback,
       input.language,
-    ].join('|')
-
-    const data =
-      input.provider === 'open_food_facts'
-        ? await searchCache.getOrCreate(cacheKey, async () =>
-            searchWithFallback(input, adapters, signal),
-          )
-        : await searchWithTypoCorrection(input, adapters, signal)
-    return { ok: true, data }
+    ])
+    const create = async () =>
+      limitSearchResults(
+        await searchWithTypoCorrection(input, adapters, signal),
+        input.pageSize,
+      )
+    if (config.bypassCache) {
+      return { ok: true, data: await create(), meta: { cache: 'bypass' } }
+    }
+    const lookup = await (
+      config.caches ?? defaultCaches
+    ).search.getOrCreateWithStatus(cacheKey, create)
+    return { ok: true, data: lookup.value, meta: { cache: lookup.outcome } }
   } catch (error) {
     return formatError(error)
   }
@@ -91,13 +114,26 @@ export async function handleFoodResolve(
     if (request.provider !== 'usda') {
       throw new ProviderError('invalid_request', 'Unsupported provider.')
     }
-    const data = await resolveUsdaFood(
-      config.usdaApiKey,
-      request.providerRecordId,
-      signal,
-      config.fetcher ?? fetch,
+    if (!/^\d{1,20}$/.test(request.providerRecordId)) {
+      throw new ProviderError('invalid_request', 'Invalid provider record ID.')
+    }
+    const create = () =>
+      resolveUsdaFood(
+        config.usdaApiKey,
+        request.providerRecordId,
+        signal,
+        config.fetcher ?? fetch,
+      )
+    if (config.bypassCache) {
+      return { ok: true, data: await create(), meta: { cache: 'bypass' } }
+    }
+    const lookup = await (
+      config.caches ?? defaultCaches
+    ).details.getOrCreateWithStatus(
+      cacheKeyFor('details', [request.provider, request.providerRecordId]),
+      create,
     )
-    return { ok: true, data }
+    return { ok: true, data: lookup.value, meta: { cache: lookup.outcome } }
   } catch (error) {
     return formatError(error)
   }
@@ -111,31 +147,45 @@ export async function handleFoodBarcodeLookup(
   try {
     const barcode = validateBarcode(request.barcode)
     const fetcher = config.fetcher ?? fetch
-    const [usda, openFoodFacts] = await Promise.allSettled([
-      lookupUsdaBarcode(config.usdaApiKey, barcode, signal, fetcher),
-      lookupOpenFoodFactsBarcode(barcode, signal, fetcher),
-    ])
-    const usdaFood = usda.status === 'fulfilled' ? usda.value : null
-    const offFood =
-      openFoodFacts.status === 'fulfilled' ? openFoodFacts.value : null
-    const food = usdaFood ?? offFood
-    if (!food) {
-      throw new ProviderError(
-        'no_acceptable_results',
-        'No complete barcode product was found.',
-        404,
-      )
-    }
-    return {
-      ok: true,
-      data: {
+    const create = async () => {
+      const [usda, openFoodFacts] = await Promise.allSettled([
+        lookupUsdaBarcode(config.usdaApiKey, barcode, signal, fetcher),
+        lookupOpenFoodFactsBarcode(barcode, signal, fetcher),
+      ])
+      const usdaFood = usda.status === 'fulfilled' ? usda.value : null
+      const offFood =
+        openFoodFacts.status === 'fulfilled' ? openFoodFacts.value : null
+      const food = usdaFood ?? offFood
+      if (!food) {
+        const transientFailure = [usda, openFoodFacts].find(
+          (result): result is PromiseRejectedResult =>
+            result.status === 'rejected' &&
+            toProviderError(result.reason).code !== 'no_acceptable_results',
+        )
+        if (transientFailure) {
+          throw toProviderError(transientFailure.reason)
+        }
+        throw new ProviderError(
+          'no_acceptable_results',
+          'No complete barcode product was found.',
+          404,
+        )
+      }
+      return {
         barcode,
         result: food,
         alternate:
           usdaFood && offFood && usdaFood.id !== offFood.id ? offFood : null,
         sourcePreference: usdaFood ? 'usda' : 'open_food_facts',
-      },
+      }
     }
+    if (config.bypassCache) {
+      return { ok: true, data: await create(), meta: { cache: 'bypass' } }
+    }
+    const lookup = await (
+      config.caches ?? defaultCaches
+    ).barcode.getOrCreateWithStatus(cacheKeyFor('barcode', [barcode]), create)
+    return { ok: true, data: lookup.value, meta: { cache: lookup.outcome } }
   } catch (error) {
     return formatError(error)
   }
@@ -289,21 +339,26 @@ async function searchOpenFoodFacts(
   adapter: ProviderAdapter,
   signal?: AbortSignal,
 ) {
-  const cacheKey = [
-    'off',
-    input.query.toLocaleLowerCase(),
-    input.page,
-    input.pageSize,
-    input.language,
-  ].join('|')
-  const results = await offCache.getOrCreate(cacheKey, () =>
-    adapter.search({ ...input, signal }),
-  )
+  const results = await adapter.search({ ...input, signal })
   return {
     provider: 'open_food_facts',
     query: input.query,
     results,
     fallbackUsed: false,
+  }
+}
+
+function cacheKeyFor(operation: string, values: unknown[]) {
+  return `food:v1:${operation}:${JSON.stringify(values)}`
+}
+
+function limitSearchResults<T extends { results: NormalizedFoodResult[] }>(
+  data: T,
+  pageSize: number,
+) {
+  return {
+    ...data,
+    results: data.results.slice(0, Math.min(100, pageSize * 3)),
   }
 }
 

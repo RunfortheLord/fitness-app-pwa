@@ -214,19 +214,25 @@ export function ProgramPreviewPage({
         ? structure.days.map((day) => (
             <section className="program-preview-day" key={day.id}>
               <h3>{day.name}</h3>
-              <ul className="program-preview-exercises">
-                {(structure.exercisesByDay[day.id] ?? []).map((exercise) => (
-                  <li key={exercise.id}>
-                    <span className="program-preview-exercise-name">
-                      {exercise.exerciseSnapshot.exerciseName}
-                    </span>
-                    <small className="program-preview-exercise-summary">
-                      {formatPreviewPrescription(exercise)}
-                    </small>
-                    {exercise.notes ? <small>{exercise.notes}</small> : null}
-                  </li>
-                ))}
-              </ul>
+              {(structure.exercisesByDay[day.id] ?? []).length ? (
+                <ul className="program-preview-exercises">
+                  {(structure.exercisesByDay[day.id] ?? []).map((exercise) => (
+                    <li key={exercise.id}>
+                      <span className="program-preview-exercise-name">
+                        {exercise.exerciseSnapshot.exerciseName}
+                      </span>
+                      <small className="program-preview-exercise-summary">
+                        {formatPreviewPrescription(exercise)}
+                      </small>
+                      {exercise.notes ? <small>{exercise.notes}</small> : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted">
+                  {day.notes || 'No programmed exercises.'}
+                </p>
+              )}
             </section>
           ))
         : null}

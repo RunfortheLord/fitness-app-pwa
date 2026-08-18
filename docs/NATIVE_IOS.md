@@ -5,6 +5,21 @@ device-scheduled local notifications for rest-timer completion. The bundled web
 application remains local-first and continues to work without a network
 connection.
 
+## Version 1 Distribution Scope
+
+- Public Apple App Store distribution is approved for Version 1. The existing
+  wrapper documentation primarily describes development signing and is not, by
+  itself, evidence of App Store readiness.
+- **Vigorune** is a temporary display name. Store metadata or a later naming
+  decision must not rename the existing bundle identifier
+  `com.adamshugart.fitnesslog`, IndexedDB database, local-storage keys,
+  persisted IDs, or backup-format identifiers.
+- Store builds must retain full offline use without an account. Optional
+  Google/Apple authentication, cloud backup, and account/cloud-data deletion
+  must not weaken local data integrity.
+- Public release requires separate signing, entitlement, privacy disclosure,
+  upgrade, backup/restore, and physical-device validation.
+
 ## What Native Notifications Add
 
 - Rest-timer alerts can fire while the app is backgrounded, closed, or the phone
@@ -41,10 +56,11 @@ signing, and installing the iOS application requires:
 4. Run `npm run ios:verify`.
 5. Run `npm run ios:open`.
 6. In Xcode, select the `App` target and open **Signing & Capabilities**.
-7. Select the appropriate development team. If
-   `com.adamshugart.fitnesslog` is unavailable, choose a unique bundle
-   identifier and keep it stable for future updates.
-8. Confirm the **Time Sensitive Notifications** capability and
+7. Select the appropriate development team and retain
+   `com.adamshugart.fitnesslog`. If that identifier cannot be signed, stop and
+   resolve ownership instead of changing the compatibility identifier during
+   Version 1 work.
+8. Confirm the **Sign in with Apple** and **Time Sensitive Notifications** capabilities and
    `App/App.entitlements` are present.
 9. Connect the iPhone, select it as the run destination, and press **Run**.
 10. On the phone, allow notifications when the app requests permission.
@@ -58,9 +74,12 @@ otherwise repeatedly triggers the system "Undo Typing" dialog after any recent
 text entry. This native setting does not control Safari or a Home Screen PWA;
 those surfaces follow the iPhone's system Shake to Undo setting.
 
-`Info.plist` contains when-in-use location and motion usage descriptions for
-outdoor GPS and treadmill sensing. Neither permission is requested until the
-user explicitly starts the corresponding run mode.
+`Info.plist` contains camera, when-in-use location, and motion usage
+descriptions for barcode/meal capture, outdoor GPS, and treadmill sensing. No
+permission is requested until the user explicitly starts the related feature.
+The fixed `vigorune://auth-complete` URL scheme returns system-browser OAuth to
+the native app; authentication codes continue through the one-time PKCE relay.
+See `docs/STORE_RELEASE_SETUP.md` for external Apple and Supabase setup.
 
 ## Moving Existing PWA Data
 

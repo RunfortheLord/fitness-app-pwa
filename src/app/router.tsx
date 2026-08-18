@@ -12,8 +12,16 @@ import {
   TrainingPage,
 } from '@app/lazyPages'
 import { HomePage } from '@pages/HomePage'
+import {
+  AccountDeletionPage,
+  PrivacyPolicyPage,
+  SupportPage,
+} from '@pages/PublicInformationPages'
 
 export const router = createBrowserRouter([
+  { path: '/privacy', element: <PrivacyPolicyPage /> },
+  { path: '/account-deletion', element: <AccountDeletionPage /> },
+  { path: '/support', element: <SupportPage /> },
   {
     path: '/',
     element: <App />,

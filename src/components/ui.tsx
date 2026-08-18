@@ -4,6 +4,7 @@ import type {
   InputHTMLAttributes,
   HTMLAttributes,
   MouseEvent,
+  PointerEvent as ReactPointerEvent,
   RefObject,
   ReactNode,
 } from 'react'
@@ -21,7 +22,7 @@ import {
 import { useLanguage } from '@components/languageContextValue'
 
 type AppHeaderProps = {
-  title: string
+  title: string | null
   eyebrow?: string
   action?: ReactNode
 }
@@ -30,10 +31,12 @@ export function AppHeader({ title, eyebrow, action }: AppHeaderProps) {
   const { t } = useLanguage()
   return (
     <header className="app-header">
-      <div className="app-header-copy">
-        {eyebrow ? <p className="eyebrow">{t(eyebrow)}</p> : null}
-        <h1>{t(title)}</h1>
-      </div>
+      {title ? (
+        <div className="app-header-copy">
+          {eyebrow ? <p className="eyebrow">{t(eyebrow)}</p> : null}
+          <h1>{t(title)}</h1>
+        </div>
+      ) : null}
       {action ? <div className="app-header-action">{action}</div> : null}
     </header>
   )
@@ -126,8 +129,10 @@ export function SectionHeader({ title, action }: SectionHeaderProps) {
 
 type BottomSheetProps = {
   children: ReactNode
+  dismissOnSwipeDown?: boolean
   headerAction?: ReactNode
   isOpen: boolean
+  onAfterClose?: () => void
   onClose: () => void
   title: string
   /**
@@ -138,7 +143,41 @@ type BottomSheetProps = {
   variant?: 'sheet' | 'page'
 }
 
-const SHEET_EXIT_ANIMATION_MS = 180
+const SHEET_EXIT_ANIMATION_MS = 220
+
+const inertBackgroundState = new WeakMap<
+  HTMLElement,
+  { count: number; wasInert: boolean }
+>()
+
+function acquireInertBackground(element: HTMLElement) {
+  const current = inertBackgroundState.get(element)
+  if (current) {
+    current.count += 1
+    return
+  }
+
+  inertBackgroundState.set(element, {
+    count: 1,
+    wasInert: element.inert === true,
+  })
+  element.inert = true
+}
+
+function releaseInertBackground(element: HTMLElement) {
+  const current = inertBackgroundState.get(element)
+  if (!current) {
+    return
+  }
+
+  current.count -= 1
+  if (current.count > 0) {
+    return
+  }
+
+  element.inert = current.wasInert
+  inertBackgroundState.delete(element)
+}
 
 function getSheetExitAnimationMs() {
   if (import.meta.env.MODE === 'test') {
@@ -154,17 +193,32 @@ function getSheetExitAnimationMs() {
 
 export function BottomSheet({
   children,
+  dismissOnSwipeDown = true,
   headerAction,
   isOpen,
+  onAfterClose,
   onClose,
   title,
   variant = 'sheet',
 }: BottomSheetProps) {
   const { language, t } = useLanguage()
   const titleId = useId()
+  const backdropRef = useRef<HTMLDivElement>(null)
   const sheetRef = useRef<HTMLElement>(null)
+  const onAfterCloseRef = useRef(onAfterClose)
+  const swipeRef = useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    startedAt: number
+  } | null>(null)
   const [isPresent, setIsPresent] = useState(isOpen)
   const [isClosing, setIsClosing] = useState(false)
+  const [swipeOffset, setSwipeOffset] = useState(0)
+
+  useEffect(() => {
+    onAfterCloseRef.current = onAfterClose
+  }, [onAfterClose])
 
   /* eslint-disable react-hooks/set-state-in-effect --
    * This component mirrors `isOpen` into transient presence state so close
@@ -174,6 +228,7 @@ export function BottomSheet({
     if (isOpen) {
       setIsPresent(true)
       setIsClosing(false)
+      setSwipeOffset(0)
       return
     }
 
@@ -186,21 +241,55 @@ export function BottomSheet({
     if (exitAnimationMs === 0) {
       setIsPresent(false)
       setIsClosing(false)
+      onAfterCloseRef.current?.()
       return
     }
 
     const timeoutId = window.setTimeout(() => {
       setIsPresent(false)
       setIsClosing(false)
+      onAfterCloseRef.current?.()
     }, exitAnimationMs)
 
     return () => window.clearTimeout(timeoutId)
   }, [isOpen, isPresent])
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  useEffect(() => {
+    const backdrop = backdropRef.current
+    if (!backdrop || !isPresent) {
+      return
+    }
+
+    const changed: HTMLElement[] = []
+    let activeBranch: HTMLElement = backdrop
+    while (activeBranch.parentElement) {
+      const parent = activeBranch.parentElement
+      for (const sibling of parent.children) {
+        if (sibling === activeBranch || !(sibling instanceof HTMLElement)) {
+          continue
+        }
+        changed.push(sibling)
+        acquireInertBackground(sibling)
+      }
+      if (parent === document.body) {
+        break
+      }
+      activeBranch = parent
+    }
+
+    return () => {
+      for (const element of changed) {
+        releaseInertBackground(element)
+      }
+    }
+  }, [isPresent])
+
+  // Release the background's inert state before focus management restores the
+  // element that launched the sheet.
   useDialogFocusManagement({
     containerRef: sheetRef,
-    isOpen: isOpen && isPresent && !isClosing,
+    isOpen: isPresent,
     onClose,
   })
 
@@ -219,14 +308,66 @@ export function BottomSheet({
   const sheetClassName = [
     'bottom-sheet',
     isPage ? 'bottom-sheet--page' : '',
+    dismissOnSwipeDown && !isPage ? 'is-swipe-dismissible' : '',
+    swipeOffset > 0 ? 'is-dragging' : '',
     isClosing ? 'is-closing' : '',
   ]
     .filter(Boolean)
     .join(' ')
 
+  function startSwipe(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!dismissOnSwipeDown || isPage || isClosing || event.button !== 0) {
+      return
+    }
+    swipeRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startedAt: event.timeStamp,
+    }
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }
+
+  function moveSwipe(event: ReactPointerEvent<HTMLDivElement>) {
+    const swipe = swipeRef.current
+    if (!swipe || swipe.pointerId !== event.pointerId) {
+      return
+    }
+    const deltaX = event.clientX - swipe.startX
+    const deltaY = event.clientY - swipe.startY
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 8) {
+      swipeRef.current = null
+      setSwipeOffset(0)
+      return
+    }
+    setSwipeOffset(Math.max(0, deltaY))
+  }
+
+  function finishSwipe(event: ReactPointerEvent<HTMLDivElement>) {
+    const swipe = swipeRef.current
+    if (!swipe || swipe.pointerId !== event.pointerId) {
+      return
+    }
+    swipeRef.current = null
+    const deltaY = Math.max(0, event.clientY - swipe.startY)
+    const elapsed = Math.max(1, event.timeStamp - swipe.startedAt)
+    const velocity = deltaY / elapsed
+    if (deltaY >= 72 || (deltaY >= 24 && velocity >= 0.65)) {
+      onClose()
+      return
+    }
+    setSwipeOffset(0)
+  }
+
+  function cancelSwipe() {
+    swipeRef.current = null
+    setSwipeOffset(0)
+  }
+
   return (
     <div
       className={backdropClassName}
+      ref={backdropRef}
       role="presentation"
       onMouseDown={isPage || isClosing ? undefined : onClose}
     >
@@ -237,6 +378,13 @@ export function BottomSheet({
         className={sheetClassName}
         ref={sheetRef}
         role="dialog"
+        style={
+          swipeOffset > 0
+            ? ({
+                transform: `translate3d(0, ${swipeOffset}px, 0)`,
+              } satisfies CSSProperties)
+            : undefined
+        }
         tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
       >
@@ -258,7 +406,13 @@ export function BottomSheet({
             ) : null}
           </div>
         ) : (
-          <>
+          <div
+            className="sheet-drag-region"
+            onPointerCancel={cancelSwipe}
+            onPointerDown={startSwipe}
+            onPointerMove={moveSwipe}
+            onPointerUp={finishSwipe}
+          >
             <div className="sheet-handle" aria-hidden="true" />
             <div className="sheet-header">
               <h2 id={titleId}>{t(title)}</h2>
@@ -276,7 +430,7 @@ export function BottomSheet({
                 </IconButton>
               </div>
             </div>
-          </>
+          </div>
         )}
         {children}
       </section>
@@ -319,6 +473,7 @@ type ModalConfirmationDialogProps = {
   cancelLabel?: string
   children: ReactNode
   confirmLabel?: string
+  isConfirming?: boolean
   isOpen: boolean
   onCancel: () => void
   onConfirm: () => void | Promise<unknown>
@@ -329,6 +484,7 @@ export function ModalConfirmationDialog({
   cancelLabel = 'Cancel',
   children,
   confirmLabel = 'Confirm',
+  isConfirming = false,
   isOpen,
   onCancel,
   onConfirm,
@@ -361,10 +517,19 @@ export function ModalConfirmationDialog({
         <h2 id={titleId}>{t(title)}</h2>
         <div className="dialog-body">{children}</div>
         <div className="dialog-actions">
-          <SecondaryButton type="button" onClick={onCancel}>
+          <SecondaryButton
+            disabled={isConfirming}
+            type="button"
+            onClick={onCancel}
+          >
             {t(cancelLabel)}
           </SecondaryButton>
-          <PrimaryButton type="button" onClick={onConfirm}>
+          <PrimaryButton
+            aria-busy={isConfirming}
+            disabled={isConfirming}
+            type="button"
+            onClick={onConfirm}
+          >
             {t(confirmLabel)}
           </PrimaryButton>
         </div>
@@ -719,9 +884,11 @@ export function OfflineIndicator({ isOffline }: { isOffline: boolean }) {
 export function LoadingState({
   label = 'Loading',
   delayMs = 160,
+  variant = 'inline',
 }: {
   label?: string
   delayMs?: number
+  variant?: 'inline' | 'cards'
 }) {
   const { t } = useLanguage()
   // Hold back the spinner briefly so fast reads (IndexedDB is usually well
@@ -743,10 +910,44 @@ export function LoadingState({
       role="status"
     >
       {isVisible ? (
-        <>
-          <span aria-hidden="true" />
-          <p>{t(label)}</p>
-        </>
+        variant === 'cards' ? (
+          <>
+            <p className="visually-hidden">{t(label)}</p>
+            <div aria-hidden="true" className="loading-page-skeleton">
+              <div className="loading-skeleton-toolbar">
+                <span />
+                <strong />
+                <span />
+              </div>
+              <div className="loading-card loading-card-summary">
+                <span className="loading-card-title" />
+                <strong />
+                <div className="loading-skeleton-metrics">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              </div>
+              <div className="loading-card loading-card-list">
+                <span className="loading-card-title" />
+                {[0, 1].map((index) => (
+                  <div className="loading-list-row" key={index}>
+                    <i />
+                    <div>
+                      <span />
+                      <small />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <span aria-hidden="true" />
+            <p>{t(label)}</p>
+          </>
+        )
       ) : null}
     </div>
   )
@@ -889,7 +1090,7 @@ function useDialogFocusManagement({
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
       if (previouslyFocused?.isConnected) {
-        previouslyFocused.focus()
+        previouslyFocused.focus({ preventScroll: true })
       }
     }
   }, [containerRef, isOpen])

@@ -6,6 +6,15 @@ import {
   handleWebPushTimerRequest,
   type WebPushTimerRequest,
 } from '../../src/server/webPushTimerApi.js'
+import {
+  createRequestObserver,
+  readAnonymousClientKey,
+  readBoundedJsonObject,
+} from '../../src/server/serverHttp.js'
+import {
+  createMemoryServerRateLimiter,
+  evaluateRateLimit,
+} from '../../src/server/serverRateLimiter.js'
 
 type VercelRequest = {
   method?: string
@@ -19,10 +28,19 @@ type VercelResponse = {
   json(value: unknown): void
 }
 
+const rateLimiter = createMemoryServerRateLimiter()
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const observer = createRequestObserver({
+    headers: req.headers,
+    method: req.method,
+    route: '/api/push/timer',
+  })
   res.setHeader('Cache-Control', 'no-store')
+  res.setHeader('X-Request-ID', observer.requestId)
 
   if (req.method !== 'POST') {
+    observer.finish({ outcome: 'method_not_allowed', status: 405 })
     res.status(405).json({
       ok: false,
       error: { code: 'invalid_request', message: 'Method not allowed.' },
@@ -33,6 +51,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const qstashToken = process.env.QSTASH_TOKEN
   const origin = getRequestOrigin(req)
   if (!qstashToken || !origin) {
+    observer.finish({
+      outcome: 'not_configured',
+      provider: 'qstash',
+      status: 503,
+    })
     res.status(503).json({
       ok: false,
       error: {
@@ -48,6 +71,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     (requestOrigin && requestOrigin !== origin) ||
     (fetchSite && fetchSite !== 'same-origin')
   ) {
+    observer.finish({ outcome: 'origin_rejected', status: 403 })
     res.status(403).json({
       ok: false,
       error: { code: 'invalid_request', message: 'Request origin rejected.' },
@@ -55,8 +79,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return
   }
 
-  const qstash = new Client({ token: qstashToken, enableTelemetry: false })
-  const input = readBody(req.body) as WebPushTimerRequest
+  const parsedBody = readBoundedJsonObject(req.body, 8_192)
+  if ('reason' in parsedBody) {
+    const status = parsedBody.reason === 'payload_too_large' ? 413 : 400
+    observer.finish({ outcome: parsedBody.reason, status })
+    res.status(status).json({
+      ok: false,
+      error: {
+        code: 'invalid_request',
+        message: 'The timer notification request is invalid.',
+      },
+    })
+    return
+  }
+  const rateLimit = await evaluateRateLimit({
+    failClosed: true,
+    key: readAnonymousClientKey(req),
+    limit: 30,
+    limiter: rateLimiter,
+    scope: 'push-timer',
+    windowMs: 60_000,
+  })
+  if (!rateLimit.allowed) {
+    const status = rateLimit.available ? 429 : 503
+    res.setHeader('Retry-After', String(rateLimit.retryAfterSeconds))
+    observer.finish({
+      outcome: rateLimit.available ? 'rate_limited' : 'limiter_unavailable',
+      provider: 'qstash',
+      rateLimiterAvailable: rateLimit.available,
+      status,
+    })
+    res.status(status).json({
+      ok: false,
+      error: {
+        code: rateLimit.available ? 'rate_limited' : 'scheduler_failed',
+        message: 'The outside-app timer alert is temporarily unavailable.',
+      },
+    })
+    return
+  }
+
+  const qstash = new Client({
+    token: qstashToken,
+    enableTelemetry: false,
+    retry: false,
+  })
+  const input = parsedBody.data as WebPushTimerRequest
   const result = await handleWebPushTimerRequest(input, {
     async cancel(messageId) {
       try {
@@ -74,13 +142,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         count: 100,
       })
     },
-    async publish({ body, delaySeconds }) {
+    async publish({ body, deduplicationKey, delaySeconds }) {
       const label = subscriptionLabel(body.subscription.endpoint)
       const published = await qstash.publishJSON({
         url: `${origin}/api/push/deliver`,
         body,
+        deduplicationId: `rest-timer-${createHash('sha256')
+          .update(deduplicationKey)
+          .digest('hex')}`,
         delay: delaySeconds,
         retries: 0,
+        timeout: 15,
         label,
         redact: { body: true },
       })
@@ -89,24 +161,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   })
 
   if (result.ok) {
+    observer.finish({
+      outcome: result.messageId ? 'scheduled' : 'canceled',
+      provider: 'qstash',
+      status: 200,
+    })
     res.status(200).json(result)
     return
   }
   const status =
     'error' in result && result.error.code === 'invalid_request' ? 400 : 502
+  observer.finish({
+    outcome: 'error' in result ? result.error.code : 'scheduler_failed',
+    provider: 'qstash',
+    status,
+  })
   res.status(status).json(result)
-}
-
-function readBody(body: unknown): Record<string, unknown> {
-  if (typeof body === 'string') {
-    try {
-      const parsed: unknown = JSON.parse(body)
-      return isRecord(parsed) ? parsed : {}
-    } catch {
-      return {}
-    }
-  }
-  return isRecord(body) ? body : {}
 }
 
 function getRequestOrigin(req: VercelRequest) {

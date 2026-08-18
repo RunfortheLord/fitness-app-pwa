@@ -3,10 +3,66 @@ import { describe, expect, it } from 'vitest'
 import {
   getRestTimerCompletionDate,
   getRestTimerRemainingSeconds,
+  restartRestTimerWithDuration,
 } from '@domain/restTimer'
 import type { RestTimerState } from '@shared-types/app'
 
 describe('restTimer', () => {
+  it('immediately restarts a running timer at a newly selected duration', () => {
+    const timer: RestTimerState = {
+      id: 'timer-1',
+      startedAt: '2026-06-19T10:00:00.000Z',
+      durationSeconds: 90,
+      pausedAt: null,
+      accumulatedPausedSeconds: 0,
+      status: 'running',
+    }
+
+    const changed = restartRestTimerWithDuration(
+      timer,
+      125,
+      '2026-06-19T10:00:30.000Z',
+    )
+
+    expect(changed).toMatchObject({
+      startedAt: '2026-06-19T10:00:30.000Z',
+      durationSeconds: 125,
+      pausedAt: null,
+      accumulatedPausedSeconds: 0,
+      status: 'running',
+    })
+    expect(
+      getRestTimerRemainingSeconds(changed, '2026-06-19T10:00:30.000Z'),
+    ).toBe(125)
+  })
+
+  it('keeps a paused timer paused when its duration is changed', () => {
+    const timer: RestTimerState = {
+      id: 'timer-1',
+      startedAt: '2026-06-19T10:00:00.000Z',
+      durationSeconds: 90,
+      pausedAt: '2026-06-19T10:00:20.000Z',
+      accumulatedPausedSeconds: 0,
+      status: 'paused',
+    }
+
+    const changed = restartRestTimerWithDuration(
+      timer,
+      60,
+      '2026-06-19T10:01:00.000Z',
+    )
+
+    expect(changed).toMatchObject({
+      startedAt: '2026-06-19T10:01:00.000Z',
+      durationSeconds: 60,
+      pausedAt: '2026-06-19T10:01:00.000Z',
+      status: 'paused',
+    })
+    expect(
+      getRestTimerRemainingSeconds(changed, '2026-06-19T10:05:00.000Z'),
+    ).toBe(60)
+  })
+
   it('derives remaining time from absolute timestamps after resume', () => {
     const timer: RestTimerState = {
       id: 'timer-1',

@@ -1,28 +1,37 @@
-# Open Questions
+# Open Questions (Historical)
 
-These are the remaining issues that cannot be fully resolved from the current requirements. They must not block specified MVP behavior.
+There are no unresolved questions in this file that expand the frozen Version 1
+scope. The historical questions below are retained with their documented
+resolutions. Reopening one requires an explicit requirements or decisions
+update and is otherwise post-Version 1 work.
 
-## Backup Merge Semantics
+## Backup Merge Semantics — Resolved
 
-- Should JSON restore support merge in the first release, or should the MVP provide replace-only restore with the UI explaining that merge is unavailable?
-- If merge is supported, what is the conflict policy when imported IDs already exist locally?
+- Version 1 restore is replace-only. Merge remains unavailable until a complete
+  conflict policy is approved.
 
-## Active Cycle Replacement
+## Active Cycle Replacement — Resolved
 
-- When a user activates a new program while another active cycle exists, should the prior active cycle become inactive, archived, or remain selectable?
+- Activating a template marks the previous active cycle inactive so exactly one
+  cycle is current.
 
-## Empty Workout
+## Empty Workout — Resolved
 
-- The fallback UI mentions a start-or-resume workout card and the video analysis references empty workout access, but the binding requirements emphasize starting from a manually selected workout day. Should first release include an empty ad hoc workout, or defer it until after program-based workouts are complete?
+- Empty ad hoc workouts are deferred beyond Version 1. Version 1 workouts start
+  from a manually selected program day.
 
-## CSV Export Shape
+## CSV Export Shape — Resolved
 
-- Should CSV export produce one combined archive with multiple files, or separate CSV files per domain such as foods, food logs, bodyweight, exercises, programs, and workouts?
+- The readable fitness-data export is one local archive containing separate CSV
+  files per table/domain. JSON remains the authoritative restore format.
 
-## Units Beyond Pounds
+## Units Beyond Pounds — Resolved
 
-- Pounds are the default bodyweight unit. Should kilograms be available in the first release as a setting, or deferred?
+- Pounds remain the canonical stored unit and default display. The lb/kg
+  preference changes display and interpretation of new entries without mutating
+  history.
 
-## Exercise Replacement Set Preservation
+## Exercise Replacement Set Preservation — Resolved
 
-- When replacing an exercise during an active workout, should compatible existing set values be preserved by default, discarded by default, or prompt every time?
+- The replacement flow confirms whether compatible set data is retained when
+  tracking methods differ. Historical records remain unchanged.

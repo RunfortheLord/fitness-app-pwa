@@ -9,8 +9,11 @@ import {
   useSensor,
   useSensors,
   type Announcements,
+  type AutoScrollOptions,
+  type Collision,
   type CollisionDetection,
   type DragEndEvent,
+  type Modifier,
   type UniqueIdentifier,
 } from '@dnd-kit/core'
 import {
@@ -22,9 +25,16 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical } from 'lucide-react'
-import type { CSSProperties, ReactNode } from 'react'
+import { useRef, type CSSProperties, type ReactNode } from 'react'
 
-import { reorderIds, type SortableDragState } from '@components/sortableDrag'
+import {
+  HORIZONTAL_AUTO_SCROLL_MAX_STEP_PX,
+  HORIZONTAL_COLLISION_HYSTERESIS_PX,
+  isHorizontallyScrollable,
+  restrictToHorizontalAxis,
+  reorderIds,
+  type SortableDragState,
+} from '@components/sortableDrag'
 
 function vibrate() {
   if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
@@ -37,9 +47,23 @@ function vibrate() {
  * targets outside their own list, like day tabs); fall back to proximity for
  * keyboard drags and pointers between droppables.
  */
-const collisionDetection: CollisionDetection = (args) => {
+const crossZoneCollisionDetection: CollisionDetection = (args) => {
   const withinPointer = pointerWithin(args)
   return withinPointer.length ? withinPointer : closestCenter(args)
+}
+
+const horizontalListAutoScroll: AutoScrollOptions = {
+  // dnd-kit uses `acceleration` as the maximum pixels moved per interval.
+  // Keep the edge threshold/response unchanged while modestly raising top speed.
+  acceleration: HORIZONTAL_AUTO_SCROLL_MAX_STEP_PX,
+  canScroll: isHorizontallyScrollable,
+  interval: 16,
+  threshold: { x: 0.18, y: 0 },
+}
+
+function collisionDistance(collision: Collision) {
+  const value = collision.data?.value
+  return typeof value === 'number' ? value : null
 }
 
 /**
@@ -48,14 +72,23 @@ const collisionDetection: CollisionDetection = (args) => {
  * consumer decides whether that means a reorder or a cross-zone move.
  */
 export function SortableArea({
+  autoScroll,
   children,
+  collisionDetection = crossZoneCollisionDetection,
+  collisionHysteresisPx = 0,
   getItemLabel,
+  modifiers,
   onDragEnd,
 }: {
+  autoScroll?: boolean | AutoScrollOptions
   children: ReactNode
+  collisionDetection?: CollisionDetection
+  collisionHysteresisPx?: number
   getItemLabel?: (id: string) => string
+  modifiers?: Modifier[]
   onDragEnd: (activeId: string, overId: string | null) => void
 }) {
+  const lastCollisionId = useRef<UniqueIdentifier | null>(null)
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, {
@@ -74,6 +107,36 @@ export function SortableArea({
   const label = (id: UniqueIdentifier) =>
     getItemLabel?.(String(id)) ?? String(id)
 
+  const detectCollisions: CollisionDetection = (args) => {
+    const collisions = collisionDetection(args)
+    const best = collisions[0]
+    if (!best) {
+      lastCollisionId.current = null
+      return collisions
+    }
+
+    const previous = collisions.find(
+      (collision) => collision.id === lastCollisionId.current,
+    )
+    const bestDistance = collisionDistance(best)
+    const previousDistance = previous ? collisionDistance(previous) : null
+    if (
+      collisionHysteresisPx > 0 &&
+      previous &&
+      bestDistance !== null &&
+      previousDistance !== null &&
+      previousDistance <= bestDistance + collisionHysteresisPx
+    ) {
+      return [
+        previous,
+        ...collisions.filter((collision) => collision.id !== previous.id),
+      ]
+    }
+
+    lastCollisionId.current = best.id
+    return collisions
+  }
+
   const announcements: Announcements = {
     onDragStart: ({ active }) => `Picked up ${label(active.id)}.`,
     onDragOver: ({ active, over }) =>
@@ -89,15 +152,24 @@ export function SortableArea({
   function handleDragEnd(event: DragEndEvent) {
     vibrate()
     const { active, over } = event
+    lastCollisionId.current = null
     onDragEnd(String(active.id), over ? String(over.id) : null)
   }
 
   return (
     <DndContext
       accessibility={{ announcements }}
-      collisionDetection={collisionDetection}
+      autoScroll={autoScroll}
+      collisionDetection={detectCollisions}
+      modifiers={modifiers}
+      onDragCancel={() => {
+        lastCollisionId.current = null
+      }}
       onDragEnd={handleDragEnd}
-      onDragStart={vibrate}
+      onDragStart={() => {
+        lastCollisionId.current = null
+        vibrate()
+      }}
       sensors={sensors}
     >
       {children}
@@ -144,7 +216,17 @@ export function SortableList({
 }) {
   return (
     <SortableArea
+      autoScroll={
+        direction === 'horizontal' ? horizontalListAutoScroll : undefined
+      }
+      collisionDetection={closestCenter}
+      collisionHysteresisPx={
+        direction === 'horizontal' ? HORIZONTAL_COLLISION_HYSTERESIS_PX : 0
+      }
       getItemLabel={getItemLabel}
+      modifiers={
+        direction === 'horizontal' ? [restrictToHorizontalAxis] : undefined
+      }
       onDragEnd={(activeId, overId) => {
         if (!overId) {
           return

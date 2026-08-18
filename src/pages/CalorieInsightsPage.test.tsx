@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { addLocalDays, formatLocalDate } from '@domain/dates'
 import { translate } from '@domain/localization'
 import { calorieHistoryService } from '@services/calorieHistoryService'
+import { clearCachedCalorieInsightsPageData } from '@pages/calorieInsightsPageCache'
 import { LanguageContext } from '@components/languageContextValue'
 import { CalorieInsightsPage } from './CalorieInsightsPage'
 
@@ -18,6 +19,7 @@ vi.mock('@services/calorieHistoryService', () => ({
 const mockGetHistory = vi.mocked(calorieHistoryService.getHistory)
 
 beforeEach(() => {
+  clearCachedCalorieInsightsPageData()
   mockGetHistory.mockReset()
 })
 

@@ -1,6 +1,4 @@
 import {
-  Dumbbell,
-  Footprints,
   Minus,
   NotebookPen,
   Scale,
@@ -10,7 +8,7 @@ import {
   Utensils,
   X,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import {
@@ -18,11 +16,12 @@ import {
   hasUnseenChangelog,
   markChangelogSeen,
 } from '@domain/changelog'
-
 import {
-  registerServiceWorkerUpdateHandler,
-  type ServiceWorkerUpdate,
-} from '@app/pwa'
+  inactivityPauseAt,
+  WORKOUT_INACTIVITY_PAUSE_MS,
+} from '@domain/workoutTiming'
+
+import { registerServiceWorkerUpdateHandler } from '@app/pwa'
 import { BodyweightEntrySheet } from '@components/BodyweightEntrySheet'
 import { BottomNavigation } from '@components/BottomNavigation'
 import { DashboardProvider } from '@components/DashboardContext'
@@ -35,7 +34,6 @@ import {
   OfflineIndicator,
   PrimaryButton,
   SecondaryButton,
-  StatusMessage,
   ValidationMessage,
 } from '@components/ui'
 import { useDashboardContext } from '@hooks/useDashboardContext'
@@ -47,13 +45,21 @@ import { automaticCloudBackupService } from '@services/automaticCloudBackupServi
 import { workoutRepository } from '@repositories/workoutRepository'
 
 type ActiveActivity =
-  | { type: 'workout'; dayName: string; id: string }
+  | {
+      type: 'workout'
+      dayName: string
+      id: string
+      pausedAt: string | null
+      updatedAt: string
+    }
   | { type: 'run'; id: string }
   | null
 
 type AppShellProps = {
   children: React.ReactNode
 }
+
+const ONBOARDING_SEEN_STORAGE_KEY = 'fitness-log.onboarding-seen'
 
 export function AppShell({ children }: AppShellProps) {
   return (
@@ -66,25 +72,17 @@ export function AppShell({ children }: AppShellProps) {
 function AppShellContent({ children }: AppShellProps) {
   const { t } = useLanguage()
   const location = useLocation()
-  const [pendingUpdate, setPendingUpdate] =
-    useState<ServiceWorkerUpdate | null>(null)
-  const [isApplyingUpdate, setIsApplyingUpdate] = useState(false)
-  const [updateInstruction, setUpdateInstruction] = useState<string | null>(
-    null,
-  )
   const [isOffline, setIsOffline] = useState(() => !navigator.onLine)
   const [showWhatsNew, setShowWhatsNew] = useState(() => hasUnseenChangelog())
   const [isQuickActionOpen, setIsQuickActionOpen] = useState(false)
   const [activeActivity, setActiveActivity] = useState<ActiveActivity>(null)
-  const [hasDismissedSignInPrompt, setHasDismissedSignInPrompt] =
-    useState(false)
+  const [hasDismissedSignInPrompt, setHasDismissedSignInPrompt] = useState(
+    () => window.localStorage.getItem(ONBOARDING_SEEN_STORAGE_KEY) === 'true',
+  )
   const [offerSignInOnLaunch] = useState(() => location.pathname === '/')
   const [signInError, setSignInError] = useState<string | null>(null)
-  const [automaticBackupError, setAutomaticBackupError] = useState<
-    string | null
-  >(null)
-  const [automaticBackupBlocked, setAutomaticBackupBlocked] = useState(false)
   const mainRef = useRef<HTMLElement>(null)
+  const pendingQuickActionRef = useRef<(() => void) | null>(null)
   const previousPathRef = useRef(location.pathname)
   const {
     bodyweightSheet,
@@ -92,16 +90,20 @@ function AppShellContent({ children }: AppShellProps) {
     openBodyweightSheet,
     refreshDashboard,
   } = useDashboardContext()
-  const { signIn, status: authStatus } = useAuth()
+  const { signIn, signInWithApple, status: authStatus } = useAuth()
   const navigate = useNavigate()
+
+  function runAfterQuickActionsClose(action: () => void) {
+    pendingQuickActionRef.current = action
+    setIsQuickActionOpen(false)
+  }
 
   useKeyboardInset()
   useTabSwipeNavigation(mainRef, location.pathname, navigate)
 
   useEffect(() => {
     const update = registerServiceWorkerUpdateHandler((nextUpdate) => {
-      setPendingUpdate(nextUpdate)
-      setUpdateInstruction(null)
+      nextUpdate.applyUpdate()
     })
 
     function handlePwaTestUpdate(event: Event) {
@@ -118,10 +120,7 @@ function AppShellContent({ children }: AppShellProps) {
           ? detail.applyUpdate
           : () => undefined
 
-      setPendingUpdate({
-        applyUpdate,
-        checkForUpdate: () => Promise.resolve(),
-      })
+      applyUpdate()
     }
 
     window.addEventListener('fitness-log:pwa-update-ready', handlePwaTestUpdate)
@@ -152,6 +151,8 @@ function AppShellContent({ children }: AppShellProps) {
                 type: 'workout',
                 dayName: workout.workoutSnapshot.dayName,
                 id: workout.id,
+                pausedAt: workout.pausedAt ?? null,
+                updatedAt: workout.updatedAt,
               }
             : run
               ? { type: 'run', id: run.id }
@@ -180,13 +181,124 @@ function AppShellContent({ children }: AppShellProps) {
     refreshActiveActivity()
     document.addEventListener('visibilitychange', handleVisibilityChange)
     window.addEventListener('pageshow', handlePageShow)
+    window.addEventListener(
+      'fitness-log:workout-pause-changed',
+      refreshActiveActivity,
+    )
 
     return () => {
       isCurrent = false
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('pageshow', handlePageShow)
+      window.removeEventListener(
+        'fitness-log:workout-pause-changed',
+        refreshActiveActivity,
+      )
     }
   }, [location.pathname, refreshDashboard])
+
+  useEffect(() => {
+    if (activeActivity?.type !== 'workout' || activeActivity.pausedAt) {
+      return
+    }
+
+    const activity = activeActivity
+    const storageKey = workoutActivityStorageKey(activity.id)
+    const backgroundStorageKey = workoutBackgroundStorageKey(activity.id)
+    let lastActivityAt = readWorkoutActivity(storageKey, activity.updatedAt)
+    let pauseTimeoutId: number | null = null
+    let pauseInFlight = false
+
+    function clearPauseTimeout() {
+      if (pauseTimeoutId !== null) {
+        window.clearTimeout(pauseTimeoutId)
+        pauseTimeoutId = null
+      }
+    }
+
+    function pauseWorkoutAt(pausedAt: string) {
+      if (pauseInFlight) {
+        return
+      }
+      pauseInFlight = true
+      clearPauseTimeout()
+      void workoutRepository
+        .pauseWorkout(activity.id, pausedAt)
+        .then(() => {
+          window.localStorage.removeItem(backgroundStorageKey)
+          setActiveActivity((current) =>
+            current?.type === 'workout' && current.id === activity.id
+              ? { ...current, pausedAt, updatedAt: pausedAt }
+              : current,
+          )
+          window.dispatchEvent(
+            new CustomEvent('fitness-log:workout-pause-changed'),
+          )
+        })
+        .catch(() => {
+          pauseInFlight = false
+          schedulePause()
+        })
+    }
+
+    function schedulePause() {
+      clearPauseTimeout()
+      const overduePauseAt = inactivityPauseAt(lastActivityAt, Date.now())
+      if (overduePauseAt) {
+        pauseWorkoutAt(overduePauseAt)
+        return
+      }
+      const remaining = Math.max(
+        0,
+        lastActivityAt + WORKOUT_INACTIVITY_PAUSE_MS - Date.now(),
+      )
+      pauseTimeoutId = window.setTimeout(
+        () =>
+          pauseWorkoutAt(
+            new Date(
+              lastActivityAt + WORKOUT_INACTIVITY_PAUSE_MS,
+            ).toISOString(),
+          ),
+        remaining,
+      )
+    }
+
+    function recordActivity() {
+      if (document.visibilityState === 'hidden') {
+        return
+      }
+      lastActivityAt = Date.now()
+      window.localStorage.setItem(storageKey, String(lastActivityAt))
+      schedulePause()
+    }
+
+    function pauseForBackground() {
+      const backgroundedAt = Date.now()
+      window.localStorage.setItem(backgroundStorageKey, String(backgroundedAt))
+      pauseWorkoutAt(new Date(backgroundedAt).toISOString())
+    }
+
+    const backgroundedAt = readStoredTimestamp(backgroundStorageKey)
+    if (backgroundedAt) {
+      pauseWorkoutAt(new Date(backgroundedAt).toISOString())
+    } else {
+      schedulePause()
+    }
+    window.addEventListener('pointerdown', recordActivity, true)
+    window.addEventListener('keydown', recordActivity, true)
+    window.addEventListener('input', recordActivity, true)
+    window.addEventListener('change', recordActivity, true)
+    window.addEventListener('pagehide', pauseForBackground)
+
+    return () => {
+      clearPauseTimeout()
+      window.removeEventListener('pointerdown', recordActivity, true)
+      window.removeEventListener('keydown', recordActivity, true)
+      window.removeEventListener('input', recordActivity, true)
+      window.removeEventListener('change', recordActivity, true)
+      window.removeEventListener('pagehide', pauseForBackground)
+    }
+  }, [activeActivity])
 
   useEffect(() => {
     function updateOnlineStatus() {
@@ -202,12 +314,15 @@ function AppShellContent({ children }: AppShellProps) {
     }
   }, [])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (previousPathRef.current === location.pathname) {
       return
     }
 
     previousPathRef.current = location.pathname
+    document.documentElement.scrollTop = 0
+    document.body.scrollTop = 0
+    window.scrollTo(0, 0)
     mainRef.current?.focus({ preventScroll: true })
   }, [location.pathname])
 
@@ -216,30 +331,14 @@ function AppShellContent({ children }: AppShellProps) {
       return
     }
 
-    return automaticCloudBackupService.start({
-      onBlocked: () => {
-        setAutomaticBackupBlocked(true)
-        setAutomaticBackupError(null)
-      },
-      onError: () => {
-        setAutomaticBackupBlocked(false)
-        setAutomaticBackupError(
-          "Your data hasn't been backed up to the cloud in a few days. It's still safe on this device, and the app will keep retrying.",
-        )
-      },
-      onSuccess: () => {
-        setAutomaticBackupBlocked(false)
-        setAutomaticBackupError(null)
-      },
-    })
+    return automaticCloudBackupService.start()
   }, [authStatus])
 
   const routeTitle =
     location.pathname.startsWith('/workout') &&
     activeActivity?.type === 'workout'
       ? activeActivity.dayName
-      : getRouteTitle(location.pathname)
-  const hasUpdateReady = pendingUpdate !== null
+      : getRouteTitle(location.pathname, location.search)
   const isHomeRoute = location.pathname === '/'
   const latestChangelogEntry = LATEST_CHANGELOG_ENTRY
   const showSignInPrompt =
@@ -248,40 +347,20 @@ function AppShellContent({ children }: AppShellProps) {
     isHomeRoute &&
     !hasDismissedSignInPrompt
   const showWhatsNewBanner =
-    showWhatsNew &&
-    latestChangelogEntry &&
-    isHomeRoute &&
-    !activeActivity &&
-    !showSignInPrompt
+    showWhatsNew && latestChangelogEntry && isHomeRoute && !showSignInPrompt
 
   function dismissWhatsNew() {
     markChangelogSeen()
     setShowWhatsNew(false)
   }
 
-  function applyUpdate() {
-    if (!pendingUpdate) {
-      return
-    }
-
-    setIsApplyingUpdate(true)
-    pendingUpdate.applyUpdate()
-    window.setTimeout(() => {
-      setUpdateInstruction(
-        'Update started. If this screen does not reopen automatically, close the app and open it again.',
-      )
-    }, 1500)
-  }
-
-  async function signInForAutomaticBackup() {
+  async function signInForAutomaticBackup(provider: 'apple' | 'google') {
     setSignInError(null)
     try {
-      await signIn()
+      await (provider === 'apple' ? signInWithApple() : signIn())
     } catch (caught) {
       setSignInError(
-        caught instanceof Error
-          ? caught.message
-          : 'Google sign-in could not start.',
+        caught instanceof Error ? caught.message : 'Sign-in could not start.',
       )
     }
   }
@@ -298,14 +377,16 @@ function AppShellContent({ children }: AppShellProps) {
           location.pathname.startsWith('/settings') ? undefined : (
             <div className="live-workout-header-actions">
               {location.pathname.startsWith('/workout') ? (
-                <button
-                  className="icon-link"
-                  type="button"
-                  aria-label={t('Minimize workout')}
-                  onClick={() => void navigate('/training')}
-                >
-                  <Minus aria-hidden="true" size={22} />
-                </button>
+                <>
+                  <button
+                    className="icon-link"
+                    type="button"
+                    aria-label={t('Minimize workout')}
+                    onClick={() => void navigate('/training')}
+                  >
+                    <Minus aria-hidden="true" size={22} />
+                  </button>
+                </>
               ) : null}
               <Link
                 className="icon-link"
@@ -320,38 +401,6 @@ function AppShellContent({ children }: AppShellProps) {
       />
 
       <OfflineIndicator isOffline={isOffline} />
-
-      {automaticBackupError ? (
-        <StatusMessage tone="warning">{t(automaticBackupError)}</StatusMessage>
-      ) : null}
-
-      {automaticBackupBlocked ? (
-        <StatusMessage tone="warning">
-          {t(
-            'A cloud backup already exists. Restore it or choose Back up now in Settings before automatic backups start on this device.',
-          )}
-        </StatusMessage>
-      ) : null}
-
-      {hasUpdateReady ? (
-        <StatusMessage tone="warning">
-          <div className="status-message-content">
-            <span>
-              {t(
-                'Update available. Finish any active logging first; updating will reopen the app shell.',
-              )}
-            </span>
-            <PrimaryButton
-              disabled={isApplyingUpdate}
-              type="button"
-              onClick={applyUpdate}
-            >
-              {isApplyingUpdate ? t('Updating') : t('Update now')}
-            </PrimaryButton>
-          </div>
-          {updateInstruction ? <p>{updateInstruction}</p> : null}
-        </StatusMessage>
-      ) : null}
 
       {showWhatsNewBanner ? (
         <div className="whats-new-banner">
@@ -382,26 +431,38 @@ function AppShellContent({ children }: AppShellProps) {
           className="backup-sign-in-prompt"
         >
           <div className="backup-sign-in-copy">
-            <strong id="backup-prompt-title">{t('Prevent data loss')}</strong>
+            <strong id="backup-prompt-title">
+              {t('Your data stays local')}
+            </strong>
             <p>
               {t(
-                'Sign in with Google to automatically back up your fitness data. You can keep using the app offline, and your data stays available on this device.',
+                'Start offline with no account, or sign in with Apple or Google for an optional encrypted connection to your private cloud backup.',
               )}
             </p>
             {signInError ? <ValidationMessage message={signInError} /> : null}
           </div>
           <div className="backup-sign-in-actions">
-            <PrimaryButton type="button" onClick={signInForAutomaticBackup}>
-              {t('Sign in with Google')}
+            <PrimaryButton
+              type="button"
+              onClick={() => void signInForAutomaticBackup('apple')}
+            >
+              {t('Sign in with Apple')}
             </PrimaryButton>
+            <SecondaryButton
+              type="button"
+              onClick={() => void signInForAutomaticBackup('google')}
+            >
+              {t('Sign in with Google')}
+            </SecondaryButton>
             <SecondaryButton
               type="button"
               onClick={() => {
                 setSignInError(null)
+                window.localStorage.setItem(ONBOARDING_SEEN_STORAGE_KEY, 'true')
                 setHasDismissedSignInPrompt(true)
               }}
             >
-              {t('Not now')}
+              {t('Continue offline')}
             </SecondaryButton>
           </div>
         </aside>
@@ -420,13 +481,15 @@ function AppShellContent({ children }: AppShellProps) {
           }
         >
           {t('Active')}{' '}
-          {t(activeActivity.type === 'workout' ? 'Workout' : 'Run')} -{' '}
-          {t('Tap to Resume')}
+          {activeActivity.type === 'workout' && activeActivity.pausedAt
+            ? t('Paused')
+            : t(activeActivity.type === 'workout' ? 'Workout' : 'Run')}{' '}
+          - {t('Tap to Resume')}
         </button>
       ) : null}
 
       <main
-        aria-label={t(routeTitle)}
+        aria-label={t(routeTitle ?? 'Training')}
         className="app-main"
         id="main-content"
         ref={mainRef}
@@ -444,6 +507,11 @@ function AppShellContent({ children }: AppShellProps) {
       />
       <BottomSheet
         isOpen={isQuickActionOpen}
+        onAfterClose={() => {
+          const action = pendingQuickActionRef.current
+          pendingQuickActionRef.current = null
+          action?.()
+        }}
         onClose={() => setIsQuickActionOpen(false)}
         title={t('Quick actions')}
       >
@@ -451,8 +519,9 @@ function AppShellContent({ children }: AppShellProps) {
           <button
             type="button"
             onClick={() => {
-              setIsQuickActionOpen(false)
-              void navigate('/nutrition?logFood=1')
+              runAfterQuickActionsClose(() => {
+                void navigate('/nutrition?logFood=1')
+              })
             }}
           >
             <span className="quick-action-icon">
@@ -466,8 +535,7 @@ function AppShellContent({ children }: AppShellProps) {
           <button
             type="button"
             onClick={() => {
-              setIsQuickActionOpen(false)
-              openBodyweightSheet()
+              runAfterQuickActionsClose(openBodyweightSheet)
             }}
           >
             <span className="quick-action-icon">
@@ -481,40 +549,9 @@ function AppShellContent({ children }: AppShellProps) {
           <button
             type="button"
             onClick={() => {
-              setIsQuickActionOpen(false)
-              void navigate('/workout')
-            }}
-          >
-            <span className="quick-action-icon">
-              <Dumbbell aria-hidden="true" size={20} />
-            </span>
-            <span>
-              <strong>{t('Start or resume workout')}</strong>
-              <small>
-                {t('Open active workout or choose a day from Training')}
-              </small>
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setIsQuickActionOpen(false)
-              void navigate('/run')
-            }}
-          >
-            <span className="quick-action-icon">
-              <Footprints aria-hidden="true" size={20} />
-            </span>
-            <span>
-              <strong>{t('Start or resume run')}</strong>
-              <small>{t('Track GPS distance, time, and mile splits')}</small>
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setIsQuickActionOpen(false)
-              void navigate('/training?createExercise=1')
+              runAfterQuickActionsClose(() => {
+                void navigate('/training?createExercise=1')
+              })
             }}
           >
             <span className="quick-action-icon">
@@ -528,8 +565,9 @@ function AppShellContent({ children }: AppShellProps) {
           <button
             type="button"
             onClick={() => {
-              setIsQuickActionOpen(false)
-              void navigate('/training?createProgram=1')
+              runAfterQuickActionsClose(() => {
+                void navigate('/training?createProgram=1')
+              })
             }}
           >
             <span className="quick-action-icon">
@@ -552,7 +590,29 @@ function AppShellContent({ children }: AppShellProps) {
   )
 }
 
-function getRouteTitle(pathname: string) {
+function workoutActivityStorageKey(workoutId: string) {
+  return `fitness-log.workout-activity.${workoutId}`
+}
+
+function workoutBackgroundStorageKey(workoutId: string) {
+  return `fitness-log.workout-backgrounded.${workoutId}`
+}
+
+function readStoredTimestamp(storageKey: string) {
+  const stored = Number(window.localStorage.getItem(storageKey))
+  return Number.isFinite(stored) && stored > 0 ? stored : null
+}
+
+function readWorkoutActivity(storageKey: string, fallbackTimestamp: string) {
+  const stored = readStoredTimestamp(storageKey)
+  if (stored) {
+    return stored
+  }
+  const fallback = Date.parse(fallbackTimestamp)
+  return Number.isFinite(fallback) ? fallback : Date.now()
+}
+
+function getRouteTitle(pathname: string, search = ''): string | null {
   if (pathname.startsWith('/calories')) {
     return 'Calories'
   }
@@ -562,7 +622,10 @@ function getRouteTitle(pathname: string) {
   }
 
   if (pathname.startsWith('/training')) {
-    return 'Training'
+    if (new URLSearchParams(search).get('programView') === 'browse') {
+      return null
+    }
+    return 'Current Program'
   }
 
   if (pathname.startsWith('/workout')) {

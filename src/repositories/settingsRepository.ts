@@ -7,8 +7,10 @@ import type {
   ApiKeyIntegrationSettings,
   AppLanguage,
   IntegrationConnectionStatus,
+  HistorySortMode,
   UserSettings,
   WeightUnit,
+  WorkoutAutofillMode,
 } from '@shared-types/app'
 
 export type NutritionGoalInput = Omit<NutritionGoal, 'createdAt' | 'updatedAt'>
@@ -52,6 +54,11 @@ export type SettingsRepository = {
   saveDefaultRestSeconds(seconds: number | null): Promise<UserSettings>
   saveWeightUnit(unit: WeightUnit): Promise<UserSettings>
   saveRirTrackingEnabled(enabled: boolean): Promise<UserSettings>
+  saveWorkoutAutofillMode(mode: WorkoutAutofillMode): Promise<UserSettings>
+  saveHistoryPreference(input: {
+    sortMode: HistorySortMode
+    programId: string | null
+  }): Promise<UserSettings>
   saveLanguage(language: AppLanguage): Promise<UserSettings>
 }
 
@@ -114,7 +121,9 @@ export function createSettingsRepository(
         existing.selectedTimerSoundId &&
         existing.language &&
         existing.timerBannersEnabled !== undefined &&
-        existing.rirTrackingEnabled !== undefined
+        existing.rirTrackingEnabled !== undefined &&
+        existing.workoutAutofillMode !== undefined &&
+        existing.historySortMode !== undefined
       ) {
         return existing
       }
@@ -126,7 +135,10 @@ export function createSettingsRepository(
         selectedTimerSoundId:
           existing.selectedTimerSoundId ?? 'rest-complete-chime',
         timerBannersEnabled: existing.timerBannersEnabled ?? true,
-        rirTrackingEnabled: existing.rirTrackingEnabled ?? true,
+        rirTrackingEnabled: existing.rirTrackingEnabled ?? false,
+        workoutAutofillMode: existing.workoutAutofillMode ?? 'history_copy',
+        historySortMode: existing.historySortMode ?? 'recent',
+        historyProgramId: existing.historyProgramId ?? null,
         updatedAt: now,
       }
       await database.userSettings.put(upgraded)
@@ -143,7 +155,10 @@ export function createSettingsRepository(
       timerSoundEnabled: true,
       selectedTimerSoundId: 'rest-complete-chime',
       timerBannersEnabled: true,
-      rirTrackingEnabled: true,
+      rirTrackingEnabled: false,
+      workoutAutofillMode: 'history_copy',
+      historySortMode: 'recent',
+      historyProgramId: null,
       createdAt: now,
       updatedAt: now,
     }
@@ -290,6 +305,31 @@ export function createSettingsRepository(
       const updated: UserSettings = {
         ...settings,
         rirTrackingEnabled: enabled,
+        updatedAt: now,
+      }
+      await database.userSettings.put(updated)
+      return updated
+    },
+
+    async saveWorkoutAutofillMode(mode) {
+      const settings = await ensureSettings()
+      const now = new Date().toISOString()
+      const updated: UserSettings = {
+        ...settings,
+        workoutAutofillMode: mode,
+        updatedAt: now,
+      }
+      await database.userSettings.put(updated)
+      return updated
+    },
+
+    async saveHistoryPreference(input) {
+      const settings = await ensureSettings()
+      const now = new Date().toISOString()
+      const updated: UserSettings = {
+        ...settings,
+        historySortMode: input.sortMode,
+        historyProgramId: input.programId,
         updatedAt: now,
       }
       await database.userSettings.put(updated)

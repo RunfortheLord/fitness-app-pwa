@@ -1,5 +1,102 @@
 # Decisions
 
+## 2026-08-18: Version 1 Scope Freeze And Working Name
+
+- Version 1 is frozen to the feature boundary in `docs/V1_SCOPE_FREEZE.md`.
+  Scope entries describe approved release behavior, not proof that every path is
+  already complete or store-ready.
+- **Vigorune** is the temporary public-facing working name pending later naming
+  and trademark review.
+- The working-name change is presentation-only. The existing bundle/application
+  identifiers, IndexedDB database name (`training-log`), local-storage keys,
+  persisted IDs, and backup-format identifiers remain unchanged so installed
+  users retain access to their data.
+- Version 1 permits optional Google and Apple authentication, optional cloud
+  snapshot backup, in-app account and cloud-data deletion, and public Apple App
+  Store and Google Play distribution. Core features remain fully usable without
+  an account, and IndexedDB remains authoritative.
+- Cloud backup is not realtime multi-device synchronization. AI is limited to
+  user-initiated meal-photo analysis whose estimates must be reviewed before
+  logging; it does not authorize automatic coaching or automatic changes.
+- Subscriptions, advertisements, social networking, wearables, automatic
+  program advancement, and unrelated feature expansion remain excluded.
+
+## 2026-08-17: Stable Smart Progression Rep Schemes
+
+- Smart progression prefers a level rep scheme and preserves a later-set taper
+  only when the history/capacity estimate supports it. The full suggested rep
+  spread is capped at two, preventing unrelated schemes such as 12 then 6.
+- The estimator no longer fabricates rep or load changes solely to make
+  consecutive suggested sets different. Recorded-history mode remains an exact
+  copy of usable completed sets.
+
+## 2026-08-17: Selectable Program Weeks, Deloads, And Program History
+
+- The active program card owns week selection. Each week keeps independent day
+  check-offs, navigation never clears them, and completing all days advances to
+  the next incomplete higher week within the configured duration.
+- Templates and active cycles store an opt-in flag plus explicit scheduled
+  deload week numbers. The flag defaults off; enabling a new schedule starts
+  with week 1 selected as an editable interaction hint. Deload labels are
+  ordinal (`Deload 1`, `Deload 2`) rather than the underlying program week.
+  Starting one snapshots the week and deload status, removes one set per
+  exercise (minimum one), and raises configured target RIR by 3 (maximum 10).
+  A dedicated remembered-history estimate—not Smart progression—uses the most
+  recent matching day and then comparable non-deload exercise history to lower
+  load or reps for the higher reserve. RIR remains visible during deloads even
+  when globally disabled. Deload completion does not produce progression changes.
+- Deload workouts remain immutable History entries named `Deload <day>`, but
+  derived Estimated 1RM and Total volume graphs skip them.
+- History persists a Most recent versus By program choice and the selected
+  program drilldown in user settings. Program drilldowns reuse the existing
+  read-only workout detail rather than creating a second detail model.
+
+## 2026-08-13: Persistent Workout Tracking And Autofill Preferences
+
+- RIR tracking defaults off for new and legacy settings that do not contain an
+  explicit preference. The choice is stored in IndexedDB and included in local
+  backups, so closing or restarting the PWA does not reset it.
+- Workout autofill defaults to Recorded history, which copies corresponding
+  usable set values from the latest comparable completed session. Smart
+  progression is an explicit preference and produces editable, fatigue-aware
+  local estimates from existing exercise history.
+- Smart progression uses historical and target RIR only while RIR tracking is
+  enabled. Disabling RIR hides the inputs and removes RIR from new estimates
+  without deleting historical values.
+- Fitness data ZIP validation errors caused by legacy records are nonfatal. The
+  archive retains the raw canonical backup and includes `EXPORT_WARNINGS.txt`;
+  restore validation remains strict and unchanged.
+
+## 2026-08-17: Nutrition Maintenance And Powerbuilding Program
+
+- Nutrition Targets displays the valid maintenance value stored with a custom
+  goal above the editable calorie target. Users with manual targets and no goal
+  do not see an unavailable estimate.
+- `Bodybuilding-Biased Powerbuilding` is an additive immutable built-in with a
+  seven-day Upper/Lower/Rest/Chest-Back/Lower/Arms-Shoulders/Rest schedule. Its
+  two rest days have no exercises and cannot start an empty workout.
+- The prescription model continues to store one integer RIR target. Following
+  the established built-in convention, an RIR range stores its lower bound and
+  keeps the complete range in exercise notes. Top-set/backoff differences are
+  likewise preserved in notes without adding per-set prescription fields.
+- This built-in keeps deload scheduling disabled by default. Users may enable it
+  after duplicating the read-only built-in or on its active-cycle copy.
+
+## 2026-08-13: Live Exercise Options And Set Responsiveness
+
+- Exercise Options opens as a full-height subpage with back navigation so the
+  target, workout timer, rest wheels, and exercise actions fit together on an
+  iPhone-sized screen.
+- A prescribed rest override becomes the active exercise snapshot's effective
+  rest duration. Changing it during the workout preserves completed-set history
+  and updates every upcoming set.
+- A live-added exercise's first set uses the same history-based estimate path
+  as workout-start prefill. Added sets are inserted into the rendered workout
+  state directly after persistence instead of waiting on a second full reload.
+- Workout completion bulk-copies its local history records and evaluates
+  independent exercise recommendations concurrently inside the same atomic
+  completion transaction.
+
 ## 2026-07-19: Audited Official Restaurant Menu Corrections
 
 - USDA remains the generic provider and provider-category serving behavior
@@ -56,8 +153,8 @@
 
 - The active program editor exposes a 1-based current-week field bounded by
   the program length.
-- Manually changing the week clears check-offs for the selected week and later
-  weeks so the selected week starts clean, while preserving earlier history.
+- Superseded 2026-08-17: changing the selected week preserves all per-week
+  check-offs so moving forward and backward restores prior state.
 - Completing every workout day still advances the cycle automatically from
   the manually selected baseline.
 
@@ -71,9 +168,8 @@
 ## 2026-07-05: Meal-Aware Recent Foods And Compact Day Creation
 
 - Empty Log Food search now surfaces at most four distinct active reusable
-  foods most recently logged for the current clock-derived breakfast, lunch, or
-  dinner during the inclusive seven-local-date window ending today. Late-night
-  snack hours use dinner recommendations. Quick-add-only snapshots are excluded
+  foods most recently logged near the current time of day during the previous
+  two local calendar dates, excluding today. Quick-add-only snapshots are excluded
   because they have no reusable food record. Entering any query removes the
   recommendation section and restores normal search ranking.
 - This local recency shortcut supersedes the blanket first-release exclusion of
@@ -246,6 +342,49 @@
   Day tabs keep their Up/Down buttons as the accessible path because the tab's
   Enter/Space must keep selecting the day, so tabs drag with pointer only
   (`pointerActivatorProps` in `components/sortableDrag.ts`).
+- A 2026-07-30 follow-up makes the live workout's horizontal exercise tabs use
+  the dragged card's center for drop selection instead of the fingertip alone.
+  A 44 px target-change margin keeps adjacent positions from flickering near
+  their midpoint. Horizontal edge scrolling is restricted to the tab strip,
+  runs on a 16 ms interval at low acceleration, and starts only within the
+  outermost 18% of the strip. Scroll snapping is disabled on this row so it
+  cannot fight drag auto-scroll near the first position.
+- A 2026-07-31 follow-up keeps the same activation and 44 px target-change
+  sensitivity, constrains card movement to the horizontal axis, and modestly
+  raises the edge-scroll top speed so longer exercise rows pass more quickly.
+- A later 2026-07-31 polish pass adds directional overflow fades, keeps the
+  selected exercise tab visible, and adds short drag, set-completion, and timer
+  feedback using the existing reduced-motion fallback. Nutrition's empty-search
+  recommendations explain their two-day source, successful one-tap logs briefly
+  show a checkmark, and delayed page loads use card-shaped placeholders.
+- Follow-up tuning fixes timer digits in place instead of animating every tick,
+  increases horizontal edge-scroll's maximum step to 4 px per interval, and
+  expands midpoint hysteresis to 56 px. Loading placeholders now resemble a
+  page toolbar, summary, and list; unbroken workout-day names wrap inside their
+  cards.
+- Active program days use one full-width horizontal row per day. The Training
+  route title is Current Program, and the active program card starts directly
+  with the program name instead of repeating an internal section title.
+- Discarding an active workout is a single guarded operation rather than a
+  generic workout mutation: repeat confirmation taps are ignored, stale load
+  results are suppressed after deletion begins, and no post-delete reload is
+  scheduled before returning to Current Program.
+- Mobile follow-up separates exercise-tab scrolling from sorting: the tab name
+  surface permits native horizontal panning, while only a dedicated 44 px grip
+  activates drag. Bodyweight date ticks sit above the axis title. The fixed
+  bottom navigation has no transform in normal use; keyboard translation is
+  added only for a meaningful focused-input viewport inset and is reset across
+  page visibility transitions, preventing Safari from leaving the bar floating.
+- Exercise-tab grips permit native horizontal panning before their delayed drag
+  activation. A swipe therefore scrolls even when it starts on a grip, while a
+  deliberate hold still enters horizontal-only reorder mode.
+- The live workout navigator keeps an accessible "Exercises" region label but
+  removes the visible card surface, heading, and drag-instruction copy so only
+  the exercise tabs occupy the row.
+- The idle Run screen checks for an active lifting workout before rendering its
+  start actions. When one exists, outdoor, treadmill, and manual actions are
+  replaced by a single Finish current workout link to `/workout`; the existing
+  start-time conflict dialog remains as protection against races.
 
 ## 2026-07-04: Completion-Based Program Weeks (Tester Feedback)
 
@@ -454,11 +593,20 @@
   pound of calculation weight, fat is ~25% of goal calories (protected so carbs
   never go negative), and carbs take the reconciled remainder. A
   `GOAL_FORMULA_VERSION` is stored with the goal for reproducibility.
-- Calorie targets never adjust automatically. A manual Update Calories action runs
-  a bounded trend-weight adjustment (regression over up to 14 days, ≥3 points
-  spanning ≥7 days, rounded to the nearest 1 kcal, capped at ±200 kcal, 50 kcal
-  deadband)
-  and is idempotent via a trend-data signature.
+- Calorie targets never adjust automatically. A manual Update Calories action
+  blends two recency-weighted maintenance estimates: a responsive 28-day signal
+  (14-day half-life) and a stabilizing 90-day signal (42-day half-life).
+- The 90-day estimate starts with no influence and grows only as calorie-log
+  days, calendar span, weigh-in count, and weigh-in span accumulate. It reaches
+  at most 50% influence after at least 60 logged days spanning 70 days and 12
+  weigh-ins spanning 70 days. Result messages describe this data support as
+  developing, moderate, or strong rather than claiming physiological certainty.
+- The blended maintenance estimate receives the selected goal-rate energy
+  delta. The resulting target is set directly, rounded to the nearest 1 kcal
+  with a 1,200 kcal floor; there is no coarse increment, deadband, or per-click
+  adjustment cap. The desired goal weight determines direction, and reaching it
+  switches the estimate to maintenance. Updates remain idempotent via a
+  signature covering the relevant 90-day weight and calorie inputs.
 - The goal is stored additively on `userSettings.nutritionGoal` (no schema
   version bump) and included in backups; users without a goal are unaffected.
 
@@ -571,13 +719,29 @@
 
 ## Repeated-Exercise Prefill
 
-- Workout-start prefills use the most recent completed session with the same
-  stable exercise ID across all programs and workout days.
-- Each prior weighted-repetition set is converted to an Epley estimated
-  one-repetition maximum, translated to the new prescription's minimum reps,
-  and rounded to the exercise's configured weight increment. Additional new
-  sets reuse the last usable prior set. Reps and load are editable suggestions,
-  not automatic progression or permanent prescription changes.
+- An exercise with no usable completed history starts with blank performance
+  fields. Programmed RIR remains target context; the app does not invent reps
+  or load from the prescription alone.
+- If the exercise has history but not for the selected program day, the most
+  recent completed set sequence is translated to the midpoint of the current
+  rep range. Weighted estimates use an RIR-adjusted Epley capacity, round load
+  to the nearest 5 lb, and carry the observed set-to-set fatigue curve through
+  the whole proposed sequence. Additional sets extend that curve instead of
+  repeating an independent first-set estimate.
+- If the same exercise was completed on the same program day, the last set
+  sequence is the starting point. The estimator adds one total repetition at
+  the position that best preserves a fatigue-shaped sequence. When every
+  programmed set reached the range maximum, it may instead add 5 lb (or remove
+  5 lb of assistance) only when the prior RIR-adjusted capacity still supports
+  the current range at the prescribed RIR.
+- Historical RIR informs the estimate but is not copied into the new workout as
+  an observed result. Current target RIR remains the editable prefill on the
+  configured target set(s). All rep/load values are editable startup estimates;
+  completed history and permanent program prescriptions are never rewritten.
+- Consecutive auto-filled sets do not repeat the same load-and-repetition pair.
+  Repetitions step down first, then weighted methods adjust load by 5 lb when a
+  repetition step would pass the range floor. Programs that track RIR on every
+  set step the editable RIR prefill toward the final-set target.
 
 ## Estimated 1RM Graphs
 
@@ -639,11 +803,13 @@
   exists.
 
 - The app is a single-user, local-first Progressive Web App.
-- Primary target is iPhone installed through Safari using Add to Home Screen.
+- Primary interaction target remains iPhone portrait. Version 1 may also be
+  distributed publicly through Apple App Store and Google Play.
 - IndexedDB is the source of truth for all primary user records.
 - Core use has no account, cloud, subscription, or internet dependency after
-  installation. Optional Google sign-in and Supabase snapshot backup are the
-  documented exception; they do not replace IndexedDB as the source of truth.
+  installation. Optional Google or Apple sign-in and Supabase snapshot backup
+  are the documented exception; they do not replace IndexedDB as the source of
+  truth.
 - JSON is the authoritative full-fidelity backup format.
 - CSV is export-only for readable spreadsheet use.
 - Backup format version `1` is separate from IndexedDB schema version `6`.
@@ -683,10 +849,10 @@
 - The built-in offline exercise library is an original curated seed list. No
   third-party exercise database, third-party application code, images, videos,
   instructions, or descriptions are imported.
-- "Similar size to MacroFactor" is implemented as at least 1,000 original
-  offline exercise seeds. Controlled-tempo, paused, eccentric, and 1.5-rep
-  variants inherit the base movement's tracking and muscle metadata while using
-  their own stable IDs.
+- The offline library uses original controlled-tempo, paused, and eccentric
+  variants with stable IDs. Generated 1.5-rep variants are retired; unreferenced
+  records are removed during seeding and referenced records stay hidden so
+  existing program and workout history links remain valid.
 - Built-in exercise IDs use stable `builtin:` identifiers and seed metadata so
   future library updates can add or correct built-in records idempotently.
 - Basic neck exercise seeds use the existing `traps` muscle category because
@@ -751,6 +917,30 @@
   bodyweight shows one decimal, and pounds are shown as stored (trimmed of
   float noise) to preserve any micro-plate precision.
 
+## 2026-08-03: Paid-use reliability polish
+
+- Automatic cloud snapshots run at most every 15 minutes while signed in. A
+  failed attempt waits five minutes before retrying; local recording never
+  depends on cloud availability. Users may permanently delete their cloud rows
+  without deleting local data.
+- An active lifting workout keeps running during ordinary in-app navigation and
+  brief backgrounding. It pauses when the page/app actually closes (`pagehide`)
+  or after 15 minutes without pointer, keyboard, input, or change activity. The
+  pause timestamp and accumulated paused seconds are persisted, and resuming is
+  always an explicit user action. Workout durations display hours once needed.
+- Barcode scanning is a focused Nutrition subpage. After the first successful
+  camera start, a device-local preference starts the scanner automatically on
+  later visits. Browser or operating-system permission revocation still takes
+  precedence and clears that preference after a denial. Leaving the scanner
+  explicitly stops its video layer before the Nutrition overview remounts so
+  iOS does not leave the date and mode controls visually blank.
+- The live workout keeps the current exercise card itself fixed. Its notepad is
+  aligned with the exercise name, and only the set list becomes scrollable as
+  extra sets exceed the available height.
+- Exercise notes do not request keyboard focus when their sheet opens. Closing
+  the sheet restores focus to the notepad without scrolling, preventing iOS
+  from panning the fixed workout viewport or lifting the bottom navigation.
+
 ## First-Release Exclusions
 
 - Required account creation or login.
@@ -759,13 +949,159 @@
 - Social features and public profiles.
 - Subscriptions and ads.
 - Wearables and Apple Health.
-- AI coaching and AI nutrition recommendations. User-initiated Gemini
+- AI coaching and AI nutrition recommendations. User-initiated AI
   meal-photo estimates are the only approved AI nutrition workflow.
-- Bundled external food database and barcode scanner.
+- Bundled external food database. Barcode lookup remains provider-backed and
+  user-initiated.
 - Micronutrients and meal plans.
 - Automated calorie adjustment.
 - Automated progression and automatic program advancement.
 - Strength scores, trend weight, adherence percentages, and non-history graphs.
 - Route maps, external map tiles, and reliable fully backgrounded GPS tracking.
-- Public App Store distribution.
 - Push-notification dependency.
+
+## 2026-08-04: Automatic PWA Updates And Per-Workout Timer Notices
+
+- A waiting service worker activates automatically; the app no longer asks the
+  user to press an update button. The versioned What’s New banner is the
+  user-facing summary after the updated shell reopens.
+- Dismissing the outside-app timer-settings notice stores only the active
+  workout ID in local storage. Further timer changes in that workout stay
+  unobstructed, while a new workout can show the notice once.
+
+## 2026-08-05: Consolidated Live Rest-Timer Controls
+
+- The live exercise header no longer contains a rest-timer toolbar or a nested
+  timer-settings sheet. The fixed bottom session row uses that space for the
+  current rest countdown and its 30-second subtract/add controls.
+- Total workout duration, workout pause/resume, exercise rest-duration wheels,
+  and rest pause/clear actions live in Exercise Options. Wheel changes commit
+  immediately without Save or Cancel buttons.
+- Changing the wheel restarts a running or completed rest timer from the newly
+  selected duration, preserves a paused timer's paused state, updates the
+  exercise default used by later sets, and resynchronizes optional alerts.
+- Keyboard viewport compensation survives route changes while iOS closes the
+  keyboard, so the bottom navigation does not jump upward during Live Workout.
+  It clears when the visual viewport is restored or the close fallback expires.
+- After a live-workout numeric field blurs, the next animation frame resets the
+  locked document scroll position. When WebKit reports a residual visual-
+  viewport top offset with no remaining keyboard inset, the live shell and
+  bottom navigation compensate for that offset until the viewport returns to
+  baseline, without moving the set list's own scroll position.
+
+## 2026-08-05: Persistent Update Banner And Live Navigation Anchor
+
+- The app-wide What's New banner is marked seen only when the user explicitly
+  opens or dismisses it. Restoring an active workout or visiting Settings does
+  not hide an unseen update.
+- Keyboard compensation remains active across route transitions while the iOS
+  visual viewport is still contracted, keeping Live Workout navigation on the
+  same bottom baseline as Home and Nutrition.
+
+## 2026-08-05: Silent Automatic Cloud-Backup Failures
+
+- Automatic cloud-backup failures and existing-snapshot conflicts do not render
+  app-wide warnings. The background service continues retrying, while explicit
+  manual backup operations and their status remain available in Settings.
+
+## 2026-08-05: Non-Blocking Workout Discard
+
+- Discard waits only for the local IndexedDB deletion transaction. It does not
+  wait for pending edits or optional native/web notification work because all
+  active-workout data is being permanently removed.
+- Rest-timer notification cancellation is best-effort background cleanup after
+  the local workout is deleted, so a slow platform API cannot delay navigation.
+
+## 2026-08-18: Phase 1 Scalability And Server-Side Meal Analysis
+
+- The OpenAI meal-analysis route supersedes the earlier device-supplied Gemini
+  credential and direct-provider request mechanics. This changes the provider
+  boundary, not the approved feature scope: analysis remains user-initiated,
+  produces an editable estimate, and never logs food, saves a recipe, changes a
+  target, or gives coaching without explicit user review and action.
+- `OPENAI_API_KEY` and the optional `OPENAI_MEAL_MODEL` remain server-only. The
+  browser submits one to three compressed images to a bounded same-origin
+  route. The route requests strict structured output with provider storage
+  disabled. Legacy internal `gemini` source identifiers remain unchanged to
+  preserve persisted and backup compatibility.
+- Server safeguards are narrowly scoped: bounded bodies and outputs, explicit
+  deadlines, safe structured logging, cache coalescing, fixed-window
+  per-instance limiting, and idempotent timer scheduling. Food lookup is the
+  documented fail-open exception when limiter storage is unavailable because it
+  uses read-only free providers; meal analysis, feedback, and timer scheduling
+  fail closed.
+- These in-memory controls reduce amplification on one warm serverless instance
+  but do not claim a global concurrency limit. A shared limiter/cache is future
+  infrastructure work when production traffic requires cross-instance quotas.
+- Cloud snapshots remain replace-only and local-first. They are capped at 8 MiB
+  before upload, omit GPS run samples, and use a metadata-only overwrite guard.
+  Daily nutrition synchronization persists bounded account-scoped fingerprints
+  so unchanged dates do not produce conflict writes.
+
+## 2026-08-18: Phase 1.5 Distributed AI Protection And Compact Cloud Rows
+
+- Production meal analysis keeps the six-request/ten-minute anonymous-client
+  policy but moves its enforcement to an atomic Redis fixed window shared by
+  every serverless instance. Redis configuration, tokens, and the independent
+  HMAC key remain server-only. The shared key contains a scoped HMAC-SHA-256
+  digest rather than a raw IP address or user agent.
+- Missing, slow, failed, or malformed Redis responses fail the paid route
+  closed before OpenAI. The in-memory `ServerRateLimiter` remains available for
+  tests and local injection, while the documented free food-provider limiter
+  policy is unchanged.
+- Manual JSON backup format 1 remains full fidelity. Cloud writes use the
+  separate `cloudSnapshotFormatVersion: 1` envelope and omit only records that
+  exactly equal deterministic built-in exercise/program seeds. Modified
+  built-ins and every custom or user-owned record remain explicit.
+- Compact restore expands current seed definitions and overlays preserved
+  records in memory, validates the complete backup and relationships, and only
+  then uses the existing transactional replace operation. Legacy cloud JSON
+  snapshots remain readable, future compact versions fail clearly, and GPS run
+  samples remain excluded from cloud payloads.
+- Final serialized-row measurements were 1,401 bytes for initialized and
+  seeded-program baselines and 4,034 bytes for a representative user dataset,
+  down from 513,176, 1,315,541, and 1,318,178 bytes respectively. The existing
+  8 MiB pre-Supabase cap remains unchanged.
+
+## 2026-08-18: Relay iOS Home Screen OAuth authorization codes with PKCE
+
+- iOS can return a Home Screen PWA's Google OAuth callback to Safari, whose
+  storage is separate from the installed app.
+- Installed-mode sign-in uses a five-minute, single-use Redis relay for the
+  PKCE authorization code. The PKCE verifier remains in the initiating PWA, so
+  the relay cannot exchange the code or obtain a session.
+- The relay never stores Supabase sessions, provider tokens, email addresses,
+  or fitness data. Normal browser sign-in remains a direct Supabase PKCE flow.
+
+## 2026-08-18: Do not interrupt an active app to apply PWA updates
+
+- A waiting service worker activates immediately but does not force a page
+  reload. The current, already-preloaded app stays usable and the next natural
+  launch uses the updated build, avoiding a second launch screen and scroll
+  loss a few seconds after startup.
+
+## 2026-08-18: Complete OAuth callbacks in their actual display context
+
+- When iOS returns the callback inside the installed PWA, the callback page
+  automatically replaces itself with Settings after the relay accepts the
+  authorization code and shows a manual Continue fallback. When the callback
+  opens in ordinary Safari, it retains the close-tab and return-to-app guidance.
+
+## 2026-08-18: Keep Google and add Apple with store-compliant account controls
+
+- Version 1 keeps optional Google cloud sign-in and adds Apple through the same
+  Supabase PKCE and one-time Redis relay boundary. Core local features remain
+  available without an account.
+- Capacitor opens provider authorization in the iOS system browser. The HTTPS
+  callback relays only the one-time code, then the fixed
+  `vigorune://auth-complete` scheme returns to the native app. Provider tokens,
+  account identifiers, and fitness records never enter the relay.
+- Permanent deletion is distinct from cloud-row deletion and local clearing.
+  `/api/account/delete` verifies the Supabase access token, derives the user ID
+  from that verified identity, rate limits the operation, and uses the
+  server-only service role to delete the Auth user. Database foreign-key
+  cascades remove app-controlled cloud rows; IndexedDB remains unchanged.
+- Public `/privacy`, `/account-deletion`, and `/support` routes describe actual
+  local, cloud, AI, food-provider, feedback, retention, and deletion behavior.
+- The public name becomes Vigorune while the bundle ID, IndexedDB name, storage
+  keys, persisted IDs, and backup-format identifiers remain unchanged.

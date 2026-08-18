@@ -7,7 +7,7 @@ create table if not exists public.backups (
 
 alter table public.backups enable row level security;
 
-grant select, insert, update on table public.backups to authenticated;
+grant select, insert, update, delete on table public.backups to authenticated;
 
 create policy "Users can read their own backup"
   on public.backups
@@ -25,6 +25,11 @@ create policy "Users can update their own backup"
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
+create policy "Users can delete their own backup"
+  on public.backups
+  for delete
+  using (auth.uid() = user_id);
+
 create table if not exists public.daily_nutrition (
   user_id uuid not null references auth.users(id) on delete cascade,
   local_date date not null,
@@ -36,7 +41,7 @@ create table if not exists public.daily_nutrition (
 
 alter table public.daily_nutrition enable row level security;
 
-grant select, insert, update on table public.daily_nutrition to authenticated;
+grant select, insert, update, delete on table public.daily_nutrition to authenticated;
 
 create policy "Users can read their own daily nutrition"
   on public.daily_nutrition
@@ -53,3 +58,8 @@ create policy "Users can update their own daily nutrition"
   for update
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+create policy "Users can delete their own daily nutrition"
+  on public.daily_nutrition
+  for delete
+  using (auth.uid() = user_id);

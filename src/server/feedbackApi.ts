@@ -1,5 +1,11 @@
 /// <reference types="node" />
 
+import {
+  createMemoryServerRateLimiter,
+  evaluateRateLimit,
+  type ServerRateLimiter,
+} from './serverRateLimiter.js'
+
 // Relays a single piece of typed user feedback to a chat webhook (Discord or
 // Slack). The webhook URL is a server-only secret (FEEDBACK_WEBHOOK_URL) and is
 // never sent to the client, so testers never see — or need — the destination.
@@ -8,11 +14,19 @@ export type FeedbackErrorCode =
   | 'invalid_request'
   | 'not_configured'
   | 'rate_limited'
+  | 'service_unavailable'
   | 'relay_failed'
 
 export type SubmitFeedbackResult =
   | { ok: true }
-  | { ok: false; error: { code: FeedbackErrorCode; message: string } }
+  | {
+      ok: false
+      error: {
+        code: FeedbackErrorCode
+        message: string
+        retryAfterSeconds?: number
+      }
+    }
 
 export type FeedbackInput = {
   message: unknown
@@ -21,13 +35,10 @@ export type FeedbackInput = {
 
 export type FeedbackConfig = {
   clientIp?: string
+  clientKey?: string
   webhookUrl: string | undefined
   fetchImpl?: typeof fetch
-  rateLimiter?: FeedbackRateLimiter
-}
-
-export type FeedbackRateLimiter = {
-  check(key: string): Promise<boolean> | boolean
+  rateLimiter: ServerRateLimiter
 }
 
 // Discord caps webhook `content` at 2000 characters; keep the message well under
@@ -57,16 +68,24 @@ export async function handleFeedbackSubmission(
       },
     }
   }
-  if (config.rateLimiter) {
-    const allowed = await config.rateLimiter.check(config.clientIp ?? 'unknown')
-    if (!allowed) {
-      return {
-        ok: false,
-        error: {
-          code: 'rate_limited',
-          message: 'Feedback is being sent too quickly. Try again later.',
-        },
-      }
+  const rateLimit = await evaluateRateLimit({
+    failClosed: true,
+    key: config.clientKey ?? config.clientIp ?? 'unknown',
+    limit: 5,
+    limiter: config.rateLimiter,
+    scope: 'feedback',
+    windowMs: 10 * 60 * 1_000,
+  })
+  if (!rateLimit.allowed) {
+    return {
+      ok: false,
+      error: {
+        code: rateLimit.available ? 'rate_limited' : 'service_unavailable',
+        message: rateLimit.available
+          ? 'Feedback is being sent too quickly. Try again later.'
+          : 'Feedback is temporarily unavailable. Try again later.',
+        retryAfterSeconds: rateLimit.retryAfterSeconds,
+      },
     }
   }
 
@@ -76,12 +95,15 @@ export async function handleFeedbackSubmission(
       : ''
   const body = formatWebhookPayload(message, context)
   const fetchImpl = config.fetchImpl ?? fetch
+  const controller = new AbortController()
+  const timeoutId = globalThis.setTimeout(() => controller.abort(), 5_000)
 
   try {
     const response = await fetchImpl(config.webhookUrl, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
+      signal: controller.signal,
     })
     if (!response.ok) {
       return relayFailed()
@@ -89,6 +111,8 @@ export async function handleFeedbackSubmission(
     return { ok: true }
   } catch {
     return relayFailed()
+  } finally {
+    globalThis.clearTimeout(timeoutId)
   }
 }
 
@@ -117,23 +141,11 @@ export function createMemoryFeedbackRateLimiter({
   limit: number
   now?: () => number
   windowMs: number
-}): FeedbackRateLimiter {
-  const hitsByKey = new Map<string, number[]>()
-
+}): ServerRateLimiter {
+  const limiter = createMemoryServerRateLimiter({ now })
   return {
-    check(key: string) {
-      const current = now()
-      const windowStart = current - windowMs
-      const recentHits = (hitsByKey.get(key) ?? []).filter(
-        (hit) => hit > windowStart,
-      )
-      if (recentHits.length >= limit) {
-        hitsByKey.set(key, recentHits)
-        return false
-      }
-      recentHits.push(current)
-      hitsByKey.set(key, recentHits)
-      return true
+    check(input) {
+      return limiter.check({ ...input, limit, windowMs })
     },
   }
 }
@@ -157,6 +169,7 @@ export function statusForFeedbackError(code: FeedbackErrorCode): number {
     case 'invalid_request':
       return 400
     case 'not_configured':
+    case 'service_unavailable':
       return 503
     case 'rate_limited':
       return 429

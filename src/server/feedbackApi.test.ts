@@ -5,6 +5,16 @@ import {
   handleFeedbackSubmission,
   statusForFeedbackError,
 } from './feedbackApi'
+import type { ServerRateLimiter } from './serverRateLimiter'
+
+const allowAllRateLimiter: ServerRateLimiter = {
+  check: () => ({
+    allowed: true,
+    available: true,
+    remaining: 99,
+    retryAfterSeconds: 60,
+  }),
+}
 
 function okFetch() {
   return vi.fn<typeof fetch>(async () => ({ ok: true }) as Response)
@@ -15,7 +25,11 @@ describe('handleFeedbackSubmission', () => {
     const fetchImpl = okFetch()
     const result = await handleFeedbackSubmission(
       { message: '   ' },
-      { webhookUrl: 'https://hook.test', fetchImpl },
+      {
+        webhookUrl: 'https://hook.test',
+        fetchImpl,
+        rateLimiter: allowAllRateLimiter,
+      },
     )
     expect(result).toEqual({
       ok: false,
@@ -31,7 +45,11 @@ describe('handleFeedbackSubmission', () => {
     const fetchImpl = okFetch()
     const result = await handleFeedbackSubmission(
       { message: 'x'.repeat(1801) },
-      { webhookUrl: 'https://hook.test', fetchImpl },
+      {
+        webhookUrl: 'https://hook.test',
+        fetchImpl,
+        rateLimiter: allowAllRateLimiter,
+      },
     )
     expect(result.ok).toBe(false)
     expect(fetchImpl).not.toHaveBeenCalled()
@@ -41,7 +59,7 @@ describe('handleFeedbackSubmission', () => {
     const fetchImpl = okFetch()
     const result = await handleFeedbackSubmission(
       { message: 'Great app' },
-      { webhookUrl: undefined, fetchImpl },
+      { webhookUrl: undefined, fetchImpl, rateLimiter: allowAllRateLimiter },
     )
     expect(result).toEqual({
       ok: false,
@@ -57,7 +75,11 @@ describe('handleFeedbackSubmission', () => {
     const fetchImpl = okFetch()
     const result = await handleFeedbackSubmission(
       { message: '  Please add dark mode  ', context: 'v1 · abc · prod' },
-      { webhookUrl: 'https://hook.test/relay', fetchImpl },
+      {
+        webhookUrl: 'https://hook.test/relay',
+        fetchImpl,
+        rateLimiter: allowAllRateLimiter,
+      },
     )
 
     expect(result).toEqual({ ok: true })
@@ -85,7 +107,11 @@ describe('handleFeedbackSubmission', () => {
     const fetchImpl = vi.fn(async () => ({ ok: false }) as Response)
     const result = await handleFeedbackSubmission(
       { message: 'Hi' },
-      { webhookUrl: 'https://hook.test', fetchImpl },
+      {
+        webhookUrl: 'https://hook.test',
+        fetchImpl,
+        rateLimiter: allowAllRateLimiter,
+      },
     )
     expect(result.ok).toBe(false)
     if (!result.ok) {
@@ -99,7 +125,11 @@ describe('handleFeedbackSubmission', () => {
     })
     const result = await handleFeedbackSubmission(
       { message: 'Hi' },
-      { webhookUrl: 'https://hook.test', fetchImpl },
+      {
+        webhookUrl: 'https://hook.test',
+        fetchImpl,
+        rateLimiter: allowAllRateLimiter,
+      },
     )
     expect(result.ok).toBe(false)
     if (!result.ok) {
@@ -154,6 +184,7 @@ describe('handleFeedbackSubmission', () => {
       error: {
         code: 'rate_limited',
         message: 'Feedback is being sent too quickly. Try again later.',
+        retryAfterSeconds: 60,
       },
     })
     expect(fetchImpl).toHaveBeenCalledTimes(2)
@@ -176,6 +207,27 @@ describe('handleFeedbackSubmission', () => {
     expect(statusForFeedbackError('invalid_request')).toBe(400)
     expect(statusForFeedbackError('not_configured')).toBe(503)
     expect(statusForFeedbackError('rate_limited')).toBe(429)
+    expect(statusForFeedbackError('service_unavailable')).toBe(503)
     expect(statusForFeedbackError('relay_failed')).toBe(502)
+  })
+
+  it('fails closed when the shared limiter cannot evaluate a request', async () => {
+    const result = await handleFeedbackSubmission(
+      { message: 'Hi' },
+      {
+        fetchImpl: okFetch(),
+        rateLimiter: {
+          check() {
+            throw new Error('unavailable')
+          },
+        },
+        webhookUrl: 'https://hook.test',
+      },
+    )
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'service_unavailable', retryAfterSeconds: 60 },
+    })
   })
 })

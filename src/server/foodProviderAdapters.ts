@@ -36,7 +36,7 @@ const USDA_SEARCH_URL = 'https://api.nal.usda.gov/fdc/v1/foods/search'
 const USDA_FOOD_URL = 'https://api.nal.usda.gov/fdc/v1/food'
 const OFF_SEARCH_URL = 'https://world.openfoodfacts.org/cgi/search.pl'
 const OFF_PRODUCT_URL = 'https://world.openfoodfacts.org/api/v2/product'
-const USER_AGENT = 'FitnessLog/0.0.0 (local-first fitness PWA)'
+const USER_AGENT = 'FitnessLog/0.9.0 (local-first fitness PWA)'
 
 export function createUsdaAdapter(
   apiKey: string | undefined,

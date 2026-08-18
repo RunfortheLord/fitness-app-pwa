@@ -19,6 +19,7 @@ export type WebPushRestTimerNotificationStatus =
 
 type StoredTimerJob = {
   messageId: string | null
+  scheduleRevision: number
   signature: string
 }
 
@@ -226,8 +227,22 @@ async function syncTimer(
   if (storedJob?.signature === signature) {
     return completionDate ? 'scheduled' : 'canceled'
   }
+  const scheduleRevision = (storedJob?.scheduleRevision ?? 0) + 1
   if (completionDate && completionDate.getTime() <= Date.now()) {
-    await updateScheduledJob(null, timer, subscription, storedJob?.messageId)
+    const response = await updateScheduledJob(
+      null,
+      timer,
+      subscription,
+      storedJob?.messageId,
+      scheduleRevision,
+    )
+    if (response.ok) {
+      storeJob({
+        messageId: response.messageId,
+        scheduleRevision,
+        signature,
+      })
+    }
     return 'expired'
   }
 
@@ -236,6 +251,7 @@ async function syncTimer(
     timer,
     subscription,
     storedJob?.messageId,
+    scheduleRevision,
   )
   if (!response.ok) {
     if (response.error?.code === 'not_configured') {
@@ -246,6 +262,7 @@ async function syncTimer(
 
   storeJob({
     messageId: response.messageId,
+    scheduleRevision,
     signature,
   })
   return completionDate ? 'scheduled' : 'canceled'
@@ -256,6 +273,7 @@ async function updateScheduledJob(
   timer: RestTimerState | null,
   subscription: PushSubscription,
   previousMessageId: string | null | undefined,
+  scheduleRevision: number,
 ) {
   const response = await fetch('/api/push/timer', {
     method: 'POST',
@@ -263,6 +281,7 @@ async function updateScheduledJob(
     body: JSON.stringify({
       completionAt: completionDate?.toISOString() ?? null,
       previousMessageId: previousMessageId ?? null,
+      scheduleRevision,
       subscription: subscription.toJSON(),
       timerId: completionDate ? timer?.id : null,
     }),
@@ -306,6 +325,13 @@ function readStoredJob(): StoredTimerJob | null {
     ) {
       return {
         messageId: parsed.messageId,
+        scheduleRevision:
+          'scheduleRevision' in parsed &&
+          typeof parsed.scheduleRevision === 'number' &&
+          Number.isSafeInteger(parsed.scheduleRevision) &&
+          parsed.scheduleRevision >= 0
+            ? parsed.scheduleRevision
+            : 0,
         signature: parsed.signature,
       }
     }

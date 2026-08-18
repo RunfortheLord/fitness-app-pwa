@@ -17,7 +17,6 @@ import {
 } from '@components/ui'
 import {
   createCalorieInsights,
-  type CalorieInsights,
   type CalorieInsightsRange,
   type CalorieInsightsSummary,
 } from '@domain/calorieInsights'
@@ -27,6 +26,11 @@ import {
   type LocalDateString,
 } from '@domain/dates'
 import { calorieHistoryService } from '@services/calorieHistoryService'
+import {
+  getCachedCalorieInsightsPageData,
+  setCachedCalorieInsightsPageData,
+  type CalorieInsightsPageState,
+} from '@pages/calorieInsightsPageCache'
 
 const rangeOptions: Array<{
   label: string
@@ -37,31 +41,23 @@ const rangeOptions: Array<{
   { label: '3M', value: '3m' },
 ]
 
-type CalorieInsightsState =
-  | { status: 'loading' }
-  | { status: 'error'; requestKey: string }
-  | {
-      status: 'ready'
-      insights: CalorieInsights
-      requestKey: string
-    }
-
 export function CalorieInsightsPage() {
   const { t } = useLanguage()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [state, setState] = useState<CalorieInsightsState>({
-    status: 'loading',
-  })
-  const [retryRevision, setRetryRevision] = useState(0)
   const today = formatLocalDate(new Date())
   const range = parseRange(searchParams.get('range'))
   const endDate = parseEndDate(searchParams.get('end'), today)
   const requestKey = `${range}:${endDate}`
+  const [state, setState] = useState<CalorieInsightsPageState>(
+    () => getCachedCalorieInsightsPageData(requestKey) ?? { status: 'loading' },
+  )
+  const [retryRevision, setRetryRevision] = useState(0)
   const currentState =
     state.status !== 'loading' && state.requestKey === requestKey
       ? state
-      : ({ status: 'loading' } as const)
+      : (getCachedCalorieInsightsPageData(requestKey) ??
+        ({ status: 'loading' } as const))
 
   useEffect(() => {
     let isCurrent = true
@@ -71,7 +67,7 @@ export function CalorieInsightsPage() {
         if (!isCurrent) {
           return
         }
-        setState({
+        const nextState: CalorieInsightsPageState = {
           status: 'ready',
           requestKey,
           insights: createCalorieInsights({
@@ -79,11 +75,18 @@ export function CalorieInsightsPage() {
             range,
             today: endDate,
           }),
-        })
+        }
+        setCachedCalorieInsightsPageData(requestKey, nextState)
+        setState(nextState)
       })
       .catch(() => {
         if (isCurrent) {
-          setState({ status: 'error', requestKey })
+          const nextState: CalorieInsightsPageState = {
+            status: 'error',
+            requestKey,
+          }
+          setCachedCalorieInsightsPageData(requestKey, nextState)
+          setState(nextState)
         }
       })
 

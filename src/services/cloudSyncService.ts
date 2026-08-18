@@ -1,11 +1,12 @@
 import { db, DATABASE_SCHEMA_VERSION } from '@db/database'
 import {
   backupService,
-  validateBackup,
+  validateCloudSnapshot,
   type JsonBackup,
 } from '@services/backupService'
 import { authService } from '@services/authService'
 import { getSupabaseClient } from '@services/supabaseClient'
+import { appMetadataRepository } from '@repositories/appMetadataRepository'
 
 export type CloudBackupInfo = {
   databaseSchemaVersion: number
@@ -20,6 +21,26 @@ type BackupRow = {
   updated_at: string
 }
 
+type BackupMetadataRow = {
+  updated_at: string
+}
+
+export const MAX_CLOUD_BACKUP_BYTES = 8 * 1024 * 1024
+
+export class CloudBackupTooLargeError extends Error {
+  readonly byteSize: number
+  readonly maxByteSize: number
+
+  constructor(byteSize: number, maxByteSize = MAX_CLOUD_BACKUP_BYTES) {
+    super(
+      `Cloud backup is ${formatMegabytes(byteSize)} MB, above the ${formatMegabytes(maxByteSize)} MB safety limit. Local data was unchanged.`,
+    )
+    this.name = 'CloudBackupTooLargeError'
+    this.byteSize = byteSize
+    this.maxByteSize = maxByteSize
+  }
+}
+
 export const cloudSyncService = {
   async backupToCloud(): Promise<CloudBackupInfo> {
     const session = await requireOnlineSession()
@@ -30,6 +51,12 @@ export const cloudSyncService = {
       schema_version: exportResult.backup.databaseSchemaVersion,
       updated_at: exportResult.backup.exportedAt,
     }
+    const serializedBytes = new TextEncoder().encode(
+      JSON.stringify(row),
+    ).byteLength
+    if (serializedBytes > MAX_CLOUD_BACKUP_BYTES) {
+      throw new CloudBackupTooLargeError(serializedBytes)
+    }
 
     const { error } = await getSupabaseClient()
       .from('backups')
@@ -39,13 +66,16 @@ export const cloudSyncService = {
       throw new Error(error.message || 'Cloud backup could not be saved.')
     }
 
-    return infoFromBackup(exportResult.backup, exportResult.backup.exportedAt)
+    return infoFromBackup(
+      exportResult.restorableBackup,
+      exportResult.backup.exportedAt,
+    )
   },
 
   async restoreFromCloud(): Promise<CloudBackupInfo> {
     const session = await requireOnlineSession()
     const row = await fetchBackupRow(session.user.id)
-    const validation = validateBackup(row.snapshot, 'cloud backup')
+    const validation = validateCloudSnapshot(row.snapshot, 'cloud backup')
     if (!validation.ok) {
       throw new Error(
         'Cloud backup validation failed. Local data was unchanged.',
@@ -63,7 +93,7 @@ export const cloudSyncService = {
       return null
     }
 
-    const validation = validateBackup(row.snapshot, 'cloud backup')
+    const validation = validateCloudSnapshot(row.snapshot, 'cloud backup')
     if (!validation.ok) {
       throw new Error('Cloud backup validation failed.')
     }
@@ -71,17 +101,49 @@ export const cloudSyncService = {
     return infoFromBackup(validation.backup, row.updated_at)
   },
 
+  async deleteCloudData(): Promise<void> {
+    const session = await requireOnlineSession()
+    const client = getSupabaseClient()
+
+    for (const table of ['daily_nutrition', 'backups'] as const) {
+      const { error } = await client
+        .from(table)
+        .delete()
+        .eq('user_id', session.user.id)
+      if (error) {
+        throw new Error(error.message || 'Cloud data could not be deleted.')
+      }
+    }
+    await appMetadataRepository.clearDailyNutritionSyncState()
+  },
+
   async canSafelyBackUpAutomatically(): Promise<boolean> {
-    const cloudBackup = await cloudSyncService.getCloudBackupInfo()
+    const session = await requireOnlineSession()
+    const cloudBackup = await fetchBackupMetadataRow(session.user.id)
     if (!cloudBackup) {
       return true
     }
 
     const localBackupHistory = await db.backupMetadata.toArray()
     return localBackupHistory.some(
-      (entry) => entry.exportedAt === cloudBackup.exportedAt,
+      (entry) => entry.exportedAt === cloudBackup.updated_at,
     )
   },
+}
+
+async function fetchBackupMetadataRow(userId: string) {
+  const { data, error } = await getSupabaseClient()
+    .from('backups')
+    .select('updated_at')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(
+      error.message || 'Cloud backup metadata could not be loaded.',
+    )
+  }
+  return data ? (data as BackupMetadataRow) : null
 }
 
 async function requireOnlineSession() {
@@ -91,7 +153,7 @@ async function requireOnlineSession() {
 
   const session = await authService.getSession()
   if (!session?.user) {
-    throw new Error('Sign in with Google before using cloud backup.')
+    throw new Error('Sign in before using cloud backup.')
   }
 
   return session
@@ -123,7 +185,7 @@ async function fetchBackupRow(
     if (options.allowMissing) {
       return null
     }
-    throw new Error('No cloud backup exists for this Google account.')
+    throw new Error('No cloud backup exists for this account.')
   }
 
   return data as BackupRow
@@ -143,4 +205,8 @@ function infoFromBackup(
     ),
     updatedAt,
   }
+}
+
+function formatMegabytes(bytes: number) {
+  return Number((bytes / (1024 * 1024)).toFixed(2))
 }

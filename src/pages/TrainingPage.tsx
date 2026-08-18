@@ -71,9 +71,11 @@ export function TrainingPage() {
   const [view, setView] = useState<ExerciseView>('active')
   const [isLibraryExpanded, setIsLibraryExpanded] = useState(false)
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false)
-  const [programView, setProgramView] = useState<'main' | 'library' | 'browse'>(
-    'main',
-  )
+  const programViewParam = searchParams.get('programView')
+  const programView: 'main' | 'library' | 'browse' =
+    programViewParam === 'library' || programViewParam === 'browse'
+      ? programViewParam
+      : 'main'
   const [previewTemplate, setPreviewTemplate] =
     useState<ProgramTemplate | null>(null)
   const [programSearchQuery, setProgramSearchQuery] = useState('')
@@ -109,6 +111,16 @@ export function TrainingPage() {
         : sheet
   const shouldDeferExerciseSeed =
     activeSheet?.type === 'exercise' && !activeSheet.exercise
+
+  function setProgramView(nextView: 'main' | 'library' | 'browse') {
+    const nextParams = new URLSearchParams(searchParams)
+    if (nextView === 'main') {
+      nextParams.delete('programView')
+    } else {
+      nextParams.set('programView', nextView)
+    }
+    setSearchParams(nextParams, { replace: true })
+  }
 
   useEffect(() => {
     let isCurrent = true
@@ -245,6 +257,13 @@ export function TrainingPage() {
       .catch(() => setMessage('Could not update the check-off.'))
   }
 
+  function selectProgramWeek(cycle: ActiveProgramCycle, weekNumber: number) {
+    void programRepository
+      .updateActiveCycle(cycle.id, { currentWeekNumber: weekNumber })
+      .then(() => reload())
+      .catch(() => setMessage('Could not change the program week.'))
+  }
+
   function startWorkoutDay(
     cycle: ActiveProgramCycle,
     day: ActiveCycleWorkoutDay,
@@ -358,6 +377,7 @@ export function TrainingPage() {
               checkedDayIds={weekChecks.checkedDayIds}
               weekNumber={weekChecks.week}
               onToggleDayCheck={toggleDayCheck}
+              onSelectWeek={selectProgramWeek}
               loadStatus={loadState.status}
               onBrowse={() => setProgramView('browse')}
               onCreateProgram={onCreateProgram}

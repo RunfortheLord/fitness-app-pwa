@@ -3,11 +3,16 @@
 ## Product Correctness
 
 - Does the change match the binding requirements in `docs/PRODUCT_REQUIREMENTS.md`?
+- Does it remain inside the frozen boundary in `docs/V1_SCOPE_FREEZE.md`?
 - Did the author read the relevant docs before implementation?
 - Does the change avoid unrequested scope expansion?
 - Does it avoid excluded features: required accounts, realtime multi-device
-  cloud sync, AI recommendations, subscriptions, social features, wearables,
-  adherence scores, automatic calorie adjustment, and automatic progression?
+  cloud sync, AI coaching or automatic AI actions, subscriptions,
+  advertisements, social features, wearables, automatic calorie adjustment,
+  automatic program advancement, and unrelated expansion?
+- If it touches approved optional authentication, snapshot backup, AI meal
+  analysis, or store distribution, does it preserve signed-out offline use and
+  explicit user review?
 - Are unavoidable assumptions recorded in `docs/DECISIONS.md`?
 
 ## Data Integrity
@@ -26,6 +31,9 @@
 
 - Does every schema change include a database migration?
 - Are persisted fields kept or migrated rather than silently renamed/deleted?
+- Are the bundle/application identifiers, IndexedDB database, local-storage
+  keys, persisted IDs, and backup-format identifiers unchanged by public-name
+  or store work?
 - Are migrations tested from supported prior schemas?
 - Are backup schema compatibility and unsupported future versions handled?
 - Does migration failure avoid silent data loss?
@@ -35,6 +43,7 @@
 - Does the app shell remain cacheable and usable offline?
 - Are user records stored in IndexedDB rather than service-worker cache?
 - Do core flows work without network access after installation?
+- Do core flows work without creating or signing into an account?
 - Is service-worker update behavior deliberate and recoverable?
 - Does active workout state survive reload and restart?
 
@@ -71,7 +80,14 @@
 - Are secrets absent from the diff?
 - Is imported JSON validated before writing to IndexedDB?
 - Are destructive actions confirmed?
-- Are backups kept local and never uploaded by app behavior?
+- Do local exports remain local unless the user separately enables the approved
+  cloud snapshot feature?
+- Are account deletion, cloud-data deletion, and local Clear all data distinct,
+  correctly scoped, and confirmed?
+- Does optional cloud backup remain a snapshot service with IndexedDB as the
+  source of truth?
+- Are AI estimates reviewed and explicitly accepted before they can mutate
+  local records?
 - Are broad error-swallowing blocks avoided?
 
 ## Scope Control

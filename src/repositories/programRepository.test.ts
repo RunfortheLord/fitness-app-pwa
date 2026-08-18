@@ -52,6 +52,10 @@ describe('programRepository', () => {
       days: [],
     })
     expect(defaulted.template.durationWeeks).toBe(10)
+    expect(defaulted.template).toMatchObject({
+      deloadSchedulingEnabled: false,
+      deloadWeekNumbers: [1],
+    })
 
     const custom = await repository.createProgramTemplate({
       name: 'Six weeks',
@@ -68,6 +72,10 @@ describe('programRepository', () => {
 
     const active = await repository.activateTemplate(custom.template.id)
     expect(active.cycle.durationWeeks).toBe(104)
+    expect(active.cycle).toMatchObject({
+      deloadSchedulingEnabled: false,
+      deloadWeekNumbers: [1],
+    })
   })
 
   it('marks only the latest activated cycle current', async () => {
@@ -212,7 +220,7 @@ describe('programRepository', () => {
     })
   })
 
-  it('manually changes the current week and clears that week forward', async () => {
+  it('manually changes the selected week without clearing any week history', async () => {
     const program = await seedProgram(database)
     const repository = createProgramRepository(database)
     const active = await repository.activateTemplate(program.template.id)
@@ -238,9 +246,12 @@ describe('programRepository', () => {
       database.activeCycleDayChecks
         .where({ activeCycleId: active.cycle.id })
         .toArray(),
-    ).resolves.toEqual([
-      expect.objectContaining({ weekNumber: 2, checked: true }),
-    ])
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ weekNumber: 2, checked: true }),
+        expect.objectContaining({ weekNumber: 5, checked: true }),
+      ]),
+    )
   })
 
   it('keeps the current active cycle active when templates and active cycles are updated', async () => {

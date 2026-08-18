@@ -63,7 +63,7 @@ describe('automaticCloudBackupService', () => {
     expect(unsubscribe).toHaveBeenCalledOnce()
   })
 
-  it('backs up immediately on visibility changes without leaving a throttled timer behind', async () => {
+  it('keeps the throttle when the app becomes visible again', async () => {
     const backupToCloud = vi.fn().mockResolvedValue(undefined)
     let notifyMutation: () => void = () => undefined
     const service = createService({
@@ -83,7 +83,7 @@ describe('automaticCloudBackupService', () => {
 
     document.dispatchEvent(new Event('visibilitychange'))
     await vi.advanceTimersByTimeAsync(0)
-    expect(backupToCloud).toHaveBeenCalledTimes(2)
+    expect(backupToCloud).toHaveBeenCalledTimes(1)
 
     await vi.advanceTimersByTimeAsync(40)
     expect(backupToCloud).toHaveBeenCalledTimes(2)
@@ -162,6 +162,26 @@ describe('automaticCloudBackupService', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(backupToCloud).toHaveBeenCalledTimes(1)
     expect(onError).not.toHaveBeenCalled()
+    stop()
+  })
+
+  it('warns after repeated failures even when no backup has succeeded yet', async () => {
+    const backupToCloud = vi.fn().mockRejectedValue(new Error('network'))
+    const onError = vi.fn()
+    const service = createService({
+      backupToCloud,
+      canSafelyBackUp: () => Promise.resolve(true),
+      getLastSuccessfulBackupAt: () => Promise.resolve(null),
+      retryDelayMs: 100,
+      staleBackupThresholdMs: 200,
+    })
+
+    const stop = service.start({ onError })
+    await vi.advanceTimersByTimeAsync(199)
+    expect(onError).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(101)
+    expect(onError).toHaveBeenCalledWith(expect.any(Error))
     stop()
   })
 

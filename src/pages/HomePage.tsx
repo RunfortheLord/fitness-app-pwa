@@ -22,6 +22,7 @@ import {
   type LocalDateString,
 } from '@domain/dates'
 import { currentTimeAwareTrendWeight } from '@domain/bodyweightTrend'
+import { formatProgramWeekLabel } from '@domain/programWeeks'
 import { formatWeight as formatWeightWithUnit } from '@domain/weightUnits'
 import type { BodyweightEntry } from '@shared-types/app'
 import { useDashboardContext } from '@hooks/useDashboardContext'
@@ -213,7 +214,9 @@ export function HomePage() {
         onToday={() => setSelectedDate(today)}
       />
 
-      {isDashboardLoading ? <LoadingState label="Loading dashboard" /> : null}
+      {isDashboardLoading ? (
+        <LoadingState label="Loading dashboard" variant="cards" />
+      ) : null}
       {dashboard ? (
         <div
           aria-label="Dashboard ready"
@@ -272,9 +275,13 @@ export function HomePage() {
                         })}
                   </PrimaryButton>
                   <p className="home-action-meta">
-                    {t('Week {week} · Next workout', {
-                      week: dashboard.activeProgram.weekNumber,
-                    })}
+                    {formatProgramWeekLabel(
+                      dashboard.activeProgram.weekNumber,
+                      dashboard.activeProgram.cycle.deloadSchedulingEnabled
+                        ? dashboard.activeProgram.cycle.deloadWeekNumbers
+                        : [],
+                    )}{' '}
+                    · {t('Next workout')}
                   </p>
                 </>
               ) : (

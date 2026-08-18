@@ -8,6 +8,10 @@
 - Use schema versions for both database migrations and backup format.
 - Store graph-ready historical records for bodyweight progress.
 - Snapshot mutable reference data into historical records when needed to preserve history.
+- Public naming is presentation-only. The IndexedDB database name
+  (`training-log`), object-store and field names, local-storage keys, persisted
+  IDs, and backup-format identifiers are compatibility contracts and must not be
+  renamed for **Vigorune** or a later public name.
 
 ## ID Format
 
@@ -51,6 +55,13 @@ foreign-key ID fields and sort indexes.
 - `timerSoundEnabled`
 - `selectedTimerSoundId`
 - `timerBannersEnabled`
+- `rirTrackingEnabled`: defaults to `false`; controls whether RIR inputs and
+  RIR-based workout estimates are enabled
+- `workoutAutofillMode`: `history_copy` by default, or
+  `smart_progression`; controls how completed exercise history prefills new
+  workout sets
+- `historySortMode`: `recent` by default, or `program`
+- `historyProgramId`: nullable persisted program drilldown identifier
 - `createdAt`
 - `updatedAt`
 
@@ -255,6 +266,9 @@ Provider snapshot metadata is optional so old local food logs remain readable.
 - `name`
 - `notes`
 - `workoutDays`
+- `durationWeeks`: planned program duration
+- `deloadWeekNumbers`: ordered unique 1-based scheduled deload weeks
+- `deloadSchedulingEnabled`: whether the schedule is visible and applied
 - `status`: `active` or `archived`
 - `createdAt`
 - `updatedAt`
@@ -287,6 +301,10 @@ Provider snapshot metadata is optional so old local food logs remain readable.
 - `name`
 - `notes`
 - `workoutDays`
+- `durationWeeks`
+- `currentWeekNumber`: currently selected 1-based week
+- `deloadWeekNumbers`: independent activation-time snapshot
+- `deloadSchedulingEnabled`: independent activation-time enabled snapshot
 - `status`: `active`, `inactive`, or `archived`
 - `activatedAt`
 - `createdAt`
@@ -302,11 +320,19 @@ Provider snapshot metadata is optional so old local food logs remain readable.
 - `localDate`
 - `name`
 - `workoutSnapshot`
+- `programWeekNumber`: selected week snapshotted at start
+- `isDeload`: scheduled deload status snapshotted at start
 - `exercises`
+
+Each active-workout exercise may store `sessionTargetRepsMin` and
+`sessionTargetRepsMax`. These values are current-session overrides and never
+mutate the active cycle or program template.
+
 - `notes`: legacy-compatible field retained for backups and restore; the
   current live-workout UI does not write workout-level notes.
 - `startedAt`
 - `elapsedPausedSeconds`
+- `pausedAt`: nullable timestamp for the current whole-workout pause
 - `activeRestTimer`
 - `createdAt`
 - `updatedAt`
@@ -348,6 +374,8 @@ Provider snapshot metadata is optional so old local food logs remain readable.
 - `id`
 - `startedAt`
 - `durationSeconds`
+- `elapsedPausedSeconds`
+- `pausedAt`: always `null` after completion; retained for backup compatibility
 - `pausedAt`
 - `accumulatedPausedSeconds`
 - `status`: `running`, `paused`, `dismissed`, or `completed`
@@ -369,6 +397,9 @@ Provider snapshot metadata is optional so old local food logs remain readable.
 - `startedAt`
 - `completedAt`
 - `durationSeconds`
+- `programWeekNumber`
+- `isDeload`; deload entries remain immutable history but are excluded from
+  derived Estimated 1RM and Total volume points
 - `exercises`
 - `notes`: legacy-compatible field retained for backups and restore; the
   current workout completion flow does not prompt for workout notes.
@@ -575,6 +606,16 @@ not add distance or moving time.
   official restaurant-menu corrections and resets their unit preferences to
   the official item/count serving. It does not rewrite food-log or saved-meal
   snapshots.
+- Schema version 17 adds nullable whole-workout `pausedAt` state to active and
+  historical workout records. Existing records migrate with `pausedAt: null`;
+  completed history and accumulated pause totals are unchanged.
+- Schema version 20 adds scheduled deload weeks, workout week/deload snapshots,
+  and persisted History organization/filter preferences. Existing programs
+  migrate with no deload weeks, existing workouts migrate as regular workouts,
+  and History defaults to Most recent.
+- Schema version 21 adds explicit deload-scheduling enabled state and initializes
+  default editable deload-week selections without renaming stores, records, or
+  identifiers.
 
 ## Transaction Boundaries
 
@@ -606,7 +647,8 @@ not add distance or moving time.
 - JSON backup is authoritative and full fidelity.
 - CSV export is derived from stores for readability and does not need to support restore.
 - Import preview summarizes counts, schema versions, conflicts, and whether merge or replace is selected.
-- Current backup format version is `1`, separate from IndexedDB schema version `16`.
+- Current backup format version is `1`, separate from IndexedDB schema version
+  `21`.
 - Backup root fields are `backupFormatVersion`, `databaseSchemaVersion`,
   `applicationVersion`, `exportedAt`, and `data`.
 - Restore supports backup format version `1` when the backup database schema

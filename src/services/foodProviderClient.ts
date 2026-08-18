@@ -14,6 +14,7 @@ export type FoodProviderClientErrorCode =
   | 'provider_timeout'
   | 'provider_unavailable'
   | 'provider_rate_limited'
+  | 'rate_limited'
   | 'server_missing_configuration'
   | 'api_route_misconfigured'
   | 'normalization_failure'
@@ -21,11 +22,17 @@ export type FoodProviderClientErrorCode =
 
 export class FoodProviderClientError extends Error {
   readonly code: FoodProviderClientErrorCode
+  readonly retryAfterSeconds?: number
 
-  constructor(code: FoodProviderClientErrorCode, message: string) {
+  constructor(
+    code: FoodProviderClientErrorCode,
+    message: string,
+    options: { retryAfterSeconds?: number } = {},
+  ) {
     super(message)
     this.name = 'FoodProviderClientError'
     this.code = code
+    this.retryAfterSeconds = options.retryAfterSeconds
   }
 }
 
@@ -169,6 +176,7 @@ async function readProviderResponse<T>(response: Response): Promise<T> {
     throw new FoodProviderClientError(
       payload.error.code as FoodProviderClientErrorCode,
       payload.error.message,
+      { retryAfterSeconds: readRetryAfter(response) },
     )
   }
 
@@ -176,6 +184,11 @@ async function readProviderResponse<T>(response: Response): Promise<T> {
     'unexpected_server_error',
     'Food provider returned an unexpected response.',
   )
+}
+
+function readRetryAfter(response: Response) {
+  const value = Number(response.headers.get('retry-after'))
+  return Number.isInteger(value) && value > 0 ? value : undefined
 }
 
 function isProviderSuccess<T>(value: unknown): value is { ok: true; data: T } {

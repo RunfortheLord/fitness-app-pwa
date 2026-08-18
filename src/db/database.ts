@@ -6,6 +6,7 @@ import { getTrackingMethod } from '@domain/trackingMethods'
 import { isMealType, mealTypeForHour } from '@domain/meals'
 import {
   completionProgramWeek,
+  DEFAULT_DELOAD_WEEK_NUMBERS,
   DEFAULT_PROGRAM_DURATION_WEEKS,
 } from '@domain/programWeeks'
 import type {
@@ -44,7 +45,7 @@ import type {
   WorkoutSet,
 } from '@shared-types/app'
 
-export const DATABASE_SCHEMA_VERSION = 16
+export const DATABASE_SCHEMA_VERSION = 21
 export const BACKUP_SCHEMA_VERSION = 1
 export const DATABASE_NAME = 'training-log'
 
@@ -1109,6 +1110,381 @@ export class TrainingLogDatabase extends Dexie {
           })
         }
       })
+
+    this.version(17)
+      .stores({
+        appMetadata: '&id',
+        userSettings: '&id',
+        nutritionTargets: '&id, updatedAt',
+        foods: '&id, status, name, updatedAt',
+        foodLogEntries: '&id, localDate, foodId, createdAt',
+        savedMeals: '&id, status, name, updatedAt',
+        foodUnitPreferences: '&id, foodId, updatedAt',
+        barcodeProductCache: '&id, &barcode, foodId, updatedAt',
+        bodyweightEntries: '&id, localDate, createdAt, updatedAt',
+        exercises:
+          '&id, status, origin, seedDataVersion, name, trackingMethodId, updatedAt',
+        programTemplates: '&id, status, name, lastActiveAt, updatedAt',
+        templateWorkoutDays: '&id, templateId, [templateId+orderIndex]',
+        templateWorkoutExercises:
+          '&id, templateId, dayId, exerciseId, [dayId+orderIndex]',
+        activeProgramCycles:
+          '&id, sourceTemplateId, status, activatedAt, updatedAt',
+        activeCycleDayChecks:
+          '&id, activeCycleId, dayId, weekNumber, [activeCycleId+weekNumber], [activeCycleId+dayId+weekNumber]',
+        activeCycleWorkoutDays:
+          '&id, activeCycleId, sourceTemplateDayId, [activeCycleId+orderIndex]',
+        activeCycleWorkoutExercises:
+          '&id, activeCycleId, dayId, exerciseId, sourceTemplateExerciseId, [dayId+orderIndex]',
+        workouts: '&id, status, localDate, sourceActiveCycleId, startedAt',
+        workoutExercises: '&id, workoutId, exerciseId, [workoutId+orderIndex]',
+        workoutSets:
+          '&id, workoutId, workoutExerciseId, [workoutExerciseId+setNumber]',
+        workoutHistoryEntries:
+          '&id, localDate, sourceActiveCycleId, sourceTemplateId, completedAt',
+        workoutHistoryExercises:
+          '&id, workoutId, exerciseId, [workoutId+orderIndex]',
+        workoutHistorySets:
+          '&id, workoutId, workoutExerciseId, [workoutExerciseId+setNumber]',
+        detectedWorkoutChanges: '&id, workoutId, status, type, createdAt',
+        appliedWorkoutChanges: '&id, detectedChangeId, workoutId, appliedAt',
+        runs: '&id, status, localDate, startedAt, completedAt',
+        runSamples:
+          '&id, runId, timestamp, decision, rejectionReason, [runId+timestamp]',
+        runPauses: '&id, runId, startedAt, endedAt',
+        runSplits: '&id, runId, mileNumber, completedAt',
+        runClassifications: '&id, runId, type, startedAt',
+        apiKeyIntegrationSettings: '&id, status, updatedAt',
+        backupMetadata: '&id, createdAt',
+      })
+      .upgrade(async (tx) => {
+        const now = new Date().toISOString()
+        await tx
+          .table<Workout>('workouts')
+          .toCollection()
+          .modify((workout) => {
+            workout.pausedAt ??= null
+          })
+        await tx
+          .table<WorkoutHistoryEntry>('workoutHistoryEntries')
+          .toCollection()
+          .modify((workout) => {
+            workout.pausedAt ??= null
+          })
+        const metadata = await tx.table<AppMetadata>('appMetadata').get('app')
+        if (metadata) {
+          await tx.table<AppMetadata>('appMetadata').put({
+            ...metadata,
+            databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+            backupSchemaVersion: BACKUP_SCHEMA_VERSION,
+            updatedAt: now,
+          })
+        }
+      })
+
+    this.version(18)
+      .stores({
+        appMetadata: '&id',
+        userSettings: '&id',
+        nutritionTargets: '&id, updatedAt',
+        foods: '&id, status, name, updatedAt',
+        foodLogEntries: '&id, localDate, foodId, createdAt',
+        savedMeals: '&id, status, name, updatedAt',
+        foodUnitPreferences: '&id, foodId, updatedAt',
+        barcodeProductCache: '&id, &barcode, foodId, updatedAt',
+        bodyweightEntries: '&id, localDate, createdAt, updatedAt',
+        exercises:
+          '&id, status, origin, seedDataVersion, name, trackingMethodId, updatedAt',
+        programTemplates: '&id, status, name, lastActiveAt, updatedAt',
+        templateWorkoutDays: '&id, templateId, [templateId+orderIndex]',
+        templateWorkoutExercises:
+          '&id, templateId, dayId, exerciseId, [dayId+orderIndex]',
+        activeProgramCycles:
+          '&id, sourceTemplateId, status, activatedAt, updatedAt',
+        activeCycleDayChecks:
+          '&id, activeCycleId, dayId, weekNumber, [activeCycleId+weekNumber], [activeCycleId+dayId+weekNumber]',
+        activeCycleWorkoutDays:
+          '&id, activeCycleId, sourceTemplateDayId, [activeCycleId+orderIndex]',
+        activeCycleWorkoutExercises:
+          '&id, activeCycleId, dayId, exerciseId, sourceTemplateExerciseId, [dayId+orderIndex]',
+        workouts: '&id, status, localDate, sourceActiveCycleId, startedAt',
+        workoutExercises: '&id, workoutId, exerciseId, [workoutId+orderIndex]',
+        workoutSets:
+          '&id, workoutId, workoutExerciseId, [workoutExerciseId+setNumber]',
+        workoutHistoryEntries:
+          '&id, localDate, sourceActiveCycleId, sourceTemplateId, completedAt',
+        workoutHistoryExercises:
+          '&id, workoutId, exerciseId, [workoutId+orderIndex]',
+        workoutHistorySets:
+          '&id, workoutId, workoutExerciseId, [workoutExerciseId+setNumber]',
+        detectedWorkoutChanges: '&id, workoutId, status, type, createdAt',
+        appliedWorkoutChanges: '&id, detectedChangeId, workoutId, appliedAt',
+        runs: '&id, status, localDate, startedAt, completedAt',
+        runSamples:
+          '&id, runId, timestamp, decision, rejectionReason, [runId+timestamp]',
+        runPauses: '&id, runId, startedAt, endedAt',
+        runSplits: '&id, runId, mileNumber, completedAt',
+        runClassifications: '&id, runId, type, startedAt',
+        apiKeyIntegrationSettings: '&id, status, updatedAt',
+        backupMetadata: '&id, createdAt',
+      })
+      .upgrade(async (tx) => {
+        const now = new Date().toISOString()
+        const workoutExercises = await tx
+          .table<WorkoutExercise>('workoutExercises')
+          .toArray()
+        for (const exercise of workoutExercises) {
+          const source = exercise.sourcePrescribedExerciseId
+            ? await tx
+                .table<ActiveCycleWorkoutExercise>(
+                  'activeCycleWorkoutExercises',
+                )
+                .get(exercise.sourcePrescribedExerciseId)
+            : undefined
+          const firstSet = await tx
+            .table<WorkoutSet>('workoutSets')
+            .where({ workoutExerciseId: exercise.id })
+            .first()
+          await tx
+            .table<WorkoutExercise>('workoutExercises')
+            .update(exercise.id, {
+              sessionTargetRepsMin:
+                source?.targetRepsMin ??
+                firstSet?.targetSnapshot?.targetRepsMin ??
+                null,
+              sessionTargetRepsMax:
+                source?.targetRepsMax ??
+                firstSet?.targetSnapshot?.targetRepsMax ??
+                null,
+              updatedAt: now,
+            })
+        }
+        const metadata = await tx.table<AppMetadata>('appMetadata').get('app')
+        if (metadata) {
+          await tx.table<AppMetadata>('appMetadata').put({
+            ...metadata,
+            databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+            backupSchemaVersion: BACKUP_SCHEMA_VERSION,
+            updatedAt: now,
+          })
+        }
+      })
+
+    this.version(19)
+      .stores({
+        appMetadata: '&id',
+        userSettings: '&id',
+        nutritionTargets: '&id, updatedAt',
+        foods: '&id, status, name, updatedAt',
+        foodLogEntries: '&id, localDate, foodId, createdAt',
+        savedMeals: '&id, status, name, updatedAt',
+        foodUnitPreferences: '&id, foodId, updatedAt',
+        barcodeProductCache: '&id, &barcode, foodId, updatedAt',
+        bodyweightEntries: '&id, localDate, createdAt, updatedAt',
+        exercises:
+          '&id, status, origin, seedDataVersion, name, trackingMethodId, updatedAt',
+        programTemplates: '&id, status, name, lastActiveAt, updatedAt',
+        templateWorkoutDays: '&id, templateId, [templateId+orderIndex]',
+        templateWorkoutExercises:
+          '&id, templateId, dayId, exerciseId, [dayId+orderIndex]',
+        activeProgramCycles:
+          '&id, sourceTemplateId, status, activatedAt, updatedAt',
+        activeCycleDayChecks:
+          '&id, activeCycleId, dayId, weekNumber, [activeCycleId+weekNumber], [activeCycleId+dayId+weekNumber]',
+        activeCycleWorkoutDays:
+          '&id, activeCycleId, sourceTemplateDayId, [activeCycleId+orderIndex]',
+        activeCycleWorkoutExercises:
+          '&id, activeCycleId, dayId, exerciseId, sourceTemplateExerciseId, [dayId+orderIndex]',
+        workouts: '&id, status, localDate, sourceActiveCycleId, startedAt',
+        workoutExercises: '&id, workoutId, exerciseId, [workoutId+orderIndex]',
+        workoutSets:
+          '&id, workoutId, workoutExerciseId, [workoutExerciseId+setNumber]',
+        workoutHistoryEntries:
+          '&id, localDate, sourceActiveCycleId, sourceTemplateId, completedAt',
+        workoutHistoryExercises:
+          '&id, workoutId, exerciseId, [workoutId+orderIndex]',
+        workoutHistorySets:
+          '&id, workoutId, workoutExerciseId, [workoutExerciseId+setNumber]',
+        detectedWorkoutChanges: '&id, workoutId, status, type, createdAt',
+        appliedWorkoutChanges: '&id, detectedChangeId, workoutId, appliedAt',
+        runs: '&id, status, localDate, startedAt, completedAt',
+        runSamples:
+          '&id, runId, timestamp, decision, rejectionReason, [runId+timestamp]',
+        runPauses: '&id, runId, startedAt, endedAt',
+        runSplits: '&id, runId, mileNumber, completedAt',
+        runClassifications: '&id, runId, type, startedAt',
+        apiKeyIntegrationSettings: '&id, status, updatedAt',
+        backupMetadata: '&id, createdAt',
+      })
+      .upgrade(async (tx) => {
+        const now = new Date().toISOString()
+        const settings = await tx
+          .table<Partial<UserSettings>>('userSettings')
+          .get('settings')
+        if (settings) {
+          await tx.table<UserSettings>('userSettings').update('settings', {
+            rirTrackingEnabled: settings.rirTrackingEnabled ?? false,
+            workoutAutofillMode: settings.workoutAutofillMode ?? 'history_copy',
+            updatedAt: now,
+          })
+        }
+        const metadata = await tx.table<AppMetadata>('appMetadata').get('app')
+        if (metadata) {
+          await tx.table<AppMetadata>('appMetadata').put({
+            ...metadata,
+            databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+            backupSchemaVersion: BACKUP_SCHEMA_VERSION,
+            updatedAt: now,
+          })
+        }
+      })
+
+    this.version(20)
+      .stores({
+        appMetadata: '&id',
+        userSettings: '&id',
+        nutritionTargets: '&id, updatedAt',
+        foods: '&id, status, name, updatedAt',
+        foodLogEntries: '&id, localDate, foodId, createdAt',
+        savedMeals: '&id, status, name, updatedAt',
+        foodUnitPreferences: '&id, foodId, updatedAt',
+        barcodeProductCache: '&id, &barcode, foodId, updatedAt',
+        bodyweightEntries: '&id, localDate, createdAt, updatedAt',
+        exercises:
+          '&id, status, origin, seedDataVersion, name, trackingMethodId, updatedAt',
+        programTemplates: '&id, status, name, lastActiveAt, updatedAt',
+        templateWorkoutDays: '&id, templateId, [templateId+orderIndex]',
+        templateWorkoutExercises:
+          '&id, templateId, dayId, exerciseId, [dayId+orderIndex]',
+        activeProgramCycles:
+          '&id, sourceTemplateId, status, activatedAt, updatedAt',
+        activeCycleDayChecks:
+          '&id, activeCycleId, dayId, weekNumber, [activeCycleId+weekNumber], [activeCycleId+dayId+weekNumber]',
+        activeCycleWorkoutDays:
+          '&id, activeCycleId, sourceTemplateDayId, [activeCycleId+orderIndex]',
+        activeCycleWorkoutExercises:
+          '&id, activeCycleId, dayId, exerciseId, sourceTemplateExerciseId, [dayId+orderIndex]',
+        workouts: '&id, status, localDate, sourceActiveCycleId, startedAt',
+        workoutExercises: '&id, workoutId, exerciseId, [workoutId+orderIndex]',
+        workoutSets:
+          '&id, workoutId, workoutExerciseId, [workoutExerciseId+setNumber]',
+        workoutHistoryEntries:
+          '&id, localDate, sourceActiveCycleId, sourceTemplateId, completedAt',
+        workoutHistoryExercises:
+          '&id, workoutId, exerciseId, [workoutId+orderIndex]',
+        workoutHistorySets:
+          '&id, workoutId, workoutExerciseId, [workoutExerciseId+setNumber]',
+        detectedWorkoutChanges: '&id, workoutId, status, type, createdAt',
+        appliedWorkoutChanges: '&id, detectedChangeId, workoutId, appliedAt',
+        runs: '&id, status, localDate, startedAt, completedAt',
+        runSamples:
+          '&id, runId, timestamp, decision, rejectionReason, [runId+timestamp]',
+        runPauses: '&id, runId, startedAt, endedAt',
+        runSplits: '&id, runId, mileNumber, completedAt',
+        runClassifications: '&id, runId, type, startedAt',
+        apiKeyIntegrationSettings: '&id, status, updatedAt',
+        backupMetadata: '&id, createdAt',
+      })
+      .upgrade(async (tx) => {
+        const now = new Date().toISOString()
+        const settings = await tx
+          .table<Partial<UserSettings>>('userSettings')
+          .get('settings')
+        if (settings) {
+          await tx.table<UserSettings>('userSettings').update('settings', {
+            historySortMode: settings.historySortMode ?? 'recent',
+            historyProgramId: settings.historyProgramId ?? null,
+            updatedAt: now,
+          })
+        }
+        const templates = await tx
+          .table<ProgramTemplate>('programTemplates')
+          .toArray()
+        for (const template of templates) {
+          await tx
+            .table<ProgramTemplate>('programTemplates')
+            .update(template.id, {
+              deloadWeekNumbers: template.deloadWeekNumbers ?? [],
+              updatedAt: now,
+            })
+        }
+        const cycles = await tx
+          .table<ActiveProgramCycle>('activeProgramCycles')
+          .toArray()
+        for (const cycle of cycles) {
+          await tx
+            .table<ActiveProgramCycle>('activeProgramCycles')
+            .update(cycle.id, {
+              deloadWeekNumbers: cycle.deloadWeekNumbers ?? [],
+              updatedAt: now,
+            })
+        }
+        for (const tableName of [
+          'workouts',
+          'workoutHistoryEntries',
+        ] as const) {
+          const workouts = await tx.table<Workout>(tableName).toArray()
+          for (const workout of workouts) {
+            await tx.table<Workout>(tableName).update(workout.id, {
+              programWeekNumber: workout.programWeekNumber ?? null,
+              isDeload: workout.isDeload ?? false,
+            })
+          }
+        }
+        const metadata = await tx.table<AppMetadata>('appMetadata').get('app')
+        if (metadata) {
+          await tx.table<AppMetadata>('appMetadata').put({
+            ...metadata,
+            databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+            backupSchemaVersion: BACKUP_SCHEMA_VERSION,
+            updatedAt: now,
+          })
+        }
+      })
+
+    this.version(21).upgrade(async (tx) => {
+      const templates = await tx
+        .table<ProgramTemplate>('programTemplates')
+        .toArray()
+      for (const template of templates) {
+        const existingWeeks = template.deloadWeekNumbers ?? []
+        await tx
+          .table<ProgramTemplate>('programTemplates')
+          .update(template.id, {
+            deloadSchedulingEnabled:
+              template.deloadSchedulingEnabled ?? existingWeeks.length > 0,
+            deloadWeekNumbers: existingWeeks.length
+              ? existingWeeks
+              : [...DEFAULT_DELOAD_WEEK_NUMBERS],
+          })
+      }
+
+      const cycles = await tx
+        .table<ActiveProgramCycle>('activeProgramCycles')
+        .toArray()
+      for (const cycle of cycles) {
+        const existingWeeks = cycle.deloadWeekNumbers ?? []
+        await tx
+          .table<ActiveProgramCycle>('activeProgramCycles')
+          .update(cycle.id, {
+            deloadSchedulingEnabled:
+              cycle.deloadSchedulingEnabled ?? existingWeeks.length > 0,
+            deloadWeekNumbers: existingWeeks.length
+              ? existingWeeks
+              : [...DEFAULT_DELOAD_WEEK_NUMBERS],
+          })
+      }
+
+      const metadata = await tx.table<AppMetadata>('appMetadata').get('app')
+      if (metadata) {
+        await tx.table<AppMetadata>('appMetadata').put({
+          ...metadata,
+          databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+          backupSchemaVersion: BACKUP_SCHEMA_VERSION,
+          updatedAt: new Date().toISOString(),
+        })
+      }
+    })
   }
 }
 

@@ -1,4 +1,5 @@
 import { CheckSquare, Square } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 
 import {
   Card,
@@ -8,6 +9,7 @@ import {
   SecondaryButton,
 } from '@components/ui'
 import { useLanguage } from '@components/languageContextValue'
+import { formatProgramWeekLabel } from '@domain/programWeeks'
 import type {
   ActiveCycleWorkoutDay,
   ActiveCycleWorkoutExercise,
@@ -21,6 +23,7 @@ export function ProgramOverview({
   checkedDayIds,
   weekNumber,
   onToggleDayCheck,
+  onSelectWeek,
   loadStatus,
   onBrowse,
   onCreateProgram,
@@ -37,6 +40,7 @@ export function ProgramOverview({
     dayId: string,
     checked: boolean,
   ) => void
+  onSelectWeek: (cycle: ActiveProgramCycle, weekNumber: number) => void
   loadStatus: LoadStatus
   onBrowse: () => void
   onCreateProgram: () => void
@@ -50,9 +54,28 @@ export function ProgramOverview({
   onStartDay: (cycle: ActiveProgramCycle, day: ActiveCycleWorkoutDay) => void
 }) {
   const { t } = useLanguage()
+  const weekSelectRef = useRef<HTMLSelectElement>(null)
   const checkedSet = new Set(checkedDayIds)
+
+  useEffect(() => {
+    function removeTouchFocus(event: PointerEvent) {
+      const select = weekSelectRef.current
+      if (
+        select &&
+        document.activeElement === select &&
+        event.target instanceof Node &&
+        !select.contains(event.target)
+      ) {
+        select.blur()
+      }
+    }
+
+    document.addEventListener('pointerdown', removeTouchFocus)
+    return () => document.removeEventListener('pointerdown', removeTouchFocus)
+  }, [])
+
   return (
-    <Card title="Current active cycle">
+    <Card aria-label={t('Current Program')}>
       {loadStatus === 'loading' ? <LoadingState label="Loading cycle" /> : null}
       {loadStatus === 'ready' && !currentCycle ? (
         <EmptyState
@@ -72,9 +95,9 @@ export function ProgramOverview({
       ) : null}
       {loadStatus === 'ready' && currentCycle ? (
         <>
-          <p className="metric-value metric-value-small">
+          <h2 className="metric-value metric-value-small">
             {currentCycle.cycle.name}
-          </p>
+          </h2>
           {currentCycle.cycle.notes ? (
             <p className="muted">{currentCycle.cycle.notes}</p>
           ) : null}
@@ -94,7 +117,32 @@ export function ProgramOverview({
               Deactivate
             </SecondaryButton>
           </div>
-          <p className="program-week-indicator">{`Week ${weekNumber}`}</p>
+          <label className="program-week-selector">
+            <span>Program week</span>
+            <select
+              aria-label="Select program week"
+              ref={weekSelectRef}
+              onChange={(event) => {
+                onSelectWeek(currentCycle.cycle, Number(event.target.value))
+                event.currentTarget.blur()
+              }}
+              value={weekNumber}
+            >
+              {Array.from(
+                { length: currentCycle.cycle.durationWeeks ?? 10 },
+                (_, index) => index + 1,
+              ).map((week) => (
+                <option key={week} value={week}>
+                  {formatProgramWeekLabel(
+                    week,
+                    currentCycle.cycle.deloadSchedulingEnabled
+                      ? currentCycle.cycle.deloadWeekNumbers
+                      : [],
+                  )}
+                </option>
+              ))}
+            </select>
+          </label>
           {currentCycle.days.length ? (
             <div className="program-day-grid" aria-label={t('Workout days')}>
               {currentCycle.days.map((day) => {
@@ -104,51 +152,46 @@ export function ProgramOverview({
                     className={`program-day-card${isChecked ? ' is-done' : ''}`}
                     key={day.id}
                   >
-                    <div className="program-day-card-head">
-                      <button
-                        className={`program-day-check${
-                          isChecked ? ' is-checked' : ''
-                        }`}
-                        type="button"
-                        aria-pressed={isChecked}
-                        aria-label={
-                          isChecked
-                            ? `Mark ${day.name} not done this week`
-                            : `Mark ${day.name} done this week`
-                        }
-                        onClick={() =>
-                          onToggleDayCheck(
-                            currentCycle.cycle,
-                            day.id,
-                            !isChecked,
-                          )
-                        }
-                      >
-                        {isChecked ? (
-                          <CheckSquare aria-hidden="true" size={20} />
-                        ) : (
-                          <Square aria-hidden="true" size={20} />
-                        )}
-                      </button>
-                      <button
-                        className="program-day-open"
-                        type="button"
-                        onClick={() =>
-                          onSelectDay(
-                            currentCycle.cycle,
-                            day,
-                            currentCycle.exercisesByDay[day.id] ?? [],
-                          )
-                        }
-                      >
-                        <strong>{day.name}</strong>
-                        <small>
-                          {(currentCycle.exercisesByDay[day.id] ?? []).length}{' '}
-                          {t('exercises')}
-                        </small>
-                      </button>
-                    </div>
+                    <button
+                      className={`program-day-check${
+                        isChecked ? ' is-checked' : ''
+                      }`}
+                      type="button"
+                      aria-pressed={isChecked}
+                      aria-label={
+                        isChecked
+                          ? `Mark ${day.name} not done this week`
+                          : `Mark ${day.name} done this week`
+                      }
+                      onClick={() =>
+                        onToggleDayCheck(currentCycle.cycle, day.id, !isChecked)
+                      }
+                    >
+                      {isChecked ? (
+                        <CheckSquare aria-hidden="true" size={20} />
+                      ) : (
+                        <Square aria-hidden="true" size={20} />
+                      )}
+                    </button>
+                    <button
+                      className="program-day-open"
+                      type="button"
+                      onClick={() =>
+                        onSelectDay(
+                          currentCycle.cycle,
+                          day,
+                          currentCycle.exercisesByDay[day.id] ?? [],
+                        )
+                      }
+                    >
+                      <strong>{day.name}</strong>
+                      <small>
+                        {(currentCycle.exercisesByDay[day.id] ?? []).length}{' '}
+                        {t('exercises')}
+                      </small>
+                    </button>
                     <SecondaryButton
+                      className="program-day-start"
                       disabled={
                         !(currentCycle.exercisesByDay[day.id] ?? []).length
                       }

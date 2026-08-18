@@ -34,9 +34,15 @@ describe('handleWebPushTimerRequest', () => {
 
     expect(result).toEqual({ ok: true, messageId: 'message-new' })
     expect(cancel).toHaveBeenCalledWith('message-old')
-    expect(cancelForSubscription).toHaveBeenCalledWith(subscription)
+    expect(cancelForSubscription).not.toHaveBeenCalled()
     expect(publish).toHaveBeenCalledWith({
       body: { subscription, timerId: 'timer-1' },
+      deduplicationKey: [
+        subscription.endpoint,
+        'timer-1',
+        '2026-06-27T12:01:30.000Z',
+        0,
+      ].join('|'),
       delaySeconds: 90,
     })
   })
@@ -98,6 +104,42 @@ describe('handleWebPushTimerRequest', () => {
       })
     }
     expect(dependencies.publish).not.toHaveBeenCalled()
+    expect(dependencies.cancel).not.toHaveBeenCalled()
+    expect(dependencies.cancelForSubscription).not.toHaveBeenCalled()
+  })
+
+  it('uses the same deduplication key when a scheduling request is retried', async () => {
+    const publish = vi.fn(
+      async (_input: {
+        body: unknown
+        deduplicationKey: string
+        delaySeconds: number
+      }) => {
+        expect(_input.deduplicationKey).toBeTruthy()
+        return { messageId: 'message-new' }
+      },
+    )
+    const dependencies = {
+      cancel: vi.fn(async () => undefined),
+      cancelForSubscription: vi.fn(async () => undefined),
+      now: () => Date.parse('2026-06-27T12:00:00.000Z'),
+      publish,
+    }
+    const request = {
+      completionAt: '2026-06-27T12:01:30.000Z',
+      previousMessageId: 'message-old',
+      scheduleRevision: 7,
+      subscription,
+      timerId: 'timer-1',
+    }
+
+    await handleWebPushTimerRequest(request, dependencies)
+    await handleWebPushTimerRequest(request, dependencies)
+
+    expect(publish).toHaveBeenCalledTimes(2)
+    expect(publish.mock.calls[0]?.[0].deduplicationKey).toBe(
+      publish.mock.calls[1]?.[0].deduplicationKey,
+    )
   })
 
   it('reports scheduler failures without exposing service details', async () => {

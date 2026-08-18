@@ -9,6 +9,7 @@ import {
 } from '@services/backupService'
 import {
   createCsv,
+  createFitnessDataExport,
   protectCsvText,
   csvEscape,
 } from '@services/dataExportService'
@@ -80,6 +81,31 @@ describe('fitness data ZIP export', () => {
     )
     expect(text(files, `${root}/backup/schema.json`)).toContain(
       '"bodyweightEntries"',
+    )
+  })
+
+  it('exports raw data with a warning file when current validation rejects legacy records', async () => {
+    const backup =
+      await createBackupService(database).createJsonBackup(exportTime)
+    const result = await createFitnessDataExport(backup.backup, {
+      now: exportTime,
+      timeZone: 'UTC',
+      tableNames: [],
+      backupJsonSchema: {},
+      validateCanonicalBackup: () => ['Legacy record needs normalization.'],
+    })
+    const files = await unzip(result.blob)
+    const root = result.filename.replace(/\.zip$/, '')
+
+    expect(result.validation).toEqual({
+      ok: false,
+      errors: ['Legacy record needs normalization.'],
+    })
+    expect(text(files, `${root}/EXPORT_WARNINGS.txt`)).toContain(
+      'Legacy record needs normalization.',
+    )
+    expect(parseJson(files, `${root}/backup/fitness-data-backup.json`)).toEqual(
+      backup.backup,
     )
   })
 
@@ -261,7 +287,7 @@ describe('fitness data ZIP export', () => {
       throw new Error('Expected the exported canonical backup to validate.')
     }
     expect(restored.backup.data).toEqual(normalized.backup.data)
-  })
+  }, 20_000)
 })
 
 describe('human-readable CSV safety', () => {

@@ -50,8 +50,18 @@ Mode, Focus, and notification settings.
 - Pausing, clearing, finishing, or discarding cancels the pending message.
 - Adding or subtracting time cancels the previous message and schedules a
   replacement.
+- Every logical timer mutation increments a schedule revision. Retrying a failed
+  request reuses the same revision, allowing QStash deduplication to suppress a
+  duplicate delayed message. A replacement is published idempotently before
+  the explicit prior message is canceled.
 - The QStash delivery endpoint verifies the QStash signature before sending Web
   Push.
+- Schedule requests are validated before any cancellation side effect. Timer
+  requests are limited to 8 KiB and use a fail-closed per-instance rate limiter;
+  delivery requests are also limited to 8 KiB before signature verification.
+- QStash and Web Push calls have explicit retry/timeout bounds. Application
+  retries retain the logical idempotency key instead of relying on unbounded
+  transport retries.
 - Push-subscription data is redacted from QStash logs.
 - If the app is visible when the push arrives, the service worker suppresses
   the system notification because the in-app timer sound handles completion.

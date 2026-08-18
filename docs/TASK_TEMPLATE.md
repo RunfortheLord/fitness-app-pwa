@@ -9,6 +9,8 @@ Use this structure for implementation tasks.
 ## Context
 
 - List the relevant docs read from `docs/`.
+- Confirm the task stays within `docs/V1_SCOPE_FREEZE.md` or cites the explicit
+  decision that changes the freeze.
 - Note related existing code areas.
 - Note any applicable prior decisions.
 
@@ -19,7 +21,7 @@ Use this structure for implementation tasks.
 ## Out of Scope
 
 - List adjacent work that must not be included.
-- Confirm excluded first-release features remain excluded when relevant.
+- Confirm deferred/post-Version 1 ideas remain excluded when relevant.
 
 ## Acceptance Criteria
 

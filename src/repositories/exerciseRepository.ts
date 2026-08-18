@@ -34,8 +34,11 @@ export type ExerciseSearchOptions = {
 
 type SeedBuiltInExerciseOptions = {
   deferExpanded?: boolean
+  onExpandedSeeded?: () => void | Promise<void>
   signal?: AbortSignal
 }
+
+const RETIRED_BUILT_IN_PREFIXES = ['builtin:one-and-a-half-rep-']
 
 export function createExerciseRepository(database: TrainingLogDatabase = db) {
   function validateExerciseInput(input: CreateExerciseInput) {
@@ -88,29 +91,13 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
   }
 
   async function hasExerciseReferences(id: string) {
-    const [
-      templateReference,
-      activeCycleReference,
-      activeWorkoutReference,
-      historyReference,
-    ] = await Promise.all([
-      database.templateWorkoutExercises.where({ exerciseId: id }).first(),
-      database.activeCycleWorkoutExercises.where({ exerciseId: id }).first(),
-      database.workoutExercises.where({ exerciseId: id }).first(),
-      database.workoutHistoryExercises.where({ exerciseId: id }).first(),
-    ])
-
-    return Boolean(
-      templateReference ||
-      activeCycleReference ||
-      activeWorkoutReference ||
-      historyReference,
-    )
+    return hasStoredExerciseReferences(database, id)
   }
 
   return {
     async seedBuiltInExercises(options: SeedBuiltInExerciseOptions = {}) {
       validateBuiltInExercises()
+      await retireBuiltInExerciseVariants(database)
       await seedBuiltInExerciseRecords(
         database,
         CORE_BUILT_IN_EXERCISES,
@@ -127,7 +114,13 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
               database,
               expandedExercises,
               options.signal,
-            ).catch(() => undefined)
+            )
+              .then(() => {
+                if (!options.signal?.aborted) {
+                  return options.onExpandedSeeded?.()
+                }
+              })
+              .catch(() => undefined)
           }
         }, 0)
         return
@@ -366,6 +359,61 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
 }
 
 export const exerciseRepository = createExerciseRepository()
+
+async function retireBuiltInExerciseVariants(database: TrainingLogDatabase) {
+  await database.transaction(
+    'rw',
+    [
+      database.exercises,
+      database.templateWorkoutExercises,
+      database.activeCycleWorkoutExercises,
+      database.workoutExercises,
+      database.workoutHistoryExercises,
+    ],
+    async () => {
+      const retired = await database.exercises
+        .where({ origin: 'built_in' })
+        .filter((exercise) =>
+          RETIRED_BUILT_IN_PREFIXES.some((prefix) =>
+            exercise.id.startsWith(prefix),
+          ),
+        )
+        .toArray()
+
+      for (const exercise of retired) {
+        if (await hasStoredExerciseReferences(database, exercise.id)) {
+          await database.exercises.update(exercise.id, { status: 'hidden' })
+        } else {
+          await database.exercises.delete(exercise.id)
+        }
+      }
+    },
+  )
+}
+
+async function hasStoredExerciseReferences(
+  database: TrainingLogDatabase,
+  id: string,
+) {
+  const [
+    templateReference,
+    activeCycleReference,
+    activeWorkoutReference,
+    historyReference,
+  ] = await Promise.all([
+    database.templateWorkoutExercises.where({ exerciseId: id }).first(),
+    database.activeCycleWorkoutExercises.where({ exerciseId: id }).first(),
+    database.workoutExercises.where({ exerciseId: id }).first(),
+    database.workoutHistoryExercises.where({ exerciseId: id }).first(),
+  ])
+
+  return Boolean(
+    templateReference ||
+    activeCycleReference ||
+    activeWorkoutReference ||
+    historyReference,
+  )
+}
 
 async function seedBuiltInExerciseRecords(
   database: TrainingLogDatabase,

@@ -6,10 +6,26 @@
 2. App loads the application shell.
 3. App initializes IndexedDB if no local database exists.
 4. App shows Home with empty dashboard cards. If signed out, it also shows a
-   dismissible prompt offering Google sign-in for automatic backup.
+   dismissible prompt offering optional Google or Apple sign-in for automatic
+   snapshot backup.
 5. User can open Nutrition to set calorie and macro targets.
 6. User can use Add, Nutrition, Training, and History without signing in.
 7. If offline after installation, app still opens and shows local data.
+
+## Managing An Optional Account And Cloud Backup
+
+1. User opens Settings while continuing to use all local features without an
+   account.
+2. User may choose Google or Apple sign-in to enable cloud snapshot backup.
+3. Authentication links the optional cloud snapshot to the signed-in user;
+   IndexedDB remains the source of truth.
+4. User may sign out without deleting local data.
+5. User may delete app-controlled cloud data while retaining local data.
+6. User may choose Delete account in-app. After destructive confirmation, the
+   app deletes the app-managed authentication account and app-controlled cloud
+   rows, signs out, and leaves IndexedDB unchanged.
+7. Clearing local data remains a separate destructive action with its own
+   confirmation.
 
 ## Creating a Food
 
@@ -62,11 +78,12 @@
 
 ## Creating A Recipe From A Meal Photo
 
-1. User adds and tests a personal Gemini API key in Settings.
-2. User opens Nutrition and selects the camera action.
-3. User selects AI, then takes a photo with the rear-facing camera or imports
-   one from the device photo library.
-4. The app resizes the photo and sends it directly to Gemini 3.5 Flash.
+1. User opens Nutrition and selects the camera action.
+2. User selects AI, then takes up to three photos with the rear-facing camera or
+   imports them from the device photo library.
+3. The app resizes and compresses each photo below the request ceiling.
+4. The same-origin server route sends the bounded request to OpenAI using a
+   server-only credential; the provider key is never stored on the device.
 5. The app validates the structured ingredient and nutrition estimates.
 6. The existing recipe builder opens with an estimated recipe name,
    snapshot-only ingredients, assumptions, and estimate context.
@@ -170,11 +187,16 @@
 ## Manually Selecting a Workout Day
 
 1. User opens Home or Training.
-2. User views the active program and its workout days.
-3. User selects a workout day manually.
-4. App opens the workout-day detail.
-5. App shows prescribed exercises, target set information, and previous performance where available.
-6. User chooses Start Workout.
+2. User taps the active program week control and may select any week in the
+   program. The app restores that week's saved day check-offs.
+3. Scheduled deload options are labeled sequentially as `Deload N` by deload
+   occurrence; regular options retain their program position as `Week N`.
+4. User selects a workout day manually.
+5. App opens the workout-day detail.
+6. App shows prescribed exercises, target set information, and previous performance where available.
+7. User chooses Start Workout.
+8. When every day in the selected week is complete, the app selects the next
+   incomplete higher week without choosing or starting a workout day.
 
 ## Starting a Workout
 
@@ -187,8 +209,12 @@
    confirmation.
 5. If no active activity exists, app creates an active workout session.
 6. App snapshots the source active-cycle day structure into the active workout.
-7. App records local date and start timestamp.
-8. App opens the live workout screen.
+7. App snapshots the selected program week and whether it is a deload. Deloads
+   use one fewer set and target 3 additional RIR. A dedicated remembered-history
+   estimate uses the last completed matching program day, then comparable
+   non-deload exercise history as fallback; Smart progression is not used.
+8. App records local date and start timestamp.
+9. App opens the live workout screen.
 
 ## Completing Sets
 
@@ -203,11 +229,15 @@
    exercise leaves it selected until the user navigates again.
 8. Skipping an exercise records the skip and advances to the adjacent next
    exercise when one exists.
-9. User may pause, skip, extend, or dismiss the rest timer.
-10. If the installed Home Screen PWA has outside-app alerts enabled, each timer
+9. The fixed session row shows the rest countdown with 30-second subtract and
+   add controls. Exercise Options provides pause/resume, clear, total workout
+   time, and the rest-duration wheels.
+10. Changing the wheel immediately restarts the current countdown at the
+    selected duration and uses that duration for later sets of the exercise.
+11. If the installed Home Screen PWA has outside-app alerts enabled, each timer
     change cancels or reschedules its pending Web Push notification.
-11. User may edit completed sets.
-12. User may add or delete sets.
+12. User may edit completed sets.
+13. User may add or delete sets.
 
 ## Replacing an Exercise
 
@@ -241,14 +271,17 @@
 ## Viewing Workout History
 
 1. User opens History.
-2. App lists completed workouts and completed runs as one compact row per
-   history item.
-3. User opens a workout row.
-4. App shows source program/day when applicable, start time, completion time, duration, exercise details, performed sets, skipped exercises, and change review outcomes.
-5. User reviews recorded performance values as read-only history.
-6. To delete a history day, user returns to the history list, chooses Select,
+2. User chooses Most recent or By program. The app restores the previous choice
+   and selected program on later visits.
+3. Most recent lists completed workouts and runs as one compact row per item.
+4. By program lists programs; opening one shows all of its completed workouts.
+5. User opens a workout row.
+6. App shows source program/day when applicable, start time, completion time, duration, exercise details, performed sets, skipped exercises, and change review outcomes.
+7. User reviews recorded performance values as read-only history. Deload
+   workouts remain labeled and saved here.
+8. To delete a history day, user returns to the history list, chooses Select,
    picks one history card, and chooses Delete.
-7. App asks "Delete day permanently?" before permanently removing the selected
+9. App asks "Delete day permanently?" before permanently removing the selected
    history day.
 
 ## Viewing Strength Graphs
@@ -349,5 +382,17 @@
 8. App persists all changes locally.
 9. When online again, signed-in users receive an automatic full-snapshot cloud
    backup. Signed-out users continue with local data only.
-10. If a newer application version is available later, app notifies the user
-    deliberately.
+10. If a newer application version is available later, the ready service worker
+    activates and the reopened app shows its versioned What's New notice.
+
+## Installing From A Public App Store
+
+1. User installs the public iOS or Android build.
+2. The app opens into the same local-first experience and does not require
+   account creation.
+3. The store wrapper initializes or upgrades the existing local schema without
+   renaming persisted compatibility identifiers.
+4. User may remain offline, use local core features, and export or restore a
+   local JSON backup.
+5. Optional authentication and cloud snapshot backup remain separately
+   discoverable and removable from Settings.

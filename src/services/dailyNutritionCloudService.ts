@@ -1,5 +1,6 @@
 import type { DailyCalorieHistory } from '@services/calorieHistoryService'
 import { authService } from '@services/authService'
+import { appMetadataRepository } from '@repositories/appMetadataRepository'
 import {
   getSupabaseClient,
   isSupabaseConfigured,
@@ -20,8 +21,25 @@ export const dailyNutritionCloudService = {
       return false
     }
 
+    const state = await appMetadataRepository.getDailyNutritionSyncState()
+    const uniqueDays = new Map(history.map((day) => [day.localDate, day]))
+    const fingerprints = Object.fromEntries(
+      [...uniqueDays.values()].map((day) => [
+        day.localDate,
+        JSON.stringify([day.loggedCalories, day.targetCalories]),
+      ]),
+    )
+    const changedDays = [...uniqueDays.values()].filter(
+      (day) =>
+        state.userId !== session.user.id ||
+        state.fingerprints[day.localDate] !== fingerprints[day.localDate],
+    )
+    if (changedDays.length === 0) {
+      return true
+    }
+
     const updatedAt = new Date().toISOString()
-    const rows = history.map((day) => ({
+    const rows = changedDays.map((day) => ({
       user_id: session.user.id,
       local_date: day.localDate,
       logged_calories: day.loggedCalories,
@@ -37,6 +55,12 @@ export const dailyNutritionCloudService = {
         error.message || 'Daily nutrition could not be synced to Supabase.',
       )
     }
+    await appMetadataRepository.recordDailyNutritionSync(
+      session.user.id,
+      Object.fromEntries(
+        changedDays.map((day) => [day.localDate, fingerprints[day.localDate]]),
+      ),
+    )
     return true
   },
 }

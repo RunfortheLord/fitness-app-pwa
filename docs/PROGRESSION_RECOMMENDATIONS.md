@@ -70,10 +70,24 @@ Users may edit the target before completing the set. The edit remains separate
 from the engine suggestion and can be cleared back to the original target. The
 effective target is not copied into actual performance fields.
 
+Smart-progression workout prefill prefers a level rep scheme. It retains a
+later-set rep taper only when the history and capacity estimate supports one,
+and the highest-to-lowest suggested rep spread is capped at two. Stable source
+sets are never given an artificial staircase merely to make consecutive sets
+different.
+
 ## Next-Workout Rules
 
 Only programmed sets qualify. Added live sets remain in history but do not
 determine progression and do not become the final programmed RIR set.
+
+Scheduled deload workouts are saved in History but do not qualify as the prior
+comparison for autofill or next-workout recommendations. At deload startup the
+session prescription removes one set (minimum one) and raises configured target
+RIR by 3 (maximum 10). Smart progression uses the non-deload history capacity
+to lower load for weighted work, increase assistance where applicable, or
+lower reps when load is unavailable. These session estimates never rewrite the
+base active-cycle or template prescription.
 
 The engine compares the current completed exercise against the most recent
 comparable previous completed performance with the same stable exercise ID and

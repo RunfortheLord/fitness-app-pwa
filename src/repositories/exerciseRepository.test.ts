@@ -24,11 +24,23 @@ describe('exerciseRepository', () => {
     const repository = createExerciseRepository(database)
 
     await repository.seedBuiltInExercises()
+    const bench = await repository.getExercise('builtin:barbell-bench-press')
+    if (!bench) {
+      throw new Error('Built-in bench press was not seeded.')
+    }
+    await database.exercises.add({
+      ...bench,
+      id: 'builtin:one-and-a-half-rep-barbell-bench-press',
+      name: '1.5-Rep Barbell Bench Press',
+    })
     await repository.seedBuiltInExercises()
 
     await expect(database.exercises.count()).resolves.toBe(
       BUILT_IN_EXERCISES.length,
     )
+    await expect(
+      repository.getExercise('builtin:one-and-a-half-rep-barbell-bench-press'),
+    ).resolves.toBeUndefined()
     await expect(
       repository.getExercise('builtin:barbell-bench-press'),
     ).resolves.toMatchObject({

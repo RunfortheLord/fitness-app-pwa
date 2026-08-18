@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { db } from '@db/database'
 import { createExerciseRepository } from '@repositories/exerciseRepository'
@@ -11,17 +11,20 @@ import { createRunRepository } from '@repositories/runRepository'
 import { settingsRepository } from '@repositories/settingsRepository'
 import { createWorkoutRepository } from '@repositories/workoutRepository'
 import { initializeAppData } from '@services/appInitializationService'
+import { clearCachedHistoryPageData } from '@pages/historyPageCache'
 import { seedProgram, testLocalDate } from '@test/seedFactories'
 import type { BodyweightEntry } from '@shared-types/app'
 import { HistoryPage } from './HistoryPage'
 
 beforeEach(async () => {
+  clearCachedHistoryPageData()
   await db.delete()
   await db.open()
   await initializeAppData()
 })
 
 afterEach(async () => {
+  vi.restoreAllMocks()
   await db.delete()
 })
 
@@ -387,6 +390,109 @@ describe('HistoryPage', () => {
     expect(items[0]).toHaveTextContent('Jun 19, 2026')
     expect(items[1]).toHaveTextContent('Jun 17, 2026')
     expect(screen.queryByText('Local date')).not.toBeInTheDocument()
+  })
+
+  it('restores the history list scroll position after closing a day detail', async () => {
+    const user = userEvent.setup()
+    const repository = createWorkoutRepository(db)
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    await completeSeedWorkout(repository, active.cycle.id, active.days[0].id, {
+      localDate: '2026-06-17',
+      weight: 95,
+    })
+    await completeSeedWorkout(repository, active.cycle.id, active.days[0].id, {
+      localDate: '2026-06-19',
+      weight: 105,
+    })
+    vi.spyOn(window, 'scrollY', 'get').mockReturnValue(640)
+    const scrollTo = vi.spyOn(window, 'scrollTo')
+
+    renderHistory()
+    const items = await screen.findAllByRole('button', { name: /Upper/ })
+    await user.click(items[1])
+    expect(await screen.findByText('Date completed')).toBeInTheDocument()
+    scrollTo.mockClear()
+
+    await user.click(screen.getByRole('button', { name: 'All history' }))
+    expect(
+      await screen.findAllByRole('button', { name: /Upper/ }),
+    ).toHaveLength(2)
+    expect(scrollTo).toHaveBeenCalledWith({
+      top: 640,
+      left: 0,
+      behavior: 'auto',
+    })
+  })
+
+  it('organizes history by program and remembers the selected program', async () => {
+    const user = userEvent.setup()
+    const workouts = createWorkoutRepository(db)
+    const programs = createProgramRepository(db)
+    const first = await seedProgram(db)
+    const firstActive = await programs.activateTemplate(first.template.id)
+    await completeSeedWorkout(
+      workouts,
+      firstActive.cycle.id,
+      firstActive.days[0].id,
+    )
+
+    const second = await seedProgram(db)
+    await programs.updateProgramTemplate(second.template.id, {
+      name: 'Second Program',
+    })
+    await programs.updateTemplateDay(second.days[0].id, { name: 'Pull' })
+    const secondActive = await programs.activateTemplate(second.template.id)
+    await completeSeedWorkout(
+      workouts,
+      secondActive.cycle.id,
+      secondActive.days[0].id,
+    )
+    await settingsRepository.saveHistoryPreference({
+      sortMode: 'program',
+      programId: first.template.id,
+    })
+
+    const view = renderHistory()
+
+    expect(
+      await screen.findByRole('button', { name: 'All programs' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'By program' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: /Upper/ })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /Pull/ }),
+    ).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'All programs' }))
+    await user.click(
+      screen.getByRole('button', { name: 'View Second Program history' }),
+    )
+    expect(
+      await screen.findByRole('button', { name: /Pull/ }),
+    ).toBeInTheDocument()
+    await waitFor(async () => {
+      await expect(settingsRepository.getSettings()).resolves.toMatchObject({
+        historySortMode: 'program',
+        historyProgramId: second.template.id,
+      })
+    })
+
+    view.unmount()
+    renderHistory()
+    expect(
+      await screen.findByRole('button', { name: /Pull/ }),
+    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: /Upper/ }),
+      ).not.toBeInTheDocument(),
+    )
   })
 
   it('shows runs in home history and returns details to the full history list', async () => {
@@ -824,7 +930,7 @@ function renderHistory(initialEntry = '/history') {
     [{ path: '/history', element: <HistoryPage /> }],
     { initialEntries: [initialEntry] },
   )
-  render(<RouterProvider router={router} />)
+  return render(<RouterProvider router={router} />)
 }
 
 async function completeSeedWorkout(

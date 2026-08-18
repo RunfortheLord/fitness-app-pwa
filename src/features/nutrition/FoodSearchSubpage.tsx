@@ -348,6 +348,11 @@ export function FoodSearchSubpage({
                   key={section.title}
                 >
                   <h3>{t(section.title)}</h3>
+                  {section.title === 'Recommended foods' && !query ? (
+                    <p className="nutrition-result-context">
+                      {t('From foods logged yesterday and the day before.')}
+                    </p>
+                  ) : null}
                   <div className="nutrition-list">
                     {section.items.map((result) => (
                       <FoodLibraryRow

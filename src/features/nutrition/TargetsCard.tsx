@@ -18,9 +18,11 @@ import {
 
 export function TargetsCard({
   currentTargets,
+  estimatedMaintenanceCalories,
   onSaved,
 }: {
   currentTargets: NutritionTargetValues | null
+  estimatedMaintenanceCalories: number | null
   onSaved: () => void
 }) {
   const [form, setForm] = useState(() =>
@@ -59,6 +61,14 @@ export function TargetsCard({
 
   return (
     <Card title="Nutrition targets">
+      {estimatedMaintenanceCalories !== null &&
+      Number.isFinite(estimatedMaintenanceCalories) &&
+      estimatedMaintenanceCalories > 0 ? (
+        <div className="nutrition-maintenance-summary">
+          <span>Estimated maintenance</span>
+          <strong>{Math.round(estimatedMaintenanceCalories)} kcal</strong>
+        </div>
+      ) : null}
       <FormField id="target-calories" label="Calories">
         <NumericInput
           id="target-calories"

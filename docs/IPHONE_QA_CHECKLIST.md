@@ -36,6 +36,25 @@ as passed from desktop emulation, Playwright, or simulator testing.
 - [ ] Verify safe areas.
 - [ ] Verify no Safari controls appear in standalone mode.
 
+## Public iOS Release
+
+- [ ] Confirm the public display name is Vigorune while the bundle identifier
+      remains `com.adamshugart.fitnesslog`.
+- [ ] Install an update over a prior build and verify all IndexedDB records,
+      local-storage preferences, active activity state, and backup compatibility
+      remain intact.
+- [ ] Verify every core local flow works without creating an account.
+- [ ] Verify optional Google and Apple sign-in, snapshot backup, sign out, cloud
+      data deletion, and account deletion on a release-signed build.
+- [ ] Confirm OAuth opens in the system browser and `vigorune://auth-complete`
+      returns to Settings without exposing an authorization code in app history.
+- [ ] Confirm Apple private relay email works and returning Apple users are not
+      assumed to provide a name or non-relay email.
+- [ ] Confirm cloud/account deletion leaves local data intact unless Clear all
+      data is separately confirmed.
+- [ ] Complete App Store signing, entitlement, privacy, permission-copy, and
+      physical-device review before submission.
+
 ## Core Workflow
 
 - [ ] Log bodyweight from Home.
@@ -78,9 +97,11 @@ as passed from desktop emulation, Playwright, or simulator testing.
 - [ ] Choose a workout day.
 - [ ] Start workout.
 - [ ] Confirm only one exercise workspace is visible at a time.
-- [ ] Navigate exercises with Previous and Next.
+- [ ] Navigate exercises by swiping horizontally and confirm no Previous or Next
+      buttons are shown.
 - [ ] Enter weight, reps, RIR, and completed status.
-- [ ] Confirm RIR appears only on the final programmed set.
+- [ ] Confirm RIR appears according to the saved tracking mode: final programmed
+      set by default or every programmed set when enabled for the program.
 - [ ] Confirm per-side exercises label rep values per side and do not double the stored value.
 - [ ] Add a set.
 - [ ] Confirm an added unprogrammed set does not move the final-set RIR prompt.
@@ -88,7 +109,7 @@ as passed from desktop emulation, Playwright, or simulator testing.
 - [ ] Skip an exercise.
 - [ ] Add an exercise during the workout and confirm it appears in exercise navigation.
 - [ ] Use the rest timer.
-- [ ] Use +30 seconds, -30 seconds, stop, and clear.
+- [ ] Use +30 seconds, -30 seconds, pause/resume, and clear.
 - [ ] Confirm subtracting time never creates a negative remaining time.
 - [ ] Confirm the timer continues while navigating between exercises.
 - [ ] Confirm timer completion feedback appears when browser capabilities allow it.
@@ -97,7 +118,9 @@ as passed from desktop emulation, Playwright, or simulator testing.
 - [ ] Resume the workout.
 - [ ] Discard an active workout from the live workout screen only after the confirmation dialog.
 - [ ] Finish workout.
-- [ ] Review detected changes.
+- [ ] Confirm the save-all live workout changes option is unchecked by default;
+      test both leaving the program unchanged and explicitly applying all
+      reviewed changes.
 - [ ] View workout history.
 - [ ] Open Run.
 - [ ] Confirm no location or motion prompt appears before choosing a run mode.
@@ -164,8 +187,8 @@ as passed from desktop emulation, Playwright, or simulator testing.
 - [ ] Install the current deployment.
 - [ ] Deploy a visible version change.
 - [ ] Reopen the app.
-- [ ] Verify the update notification.
-- [ ] Activate the update.
+- [ ] Verify a waiting update activates without an update button.
+- [ ] Reopen the updated app and verify the new What’s New banner appears.
 - [ ] Verify user data remains intact.
 
 ## Backup

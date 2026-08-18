@@ -43,15 +43,15 @@ describe('settingsRepository', () => {
     const repository = createSettingsRepository(database)
 
     await expect(repository.ensureSettings()).resolves.toMatchObject({
-      rirTrackingEnabled: true,
-    })
-
-    await repository.saveRirTrackingEnabled(false)
-    await expect(database.userSettings.get('settings')).resolves.toMatchObject({
       rirTrackingEnabled: false,
     })
 
-    // Older local data without the flag is backfilled to enabled.
+    await repository.saveRirTrackingEnabled(true)
+    await expect(database.userSettings.get('settings')).resolves.toMatchObject({
+      rirTrackingEnabled: true,
+    })
+
+    // Older local data without the flag adopts the new off-by-default behavior.
     const stored = await database.userSettings.get('settings')
     expect(stored).toBeDefined()
     await database.userSettings.put({
@@ -59,7 +59,45 @@ describe('settingsRepository', () => {
       rirTrackingEnabled: undefined,
     })
     await expect(repository.ensureSettings()).resolves.toMatchObject({
-      rirTrackingEnabled: true,
+      rirTrackingEnabled: false,
+    })
+  })
+
+  it('defaults, persists, and backfills the workout autofill mode', async () => {
+    const repository = createSettingsRepository(database)
+
+    await expect(repository.ensureSettings()).resolves.toMatchObject({
+      workoutAutofillMode: 'history_copy',
+    })
+    await repository.saveWorkoutAutofillMode('smart_progression')
+    await expect(database.userSettings.get('settings')).resolves.toMatchObject({
+      workoutAutofillMode: 'smart_progression',
+    })
+
+    const stored = await database.userSettings.get('settings')
+    await database.userSettings.put({
+      ...stored!,
+      workoutAutofillMode: undefined,
+    })
+    await expect(repository.ensureSettings()).resolves.toMatchObject({
+      workoutAutofillMode: 'history_copy',
+    })
+  })
+
+  it('defaults and persists the History sort and program filter', async () => {
+    const repository = createSettingsRepository(database)
+
+    await expect(repository.ensureSettings()).resolves.toMatchObject({
+      historySortMode: 'recent',
+      historyProgramId: null,
+    })
+    await repository.saveHistoryPreference({
+      sortMode: 'program',
+      programId: 'template-1',
+    })
+    await expect(database.userSettings.get('settings')).resolves.toMatchObject({
+      historySortMode: 'program',
+      historyProgramId: 'template-1',
     })
   })
 

@@ -4,14 +4,33 @@
 
 - This repository contains a single-user, local-first fitness tracking PWA.
 - Binding product requirements live under `docs/`. Read the relevant docs before implementation tasks.
+- The Version 1 scope is frozen in `docs/V1_SCOPE_FREEZE.md`. The temporary
+  public-facing product name is **Vigorune**; it is not a persisted or platform
+  identifier.
 - Do not add unrequested features or broaden first-release scope.
-- Do not add accounts, login, backend services, cloud sync, AI recommendations, external food databases, subscriptions, social features, wearable integrations, graphs, adherence scores, e1RM calculations, automatic calorie adjustments, or automatic training progression.
+- Version 1 permits local-first offline operation without an account; optional
+  Google and Apple authentication; optional cloud snapshot backup; in-app
+  account and cloud-data deletion; nutrition and bodyweight tracking; workout
+  programs and live workouts; run tracking; provider-backed barcode scanning;
+  user-initiated Gemini meal-photo analysis; and public Apple App Store and
+  Google Play distribution.
+- Accounts must never be required for core features. IndexedDB remains the
+  local source of truth, and cloud backup must not become realtime multi-device
+  synchronization.
+- AI output must be reviewed and explicitly accepted by the user. It must not
+  become automatic coaching, automatic logging, or automatic target changes.
+- Do not add subscriptions, advertisements, social networking, wearable
+  integrations, automatic program advancement, or other unrequested expansion.
 - Ask no product questions when documented behavior is clear. Record unavoidable assumptions in `docs/DECISIONS.md`.
 
 ## Technical Direction
 
 - Use React, TypeScript strict mode, Vite, `vite-plugin-pwa`, Dexie over IndexedDB, React Router, Vitest, React Testing Library, Playwright, npm, and mobile-first CSS.
-- Do not create a monorepo, backend, server-side rendering path, database server, or large UI framework unless explicitly approved.
+- Do not create a monorepo, required backend, server-side rendering path,
+  database server, or large UI framework unless explicitly approved. Optional
+  provider routes, authentication, snapshot backup, notifications, and
+  user-initiated AI integrations must remain narrowly scoped to the approved
+  Version 1 behavior.
 
 ## Architecture
 
@@ -21,6 +40,9 @@
 - Use explicit domain types and validate imports/external data.
 - Preserve historical snapshots. Template edits must never mutate completed workout history.
 - Use database migrations for schema changes; do not delete or rename persisted fields without a migration.
+- A public-name change must not rename the existing bundle/application
+  identifiers, IndexedDB database, local-storage keys, persisted IDs, or backup
+  format identifiers. Existing installations must retain access to their data.
 - Use transactions for multi-record updates.
 - Store local calendar dates as `YYYY-MM-DD` strings and timestamps as ISO strings. Treat timezone conversion carefully.
 - Prefer `crypto.randomUUID()` for IDs.
@@ -35,12 +57,18 @@
 
 ## Workout Rules
 
-- Programs never advance automatically; the user manually chooses the workout day.
+- Programs never choose or start a workout day automatically. The user manually
+  chooses the workout day; completion-based week selection must not change
+  prescriptions or start a workout.
 - Active workouts must survive navigation, refresh, browser close, and installed PWA restart.
 - Rest timers must derive remaining time from timestamps.
-- Never recommend load, reps, calories, or progression.
+- Do not provide opaque or automatic coaching. Approved deterministic local
+  estimates must be user-invoked or opt-in, explainable, editable, and never
+  applied to permanent prescriptions or targets without explicit review.
 - Completing a workout and changing a program are separate operations.
-- Detected workout changes must be reviewed individually and are never applied automatically.
+- Detected workout changes must receive explicit review and are never applied
+  automatically. Version 1 uses an unchecked save-all option; leaving it
+  unchecked preserves the program unchanged.
 
 ## Testing and Completion
 

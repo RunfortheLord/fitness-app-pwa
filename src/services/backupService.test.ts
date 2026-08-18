@@ -2,13 +2,17 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { DATABASE_SCHEMA_VERSION, type TrainingLogDatabase } from '@db/database'
 import { BUILT_IN_EXERCISES } from '@domain/exerciseLibrary'
+import { BUILT_IN_PROGRAMS } from '@domain/programLibrarySeed'
+import { createExerciseRepository } from '@repositories/exerciseRepository'
 import { createFoodRepository } from '@repositories/foodRepository'
+import { createProgramRepository } from '@repositories/programRepository'
 import { createSettingsRepository } from '@repositories/settingsRepository'
 import {
   createBackupService,
   createCsvFiles,
   csvEscape,
   validateBackup,
+  validateCloudSnapshot,
 } from '@services/backupService'
 import { createTestDatabase, destroyTestDatabase } from '@test/database'
 import {
@@ -144,7 +148,7 @@ describe('backupService', () => {
     expect(result.backup).toMatchObject({
       backupFormatVersion: 1,
       databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
-      applicationVersion: '0.0.0',
+      applicationVersion: '1.0.0',
       exportedAt: '2026-06-19T14:15:16.000Z',
     })
     expect(Object.keys(result.backup.data)).toEqual([
@@ -385,7 +389,192 @@ describe('backupService', () => {
     expect(manual.backup.data.runSamples).toHaveLength(1)
     expect(cloud.backup.data.runs).toHaveLength(1)
     expect(cloud.backup.data.runSamples).toEqual([])
-    expect(validateBackup(cloud.backup, cloud.filename).ok).toBe(true)
+    expect(validateCloudSnapshot(cloud.backup, cloud.filename).ok).toBe(true)
+  })
+
+  it('compacts exact deterministic seeds and expands to equivalent user-visible data', async () => {
+    await createExerciseRepository(database).seedBuiltInExercises()
+    await createProgramRepository(database).seedBuiltInPrograms()
+    const customProgram = await seedProgram(database)
+    const customExercise = (
+      await database.exercises.where({ origin: 'custom' }).toArray()
+    )[0]
+    if (!customExercise) {
+      throw new Error('Expected a custom exercise.')
+    }
+    await seedCompletedHistory(database, customExercise)
+
+    const service = createBackupService(database)
+    const exportedAt = new Date('2026-06-19T14:05:00.000Z')
+    const manual = await service.createJsonBackup(exportedAt)
+    const cloud = await service.createCloudBackup(exportedAt)
+
+    expect(cloud.backup).toMatchObject({
+      cloudSnapshotFormatVersion: 1,
+      sourceBackupFormatVersion: 1,
+    })
+    expect(cloud.backup.data.exercises).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: customExercise.id }),
+      ]),
+    )
+    expect(
+      cloud.backup.data.exercises.some((exercise) =>
+        exercise.id.startsWith('builtin:'),
+      ),
+    ).toBe(false)
+    expect(
+      cloud.backup.data.programTemplates.some((program) => program.isBuiltIn),
+    ).toBe(false)
+
+    const validation = validateCloudSnapshot(cloud.backup, cloud.filename)
+    const normalizedManual = validateBackup(manual.backup, manual.filename)
+    expect(validation.ok).toBe(true)
+    expect(normalizedManual.ok).toBe(true)
+    if (!validation.ok) {
+      throw new Error('Expected compact cloud snapshot to validate.')
+    }
+    if (!normalizedManual.ok) {
+      throw new Error('Expected manual backup to validate.')
+    }
+    expect(validation.backup.data).toEqual(normalizedManual.backup.data)
+    expect(validation.backup.data.workoutHistoryEntries).toEqual(
+      normalizedManual.backup.data.workoutHistoryEntries,
+    )
+    expect(validation.backup.data.workoutHistoryExercises).toEqual(
+      normalizedManual.backup.data.workoutHistoryExercises,
+    )
+    expect(validation.backup.data.workoutHistorySets).toEqual(
+      normalizedManual.backup.data.workoutHistorySets,
+    )
+
+    await service.clearAllData()
+    await service.restoreReplace(validation.backup)
+
+    await expect(
+      database.exercises.get(customExercise.id),
+    ).resolves.toMatchObject({
+      name: customExercise.name,
+      origin: 'custom',
+    })
+    await expect(
+      database.programTemplates.get(customProgram.template.id),
+    ).resolves.toMatchObject({
+      name: customProgram.template.name,
+    })
+    await expect(
+      database.workoutHistorySets.get('compact-history-set'),
+    ).resolves.toEqual(normalizedManual.backup.data.workoutHistorySets[0])
+    await expect(
+      database.exercises.where({ origin: 'built_in' }).count(),
+    ).resolves.toBe(BUILT_IN_EXERCISES.length)
+    await expect(
+      database.programTemplates
+        .filter((program) => Boolean(program.isBuiltIn))
+        .count(),
+    ).resolves.toBe(BUILT_IN_PROGRAMS.length)
+  })
+
+  it('preserves modified built-in records instead of treating their IDs as reconstructible', async () => {
+    const exercises = createExerciseRepository(database)
+    await exercises.seedBuiltInExercises()
+    await createProgramRepository(database).seedBuiltInPrograms()
+    const modifiedAt = '2026-06-20T00:00:00.000Z'
+    await database.exercises.update('builtin:barbell-bench-press', {
+      defaultRestSeconds: 999,
+      updatedAt: modifiedAt,
+    })
+    const builtInProgram = await database.programTemplates
+      .filter((program) => Boolean(program.isBuiltIn))
+      .first()
+    if (!builtInProgram) {
+      throw new Error('Expected a built-in program.')
+    }
+    await database.programTemplates.update(builtInProgram.id, {
+      lastActiveAt: modifiedAt,
+    })
+
+    const compact = await createBackupService(database).createCloudBackup()
+    expect(compact.backup.data.exercises).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          defaultRestSeconds: 999,
+          id: 'builtin:barbell-bench-press',
+        }),
+      ]),
+    )
+    expect(compact.backup.data.programTemplates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: builtInProgram.id,
+          lastActiveAt: modifiedAt,
+        }),
+      ]),
+    )
+
+    const validation = validateCloudSnapshot(compact.backup, compact.filename)
+    expect(validation.ok).toBe(true)
+    if (!validation.ok) {
+      throw new Error('Expected modified built-ins to validate.')
+    }
+    expect(
+      validation.backup.data.exercises.filter(
+        (exercise) => exercise.id === 'builtin:barbell-bench-press',
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        defaultRestSeconds: 999,
+        updatedAt: modifiedAt,
+      }),
+    ])
+  })
+
+  it('rejects unsupported compact versions and GPS-bearing compact snapshots', async () => {
+    const compact = await createBackupService(database).createCloudBackup()
+    expect(
+      validateCloudSnapshot(
+        { ...compact.backup, cloudSnapshotFormatVersion: 999 },
+        'future-cloud.json',
+      ).preview.errors[0],
+    ).toMatch(/not supported/)
+    expect(
+      validateCloudSnapshot(
+        {
+          ...compact.backup,
+          seedManifest: {
+            ...compact.backup.seedManifest,
+            builtInExerciseSeedVersion: 999,
+          },
+        },
+        'future-seed-cloud.json',
+      ).preview.errors[0],
+    ).toMatch(/newer/)
+    expect(
+      validateCloudSnapshot(
+        {
+          ...compact.backup,
+          data: {
+            ...compact.backup.data,
+            runSamples: [
+              {
+                id: 'sample-1',
+                runId: 'missing-run',
+                latitude: 41.88,
+                longitude: -87.63,
+                timestamp: '2026-06-19T12:00:00.000Z',
+                accuracyMeters: 8,
+                altitudeMeters: null,
+                decision: 'accepted',
+                rejectionReason: 'first_sample',
+                segmentDistanceMeters: 0,
+                createdAt: '2026-06-19T12:00:00.000Z',
+              },
+            ],
+          },
+        },
+        'gps-cloud.json',
+      ).ok,
+    ).toBe(false)
   })
 
   it('exports provider food log snapshots in JSON and CSV without refetching providers', async () => {
@@ -837,4 +1026,64 @@ function resultExerciseSnapshot(exercises: Exercise[]) {
     throw new Error('Expected seeded exercise.')
   }
   return exercise
+}
+
+async function seedCompletedHistory(
+  database: TrainingLogDatabase,
+  exercise: Exercise,
+) {
+  const timestamp = '2026-06-18T13:00:00.000Z'
+  await database.workoutHistoryEntries.add({
+    id: 'compact-history',
+    sourceActiveCycleId: null,
+    sourceTemplateId: null,
+    sourceDayId: null,
+    localDate: testLocalDate,
+    name: 'Completed history',
+    workoutSnapshot: {
+      activeCycleName: null,
+      templateName: null,
+      dayName: 'Ad hoc',
+      dayNotes: '',
+    },
+    notes: 'immutable snapshot',
+    startedAt: '2026-06-18T12:00:00.000Z',
+    completedAt: timestamp,
+    durationSeconds: 3_600,
+    elapsedPausedSeconds: 0,
+    activeRestTimer: null,
+    status: 'completed',
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  })
+  await database.workoutHistoryExercises.add({
+    id: 'compact-history-exercise',
+    workoutId: 'compact-history',
+    exerciseId: exercise.id,
+    exerciseSnapshot: {
+      exerciseName: exercise.name,
+      notes: exercise.notes,
+      defaultRestSeconds: exercise.defaultRestSeconds,
+      trackingMethodId: exercise.trackingMethodId,
+      trackingMetrics: exercise.trackingMetrics,
+    },
+    sourcePrescribedExerciseId: null,
+    orderIndex: 0,
+    notes: '',
+    skipped: false,
+    replacementOfExerciseId: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  })
+  await database.workoutHistorySets.add({
+    id: 'compact-history-set',
+    workoutId: 'compact-history',
+    workoutExerciseId: 'compact-history-exercise',
+    setNumber: 1,
+    metricValues: { reps: 8, weight: 135 },
+    rir: 2,
+    completed: true,
+    completedAt: '2026-06-18T12:30:00.000Z',
+    restSecondsUsed: 120,
+  })
 }

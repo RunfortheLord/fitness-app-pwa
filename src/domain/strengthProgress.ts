@@ -94,6 +94,9 @@ export function estimateOneRepMax(weight: number, repetitions: number) {
 export function createStrengthGraphPoints(workouts: StrengthGraphWorkout[]) {
   const points: StrengthGraphPoint[] = []
   for (const structure of workouts) {
+    if (structure.workout.isDeload) {
+      continue
+    }
     for (const exercise of structure.exercises) {
       if (
         !exercise.exerciseId ||

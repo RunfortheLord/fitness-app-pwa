@@ -8,7 +8,10 @@ import { snapshotExercise } from '@domain/snapshots'
 import {
   clampProgramDurationWeeks,
   currentProgramWeek,
+  DEFAULT_DELOAD_WEEK_NUMBERS,
   DEFAULT_PROGRAM_DURATION_WEEKS,
+  nextProgramWeekAfterCompletion,
+  normalizeDeloadWeekNumbers,
 } from '@domain/programWeeks'
 import type { ExerciseUsageSummary } from '@domain/exerciseSearch'
 import type {
@@ -16,6 +19,7 @@ import type {
   ActiveCycleWorkoutDay,
   ActiveCycleWorkoutExercise,
   ActiveProgramCycle,
+  Exercise,
   ProgramTemplate,
   ProgramTemplateDay,
   TemplateWorkoutExercise,
@@ -44,6 +48,8 @@ export type CreateProgramTemplateInput = {
   name: string
   notes?: string
   durationWeeks?: number | null
+  deloadWeekNumbers?: number[]
+  deloadSchedulingEnabled?: boolean
   trackRirEverySet?: boolean
   days: CreateTemplateDayInput[]
 }
@@ -69,10 +75,101 @@ export type ProgramRepositoryTestHooks = {
 }
 
 // Fixed timestamp so re-seeding a built-in program is deterministic.
-const BUILT_IN_PROGRAM_CREATED_AT = '2026-06-19T00:00:00.000Z'
+export const BUILT_IN_PROGRAM_CREATED_AT = '2026-06-19T00:00:00.000Z'
 
 export function builtInProgramTemplateId(slug: string) {
   return `builtin-program:${slug}`
+}
+
+export function createBuiltInProgramSeedRecords(
+  exercises: readonly Exercise[],
+) {
+  const exerciseById = new Map(
+    exercises.map((exercise) => [exercise.id, exercise]),
+  )
+  const programTemplates: ProgramTemplate[] = []
+  const templateWorkoutDays: ProgramTemplateDay[] = []
+  const templateWorkoutExercises: TemplateWorkoutExercise[] = []
+
+  for (const program of BUILT_IN_PROGRAMS) {
+    const templateId = builtInProgramTemplateId(program.slug)
+    programTemplates.push({
+      id: templateId,
+      name: program.name,
+      notes: program.notes ?? '',
+      status: 'active',
+      lastActiveAt: null,
+      isBuiltIn: true,
+      level: program.level,
+      goal: program.goal,
+      durationWeeks: program.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
+      deloadWeekNumbers: [...DEFAULT_DELOAD_WEEK_NUMBERS],
+      deloadSchedulingEnabled: false,
+      builtInSeedVersion: BUILT_IN_PROGRAM_SEED_VERSION,
+      createdAt: BUILT_IN_PROGRAM_CREATED_AT,
+      updatedAt: BUILT_IN_PROGRAM_CREATED_AT,
+    })
+
+    for (const [dayIndex, day] of program.days.entries()) {
+      const dayId = `${templateId}::d${dayIndex}`
+      templateWorkoutDays.push({
+        id: dayId,
+        templateId,
+        name: day.name,
+        notes: day.notes ?? '',
+        orderIndex: dayIndex,
+        createdAt: BUILT_IN_PROGRAM_CREATED_AT,
+        updatedAt: BUILT_IN_PROGRAM_CREATED_AT,
+      })
+
+      for (const [exerciseIndex, prescription] of day.exercises.entries()) {
+        const exercise = exerciseById.get(prescription.exerciseId)
+        if (!exercise) {
+          throw new Error(
+            `Built-in program exercise ${prescription.exerciseId} was not found in the exercise library.`,
+          )
+        }
+        templateWorkoutExercises.push({
+          id: `${dayId}::e${exerciseIndex}`,
+          templateId,
+          dayId,
+          exerciseId: exercise.id,
+          exerciseSnapshot: snapshotExercise(exercise),
+          orderIndex: exerciseIndex,
+          targetSetCount: prescription.targetSetCount,
+          targetWeight: null,
+          targetDurationSeconds: null,
+          targetDistance: null,
+          targetRepsMin: prescription.targetRepsMin,
+          targetRepsMax: prescription.targetRepsMax,
+          targetRir: prescription.targetRir,
+          restSecondsOverride: null,
+          notes: prescription.notes ?? '',
+          createdAt: BUILT_IN_PROGRAM_CREATED_AT,
+          updatedAt: BUILT_IN_PROGRAM_CREATED_AT,
+        })
+      }
+    }
+  }
+
+  return {
+    programTemplates,
+    templateWorkoutDays,
+    templateWorkoutExercises,
+  }
+}
+
+function groupByTemplateId<T extends { templateId: string }>(records: T[]) {
+  const grouped = new Map<string, T[]>()
+  for (const record of records) {
+    const existing = grouped.get(record.templateId)
+    if (existing) {
+      existing.push(record)
+    } else {
+      grouped.set(record.templateId, [record])
+    }
+  }
+  return grouped
 }
 
 export function createProgramRepository(
@@ -104,12 +201,7 @@ export function createProgramRepository(
         async () => {
           // Load the exercise library once instead of per-prescription so seeding
           // stays fast (hundreds of prescriptions reference it).
-          const exerciseById = new Map(
-            (await database.exercises.toArray()).map((exercise) => [
-              exercise.id,
-              exercise,
-            ]),
-          )
+          const exercises = await database.exercises.toArray()
 
           // Built-in programs reference built-in exercises by id. If the exercise
           // library has not been seeded yet there is nothing valid to seed
@@ -117,9 +209,17 @@ export function createProgramRepository(
           // seedBuiltInExercises() runs (and is awaited) before this, so the
           // library is always present; an empty table only happens when a stale,
           // in-flight seed call races a database reset (e.g. between tests).
-          if (exerciseById.size === 0) {
+          if (exercises.length === 0) {
             return
           }
+
+          const seedRecords = createBuiltInProgramSeedRecords(exercises)
+          const daysByTemplate = groupByTemplateId(
+            seedRecords.templateWorkoutDays,
+          )
+          const exercisesByTemplate = groupByTemplateId(
+            seedRecords.templateWorkoutExercises,
+          )
 
           const existingTemplates = new Map(
             (await database.programTemplates.toArray()).map((template) => [
@@ -132,8 +232,8 @@ export function createProgramRepository(
           const daysToSeed: ProgramTemplateDay[] = []
           const exercisesToSeed: TemplateWorkoutExercise[] = []
 
-          for (const program of BUILT_IN_PROGRAMS) {
-            const templateId = builtInProgramTemplateId(program.slug)
+          for (const seedTemplate of seedRecords.programTemplates) {
+            const templateId = seedTemplate.id
             const existing = existingTemplates.get(templateId)
             if (
               existing &&
@@ -153,61 +253,12 @@ export function createProgramRepository(
             }
 
             templatesToSeed.push({
-              id: templateId,
-              name: program.name,
-              notes: program.notes ?? '',
-              status: 'active',
+              ...seedTemplate,
               lastActiveAt: existing?.lastActiveAt ?? null,
-              isBuiltIn: true,
-              level: program.level,
-              goal: program.goal,
-              durationWeeks:
-                program.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
-              builtInSeedVersion: BUILT_IN_PROGRAM_SEED_VERSION,
-              createdAt: existing?.createdAt ?? BUILT_IN_PROGRAM_CREATED_AT,
-              updatedAt: BUILT_IN_PROGRAM_CREATED_AT,
+              createdAt: existing?.createdAt ?? seedTemplate.createdAt,
             })
-
-            for (const [dayIndex, day] of program.days.entries()) {
-              const dayId = `${templateId}::d${dayIndex}`
-              daysToSeed.push({
-                id: dayId,
-                templateId,
-                name: day.name,
-                notes: day.notes ?? '',
-                orderIndex: dayIndex,
-                createdAt: BUILT_IN_PROGRAM_CREATED_AT,
-                updatedAt: BUILT_IN_PROGRAM_CREATED_AT,
-              })
-
-              for (const [exIndex, ex] of day.exercises.entries()) {
-                const exercise = exerciseById.get(ex.exerciseId)
-                if (!exercise) {
-                  throw new Error(
-                    `Built-in program exercise ${ex.exerciseId} was not found in the exercise library.`,
-                  )
-                }
-                exercisesToSeed.push({
-                  id: `${dayId}::e${exIndex}`,
-                  templateId,
-                  dayId,
-                  exerciseId: exercise.id,
-                  exerciseSnapshot: snapshotExercise(exercise),
-                  orderIndex: exIndex,
-                  targetSetCount: ex.targetSetCount,
-                  targetWeight: null,
-                  targetDurationSeconds: null,
-                  targetDistance: null,
-                  targetRepsMin: ex.targetRepsMin,
-                  targetRepsMax: ex.targetRepsMax,
-                  targetRir: ex.targetRir,
-                  restSecondsOverride: null,
-                  notes: ex.notes ?? '',
-                  createdAt: BUILT_IN_PROGRAM_CREATED_AT,
-                  updatedAt: BUILT_IN_PROGRAM_CREATED_AT,
-                })
-              }
-            }
+            daysToSeed.push(...(daysByTemplate.get(templateId) ?? []))
+            exercisesToSeed.push(...(exercisesByTemplate.get(templateId) ?? []))
           }
 
           if (templatesToSeed.length) {
@@ -231,6 +282,11 @@ export function createProgramRepository(
         durationWeeks: clampProgramDurationWeeks(
           input.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
         ),
+        deloadWeekNumbers: normalizeDeloadWeekNumbers(
+          input.deloadWeekNumbers ?? DEFAULT_DELOAD_WEEK_NUMBERS,
+          input.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
+        ),
+        deloadSchedulingEnabled: input.deloadSchedulingEnabled ?? false,
         trackRirEverySet: input.trackRirEverySet ?? false,
         createdAt: now,
         updatedAt: now,
@@ -356,6 +412,11 @@ export function createProgramRepository(
             durationWeeks:
               template.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
             currentWeekNumber: 1,
+            deloadWeekNumbers: normalizeDeloadWeekNumbers(
+              template.deloadWeekNumbers,
+              template.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
+            ),
+            deloadSchedulingEnabled: template.deloadSchedulingEnabled ?? false,
             trackRirEverySet: template.trackRirEverySet ?? false,
             createdAt: now,
             updatedAt: now,
@@ -451,7 +512,14 @@ export function createProgramRepository(
     async updateProgramTemplate(
       id: string,
       input: Partial<
-        Pick<ProgramTemplate, 'name' | 'durationWeeks' | 'trackRirEverySet'>
+        Pick<
+          ProgramTemplate,
+          | 'name'
+          | 'durationWeeks'
+          | 'deloadWeekNumbers'
+          | 'deloadSchedulingEnabled'
+          | 'trackRirEverySet'
+        >
       >,
     ) {
       const template = await database.programTemplates.get(id)
@@ -472,6 +540,10 @@ export function createProgramRepository(
         ...template,
         ...input,
         durationWeeks,
+        deloadWeekNumbers: normalizeDeloadWeekNumbers(
+          input.deloadWeekNumbers ?? template.deloadWeekNumbers,
+          durationWeeks,
+        ),
         notes: template.notes,
         updatedAt: new Date().toISOString(),
       }
@@ -536,6 +608,10 @@ export function createProgramRepository(
         name: `${source.template.name} copy`,
         notes: '',
         durationWeeks: source.template.durationWeeks ?? null,
+        deloadWeekNumbers: source.template.deloadWeekNumbers ?? [],
+        deloadSchedulingEnabled:
+          source.template.deloadSchedulingEnabled ?? false,
+        trackRirEverySet: source.template.trackRirEverySet ?? false,
         days: source.days.map((day) => ({
           name: day.name,
           notes: day.notes,
@@ -1167,12 +1243,22 @@ export function createProgramRepository(
               .where({ activeCycleId: cycle.id })
               .toArray(),
           ])
-          const nextWeekNumber = currentProgramWeek(
+          const currentWeekNumber = currentProgramWeek(
             cycle.currentWeekNumber,
             checks,
             days.map((day) => day.id),
           )
-          if (nextWeekNumber !== cycle.currentWeekNumber) {
+          const nextWeekNumber =
+            input.checked && input.weekNumber === currentWeekNumber
+              ? nextProgramWeekAfterCompletion({
+                  checks,
+                  dayIds: days.map((day) => day.id),
+                  durationWeeks:
+                    cycle.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
+                  weekNumber: input.weekNumber,
+                })
+              : currentWeekNumber
+          if (nextWeekNumber !== currentWeekNumber) {
             await database.activeProgramCycles.update(cycle.id, {
               currentWeekNumber: nextWeekNumber,
               updatedAt: now,
@@ -1248,7 +1334,12 @@ export function createProgramRepository(
       input: Partial<
         Pick<
           ActiveProgramCycle,
-          'name' | 'durationWeeks' | 'currentWeekNumber' | 'trackRirEverySet'
+          | 'name'
+          | 'durationWeeks'
+          | 'currentWeekNumber'
+          | 'deloadWeekNumbers'
+          | 'deloadSchedulingEnabled'
+          | 'trackRirEverySet'
         >
       >,
     ) {
@@ -1271,29 +1362,14 @@ export function createProgramRepository(
         ...input,
         durationWeeks,
         currentWeekNumber,
+        deloadWeekNumbers: normalizeDeloadWeekNumbers(
+          input.deloadWeekNumbers ?? cycle.deloadWeekNumbers,
+          durationWeeks,
+        ),
         notes: cycle.notes,
         updatedAt: new Date().toISOString(),
       }
-      await database.transaction(
-        'rw',
-        database.activeProgramCycles,
-        database.activeCycleDayChecks,
-        async () => {
-          await database.activeProgramCycles.put(updated)
-          if (
-            currentWeekNumber !== (cycle.currentWeekNumber ?? 1) ||
-            currentWeekNumber !== requestedWeekNumber
-          ) {
-            await database.activeCycleDayChecks
-              .where('[activeCycleId+weekNumber]')
-              .between(
-                [cycle.id, currentWeekNumber],
-                [cycle.id, Number.MAX_SAFE_INTEGER],
-              )
-              .delete()
-          }
-        },
-      )
+      await database.activeProgramCycles.put(updated)
       return updated
     },
 

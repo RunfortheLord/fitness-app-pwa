@@ -3,8 +3,19 @@ import { Receiver } from '@upstash/qstash'
 import webPush from 'web-push'
 
 import { readWebPushTimerJob } from '../../src/server/webPushTimerApi.js'
+import { createRequestObserver } from '../../src/server/serverHttp.js'
+
+const MAX_DELIVERY_BODY_BYTES = 8_192
 
 export async function POST(request: Request) {
+  const observer = createRequestObserver({
+    method: request.method,
+    route: '/api/push/deliver',
+  })
+  const respond = (value: unknown, status: number, outcome: string) => {
+    observer.finish({ outcome, provider: 'qstash+web_push', status })
+    return json(value, status, observer.requestId)
+  }
   const currentSigningKey = process.env.QSTASH_CURRENT_SIGNING_KEY
   const nextSigningKey = process.env.QSTASH_NEXT_SIGNING_KEY
   const signature = request.headers.get('upstash-signature')
@@ -19,10 +30,20 @@ export async function POST(request: Request) {
     !privateKey ||
     !subject
   ) {
-    return json({ ok: false }, 503)
+    return respond({ ok: false }, 503, 'not_configured')
   }
 
+  const contentLength = Number(request.headers.get('content-length'))
+  if (
+    Number.isFinite(contentLength) &&
+    contentLength > MAX_DELIVERY_BODY_BYTES
+  ) {
+    return respond({ ok: false }, 413, 'payload_too_large')
+  }
   const rawBody = await request.text()
+  if (new TextEncoder().encode(rawBody).byteLength > MAX_DELIVERY_BODY_BYTES) {
+    return respond({ ok: false }, 413, 'payload_too_large')
+  }
   const receiver = new Receiver({ currentSigningKey, nextSigningKey })
   try {
     await receiver.verify({
@@ -31,18 +52,18 @@ export async function POST(request: Request) {
       url: request.url,
     })
   } catch {
-    return json({ ok: false }, 401)
+    return respond({ ok: false }, 401, 'invalid_signature')
   }
 
   let parsed: unknown
   try {
     parsed = JSON.parse(rawBody)
   } catch {
-    return json({ ok: false }, 400)
+    return respond({ ok: false }, 400, 'invalid_json')
   }
   const job = readWebPushTimerJob(parsed)
   if (!job) {
-    return json({ ok: false }, 400)
+    return respond({ ok: false }, 400, 'invalid_job')
   }
 
   try {
@@ -56,18 +77,23 @@ export async function POST(request: Request) {
       }),
       {
         TTL: 120,
+        timeout: 10_000,
         urgency: 'high',
         topic: 'nutrifit-rest-timer',
         vapidDetails: { subject, publicKey, privateKey },
       },
     )
-    return json({ ok: true })
+    return respond({ ok: true }, 200, 'delivered')
   } catch (caught: unknown) {
     const statusCode = readWebPushStatusCode(caught)
     if (statusCode === 404 || statusCode === 410) {
-      return json({ ok: true, subscriptionExpired: true })
+      return respond(
+        { ok: true, subscriptionExpired: true },
+        200,
+        'subscription_expired',
+      )
     }
-    return json({ ok: false }, 502)
+    return respond({ ok: false }, 502, 'delivery_failed')
   }
 }
 
@@ -83,9 +109,12 @@ function readWebPushStatusCode(value: unknown) {
   return null
 }
 
-function json(value: unknown, status = 200) {
+function json(value: unknown, status = 200, requestId?: string) {
   return Response.json(value, {
     status,
-    headers: { 'cache-control': 'no-store' },
+    headers: {
+      'cache-control': 'no-store',
+      ...(requestId ? { 'x-request-id': requestId } : {}),
+    },
   })
 }

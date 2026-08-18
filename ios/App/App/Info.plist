@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Adam's Fitness</string>
+        <string>Vigorune</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -24,10 +24,23 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>vigorune</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Vigorune uses the camera only when you choose to scan a food barcode or capture a meal photo for analysis.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Adam's Fitness uses your location while the run tracker is open to measure outdoor distance and pace.</string>
+	<string>Vigorune uses your location while the run tracker is open to measure outdoor distance and pace.</string>
 	<key>NSMotionUsageDescription</key>
-	<string>Adam's Fitness uses motion while the treadmill tracker is open to sense steps and estimate distance.</string>
+	<string>Vigorune uses motion while the treadmill tracker is open to sense steps and estimate distance.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

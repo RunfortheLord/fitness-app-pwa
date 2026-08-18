@@ -1,4 +1,4 @@
-import type { DraggableAttributes } from '@dnd-kit/core'
+import type { DraggableAttributes, Modifier } from '@dnd-kit/core'
 import type { SyntheticListenerMap } from '@dnd-kit/core/dist/hooks/utilities'
 
 export type SortableDragState = {
@@ -7,6 +7,18 @@ export type SortableDragState = {
   listeners: SyntheticListenerMap | undefined
   setActivatorNodeRef: (element: HTMLElement | null) => void
 }
+
+export const HORIZONTAL_AUTO_SCROLL_MAX_STEP_PX = 4
+export const HORIZONTAL_COLLISION_HYSTERESIS_PX = 56
+
+export function isHorizontallyScrollable(element: Element) {
+  return element.scrollWidth > element.clientWidth
+}
+
+export const restrictToHorizontalAxis: Modifier = ({ transform }) => ({
+  ...transform,
+  y: 0,
+})
 
 /** New id order after dropping activeId onto overId, or null if not a reorder. */
 export function reorderIds(

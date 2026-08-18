@@ -3,12 +3,49 @@
 ## Current Versions
 
 - Backup format version: `1`
-- Compatible database schema versions: backups with `databaseSchemaVersion` less than or equal to the app's current IndexedDB schema version `16` can be restored after validation.
+- Compact cloud snapshot format version: `1` (a separate envelope, not a
+  reinterpretation of backup format 1)
+- Compatible database schema versions: backups with `databaseSchemaVersion`
+  less than or equal to the app's current IndexedDB schema version `21` can be
+  restored after validation.
 - API key integration settings are not exported in backups. Replacing local data
   from a backup clears the saved API key integration record.
-- Application restore support: application version `0.0.0` can restore backup format version `1`.
+- Application restore support: application version `0.9.0` can restore backup format version `1`.
 
 The backup format version is intentionally separate from the IndexedDB database schema version. A database migration does not automatically imply a backup format change, and a backup format change does not automatically imply an IndexedDB migration.
+
+## Compact Cloud Snapshot
+
+Automatic and manual cloud backup writes use a separate root envelope with:
+
+- `cloudSnapshotFormatVersion`
+- `sourceBackupFormatVersion`
+- `databaseSchemaVersion`
+- `applicationVersion`
+- `exportedAt`
+- `seedManifest`
+- `data`
+
+Compact cloud snapshot format 1 uses source backup format 1 and keeps the same
+table names and record schemas. It excludes a built-in exercise, built-in
+program template, template day, or template exercise only when the stored
+record exactly equals the application's deterministic seed record. A stable ID
+or built-in-looking name alone is never enough to omit data. Custom copies,
+modified built-ins, user-created templates, archived or hidden choices, and all
+non-seed records remain explicit.
+
+Cloud restore continues to accept legacy JSON backup-format-1 snapshots. For a
+compact snapshot, restore validates the compact envelope, reconstructs current
+deterministic seed records from the same application seed definitions, overlays
+preserved records by stable ID, and validates the resulting full backup and all
+relationships before modifying IndexedDB. The expanded data then uses the same
+single replace transaction as manual restore. Unsupported future cloud snapshot
+versions and compact snapshots containing GPS run samples are rejected without
+partial clearing.
+
+The compact representation is cloud-only. It does not change the user-facing
+manual JSON backup, ZIP export, IndexedDB schema, local source-of-truth model,
+replace-only semantics, or 8 MiB final serialized cloud-row cap.
 
 ## JSON Backup
 
@@ -50,6 +87,11 @@ but restore keeps older fields readable so historical backups do not corrupt
 unrelated workout data. These legacy note fields do not create active UI
 controls.
 
+Workout records include nullable `pausedAt` state and accumulated paused
+seconds. Older backups that omit `pausedAt` restore it as `null`. Completed
+history always stores `pausedAt: null` after folding any final pause into the
+accumulated total.
+
 Detected workout changes may include type `progression_recommendation` with
 optional `recommendationReason` and `recommendationSummary`. These records are
 unchecked by default in review and are applied only to selected future
@@ -71,6 +113,14 @@ associations, timer sound enabled/disabled state, selected timer sound, and
 active-program references are included in JSON backups because they are local
 user workflow state needed to restore the app faithfully. USDA API key
 integration settings remain excluded.
+
+RIR tracking and workout-autofill mode are also backed up. Older backups that
+omit them restore with RIR tracking disabled and Recorded history autofill.
+History organization and selected-program filter are backed up; older backups
+restore to Most recent with no selected program. Program/template records back
+up scheduled deload week numbers, and workout/history records back up their
+snapshotted week number and deload status. Older backups restore with no
+scheduled deload weeks and regular workout status.
 
 ## Restore Behavior
 
@@ -141,7 +191,10 @@ is not supported.
 Before compression and download, export validation checks required and unique
 paths, manifest record counts, JSON parsing, restore-schema and relationship
 validation, table checksums when supported, and disallowed secret field names.
-An invalid package is not downloaded.
+If legacy local records fail the latest relationship or schema validation, the
+archive is still downloaded with its authoritative raw backup and an
+`EXPORT_WARNINGS.txt` report. Packaging failures and unsafe archive paths still
+prevent download.
 
 ## Clear All Data
 
@@ -151,4 +204,9 @@ Users should export a JSON backup before clearing data if they may need to resto
 
 ## Privacy
 
-Backup, restore, CSV export, and clear-all operations use browser APIs and IndexedDB on the local device. Files are not uploaded to a server, cloud backup is not created, and accounts are not involved.
+Local backup, restore, CSV export, and clear-all operations use browser APIs and
+IndexedDB on the device. Creating a local export never uploads that file or
+requires an account. Optional signed-in cloud backup separately uploads a
+validated snapshot as documented in `docs/CLOUD_SYNC.md`; GPS run samples remain
+local-only while manual JSON export retains the full-fidelity local format.
+Cloud backup does not change that local format or make cloud data authoritative.

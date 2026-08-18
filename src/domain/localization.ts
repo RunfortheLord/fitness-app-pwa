@@ -103,8 +103,15 @@ const spanishTranslations: Record<string, string> = {
   'Restore from cloud': 'Restaurar desde la nube',
   'Sign out': 'Cerrar sesión',
   'Sign in with Google': 'Iniciar sesión con Google',
+  'Sign in with Apple': 'Iniciar sesión con Apple',
   'Prevent data loss': 'Evita perder tus datos',
   'Not now': 'Ahora no',
+  'Your data stays local': 'Tus datos permanecen en tu dispositivo',
+  'Continue offline': 'Continuar sin conexiÃ³n',
+  'Start offline with no account, or sign in with Google for an optional encrypted connection to your private cloud backup.':
+    'Empieza sin conexiÃ³n y sin una cuenta, o inicia sesiÃ³n con Google para conectar opcionalmente tu copia privada en la nube.',
+  'Start offline with no account, or sign in with Apple or Google for an optional encrypted connection to your private cloud backup.':
+    'Empieza sin conexión y sin una cuenta, o inicia sesión con Apple o Google para conectar opcionalmente tu copia privada en la nube.',
   'Skip to content': 'Saltar al contenido',
   'Choose workout day': 'Elegir día de entrenamiento',
   'Start {day}': 'Iniciar {day}',
@@ -215,13 +222,16 @@ const spanishTranslations: Record<string, string> = {
   'Edit {name} serving': 'Editar porción de {name}',
   Active: 'Activo',
   Workout: 'Entrenamiento',
+  Paused: 'En pausa',
+  'Pause workout timer': 'Pausar temporizador del entrenamiento',
+  'Resume workout timer': 'Reanudar temporizador del entrenamiento',
   'Tap to Resume': 'Toca para reanudar',
   'Local backup files and ZIP exports stay on this device unless you use the separate cloud backup controls below.':
     'Las copias locales y los archivos ZIP permanecen en este dispositivo salvo que uses los controles de copia en la nube.',
   'Manual Google-account backup and restore. Local data remains usable while signed out or offline.':
     'Copia y restauración manual con una cuenta de Google. Los datos locales siguen disponibles sin sesión o sin conexión.',
-  'Signed-in data is backed up automatically within five minutes of changes and when the app opens or resumes. Local data remains usable while signed out or offline.':
-    'Los datos se guardan automáticamente dentro de los cinco minutos posteriores a los cambios y cuando la aplicación se abre o reanuda si has iniciado sesión. Los datos locales siguen disponibles sin sesión o sin conexión.',
+  'Signed-in data is backed up automatically about every fifteen minutes after changes and when the app opens. Local data remains usable while signed out or offline.':
+    'Los datos se guardan automáticamente aproximadamente cada quince minutos después de los cambios y cuando la aplicación se abre si has iniciado sesión. Los datos locales siguen disponibles sin sesión o sin conexión.',
   'Sign in with Google to automatically back up your fitness data. You can keep using the app offline, and your data stays available on this device.':
     'Inicia sesión con Google para crear copias automáticas de tus datos de fitness. Puedes seguir usando la aplicación sin conexión y tus datos permanecerán disponibles en este dispositivo.',
   "Your data hasn't been backed up to the cloud in a few days. It's still safe on this device, and the app will keep retrying.":
@@ -294,6 +304,8 @@ const spanishTranslations: Record<string, string> = {
   'Food search': 'Buscar alimentos',
   'Search foods': 'Buscar alimentos',
   'Recommended foods': 'Alimentos recomendados',
+  'From foods logged yesterday and the day before.':
+    'De alimentos registrados ayer y anteayer.',
   'Search Spanish foods': 'Buscar alimentos en español',
   'Tap the search button to search Spanish food products.':
     'Toca el botón de búsqueda para buscar productos alimenticios en español.',
@@ -406,6 +418,12 @@ const spanishTranslations: Record<string, string> = {
   'Final RIR': 'RIR final',
   'Track RIR on every set?': '¿Registrar RIR en cada serie?',
   'Track RIR (reps in reserve)': 'Registrar RIR (repeticiones en reserva)',
+  'Recorded history': 'Historial registrado',
+  'Smart progression': 'Progresión inteligente',
+  'Estimates weight and reps across sets using prior performance, fatigue, rep ranges, and RIR when RIR tracking is on.':
+    'Estima el peso y las repeticiones entre series usando el rendimiento anterior, la fatiga, los rangos de repeticiones y el RIR cuando su seguimiento está activado.',
+  'Copies weight and reps from matching completed sets in the most recent workout history.':
+    'Copia el peso y las repeticiones de las series completadas correspondientes del historial de entrenamiento más reciente.',
   'When off, RIR inputs and targets are hidden during workouts and in prescriptions.':
     'Al desactivarlo, los campos y objetivos de RIR se ocultan durante los entrenamientos y en las prescripciones.',
   'RIR fields are shown during workouts and in prescriptions.':
@@ -562,6 +580,7 @@ const spanishTranslations: Record<string, string> = {
   'Bodyweight progress could not load.':
     'No se pudo cargar el progreso del peso corporal.',
   'Current active cycle': 'Ciclo activo actual',
+  'Current Program': 'Programa actual',
   'Loading cycle': 'Cargando ciclo',
   'No active cycle': 'No hay ciclo activo',
   'Create or activate a program template to choose workout days manually.':
@@ -617,6 +636,7 @@ const spanishTranslations: Record<string, string> = {
     'Elige un día del ciclo activo para iniciar un entrenamiento.',
   'Go to training': 'Ir a Entrenamiento',
   'Discard Workout': 'Descartar entrenamiento',
+  'Discarding...': 'Descartando...',
   'Add Exercise': 'Añadir ejercicio',
   'Finish Workout': 'Finalizar entrenamiento',
   'Discard workout?': '¿Descartar el entrenamiento?',
@@ -645,8 +665,17 @@ const spanishTranslations: Record<string, string> = {
   "Applies to rest timers that start after a set. Leave blank to use each exercise's own default.":
     'Se aplica a los temporizadores que comienzan después de una serie. Déjalo vacío para usar el valor del ejercicio.',
   'Rest complete': 'Descanso completado',
+  'Rest timer ready': 'Temporizador de descanso listo',
   'Timer paused': 'Temporizador en pausa',
   'Timer running': 'Temporizador activo',
+  'Total workout time': 'Tiempo total de entrenamiento',
+  'Rest duration for this exercise': 'Descanso para este ejercicio',
+  'Changes apply immediately to the current rest timer and future sets.':
+    'Los cambios se aplican de inmediato al descanso actual y a las series futuras.',
+  'Pause rest timer': 'Pausar descanso',
+  'Resume rest timer': 'Reanudar descanso',
+  'Clear rest timer': 'Borrar descanso',
+  'Current rest time: {time}': 'Descanso actual: {time}',
   Clear: 'Borrar',
   'Back to browse programs': 'Volver a explorar programas',
   'Back to history': 'Volver al historial',

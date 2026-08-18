@@ -24,7 +24,11 @@ import {
   searchExercises,
   type ExerciseUsageSummary,
 } from '@domain/exerciseSearch'
-import { clampProgramDurationWeeks } from '@domain/programWeeks'
+import {
+  DEFAULT_PROGRAM_DURATION_WEEKS,
+  DEFAULT_DELOAD_WEEK_NUMBERS,
+  formatProgramWeekLabel,
+} from '@domain/programWeeks'
 import { useRirTracking } from '@hooks/useRirTracking'
 import { programRepository } from '@repositories/programRepository'
 import type {
@@ -97,12 +101,13 @@ export function ProgramBuilderSheet({
   const [isDiscardPrescriptionOpen, setIsDiscardPrescriptionOpen] =
     useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const [currentWeek, setCurrentWeek] = useState('1')
   const isMountedRef = useRef(true)
 
   const mode: BuilderMode = target.mode
   const rirEnabled = useRirTracking()
   const trackRirEverySet = structure?.record.trackRirEverySet ?? false
+  const deloadSchedulingEnabled =
+    structure?.record.deloadSchedulingEnabled ?? false
 
   useEffect(() => {
     return () => {
@@ -149,7 +154,6 @@ export function ProgramBuilderSheet({
           })
           setSelectedDayId((current) => current || loaded.days[0]?.id || '')
           setNameForm(programFormFromRecord(loaded.cycle))
-          setCurrentWeek(String(loaded.cycle.currentWeekNumber ?? 1))
         })
         .catch((caught: unknown) => {
           setError(
@@ -231,7 +235,6 @@ export function ProgramBuilderSheet({
               : loaded.days[0]?.id || '',
           )
           setNameForm(programFormFromRecord(record))
-          setCurrentWeek(String(record.currentWeekNumber ?? 1))
           onChanged()
         })
         .catch((caught: unknown) => {
@@ -309,28 +312,25 @@ export function ProgramBuilderSheet({
     )
   }
 
-  function saveCurrentWeek() {
-    if (
-      !structure ||
-      mode !== 'cycle' ||
-      !('activatedAt' in structure.record)
-    ) {
+  function toggleDeloadWeek(weekNumber: number) {
+    if (!structure) {
       return
     }
-    const durationWeeks =
-      structure.record.durationWeeks ?? clampProgramDurationWeeks(Number.NaN)
-    const nextWeek = Math.min(
-      durationWeeks,
-      clampProgramDurationWeeks(Number(currentWeek)),
-    )
-    setCurrentWeek(String(nextWeek))
-    if (nextWeek === (structure.record.currentWeekNumber ?? 1)) {
-      return
+    const scheduled = new Set(structure.record.deloadWeekNumbers ?? [])
+    if (scheduled.has(weekNumber)) {
+      scheduled.delete(weekNumber)
+    } else {
+      scheduled.add(weekNumber)
     }
+    const deloadWeekNumbers = [...scheduled].sort((left, right) => left - right)
     run(
-      programRepository.updateActiveCycle(structure.record.id, {
-        currentWeekNumber: nextWeek,
-      }),
+      mode === 'template'
+        ? programRepository.updateProgramTemplate(structure.record.id, {
+            deloadWeekNumbers,
+          })
+        : programRepository.updateActiveCycle(structure.record.id, {
+            deloadWeekNumbers,
+          }),
     )
   }
 
@@ -347,6 +347,50 @@ export function ProgramBuilderSheet({
             trackRirEverySet: nextValue,
           }),
     )
+  }
+
+  function saveDeloadSchedulingEnabled(nextValue: boolean) {
+    if (!structure || nextValue === deloadSchedulingEnabled) {
+      return
+    }
+    const deloadWeekNumbers =
+      nextValue && !structure.record.deloadWeekNumbers?.length
+        ? [...DEFAULT_DELOAD_WEEK_NUMBERS]
+        : structure.record.deloadWeekNumbers
+    setStructure((current) =>
+      current
+        ? {
+            ...current,
+            record: {
+              ...current.record,
+              deloadSchedulingEnabled: nextValue,
+              deloadWeekNumbers,
+            },
+          }
+        : current,
+    )
+    const action =
+      mode === 'template'
+        ? programRepository.updateProgramTemplate(structure.record.id, {
+            deloadSchedulingEnabled: nextValue,
+            deloadWeekNumbers,
+          })
+        : programRepository.updateActiveCycle(structure.record.id, {
+            deloadSchedulingEnabled: nextValue,
+            deloadWeekNumbers,
+          })
+    void action
+      .then(() => {
+        setError(null)
+        setIsSettingsOpen(false)
+        refresh()
+      })
+      .catch((caught: unknown) => {
+        setError(
+          caught instanceof Error ? caught.message : 'Program change failed.',
+        )
+        refresh()
+      })
   }
 
   function closePrescription() {
@@ -695,7 +739,7 @@ export function ProgramBuilderSheet({
     <>
       <BottomSheet
         headerAction={
-          rirEnabled && structure ? (
+          structure ? (
             <IconButton
               aria-label="Program editor settings"
               onClick={() => setIsSettingsOpen(true)}
@@ -712,7 +756,7 @@ export function ProgramBuilderSheet({
           }
           onClose()
         }}
-        title={mode === 'template' ? 'Edit template' : 'Edit program'}
+        title={mode === 'template' ? 'Edit template' : 'Program Editor'}
         variant="page"
       >
         {!structure ? <LoadingState label="Loading program" /> : null}
@@ -787,24 +831,45 @@ export function ProgramBuilderSheet({
               />
             </FormField>
 
-            {mode === 'cycle' ? (
-              <FormField id="builder-current-week" label="Current week">
-                <input
-                  id="builder-current-week"
-                  inputMode="numeric"
-                  max={structure.record.durationWeeks ?? undefined}
-                  min={1}
-                  onBlur={saveCurrentWeek}
-                  onChange={(event) => setCurrentWeek(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.currentTarget.blur()
-                    }
-                  }}
-                  type="number"
-                  value={currentWeek}
-                />
-              </FormField>
+            {deloadSchedulingEnabled ? (
+              <fieldset className="deload-week-fieldset">
+                <legend>Schedule deload weeks</legend>
+                <p className="muted">
+                  Click a week number to make it a deload week. Deload workouts
+                  use one fewer set and add 3 RIR to each target.
+                </p>
+                <div
+                  aria-label="Program weeks for deload scheduling"
+                  className="deload-week-scroller"
+                >
+                  {Array.from(
+                    {
+                      length:
+                        structure.record.durationWeeks ??
+                        DEFAULT_PROGRAM_DURATION_WEEKS,
+                    },
+                    (_, index) => index + 1,
+                  ).map((weekNumber) => {
+                    const selected = (
+                      structure.record.deloadWeekNumbers ?? []
+                    ).includes(weekNumber)
+                    return (
+                      <button
+                        aria-pressed={selected}
+                        className={selected ? 'is-selected' : ''}
+                        key={weekNumber}
+                        onClick={() => toggleDeloadWeek(weekNumber)}
+                        type="button"
+                      >
+                        {formatProgramWeekLabel(
+                          weekNumber,
+                          structure.record.deloadWeekNumbers,
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              </fieldset>
             ) : null}
 
             <SortableArea
@@ -1170,14 +1235,26 @@ export function ProgramBuilderSheet({
       >
         <label className="checkbox-row">
           <input
-            checked={trackRirEverySet}
+            checked={deloadSchedulingEnabled}
             onChange={(event) =>
-              saveTrackRirEverySet(event.currentTarget.checked)
+              saveDeloadSchedulingEnabled(event.currentTarget.checked)
             }
             type="checkbox"
           />
-          Track RIR on every set?
+          Schedule deload weeks
         </label>
+        {rirEnabled ? (
+          <label className="checkbox-row">
+            <input
+              checked={trackRirEverySet}
+              onChange={(event) =>
+                saveTrackRirEverySet(event.currentTarget.checked)
+              }
+              type="checkbox"
+            />
+            Track RIR on every set?
+          </label>
+        ) : null}
       </BottomSheet>
       <ModalConfirmationDialog
         confirmLabel="Delete Day"

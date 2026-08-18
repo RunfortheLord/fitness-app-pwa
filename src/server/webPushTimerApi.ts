@@ -15,6 +15,7 @@ export type WebPushTimerJob = {
 export type WebPushTimerRequest = {
   completionAt: unknown
   previousMessageId: unknown
+  scheduleRevision?: unknown
   subscription: unknown
   timerId: unknown
 }
@@ -35,6 +36,7 @@ type SchedulerDependencies = {
   now?: () => number
   publish(input: {
     body: WebPushTimerJob
+    deduplicationKey: string
     delaySeconds: number
   }): Promise<{ messageId: string }>
 }
@@ -56,16 +58,17 @@ export async function handleWebPushTimerRequest(
     return invalid('The push subscription is invalid.')
   }
 
-  try {
-    if (previousMessageId) {
-      await dependencies.cancel(previousMessageId)
-    }
-    await dependencies.cancelForSubscription(subscription)
+  const scheduleRevision = readScheduleRevision(input.scheduleRevision)
+  if (scheduleRevision === null) {
+    return invalid('The timer schedule revision is invalid.')
+  }
 
-    if (input.completionAt === null) {
-      return { ok: true, messageId: null }
-    }
-
+  let schedule: {
+    completionAt: string
+    delaySeconds: number
+    timerId: string
+  } | null = null
+  if (input.completionAt !== null) {
     const completionAt =
       typeof input.completionAt === 'string'
         ? Date.parse(input.completionAt)
@@ -77,17 +80,40 @@ export async function handleWebPushTimerRequest(
     if (
       !Number.isFinite(completionAt) ||
       !timerId ||
-      !subscription ||
       delaySeconds <= 0 ||
       delaySeconds > MAX_TIMER_DELAY_SECONDS
     ) {
       return invalid('The rest timer notification request is invalid.')
     }
+    schedule = {
+      completionAt: new Date(completionAt).toISOString(),
+      delaySeconds,
+      timerId,
+    }
+  }
+
+  try {
+    if (!schedule) {
+      if (previousMessageId) {
+        await dependencies.cancel(previousMessageId)
+      }
+      await dependencies.cancelForSubscription(subscription)
+      return { ok: true, messageId: null }
+    }
 
     const published = await dependencies.publish({
-      body: { subscription, timerId },
-      delaySeconds,
+      body: { subscription, timerId: schedule.timerId },
+      deduplicationKey: [
+        subscription.endpoint,
+        schedule.timerId,
+        schedule.completionAt,
+        scheduleRevision,
+      ].join('|'),
+      delaySeconds: schedule.delaySeconds,
     })
+    if (previousMessageId && previousMessageId !== published.messageId) {
+      await dependencies.cancel(previousMessageId)
+    }
     return { ok: true, messageId: published.messageId }
   } catch {
     return {
@@ -98,6 +124,15 @@ export async function handleWebPushTimerRequest(
       },
     }
   }
+}
+
+function readScheduleRevision(value: unknown) {
+  if (value === undefined) {
+    return 0
+  }
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null
 }
 
 export function readWebPushTimerJob(value: unknown): WebPushTimerJob | null {

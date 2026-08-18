@@ -76,7 +76,7 @@ describe('PWA service worker updates', () => {
     expect(workbox.update).toHaveBeenCalledTimes(5)
   })
 
-  it('exposes a waiting update and applies it with skipWaiting', async () => {
+  it('activates a waiting update without reloading the active app', async () => {
     const onUpdateReady = vi.fn()
     const { registerServiceWorkerUpdateHandler } = await import('@app/pwa')
 
@@ -88,5 +88,6 @@ describe('PWA service worker updates', () => {
     onUpdateReady.mock.calls[0]?.[0].applyUpdate()
 
     expect(workbox.messageSkipWaiting).toHaveBeenCalledTimes(1)
+    expect(workbox.listeners.controlling).toBeUndefined()
   })
 })

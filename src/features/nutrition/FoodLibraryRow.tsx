@@ -1,4 +1,5 @@
-import { Edit2, Plus, RotateCcw, Star, Utensils } from 'lucide-react'
+import { Check, Edit2, Plus, RotateCcw, Star, Utensils } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 import { IconButton } from '@components/ui'
 import { FoodIcon } from '@components/FoodIcon'
@@ -25,10 +26,10 @@ export function FoodLibraryRow({
   onSelect: () => void
   // When provided, the trailing "+" logs the food at its displayed serving
   // instead of opening the serving sheet (which the row banner still does).
-  onAdd?: (() => void) | null
+  onAdd?: (() => void | Promise<void>) | null
   isFavorite?: boolean
   onToggleFavorite?: (() => void) | null
-  onQuickLog?: (() => void) | null
+  onQuickLog?: (() => void | Promise<void>) | null
 }) {
   const { t } = useLanguage()
   const display = resultDisplay(result, rememberedServing)
@@ -44,6 +45,38 @@ export function FoodLibraryRow({
     display.calories,
   )} calories`
   const primaryAction = result.type === 'savedMeal' ? 'Log' : 'Open'
+  const [confirmedAction, setConfirmedAction] = useState<
+    'add' | 'quick-log' | null
+  >(null)
+  const confirmationTimeout = useRef<number | null>(null)
+
+  useEffect(
+    () => () => {
+      if (confirmationTimeout.current !== null) {
+        window.clearTimeout(confirmationTimeout.current)
+      }
+    },
+    [],
+  )
+
+  async function runWithConfirmation(
+    action: () => void | Promise<void>,
+    type: 'add' | 'quick-log',
+  ) {
+    try {
+      await action()
+      setConfirmedAction(type)
+      if (confirmationTimeout.current !== null) {
+        window.clearTimeout(confirmationTimeout.current)
+      }
+      confirmationTimeout.current = window.setTimeout(
+        () => setConfirmedAction(null),
+        900,
+      )
+    } catch {
+      setConfirmedAction(null)
+    }
+  }
 
   return (
     <div className="nutrition-item">
@@ -100,9 +133,14 @@ export function FoodLibraryRow({
         {onQuickLog && !onAdd ? (
           <IconButton
             aria-label={`Log ${display.name}, ${accessibleSummary}`}
-            onClick={onQuickLog}
+            className={confirmedAction === 'quick-log' ? 'is-confirmed' : ''}
+            onClick={() => void runWithConfirmation(onQuickLog, 'quick-log')}
           >
-            <RotateCcw aria-hidden="true" size={18} />
+            {confirmedAction === 'quick-log' ? (
+              <Check aria-hidden="true" size={18} />
+            ) : (
+              <RotateCcw aria-hidden="true" size={18} />
+            )}
           </IconButton>
         ) : null}
         {result.type === 'savedMeal' ? null : (
@@ -112,9 +150,16 @@ export function FoodLibraryRow({
                 ? `Log ${display.name}, ${accessibleSummary}`
                 : `Open ${display.name}, ${accessibleSummary}`
             }
-            onClick={onAdd ?? onSelect}
+            className={confirmedAction === 'add' ? 'is-confirmed' : ''}
+            onClick={() =>
+              onAdd ? void runWithConfirmation(onAdd, 'add') : onSelect()
+            }
           >
-            <Plus aria-hidden="true" size={18} />
+            {confirmedAction === 'add' ? (
+              <Check aria-hidden="true" size={18} />
+            ) : (
+              <Plus aria-hidden="true" size={18} />
+            )}
           </IconButton>
         )}
       </div>

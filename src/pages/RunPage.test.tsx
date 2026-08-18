@@ -1,17 +1,68 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { act } from 'react'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { db } from '@db/database'
+import { createExerciseRepository } from '@repositories/exerciseRepository'
+import { createProgramRepository } from '@repositories/programRepository'
 import { runRepository } from '@repositories/runRepository'
+import { workoutRepository } from '@repositories/workoutRepository'
 import { initializeAppData } from '@services/appInitializationService'
+import { clearCachedRunPageData } from '@pages/runPageCache'
 import { RunPage } from './RunPage'
 
 let successCallback: ((position: GeolocationPosition) => void) | null = null
 let errorCallback: ((error: GeolocationPositionError) => void) | null = null
 
+function renderRunPage() {
+  const router = createMemoryRouter(
+    [
+      { path: '/run', element: <RunPage /> },
+      { path: '/workout', element: <div>Workout destination</div> },
+    ],
+    { initialEntries: ['/run'] },
+  )
+  return { router, ...render(<RouterProvider router={router} />) }
+}
+
+async function startLiftingWorkout() {
+  const exercise = await createExerciseRepository(db).createExercise({
+    name: 'Active press',
+    defaultRestSeconds: 90,
+    trackingMethodId: 'weight_reps',
+    notes: '',
+  })
+  const programRepository = createProgramRepository(db)
+  const program = await programRepository.createProgramTemplate({
+    name: 'Active split',
+    days: [
+      {
+        name: 'Upper',
+        exercises: [
+          {
+            exerciseId: exercise.id,
+            targetSetCount: 1,
+            targetRepsMin: 6,
+            targetRepsMax: 8,
+            targetRir: 1,
+            restSecondsOverride: null,
+          },
+        ],
+      },
+    ],
+  })
+  const active = await programRepository.activateTemplate(program.template.id)
+  await workoutRepository.startWorkout({
+    activeCycleId: active.cycle.id,
+    dayId: active.days[0].id,
+    localDate: '2026-07-30',
+  })
+}
+
 beforeEach(async () => {
+  clearCachedRunPageData()
   await db.delete()
   await db.open()
   await initializeAppData()
@@ -39,7 +90,7 @@ afterEach(async () => {
 describe('RunPage', () => {
   it('does not start GPS until Start Run and then records a sample', async () => {
     const user = userEvent.setup()
-    render(<RunPage />)
+    renderRunPage()
 
     expect(await screen.findByText('Choose a run')).toBeInTheDocument()
     expect(navigator.geolocation.watchPosition).not.toHaveBeenCalled()
@@ -66,9 +117,31 @@ describe('RunPage', () => {
     })
   })
 
+  it('replaces run starts with the active lifting workout action', async () => {
+    const user = userEvent.setup()
+    await startLiftingWorkout()
+    const { router } = renderRunPage()
+
+    const finishWorkout = await screen.findByRole('link', {
+      name: 'Finish current workout',
+    })
+    expect(
+      screen.queryByRole('button', { name: /Start Outdoor Run/ }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Start Treadmill' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Log Run Manually' }),
+    ).not.toBeInTheDocument()
+
+    await user.click(finishWorkout)
+    expect(router.state.location.pathname).toBe('/workout')
+  })
+
   it('handles permission denied without repeating prompts', async () => {
     const user = userEvent.setup()
-    render(<RunPage />)
+    renderRunPage()
 
     await user.click(
       await screen.findByRole('button', { name: /Start Outdoor Run/ }),
@@ -94,13 +167,13 @@ describe('RunPage', () => {
 
   it('recovers an active run after remount and confirms finish', async () => {
     const user = userEvent.setup()
-    const { unmount } = render(<RunPage />)
+    const { unmount } = renderRunPage()
     await user.click(
       await screen.findByRole('button', { name: /Start Outdoor Run/ }),
     )
     unmount()
 
-    render(<RunPage />)
+    renderRunPage()
     expect(await screen.findByText('active')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Finish/ }))
     await user.click(
@@ -119,7 +192,7 @@ describe('RunPage', () => {
 
   it('shows a paused run before the pause write finishes', async () => {
     const user = userEvent.setup()
-    render(<RunPage />)
+    renderRunPage()
     await user.click(
       await screen.findByRole('button', { name: /Start Outdoor Run/ }),
     )
@@ -150,7 +223,7 @@ describe('RunPage', () => {
 
   it('logs a completed run manually without starting GPS', async () => {
     const user = userEvent.setup()
-    render(<RunPage />)
+    renderRunPage()
 
     await user.click(
       await screen.findByRole('button', { name: 'Log Run Manually' }),
@@ -183,7 +256,7 @@ describe('RunPage', () => {
       value: MockDeviceMotionEvent,
     })
     const addEventListener = vi.spyOn(window, 'addEventListener')
-    render(<RunPage />)
+    renderRunPage()
 
     await user.click(
       await screen.findByRole('button', { name: 'Start Treadmill' }),

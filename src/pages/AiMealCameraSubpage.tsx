@@ -5,7 +5,6 @@ import {
   ImagePlus,
   RefreshCw,
   RotateCcw,
-  Settings,
   Sparkles,
 } from 'lucide-react'
 import {
@@ -25,26 +24,25 @@ import {
   StatusMessage,
 } from '@components/ui'
 import { useLanguage } from '@components/languageContextValue'
-import type { GeminiMealAnalysis } from '@domain/geminiMealAnalysis'
+import type { MealAnalysis } from '@domain/mealAnalysis'
 import {
   analyzeMealPhoto,
-  GeminiMealAnalysisError,
+  MealAnalysisError,
+  MAX_MEAL_IMAGE_BASE64_LENGTH,
   MAX_MEAL_NOTE_LENGTH,
   MAX_MEAL_PHOTOS,
-  type GeminiImageInput,
-} from '@services/geminiMealAnalysisClient'
+  type MealImageInput,
+} from '@services/mealAnalysisClient'
 
 type CameraStatus = 'starting' | 'ready' | 'error'
 
-type CapturedPhoto = GeminiImageInput & { dataUrl: string }
+type CapturedPhoto = MealImageInput & { dataUrl: string }
 
 export function AiMealCameraSubpage({
-  apiKey,
   onAnalyzed,
   onBack,
 }: {
-  apiKey: string | null
-  onAnalyzed: (analysis: GeminiMealAnalysis) => void
+  onAnalyzed: (analysis: MealAnalysis) => void
   onBack: () => void
 }) {
   const { t } = useLanguage()
@@ -119,18 +117,14 @@ export function AiMealCameraSubpage({
 
   useEffect(() => {
     mountedRef.current = true
-    const startupId = apiKey
-      ? window.setTimeout(() => void startCamera(), 0)
-      : null
+    const startupId = window.setTimeout(() => void startCamera(), 0)
     return () => {
-      if (startupId !== null) {
-        window.clearTimeout(startupId)
-      }
+      window.clearTimeout(startupId)
       mountedRef.current = false
       cameraAttemptRef.current += 1
       stopCamera()
     }
-  }, [apiKey, startCamera, stopCamera])
+  }, [startCamera, stopCamera])
 
   useEffect(() => {
     if (!analysisFailed) {
@@ -141,7 +135,7 @@ export function AiMealCameraSubpage({
   }, [analysisFailed, onBack])
 
   const analyze = useCallback(async () => {
-    if (!apiKey || photos.length === 0) {
+    if (photos.length === 0) {
       return
     }
     setAnalyzing(true)
@@ -150,7 +144,6 @@ export function AiMealCameraSubpage({
     try {
       const trimmedNote = note.trim()
       const result = await analyzeMealPhoto({
-        apiKey,
         images: photos,
         note: trimmedNote ? trimmedNote : undefined,
       })
@@ -160,7 +153,7 @@ export function AiMealCameraSubpage({
     } catch (error) {
       if (mountedRef.current) {
         if (
-          error instanceof GeminiMealAnalysisError &&
+          error instanceof MealAnalysisError &&
           error.code === 'no_food_detected'
         ) {
           setAnalysisFailed(true)
@@ -170,7 +163,7 @@ export function AiMealCameraSubpage({
         setAnalyzing(false)
       }
     }
-  }, [apiKey, note, onAnalyzed, photos])
+  }, [note, onAnalyzed, photos])
 
   function capturePhoto() {
     const video = videoRef.current
@@ -230,169 +223,155 @@ export function AiMealCameraSubpage({
         }
       />
 
-      {!apiKey ? (
-        <div className="ai-camera-setup">
-          <StatusMessage tone="warning">
-            {t(
-              'Add your Gemini API key in Settings before analyzing a meal photo.',
-            )}
-          </StatusMessage>
-          <a className="button button-primary" href="/settings?section=ai-meal">
-            <Settings aria-hidden="true" size={18} />
-            {t('Open Gemini settings')}
-          </a>
-        </div>
-      ) : (
-        <>
-          <div className="ai-camera-viewfinder">
-            {reviewing && lastPhoto ? (
-              <img alt={t('Captured meal')} src={lastPhoto.dataUrl} />
-            ) : (
-              <video
-                aria-label="AI meal camera preview"
-                muted
-                playsInline
-                ref={videoRef}
-              />
-            )}
-            {analyzing ? (
-              <div className="ai-camera-progress">
-                <div
-                  aria-label={t('Analyzing meal')}
-                  className="ai-processing-robot"
-                  role="status"
-                >
-                  <span className="ai-processing-numbers" aria-hidden="true">
-                    <span>1</span>
-                    <span>+</span>
-                    <span>0</span>
-                    <span>kcal</span>
-                  </span>
-                  <span className="ai-processing-bot" aria-hidden="true">
-                    <Bot size={54} strokeWidth={1.8} />
-                  </span>
-                  <strong>{t('Crunching the numbers…')}</strong>
-                  <span>{t('Building your ingredient estimate')}</span>
-                </div>
-              </div>
-            ) : analysisFailed ? (
-              <div className="ai-camera-progress ai-camera-failed" role="alert">
-                <Bot aria-hidden="true" size={46} />
-                <strong>{t('AI failed')}</strong>
-              </div>
-            ) : null}
-          </div>
-
-          {reviewing && photos.length > 1 ? (
-            <div
-              aria-label={t('Captured meal photos')}
-              className="ai-camera-thumbs"
-              role="list"
-            >
-              {photos.map((photo, index) => (
-                <img
-                  alt={`${t('Captured meal')} ${index + 1}`}
-                  className="ai-camera-thumb"
-                  key={index}
-                  role="listitem"
-                  src={photo.dataUrl}
-                />
-              ))}
-            </div>
-          ) : null}
-
-          {cameraStatus === 'starting' && capturing ? (
-            <LoadingState label="Starting camera" />
-          ) : null}
-          {cameraError ? (
-            <StatusMessage tone="warning">{t(cameraError)}</StatusMessage>
-          ) : null}
-          {analysisError ? (
-            <StatusMessage tone="warning">{t(analysisError)}</StatusMessage>
-          ) : null}
-
-          {reviewing && !analyzing && !analysisFailed ? (
-            <div className="form-field ai-camera-note">
-              <label htmlFor="ai-meal-note">
-                {t('Details for the AI (optional)')}
-              </label>
-              <textarea
-                id="ai-meal-note"
-                maxLength={MAX_MEAL_NOTE_LENGTH}
-                onChange={(event) => setNote(event.currentTarget.value)}
-                placeholder={t(
-                  'e.g. 8 oz ribeye, rice cooked in butter, 12-inch plate',
-                )}
-                rows={2}
-                value={note}
-              />
-              <p className="muted">
-                {t(
-                  'Portion sizes, hidden ingredients, and cooking fats make the estimate more accurate.',
-                )}
-              </p>
-            </div>
-          ) : null}
-
-          <div className="ai-camera-controls">
-            <input
-              accept="image/*"
-              aria-label={t('Choose meal photo from library')}
-              className="visually-hidden"
-              onChange={(event) => void importPhoto(event)}
-              ref={fileInputRef}
-              type="file"
+      <>
+        <div className="ai-camera-viewfinder">
+          {reviewing && lastPhoto ? (
+            <img alt={t('Captured meal')} src={lastPhoto.dataUrl} />
+          ) : (
+            <video
+              aria-label="AI meal camera preview"
+              muted
+              playsInline
+              ref={videoRef}
             />
-            {capturing && cameraStatus === 'ready' ? (
-              <IconButton
-                aria-label="Take meal photo"
-                className="ai-camera-shutter"
-                onClick={capturePhoto}
+          )}
+          {analyzing ? (
+            <div className="ai-camera-progress">
+              <div
+                aria-label={t('Analyzing meal')}
+                className="ai-processing-robot"
+                role="status"
               >
-                <Camera aria-hidden="true" size={28} />
-              </IconButton>
-            ) : null}
-            {capturing && cameraStatus === 'error' ? (
-              <PrimaryButton onClick={() => void startCamera()} type="button">
-                <RefreshCw aria-hidden="true" size={18} />
-                Retry camera
-              </PrimaryButton>
-            ) : null}
-            {!analyzing && photos.length < MAX_MEAL_PHOTOS ? (
-              <SecondaryButton
-                onClick={() => fileInputRef.current?.click()}
-                type="button"
-              >
-                <ImagePlus aria-hidden="true" size={18} />
-                {t('Choose from photos')}
-              </SecondaryButton>
-            ) : null}
-            {reviewing && !analyzing && photos.length < MAX_MEAL_PHOTOS ? (
-              <SecondaryButton onClick={() => void startCamera()} type="button">
-                <Camera aria-hidden="true" size={18} />
-                {t('Add another angle')}
-              </SecondaryButton>
-            ) : null}
-            {reviewing && !analyzing ? (
-              <>
-                <SecondaryButton onClick={startOver} type="button">
-                  <RotateCcw aria-hidden="true" size={18} />
-                  {t('Start over')}
-                </SecondaryButton>
-                <PrimaryButton onClick={() => void analyze()} type="button">
-                  <Sparkles aria-hidden="true" size={18} />
-                  {t('Analyze meal')}
-                </PrimaryButton>
-              </>
-            ) : null}
+                <span className="ai-processing-numbers" aria-hidden="true">
+                  <span>1</span>
+                  <span>+</span>
+                  <span>0</span>
+                  <span>kcal</span>
+                </span>
+                <span className="ai-processing-bot" aria-hidden="true">
+                  <Bot size={54} strokeWidth={1.8} />
+                </span>
+                <strong>{t('Crunching the numbers…')}</strong>
+                <span>{t('Building your ingredient estimate')}</span>
+              </div>
+            </div>
+          ) : analysisFailed ? (
+            <div className="ai-camera-progress ai-camera-failed" role="alert">
+              <Bot aria-hidden="true" size={46} />
+              <strong>{t('AI failed')}</strong>
+            </div>
+          ) : null}
+        </div>
+
+        {reviewing && photos.length > 1 ? (
+          <div
+            aria-label={t('Captured meal photos')}
+            className="ai-camera-thumbs"
+            role="list"
+          >
+            {photos.map((photo, index) => (
+              <img
+                alt={`${t('Captured meal')} ${index + 1}`}
+                className="ai-camera-thumb"
+                key={index}
+                role="listitem"
+                src={photo.dataUrl}
+              />
+            ))}
           </div>
-          <p className="muted ai-camera-disclaimer">
-            {t(
-              'Photo nutrition is an estimate. Review every ingredient before logging food.',
-            )}
-          </p>
-        </>
-      )}
+        ) : null}
+
+        {cameraStatus === 'starting' && capturing ? (
+          <LoadingState label="Starting camera" />
+        ) : null}
+        {cameraError ? (
+          <StatusMessage tone="warning">{t(cameraError)}</StatusMessage>
+        ) : null}
+        {analysisError ? (
+          <StatusMessage tone="warning">{t(analysisError)}</StatusMessage>
+        ) : null}
+
+        {reviewing && !analyzing && !analysisFailed ? (
+          <div className="form-field ai-camera-note">
+            <label htmlFor="ai-meal-note">
+              {t('Details for the AI (optional)')}
+            </label>
+            <textarea
+              id="ai-meal-note"
+              maxLength={MAX_MEAL_NOTE_LENGTH}
+              onChange={(event) => setNote(event.currentTarget.value)}
+              placeholder={t(
+                'e.g. 8 oz ribeye, rice cooked in butter, 12-inch plate',
+              )}
+              rows={2}
+              value={note}
+            />
+            <p className="muted">
+              {t(
+                'Portion sizes, hidden ingredients, and cooking fats make the estimate more accurate.',
+              )}
+            </p>
+          </div>
+        ) : null}
+
+        <div className="ai-camera-controls">
+          <input
+            accept="image/*"
+            aria-label={t('Choose meal photo from library')}
+            className="visually-hidden"
+            onChange={(event) => void importPhoto(event)}
+            ref={fileInputRef}
+            type="file"
+          />
+          {capturing && cameraStatus === 'ready' ? (
+            <IconButton
+              aria-label="Take meal photo"
+              className="ai-camera-shutter"
+              onClick={capturePhoto}
+            >
+              <Camera aria-hidden="true" size={28} />
+            </IconButton>
+          ) : null}
+          {capturing && cameraStatus === 'error' ? (
+            <PrimaryButton onClick={() => void startCamera()} type="button">
+              <RefreshCw aria-hidden="true" size={18} />
+              Retry camera
+            </PrimaryButton>
+          ) : null}
+          {!analyzing && photos.length < MAX_MEAL_PHOTOS ? (
+            <SecondaryButton
+              onClick={() => fileInputRef.current?.click()}
+              type="button"
+            >
+              <ImagePlus aria-hidden="true" size={18} />
+              {t('Choose from photos')}
+            </SecondaryButton>
+          ) : null}
+          {reviewing && !analyzing && photos.length < MAX_MEAL_PHOTOS ? (
+            <SecondaryButton onClick={() => void startCamera()} type="button">
+              <Camera aria-hidden="true" size={18} />
+              {t('Add another angle')}
+            </SecondaryButton>
+          ) : null}
+          {reviewing && !analyzing ? (
+            <>
+              <SecondaryButton onClick={startOver} type="button">
+                <RotateCcw aria-hidden="true" size={18} />
+                {t('Start over')}
+              </SecondaryButton>
+              <PrimaryButton onClick={() => void analyze()} type="button">
+                <Sparkles aria-hidden="true" size={18} />
+                {t('Analyze meal')}
+              </PrimaryButton>
+            </>
+          ) : null}
+        </div>
+        <p className="muted ai-camera-disclaimer">
+          {t(
+            'Photo nutrition is an estimate. Review every ingredient before logging food.',
+          )}
+        </p>
+      </>
     </section>
   )
 }
@@ -416,21 +395,38 @@ function preparePhoto(
   sourceWidth: number,
   sourceHeight: number,
 ) {
-  const scale = Math.min(1, 1280 / Math.max(sourceWidth, sourceHeight))
   const canvas = document.createElement('canvas')
-  canvas.width = Math.max(1, Math.round(sourceWidth * scale))
-  canvas.height = Math.max(1, Math.round(sourceHeight * scale))
   const context = canvas.getContext('2d')
   if (!context) {
     throw new Error('The photo could not be prepared.')
   }
-  context.drawImage(source, 0, 0, canvas.width, canvas.height)
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.82)
-  return {
-    base64: dataUrl.slice(dataUrl.indexOf(',') + 1),
-    dataUrl,
-    mimeType: 'image/jpeg' as const,
+
+  const attempts = [
+    { maxDimension: 1280, quality: 0.82 },
+    { maxDimension: 1080, quality: 0.74 },
+    { maxDimension: 900, quality: 0.68 },
+    { maxDimension: 720, quality: 0.62 },
+  ]
+  for (const attempt of attempts) {
+    const scale = Math.min(
+      1,
+      attempt.maxDimension / Math.max(sourceWidth, sourceHeight),
+    )
+    canvas.width = Math.max(1, Math.round(sourceWidth * scale))
+    canvas.height = Math.max(1, Math.round(sourceHeight * scale))
+    context.drawImage(source, 0, 0, canvas.width, canvas.height)
+    const dataUrl = canvas.toDataURL('image/jpeg', attempt.quality)
+    const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
+    if (base64.length <= MAX_MEAL_IMAGE_BASE64_LENGTH) {
+      return {
+        base64,
+        dataUrl,
+        mimeType: 'image/jpeg' as const,
+      }
+    }
   }
+
+  throw new Error('The photo could not be compressed to the upload limit.')
 }
 
 function cameraErrorMessage(error: unknown) {
@@ -444,7 +440,7 @@ function cameraErrorMessage(error: unknown) {
 }
 
 function analysisErrorMessage(error: unknown) {
-  return error instanceof GeminiMealAnalysisError
+  return error instanceof MealAnalysisError
     ? error.message
     : 'The meal photo could not be analyzed. Try again.'
 }

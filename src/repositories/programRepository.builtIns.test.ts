@@ -24,16 +24,16 @@ afterEach(async () => {
 })
 
 describe('seedBuiltInPrograms', () => {
-  it('seeds all 28 immutable built-in templates with days and exercises', async () => {
+  it('seeds all 29 immutable built-in templates with days and exercises', async () => {
     const repository = createProgramRepository(database)
     await repository.seedBuiltInPrograms()
 
     const templates = await database.programTemplates.toArray()
     const builtIns = templates.filter((t) => t.isBuiltIn)
-    expect(builtIns).toHaveLength(28)
+    expect(builtIns).toHaveLength(29)
 
     const ids = builtIns.map((t) => t.id)
-    expect(new Set(ids).size).toBe(28)
+    expect(new Set(ids).size).toBe(29)
 
     // Every prescription references a real, seeded exercise.
     const prescriptions = await database.templateWorkoutExercises.toArray()
@@ -57,7 +57,7 @@ describe('seedBuiltInPrograms', () => {
     await repository.seedBuiltInPrograms()
     await repository.seedBuiltInPrograms()
 
-    expect(await database.programTemplates.count()).toBe(28)
+    expect(await database.programTemplates.count()).toBe(29)
     expect(await database.templateWorkoutDays.count()).toBe(firstDays)
     expect(await database.templateWorkoutExercises.count()).toBe(firstExercises)
   })

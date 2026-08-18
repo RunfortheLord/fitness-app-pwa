@@ -31,12 +31,13 @@ const EXPECTED_NAMES = [
   'Chest/Back, Biceps/Triceps, Shoulders, Lower Body Split',
   'Hybrid Upper/Lower/Push/Pull/Legs',
   'Hybrid Upper/Lower/Chest-Back/Lower/Arms',
+  'Bodybuilding-Biased Powerbuilding',
 ]
 
 // number of training days expected per program, in order.
 const EXPECTED_DAY_COUNTS = [
   2, 3, 4, 3, 4, 4, 4, 6, 5, 4, 5, 4, 4, 4, 3, 5, 3, 6, 2, 3, 4, 5, 6, 4, 6, 4,
-  5, 5,
+  5, 5, 7,
 ]
 
 function programByName(name: string) {
@@ -48,8 +49,8 @@ function programByName(name: string) {
 }
 
 describe('BUILT_IN_PROGRAMS', () => {
-  it('contains exactly 28 programs in the required order', () => {
-    expect(BUILT_IN_PROGRAMS).toHaveLength(28)
+  it('contains exactly 29 programs in the required order', () => {
+    expect(BUILT_IN_PROGRAMS).toHaveLength(29)
     expect(BUILT_IN_PROGRAMS.map((p) => p.name)).toEqual(EXPECTED_NAMES)
   })
 
@@ -170,6 +171,85 @@ describe('BUILT_IN_PROGRAMS', () => {
     })
   })
 
+  it('defines the bodybuilding-biased powerbuilding schedule exactly without a deload', () => {
+    const program = programByName('Bodybuilding-Biased Powerbuilding')
+    expect(program.days.map((day) => day.name)).toEqual([
+      'Day 1 - Upper',
+      'Day 2 - Lower - Heavy Squat',
+      'Day 3 - Rest',
+      'Day 4 - Chest / Back',
+      'Day 5 - Lower - Heavy Deadlift',
+      'Day 6 - Arms / Shoulders',
+      'Day 7 - Rest',
+    ])
+    expect(
+      program.days.map((day) =>
+        day.exercises.map((exercise) => [
+          exercise.exerciseId,
+          exercise.targetSetCount,
+          exercise.targetRepsMin,
+          exercise.targetRepsMax,
+          exercise.targetRir,
+        ]),
+      ),
+    ).toEqual([
+      [
+        ['builtin:barbell-bench-press', 3, 3, 7, 1],
+        ['builtin:weighted-pull-up', 3, 5, 8, 1],
+        ['builtin:low-incline-dumbbell-bench-press', 3, 6, 10, 1],
+        ['builtin:chest-supported-row', 3, 6, 8, 1],
+        ['builtin:pec-deck', 2, 6, 10, 0],
+        ['builtin:cable-lateral-raise', 3, 8, 12, 0],
+        ['builtin:dumbbell-shrug', 3, 8, 12, 1],
+        ['builtin:straight-bar-triceps-pressdown', 2, 8, 12, 0],
+        ['builtin:incline-dumbbell-curl', 2, 8, 12, 0],
+      ],
+      [
+        ['builtin:barbell-back-squat', 3, 3, 7, 1],
+        ['builtin:romanian-deadlift', 3, 6, 10, 1],
+        ['builtin:dumbbell-step-up', 3, 8, 12, 1],
+        ['builtin:seated-leg-curl', 2, 6, 10, 1],
+        ['builtin:leg-extension', 2, 10, 15, 0],
+        ['builtin:standing-calf-raise', 3, 8, 15, 0],
+      ],
+      [],
+      [
+        ['builtin:low-incline-barbell-bench-press', 3, 5, 8, 1],
+        ['builtin:pull-up', 3, 8, 12, 1],
+        ['builtin:pec-deck', 3, 12, 20, 0],
+        ['builtin:chest-supported-row', 3, 10, 15, 1],
+        ['builtin:machine-chest-press', 2, 8, 15, 0],
+        ['builtin:lat-pulldown', 2, 10, 15, 0],
+        ['builtin:seated-cable-row', 2, 10, 15, 0],
+        ['builtin:cable-lateral-raise', 2, 15, 25, 0],
+      ],
+      [
+        ['builtin:sumo-deadlift', 3, 3, 6, 1],
+        ['builtin:barbell-back-squat', 3, 6, 10, 2],
+        ['builtin:barbell-hip-thrust', 3, 6, 10, 1],
+        ['builtin:seated-leg-curl', 3, 10, 15, 0],
+        ['builtin:leg-extension', 2, 12, 20, 0],
+        ['builtin:seated-calf-raise', 3, 10, 15, 0],
+      ],
+      [
+        ['builtin:barbell-overhead-press', 3, 5, 8, 1],
+        ['builtin:cable-lateral-raise', 4, 12, 20, 0],
+        ['builtin:cable-rear-delt-fly', 3, 12, 20, 0],
+        ['builtin:ez-bar-curl', 3, 6, 10, 1],
+        ['builtin:overhead-cable-triceps-extension', 3, 8, 12, 1],
+        ['builtin:machine-preacher-curl', 3, 10, 15, 0],
+        ['builtin:straight-bar-triceps-pressdown', 3, 10, 15, 0],
+        ['builtin:cable-shrug', 3, 10, 15, 0],
+      ],
+      [],
+    ])
+    expect(program.days[0].exercises[0].notes).toContain(
+      '1 top set of 3-5 reps, then 2 backoff sets of 5-7 reps',
+    )
+    expect(program.days[1].exercises[2]).toMatchObject({ perSide: true })
+    expect(JSON.stringify(program).toLowerCase()).not.toContain('deload')
+  })
+
   it('never repeats an exercise on consecutive days in the full-body programs', () => {
     const fullBody = [
       'Full Body Two Days per Week',
@@ -195,7 +275,11 @@ describe('BUILT_IN_PROGRAMS', () => {
       expect(program.days.length).toBeGreaterThan(0)
       for (const day of program.days) {
         expect(day.name.length).toBeGreaterThan(0)
-        expect(day.exercises.length).toBeGreaterThan(0)
+        if (day.name.endsWith('Rest')) {
+          expect(day.exercises).toHaveLength(0)
+        } else {
+          expect(day.exercises.length).toBeGreaterThan(0)
+        }
         for (const ex of day.exercises) {
           expect(ex.exerciseId.startsWith('builtin:')).toBe(true)
           expect(ex.targetSetCount).toBeGreaterThanOrEqual(1)

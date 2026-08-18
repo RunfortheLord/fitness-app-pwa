@@ -3,7 +3,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
 const routes = [
   { path: '/', title: 'Home', nav: 'Home' },
   { path: '/nutrition', title: 'Nutrition', nav: 'Nutrition' },
-  { path: '/training', title: 'Training', nav: 'Training' },
+  { path: '/training', title: 'Current Program', nav: 'Training' },
   { path: '/run', title: 'Run', nav: 'Run' },
   { path: '/calories', title: 'Calories' },
   { path: '/history', title: 'History' },
@@ -32,7 +32,7 @@ for (const viewport of [
         async ({ page }) => {
           await page.goto(route.path)
 
-          await expect(page).toHaveTitle(/Fitness Log/)
+          await expect(page).toHaveTitle(/Vigorune/)
           await expect(
             page.getByRole('heading', { level: 1, name: route.title }),
           ).toBeVisible()
@@ -56,18 +56,154 @@ for (const viewport of [
   })
 }
 
+test(
+  'warms lazy routes behind the cold-launch screen',
+  { tag: '@smoke' },
+  async ({ page }, testInfo) => {
+    test.skip(
+      testInfo.project.name === 'mobile-webkit',
+      'The viewport-independent preload audit runs in both Chromium profiles; parallel WebKit can intentionally hit the launch fail-open while the full local cache is warming.',
+    )
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto('/')
+
+    const launchScreen = page.getByRole('main', {
+      name: 'Loading Vigorune',
+    })
+    await expect(launchScreen).toBeVisible()
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Vigorune' }),
+    ).toBeVisible()
+    await expect(launchScreen).not.toBeVisible({ timeout: 30_000 })
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Home' }),
+    ).toBeVisible()
+
+    await page.evaluate(() => {
+      const state = window as typeof window & {
+        __pageLoadingEvents?: string[]
+      }
+      state.__pageLoadingEvents = []
+      const observer = new MutationObserver(() => {
+        const loadingElements = document.querySelectorAll(
+          '.loading-page-skeleton, .loading-state:not(.loading-state-pending)',
+        )
+        for (const element of loadingElements) {
+          const event = `${window.location.pathname}:${element.className}:${element.textContent?.trim() ?? ''}`
+          if (!state.__pageLoadingEvents?.includes(event)) {
+            state.__pageLoadingEvents?.push(event)
+          }
+        }
+      })
+      observer.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class'],
+        childList: true,
+        subtree: true,
+      })
+    })
+
+    await page.getByRole('link', { name: 'Nutrition' }).click()
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Nutrition' }),
+    ).toBeVisible()
+    await expect(page.getByText('Daily nutrition totals')).toBeVisible()
+
+    await page.getByRole('link', { name: 'Training' }).click()
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Current Program' }),
+    ).toBeVisible()
+    await expect(page.getByText('Program library')).toBeVisible()
+
+    await page.getByRole('link', { name: 'Run' }).click()
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Run' }),
+    ).toBeVisible()
+    await expect(page.getByText('Choose a run')).toBeVisible()
+
+    await page.getByRole('link', { name: 'Home' }).click()
+    await page.getByRole('button', { name: 'View all history' }).click()
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'History' }),
+    ).toBeVisible()
+    await expect(page.getByText('No completed activity')).toBeVisible()
+
+    await page.getByRole('link', { name: 'Home' }).click()
+    await page.getByRole('button', { name: 'View more' }).click()
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Calories' }),
+    ).toBeVisible()
+    await expect(page.getByText('Calorie summary')).toBeVisible()
+
+    await page.getByRole('link', { name: 'Settings' }).click()
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Settings' }),
+    ).toBeVisible()
+
+    await page.evaluate(() =>
+      window.scrollTo(0, document.documentElement.scrollHeight),
+    )
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY))
+      .toBeGreaterThan(0)
+    await page.getByRole('link', { name: 'Home' }).click()
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Home' }),
+    ).toBeVisible()
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+    await expect(page.getByLabel('Selected date')).toBeInViewport()
+
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as typeof window & { __pageLoadingEvents?: string[] })
+              .__pageLoadingEvents,
+        ),
+      )
+      .toEqual([])
+  },
+)
+
+test('returns Home to the top after navigating from a scrolled route @smoke', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/settings?section=about')
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Settings' }),
+  ).toBeVisible({ timeout: 45_000 })
+  await expect(page.getByText('Application version')).toBeVisible()
+
+  await page.evaluate(() =>
+    window.scrollTo(0, document.documentElement.scrollHeight),
+  )
+  await expect
+    .poll(() => page.evaluate(() => window.scrollY))
+    .toBeGreaterThan(0)
+
+  await page.getByRole('link', { name: 'Home' }).click()
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Home' }),
+  ).toBeVisible()
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+  await expect(page.getByLabel('Selected date')).toBeInViewport()
+})
+
 test('prompts signed-out users to enable automatic cloud backup on launch', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
 
-  const prompt = page.getByRole('complementary', { name: 'Prevent data loss' })
+  const prompt = page.getByRole('complementary', {
+    name: 'Your data stays local',
+  })
   await expect(prompt).toBeVisible()
   await expect(prompt).toContainText(
-    'Sign in with Google to automatically back up your fitness data.',
+    'Start offline with no account, or sign in with Apple or Google',
   )
-  await prompt.getByRole('button', { name: 'Not now' }).click()
+  await prompt.getByRole('button', { name: 'Continue offline' }).click()
   await expect(prompt).not.toBeVisible()
 })
 
@@ -112,7 +248,10 @@ test('opens the quick action bottom sheet from the center add button', async ({
   ).toBeVisible()
   await expect(
     sheet.getByRole('button', { name: /Start or resume run/ }),
-  ).toBeVisible()
+  ).toHaveCount(0)
+  await expect(
+    sheet.getByRole('button', { name: /Start or resume workout/ }),
+  ).toHaveCount(0)
 })
 
 test('bottom navigation has exactly five controls and no History tab', async ({
@@ -132,6 +271,28 @@ test('bottom navigation has exactly five controls and no History tab', async ({
   await expect(nav.getByRole('link', { name: 'Run' })).toBeVisible()
   await expect(nav.getByRole('link', { name: 'History' })).toHaveCount(0)
   await expect(nav.locator('a,button')).toHaveCount(5)
+
+  const beforeScroll = await nav.evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    return {
+      bottom: rect.bottom,
+      transform: getComputedStyle(element).transform,
+      viewportHeight: window.innerHeight,
+    }
+  })
+  expect(beforeScroll.transform).toBe('none')
+  expect(
+    Math.abs(beforeScroll.bottom - beforeScroll.viewportHeight),
+  ).toBeLessThan(1)
+
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+  const afterScroll = await nav.evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    return { bottom: rect.bottom, viewportHeight: window.innerHeight }
+  })
+  expect(
+    Math.abs(afterScroll.bottom - afterScroll.viewportHeight),
+  ).toBeLessThan(1)
 })
 
 test('sets a weight goal through the recommended-rate step', async ({
@@ -167,7 +328,7 @@ test('sets a weight goal through the recommended-rate step', async ({
   await page.getByRole('button', { name: 'Done' }).click()
   await expect(
     page.getByText('Macros calculated and targets saved.'),
-  ).toBeVisible()
+  ).toBeVisible({ timeout: 15_000 })
   await expect(
     page.getByRole('button', { name: 'Update Calories' }),
   ).toBeVisible()
@@ -216,8 +377,23 @@ test('creates and persists a custom exercise from the Add sheet', async ({
   await page.getByRole('button', { name: /Create exercise/ }).click()
   await expect(page).toHaveURL(/\/training/)
   await page.getByRole('textbox', { name: 'Name' }).fill('E2E Bench press')
+  await expect(page.getByRole('textbox', { name: 'Name' })).toHaveValue(
+    'E2E Bench press',
+  )
   await fillRestInputs(page, '150')
+  await expect(page.getByRole('textbox', { name: 'Name' })).toHaveValue(
+    'E2E Bench press',
+  )
   await page.getByLabel('Tracking preset').selectOption('weight_reps')
+  await expect(page.getByRole('textbox', { name: 'Name' })).toHaveValue(
+    'E2E Bench press',
+  )
+  await expect(page.getByRole('textbox', { name: 'Rest minutes' })).toHaveValue(
+    '2',
+  )
+  await expect(page.getByRole('textbox', { name: 'Rest seconds' })).toHaveValue(
+    '30',
+  )
   await expect(page.getByText(/external weight and repetitions/)).toBeVisible()
   await page.getByRole('button', { name: 'Save exercise' }).click()
 
@@ -251,7 +427,7 @@ test('creates, activates, starts the next day, and persists a program cycle', as
   await expect(page.getByText('E2E Squat')).toBeVisible({ timeout: 15_000 })
 
   await page
-    .getByLabel('Current active cycle')
+    .getByLabel('Current Program')
     .getByRole('button', { name: 'Create program' })
     .click()
   await page.getByRole('textbox', { name: 'Name' }).fill('E2E Strength')
@@ -263,6 +439,28 @@ test('creates, activates, starts the next day, and persists a program cycle', as
   await builder.getByRole('button', { name: 'Add exercise' }).click()
   await addPrescription(builder, 'E2E Squat')
   await expect(builder.getByText('E2E Squat')).toBeVisible()
+  await expect(
+    builder.getByRole('spinbutton', { name: 'Current week' }),
+  ).toHaveCount(0)
+  await expect(
+    builder.getByRole('group', { name: 'Schedule deload weeks' }),
+  ).toHaveCount(0)
+  await builder.getByRole('button', { name: 'Program editor settings' }).click()
+  const programSettings = page.getByRole('dialog', {
+    name: 'Program settings',
+  })
+  await programSettings
+    .getByRole('checkbox', { name: 'Schedule deload weeks' })
+    .check()
+  await expect(programSettings).not.toBeVisible()
+  await expect(
+    builder.getByRole('button', { name: 'Deload 1' }),
+  ).toHaveAttribute('aria-pressed', 'true')
+  await builder.getByRole('button', { name: 'Deload 1' }).click()
+  await builder.getByRole('button', { name: 'Week 2' }).click()
+  await expect(
+    builder.getByRole('button', { name: 'Deload 1' }),
+  ).toHaveAttribute('aria-pressed', 'true')
   await closeBuilder(builder)
 
   await page.getByRole('button', { name: 'Activate E2E Strength' }).click()
@@ -271,21 +469,37 @@ test('creates, activates, starts the next day, and persists a program cycle', as
     .getByRole('button', { name: 'Activate' })
     .click()
   await expect(page.getByText('Program activated.')).toBeVisible()
+  const weekSelector = page.getByRole('combobox', {
+    name: 'Select program week',
+  })
+  await expect(
+    weekSelector.getByRole('option', { name: 'Deload 1' }),
+  ).toHaveCount(1)
+  await page.getByRole('button', { name: 'Mark Day A done this week' }).click()
+  await expect(weekSelector).toHaveValue('2')
+  await weekSelector.selectOption('1')
+  await expect(
+    page.getByRole('button', { name: 'Mark Day A not done this week' }),
+  ).toBeVisible()
   await page.getByRole('link', { name: 'Home' }).click()
   await page.getByRole('button', { name: 'Start Day A' }).click()
   await expect(
     page.getByRole('heading', { level: 1, name: 'Day A' }),
   ).toBeVisible()
-  await page.getByRole('button', { name: 'Discard workout' }).click()
-  await page
+  await page.getByRole('button', { name: 'Discard' }).click()
+  const discardConfirmation = page
     .getByRole('dialog', { name: 'Discard workout?' })
     .getByRole('button', { name: 'Discard Workout' })
-    .click()
+  await discardConfirmation.evaluate((button: HTMLButtonElement) => {
+    button.click()
+    button.click()
+  })
   await expect(page).toHaveURL(/\/training/)
+  await expect(page.getByText(/Active workout .* was not found/)).toHaveCount(0)
 
   await page.reload()
   await expect(
-    page.getByLabel('Current active cycle').getByText('E2E Strength'),
+    page.getByLabel('Current Program').getByText('E2E Strength'),
   ).toBeVisible()
   await expect(page.getByRole('button', { name: /^Day A/ })).toBeVisible()
 })
@@ -303,6 +517,18 @@ test(
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto('/training')
     await waitForExerciseLibrary(page)
+    const dashboardNavBottomGaps = await page
+      .locator('.bottom-nav')
+      .evaluate((element) => {
+        const navBottom = element.getBoundingClientRect().bottom
+        const visualViewportBottom = window.visualViewport
+          ? window.visualViewport.offsetTop + window.visualViewport.height
+          : window.innerHeight
+        return {
+          layout: window.innerHeight - navBottom,
+          visual: visualViewportBottom - navBottom,
+        }
+      })
 
     await page.getByLabel('Create exercise').click()
     await page.getByRole('textbox', { name: 'Name' }).fill('E2E Live press')
@@ -314,7 +540,7 @@ test(
     })
 
     await page
-      .getByLabel('Current active cycle')
+      .getByLabel('Current Program')
       .getByRole('button', { name: 'Create program' })
       .click()
     await page.getByRole('textbox', { name: 'Name' }).fill('E2E Live program')
@@ -341,6 +567,198 @@ test(
     await expect(
       page.getByRole('heading', { level: 1, name: 'Live A' }),
     ).toBeVisible()
+    const exerciseWorkspace = page.locator('.exercise-workspace')
+    await expect(exerciseWorkspace).toBeVisible()
+    await expect(exerciseWorkspace).not.toHaveClass(/\bcard\b/)
+    await expect(
+      exerciseWorkspace.locator('.exercise-prescription-inline'),
+    ).toHaveCount(0)
+    await page.getByRole('button', { name: 'More exercise actions' }).click()
+    const exerciseOptions = page.getByRole('dialog', {
+      name: 'Exercise options',
+    })
+    await expect(exerciseOptions).toHaveClass(/bottom-sheet--page/)
+    await expect(exerciseOptions.getByText('2 sets - 5-10 reps')).toBeVisible()
+    await expect(exerciseOptions.getByText('Total workout time')).toBeVisible()
+    await expect(
+      exerciseOptions.getByText(
+        'Changes apply immediately to the current rest timer and future sets.',
+      ),
+    ).toBeVisible()
+    await expect(
+      exerciseOptions.getByRole('button', { name: 'Cancel' }),
+    ).toHaveCount(0)
+    await expect(
+      exerciseOptions.getByRole('button', { name: 'Save', exact: true }),
+    ).toHaveCount(0)
+    await exerciseOptions
+      .getByRole('listbox', { name: 'Rest minutes' })
+      .getByRole('option', { name: '01' })
+      .click()
+    await exerciseOptions
+      .getByRole('listbox', { name: 'Rest seconds' })
+      .getByRole('option', { name: '30' })
+      .click()
+    await page.screenshot({
+      fullPage: true,
+      path: testInfo.outputPath('exercise-options-timer-390.png'),
+    })
+    expect(
+      await exerciseOptions.evaluate(
+        (element) => element.scrollHeight <= element.clientHeight + 1,
+      ),
+    ).toBe(true)
+    const addSetControl = page.getByRole('button', { name: 'Add Set' })
+    expect(await addSetControl.evaluate((element) => element.inert)).toBe(true)
+    await exerciseOptions
+      .getByRole('button', { name: 'Back from exercise options' })
+      .click()
+    await expect(exerciseOptions).not.toBeVisible()
+    await expect
+      .poll(() => addSetControl.evaluate((element) => element.inert))
+      .toBe(false)
+    const lockedLayout = await page.evaluate(() => ({
+      bodyOverflow: getComputedStyle(document.body).overflow,
+      htmlOverflow: getComputedStyle(document.documentElement).overflow,
+      pageScrollHeight: document.documentElement.scrollHeight,
+      navBottomGap:
+        window.innerHeight -
+        document.querySelector('.bottom-nav')!.getBoundingClientRect().bottom,
+      navVisualBottomGap:
+        (window.visualViewport
+          ? window.visualViewport.offsetTop + window.visualViewport.height
+          : window.innerHeight) -
+        document.querySelector('.bottom-nav')!.getBoundingClientRect().bottom,
+      rootOverflow: getComputedStyle(document.querySelector('#root')!).overflow,
+      shellPosition: getComputedStyle(document.querySelector('.app-shell')!)
+        .position,
+      viewportHeight: window.innerHeight,
+    }))
+    const workspaceOverflow = await exerciseWorkspace.evaluate(
+      (element) => getComputedStyle(element).overflowY,
+    )
+    const setList = exerciseWorkspace.locator('.set-list')
+    const setListOverflow = await setList.evaluate(
+      (element) => getComputedStyle(element).overflowY,
+    )
+    const setListMomentumScrolling = await setList.evaluate((element) =>
+      getComputedStyle(element).getPropertyValue('-webkit-overflow-scrolling'),
+    )
+    expect(lockedLayout.bodyOverflow).toBe('hidden')
+    expect(lockedLayout.htmlOverflow).toBe('hidden')
+    expect(lockedLayout.rootOverflow).toBe('hidden')
+    expect(lockedLayout.shellPosition).toBe('fixed')
+    expect(lockedLayout.pageScrollHeight).toBeLessThanOrEqual(
+      lockedLayout.viewportHeight + 1,
+    )
+    expect(
+      Math.abs(lockedLayout.navBottomGap - dashboardNavBottomGaps.layout),
+    ).toBeLessThanOrEqual(1)
+    expect(
+      Math.abs(lockedLayout.navVisualBottomGap - dashboardNavBottomGaps.visual),
+    ).toBeLessThanOrEqual(1)
+    const recoveryLayout = await page.evaluate(() => {
+      const root = document.documentElement
+      const shell = document.querySelector('.app-shell')!
+      const nav = document.querySelector('.bottom-nav')!
+      const baselinePaddingTop = Number.parseFloat(
+        getComputedStyle(shell).paddingTop,
+      )
+      root.style.setProperty('--live-workout-viewport-offset', '24px')
+      const recoveredPaddingTop = Number.parseFloat(
+        getComputedStyle(shell).paddingTop,
+      )
+      const recoveredNavBottom = Number.parseFloat(getComputedStyle(nav).bottom)
+      root.style.removeProperty('--live-workout-viewport-offset')
+      return {
+        navBottom: recoveredNavBottom,
+        paddingTopDelta: recoveredPaddingTop - baselinePaddingTop,
+      }
+    })
+    expect(recoveryLayout.paddingTopDelta).toBe(24)
+    expect(recoveryLayout.navBottom).toBe(-24)
+    expect(workspaceOverflow).toBe('hidden')
+    expect(setListOverflow).toBe('auto')
+    expect(setListMomentumScrolling).not.toBe('touch')
+    const fixedControlSpacing = await page.evaluate(() => {
+      const actions = document
+        .querySelector('.exercise-management-actions')!
+        .getBoundingClientRect()
+      const addSet = document
+        .querySelector('.exercise-add-set-button')!
+        .getBoundingClientRect()
+      const session = document
+        .querySelector('.live-workout-session-bar')!
+        .getBoundingClientRect()
+      return {
+        actionToSessionGap: session.top - actions.bottom,
+        addSetBeforeActions: addSet.bottom <= actions.top,
+        sessionPosition: getComputedStyle(
+          document.querySelector('.live-workout-session-bar')!,
+        ).position,
+        workspaceTransform: getComputedStyle(
+          document.querySelector('.exercise-workspace')!,
+        ).transform,
+      }
+    })
+    expect(fixedControlSpacing.actionToSessionGap).toBeGreaterThanOrEqual(7)
+    expect(fixedControlSpacing.actionToSessionGap).toBeLessThanOrEqual(9)
+    expect(fixedControlSpacing.addSetBeforeActions).toBe(true)
+    expect(fixedControlSpacing.sessionPosition).toBe('relative')
+    expect(fixedControlSpacing.workspaceTransform).toBe('none')
+    await page.evaluate(() => window.scrollTo(0, 200))
+    expect(await page.evaluate(() => window.scrollY)).toBe(0)
+    await expect(
+      exerciseWorkspace
+        .locator('.exercise-title-line')
+        .getByRole('button', { name: 'Edit exercise notes' }),
+    ).toBeVisible()
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        value: 'hidden',
+      })
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await expect(
+      page
+        .locator('.live-workout-session-bar')
+        .getByRole('button', { name: 'Pause workout timer' }),
+    ).toHaveCount(0)
+    await expect(
+      page
+        .locator('.app-header')
+        .getByRole('button', { name: 'Pause workout timer' }),
+    ).toHaveCount(0)
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        value: 'visible',
+      })
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await page.getByRole('button', { name: 'More exercise actions' }).click()
+    const reopenedExerciseOptions = page.getByRole('dialog', {
+      name: 'Exercise options',
+    })
+    await reopenedExerciseOptions
+      .getByRole('button', { name: 'Pause workout timer' })
+      .click()
+    await expect(
+      reopenedExerciseOptions.getByRole('button', {
+        name: 'Resume workout timer',
+      }),
+    ).toBeVisible()
+    await reopenedExerciseOptions
+      .getByRole('button', { name: 'Resume workout timer' })
+      .click()
+    await expect(
+      reopenedExerciseOptions.getByRole('button', {
+        name: 'Pause workout timer',
+      }),
+    ).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(reopenedExerciseOptions).not.toBeVisible()
     await expect(
       page.getByRole('textbox', { name: 'Workout notes' }),
     ).toHaveCount(0)
@@ -365,6 +783,32 @@ test(
     await addExerciseSheet
       .getByRole('button', { name: 'Back from add exercise' })
       .click()
+    await page.getByRole('button', { name: 'Add Set' }).click()
+    await expect(
+      page.getByRole('textbox', { name: 'Set 3 Weight' }),
+    ).toBeVisible()
+    const firstThreeSetHeights = await page
+      .locator('.set-row')
+      .evaluateAll((rows) =>
+        rows.slice(0, 3).map((row) => row.getBoundingClientRect().height),
+      )
+    await page.getByRole('button', { name: 'Add Set' }).click()
+    await expect(
+      page.getByRole('textbox', { name: 'Set 4 Weight' }),
+    ).toBeVisible()
+    const firstThreeHeightsAfterFourthSet = await page
+      .locator('.set-row')
+      .evaluateAll((rows) =>
+        rows.slice(0, 3).map((row) => row.getBoundingClientRect().height),
+      )
+    expect(firstThreeHeightsAfterFourthSet).toEqual(firstThreeSetHeights)
+    await page.getByRole('button', { name: 'Delete set 4' }).click()
+    await page.getByRole('textbox', { name: 'Set 3 Weight' }).fill('115')
+    await page.getByRole('button', { name: 'Delete set 3' }).click()
+    await expect(
+      page.getByRole('textbox', { name: 'Set 3 Weight' }),
+    ).toHaveCount(0)
+    await expect(page.getByText(/Workout set .* was not found/)).toHaveCount(0)
     await page.getByRole('textbox', { name: 'Set 1 Weight' }).fill('95')
     await page.getByRole('textbox', { name: 'Set 1 Reps' }).fill('10')
     await page.getByRole('textbox', { name: 'Set 1 Weight' }).click()
@@ -374,12 +818,42 @@ test(
     await expect(
       page.getByRole('textbox', { name: 'Set 1 Weight' }),
     ).toHaveValue('105')
+    await expect(page.getByRole('textbox', { name: 'Set 2 Reps' })).toHaveValue(
+      '10',
+    )
+    await page.getByRole('link', { name: 'Home' }).click()
+    await page.getByRole('button', { name: 'Resume workout' }).click()
+    await expect(
+      page.getByRole('textbox', { name: 'Set 1 Weight' }),
+    ).toHaveValue('105')
+    await expect(page.getByRole('textbox', { name: 'Set 1 Reps' })).toHaveValue(
+      '10',
+    )
+    await expect(page.getByRole('textbox', { name: 'Set 2 Reps' })).toHaveValue(
+      '10',
+    )
     await page.getByRole('button', { name: 'Complete set 1' }).click()
-    await expect(page.locator('.rest-timer-toolbar')).toBeVisible()
+    await expect(page.locator('.live-session-rest-timer')).toBeVisible()
+    await expect(page.getByLabel(/Timer running: 1:(29|30)/)).toBeVisible()
+    await expect(
+      page
+        .locator('.live-workout-session-bar')
+        .getByRole('button', { name: 'Add 30 seconds' }),
+    ).toBeVisible()
     await page.screenshot({
       fullPage: true,
       path: testInfo.outputPath('live-workout-390.png'),
     })
+    await expect(
+      page.getByRole('button', { name: 'Dismiss timer notice' }),
+    ).toHaveCount(0)
+    await expect(page.getByText(/outside-app timer alerts/i)).toHaveCount(0)
+    await page.getByRole('button', { name: 'Mark incomplete set 1' }).click()
+    await page.getByRole('button', { name: 'Complete set 1' }).click()
+    await expect(
+      page.getByRole('button', { name: 'Dismiss timer notice' }),
+    ).toHaveCount(0)
+    await expect(page.getByText(/outside-app timer alerts/i)).toHaveCount(0)
 
     await page.reload()
     await expect(
@@ -388,8 +862,26 @@ test(
     await expect(page.getByRole('textbox', { name: 'Set 1 Reps' })).toHaveValue(
       '10',
     )
+    await expect(
+      page.getByRole('button', { name: 'Dismiss timer notice' }),
+    ).toHaveCount(0)
+    await expect(page.getByText(/outside-app timer alerts/i)).toHaveCount(0)
+    await page.getByRole('button', { name: 'More exercise actions' }).click()
+    const resumedExerciseOptions = page.getByRole('dialog', {
+      name: 'Exercise options',
+    })
+    await expect(
+      resumedExerciseOptions.getByRole('button', {
+        name: 'Resume workout timer',
+      }),
+    ).toBeVisible()
+    await resumedExerciseOptions
+      .getByRole('button', { name: 'Resume workout timer' })
+      .click()
+    await page.keyboard.press('Escape')
+    await expect(resumedExerciseOptions).not.toBeVisible()
 
-    await page.getByRole('button', { name: 'Discard workout' }).click()
+    await page.getByRole('button', { name: 'Discard' }).click()
     await page
       .getByRole('dialog', { name: 'Discard workout?' })
       .getByRole('button', { name: 'Discard Workout' })
@@ -558,7 +1050,9 @@ test('logs, edits, deletes, switches dates, and persists bodyweight after reload
   ).toBeVisible({ timeout: 15_000 })
 
   await page.reload()
-  await dismissSignInPrompt(page)
+  await expect(
+    page.getByRole('complementary', { name: 'Your data stays local' }),
+  ).toHaveCount(0)
   await expect(
     bodyweightCard.locator('.home-bw-value-secondary', {
       hasText: '188.4 lb',
@@ -612,7 +1106,9 @@ test('logs, edits, deletes, switches dates, and persists bodyweight after reload
   ).toBeVisible()
 
   await page.reload()
-  await dismissSignInPrompt(page)
+  await expect(
+    page.getByRole('complementary', { name: 'Your data stays local' }),
+  ).toHaveCount(0)
   await expect(
     bodyweightCard.locator('.home-bw-value-secondary', {
       hasText: 'No entry',
@@ -668,6 +1164,7 @@ test('shows bodyweight progress graph with range controls and tap details', asyn
   const firstEntryDialog = page.getByRole('dialog', {
     name: 'Log bodyweight',
   })
+  await firstEntryDialog.getByLabel('Date').fill('2026-06-04')
   await firstEntryDialog
     .getByRole('textbox', { name: 'Bodyweight' })
     .fill('188')
@@ -699,6 +1196,32 @@ test('shows bodyweight progress graph with range controls and tap details', asyn
     .getByLabel('Bodyweight range')
     .getByRole('button', { name: 'All' })
     .click()
+  await expect(
+    page.locator('.bodyweight-chart .chart-axis-tick-last'),
+  ).toBeVisible()
+  const axisSpacing = await page
+    .locator('.bodyweight-chart')
+    .evaluate((chart) => {
+      const title = chart.querySelector('.chart-axis-label-x')
+      const lastTick = chart.querySelector('.chart-axis-tick-last')
+      if (!title || !lastTick) {
+        return null
+      }
+      const titleRect = title.getBoundingClientRect()
+      const tickRect = lastTick.getBoundingClientRect()
+      return {
+        gap: titleRect.top - tickRect.bottom,
+        overlaps: !(
+          titleRect.left >= tickRect.right ||
+          titleRect.right <= tickRect.left ||
+          titleRect.top >= tickRect.bottom ||
+          titleRect.bottom <= tickRect.top
+        ),
+      }
+    })
+  expect(axisSpacing).not.toBeNull()
+  expect(axisSpacing?.overlaps).toBe(false)
+  expect(axisSpacing?.gap).toBeGreaterThanOrEqual(6)
   await page.getByRole('button', { name: /189 lb/ }).click()
   await expect(page.getByText('Selected', { exact: true })).toBeVisible()
 })
@@ -905,13 +1428,24 @@ test('completes the release workflow through backup restore', async ({
   page,
 }, testInfo) => {
   test.skip(
-    testInfo.project.name === 'mobile-webkit',
-    'The full release audit is covered in Chromium; mobile WebKit keeps focused flow coverage because this long live-workout replacement path is timing-fragile.',
+    testInfo.project.name !== 'desktop-chromium',
+    'The viewport-independent full release audit runs once in desktop Chromium; mobile projects keep focused flow coverage and avoid duplicate multi-megabyte backup restores under parallel load.',
   )
   // This audit builds and restores a multi-megabyte backup after exercising
   // every major local-first flow. Keep enough headroom for parallel CI workers.
   testInfo.setTimeout(300_000)
   await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/settings')
+  const rirTracking = page.getByRole('checkbox', {
+    name: 'Track RIR (reps in reserve)',
+  })
+  await rirTracking.check()
+  await expect(rirTracking).toBeChecked()
+  await expect(
+    page.getByText(
+      'RIR fields are shown during workouts and in prescriptions.',
+    ),
+  ).toBeVisible()
   await page.goto('/nutrition')
 
   await page.getByRole('button', { name: /Create custom food/ }).click()
@@ -959,7 +1493,7 @@ test('completes the release workflow through backup restore', async ({
   await createExercise(page, 'Audit row', '90')
 
   await page
-    .getByLabel('Current active cycle')
+    .getByLabel('Current Program')
     .getByRole('button', { name: 'Create program' })
     .click()
   await page.getByRole('textbox', { name: 'Name' }).fill('Audit program')
@@ -1009,20 +1543,38 @@ test('completes the release workflow through backup restore', async ({
     .getByRole('button', { name: 'Audit squat, exercise 1 of 2' })
     .click()
   await expect(page.getByRole('heading', { name: 'Audit squat' })).toBeVisible()
-  await page.getByRole('button', { name: 'Swap Exercise' }).first().click()
+  await page.getByRole('button', { name: 'More exercise actions' }).click()
+  await page
+    .getByRole('dialog', { name: 'Exercise options' })
+    .getByRole('button', { name: 'Swap Exercise' })
+    .click()
   const replaceSheet = page.getByRole('dialog', { name: 'Swap Exercise' })
   await replaceSheet.getByLabel('Search exercises').fill('Audit row')
   await replaceSheet.getByRole('button', { name: /Audit row/ }).click()
+  await expect(replaceSheet).not.toBeVisible()
   await expect(page.getByRole('heading', { name: 'Audit row' })).toBeVisible()
-  await page.getByRole('button', { name: /Audit curl/ }).click()
+  await page
+    .getByRole('button', { name: 'Audit curl, exercise 2 of 2' })
+    .click()
   await expect(page.getByRole('heading', { name: 'Audit curl' })).toBeVisible()
-  await page.getByRole('button', { name: 'Skip Exercise' }).click()
-  await expect(page.getByRole('button', { name: 'Unskip' })).toBeVisible()
+  await page.getByRole('button', { name: 'More exercise actions' }).click()
+  const skipOptions = page.getByRole('dialog', { name: 'Exercise options' })
+  await skipOptions.getByRole('button', { name: 'Skip Exercise' }).click()
+  await expect(skipOptions).not.toBeVisible()
+  await page.getByRole('button', { name: 'More exercise actions' }).click()
+  const reopenedExerciseOptions = page.getByRole('dialog', {
+    name: 'Exercise options',
+  })
+  await expect(
+    reopenedExerciseOptions.getByRole('button', { name: 'Unskip' }),
+  ).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(reopenedExerciseOptions).not.toBeVisible()
 
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Audit curl' })).toBeVisible()
   await expect(page.getByText('Skipped', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: /Audit row/ }).click()
+  await page.getByRole('button', { name: 'Audit row, exercise 1 of 2' }).click()
   await expect(page.getByRole('heading', { name: 'Audit row' })).toBeVisible()
   await expect(page.getByRole('textbox', { name: 'Set 4 Weight' })).toHaveValue(
     '',
@@ -1173,8 +1725,10 @@ async function fillRestInputs(page: Page, rest: string) {
 }
 
 async function dismissSignInPrompt(page: Page) {
-  const prompt = page.getByRole('complementary', { name: 'Prevent data loss' })
+  const prompt = page.getByRole('complementary', {
+    name: 'Your data stays local',
+  })
   await expect(prompt).toBeVisible()
-  await prompt.getByRole('button', { name: 'Not now' }).click()
+  await prompt.getByRole('button', { name: 'Continue offline' }).click()
   await expect(prompt).not.toBeVisible()
 }

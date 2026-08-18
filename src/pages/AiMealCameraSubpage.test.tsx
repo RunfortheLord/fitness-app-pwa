@@ -5,12 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AiMealCameraSubpage } from '@pages/AiMealCameraSubpage'
 import {
   analyzeMealPhoto,
-  GeminiMealAnalysisError,
-} from '@services/geminiMealAnalysisClient'
+  MealAnalysisError,
+} from '@services/mealAnalysisClient'
 
-vi.mock('@services/geminiMealAnalysisClient', async (importOriginal) => {
+vi.mock('@services/mealAnalysisClient', async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import('@services/geminiMealAnalysisClient')>()
+    await importOriginal<typeof import('@services/mealAnalysisClient')>()
   return {
     ...actual,
     analyzeMealPhoto: vi.fn(),
@@ -97,13 +97,7 @@ describe('AiMealCameraSubpage', () => {
       ],
     })
 
-    render(
-      <AiMealCameraSubpage
-        apiKey="test-key"
-        onAnalyzed={onAnalyzed}
-        onBack={vi.fn()}
-      />,
-    )
+    render(<AiMealCameraSubpage onAnalyzed={onAnalyzed} onBack={vi.fn()} />)
 
     const input = await screen.findByLabelText('Choose meal photo from library')
     await user.upload(
@@ -117,7 +111,6 @@ describe('AiMealCameraSubpage', () => {
 
     await waitFor(() =>
       expect(mockAnalyzeMealPhoto).toHaveBeenCalledWith({
-        apiKey: 'test-key',
         images: [
           {
             base64: 'photo-bytes',
@@ -152,13 +145,7 @@ describe('AiMealCameraSubpage', () => {
       ],
     })
 
-    render(
-      <AiMealCameraSubpage
-        apiKey="test-key"
-        onAnalyzed={onAnalyzed}
-        onBack={vi.fn()}
-      />,
-    )
+    render(<AiMealCameraSubpage onAnalyzed={onAnalyzed} onBack={vi.fn()} />)
 
     await user.click(
       await screen.findByRole('button', { name: 'Take meal photo' }),
@@ -181,7 +168,6 @@ describe('AiMealCameraSubpage', () => {
 
     await waitFor(() =>
       expect(mockAnalyzeMealPhoto).toHaveBeenCalledWith({
-        apiKey: 'test-key',
         images: [
           expect.objectContaining({ base64: 'photo-bytes' }),
           expect.objectContaining({ base64: 'photo-bytes' }),
@@ -196,13 +182,7 @@ describe('AiMealCameraSubpage', () => {
     const user = userEvent.setup()
     mockAnalyzeMealPhoto.mockImplementation(() => new Promise(() => undefined))
 
-    render(
-      <AiMealCameraSubpage
-        apiKey="test-key"
-        onAnalyzed={vi.fn()}
-        onBack={vi.fn()}
-      />,
-    )
+    render(<AiMealCameraSubpage onAnalyzed={vi.fn()} onBack={vi.fn()} />)
 
     await user.click(
       await screen.findByRole('button', { name: 'Take meal photo' }),
@@ -224,16 +204,10 @@ describe('AiMealCameraSubpage', () => {
     const user = userEvent.setup()
     const onBack = vi.fn()
     mockAnalyzeMealPhoto.mockRejectedValue(
-      new GeminiMealAnalysisError('no_food_detected', 'AI failed'),
+      new MealAnalysisError('no_food_detected', 'AI failed'),
     )
 
-    render(
-      <AiMealCameraSubpage
-        apiKey="test-key"
-        onAnalyzed={vi.fn()}
-        onBack={onBack}
-      />,
-    )
+    render(<AiMealCameraSubpage onAnalyzed={vi.fn()} onBack={onBack} />)
 
     await user.click(
       await screen.findByRole('button', { name: 'Take meal photo' }),
