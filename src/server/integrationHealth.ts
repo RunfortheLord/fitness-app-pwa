@@ -22,6 +22,7 @@ export function readIntegrationHealth(environment: IntegrationEnvironment) {
     foodSearch: Boolean(environment.USDA_FDC_API_KEY),
     distributedAiProtection: Boolean(readRedisRateLimiterConfig(environment)),
     mealAnalysis: Boolean(environment.OPENAI_API_KEY),
+    supportContact: Boolean(environment.VITE_SUPPORT_EMAIL?.trim()),
     webPush: Boolean(
       environment.WEB_PUSH_PUBLIC_KEY &&
       environment.WEB_PUSH_PRIVATE_KEY &&

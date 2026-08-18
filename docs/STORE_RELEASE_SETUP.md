@@ -20,6 +20,10 @@ Before producing a signed native build:
 3. Set `VITE_SUPPORT_EMAIL` to an actively monitored public support address.
 4. Verify the three public pages without signing in and enter their URLs in App
    Store Connect and Play Console.
+   Run `npm run store:verify-web -- https://your-production-origin.example` to
+   check the public routes, deployment headers, required integrations, and
+   protected endpoint behavior together. The command intentionally fails while
+   a release-blocking integration is missing.
 5. Keep the in-app feedback form disabled unless both `VITE_FEEDBACK_ENABLED`
    and the server-only `FEEDBACK_WEBHOOK_URL` are configured and monitored.
 
@@ -89,8 +93,14 @@ On a Mac with current Xcode:
 3. Select the correct development team without changing the bundle ID.
 4. Confirm the Sign in with Apple and Time Sensitive Notifications capabilities.
 5. Confirm camera, when-in-use location, and motion permission descriptions.
-6. Archive a Release build and upload it to App Store Connect.
-7. Test with TestFlight on a physical iPhone using
+6. In Xcode, generate and inspect the combined privacy report. Confirm it agrees
+   with `ios/App/App/PrivacyInfo.xcprivacy` and the production configuration.
+7. Confirm the `ITSAppUsesNonExemptEncryption = NO` declaration remains accurate
+   for the final dependency set. Vigorune currently uses exempt platform HTTPS
+   and hashing rather than proprietary encryption; the owner remains responsible
+   for the export-compliance answer.
+8. Archive a Release build and upload it to App Store Connect.
+9. Test with TestFlight on a physical iPhone using
    `docs/IPHONE_QA_CHECKLIST.md`.
 
 Do not claim native authentication, camera, GPS, motion, notifications, file

@@ -1,0 +1,3 @@
+"NSCameraUsageDescription" = "Vigorune usa la cámara solo cuando eliges escanear el código de barras de un alimento o tomar una foto de una comida para analizarla.";
+"NSLocationWhenInUseUsageDescription" = "Vigorune usa tu ubicación mientras el seguimiento de carrera está abierto para medir la distancia y el ritmo al aire libre.";
+"NSMotionUsageDescription" = "Vigorune usa el movimiento mientras el seguimiento en cinta está abierto para detectar pasos y estimar la distancia.";

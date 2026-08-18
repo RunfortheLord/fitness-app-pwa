@@ -18,6 +18,7 @@ describe('integration health', () => {
       USDA_FDC_API_KEY: 'usda-secret',
       VITE_SUPABASE_ANON_KEY: 'public-anon-key',
       VITE_SUPABASE_URL: 'https://project.example',
+      VITE_SUPPORT_EMAIL: 'support@example.com',
       WEB_PUSH_PRIVATE_KEY: 'private-secret',
       WEB_PUSH_PUBLIC_KEY: 'public-value',
       WEB_PUSH_SUBJECT: 'mailto:test@example.com',
@@ -32,6 +33,7 @@ describe('integration health', () => {
       feedback: true,
       foodSearch: true,
       mealAnalysis: true,
+      supportContact: true,
       webPush: true,
     })
     const serialized = JSON.stringify(result)

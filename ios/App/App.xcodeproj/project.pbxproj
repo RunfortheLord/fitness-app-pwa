@@ -22,6 +22,8 @@
 		A10000000000000000000005 /* short-alert-tone.wav in Resources */ = {isa = PBXBuildFile; fileRef = A10000100000000000000005 /* short-alert-tone.wav */; };
 		A10000000000000000000006 /* soft-digital-chime.wav in Resources */ = {isa = PBXBuildFile; fileRef = A10000100000000000000006 /* soft-digital-chime.wav */; };
 		A10000000000000000000007 /* warm-bell.wav in Resources */ = {isa = PBXBuildFile; fileRef = A10000100000000000000007 /* warm-bell.wav */; };
+		A10000000000000000000008 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A10000100000000000000008 /* PrivacyInfo.xcprivacy */; };
+		A10000000000000000000009 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A10000300000000000000002 /* InfoPlist.strings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,6 +45,8 @@
 		A10000100000000000000006 /* soft-digital-chime.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "soft-digital-chime.wav"; sourceTree = "<group>"; };
 		A10000100000000000000007 /* warm-bell.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "warm-bell.wav"; sourceTree = "<group>"; };
 		A10000200000000000000001 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
+		A10000100000000000000008 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A10000100000000000000009 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -83,6 +87,8 @@
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
 				504EC3131FED79650016851F /* Info.plist */,
+				A10000100000000000000008 /* PrivacyInfo.xcprivacy */,
+				A10000300000000000000002 /* InfoPlist.strings */,
 				A10000200000000000000001 /* App.entitlements */,
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
@@ -150,6 +156,7 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				es,
 				Base,
 			);
 			mainGroup = 504EC2FB1FED79650016851F;
@@ -183,6 +190,8 @@
 				A10000000000000000000005 /* short-alert-tone.wav in Resources */,
 				A10000000000000000000006 /* soft-digital-chime.wav in Resources */,
 				A10000000000000000000007 /* warm-bell.wav in Resources */,
+				A10000000000000000000008 /* PrivacyInfo.xcprivacy in Resources */,
+				A10000000000000000000009 /* InfoPlist.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -200,6 +209,14 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXVariantGroup section */
+		A10000300000000000000002 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				A10000100000000000000009 /* es */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
 		504EC30B1FED79650016851F /* Main.storyboard */ = {
 			isa = PBXVariantGroup;
 			children = (

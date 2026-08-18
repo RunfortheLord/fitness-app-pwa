@@ -53,7 +53,8 @@ a guarantee that the application is immune to every attack.
 ## Release-Blocking Security Checks
 
 - `/api/health` reports `accountDeletion`, `authRelay`, `cloudBackup`,
-  `distributedAiProtection`, and `mealAnalysis` as configured for the release.
+  `distributedAiProtection`, `foodSearch`, `mealAnalysis`, and `supportContact`
+  as configured for the release.
 - Account deletion is exercised with a disposable Google account and a
   disposable Apple account; cloud rows are verified deleted and local records
   are verified retained.

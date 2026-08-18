@@ -2,6 +2,38 @@
 
 Audit date: 2026-06-19
 
+## Store Readiness Update — 2026-08-18
+
+Repository-controlled App Store preparation is complete through the Windows
+release-candidate stage. The current candidate adds Apple/Google optional auth,
+cloud backup and account deletion, public privacy/support/deletion routes,
+security headers, distributed abuse controls, secret/dependency scanning,
+store metadata drafts, an app-level Apple privacy manifest, localized iOS
+permission copy, and automated native/web preflight checks.
+
+The full release gate passed on 2026-08-18: TypeScript, ESLint, Prettier, secret
+scan, production dependency audit, 912 unit tests, 185 Playwright tests with 13
+intentional platform skips, production build, Capacitor sync, and iOS wrapper
+verification. Developer-stable live header and protected-route checks also
+passed.
+
+Run the production-origin preflight with:
+
+```text
+npm run store:verify-web -- https://your-production-origin.example
+```
+
+The developer-stable origin currently has exactly three configuration blockers:
+
+- `accountDeletion`: add the server-only `SUPABASE_SERVICE_ROLE_KEY`.
+- `foodSearch`: add `USDA_FDC_API_KEY`.
+- `supportContact`: add an actively monitored `VITE_SUPPORT_EMAIL`.
+
+Apple Developer configuration, Xcode archive validation, the combined privacy
+report, physical-iPhone/TestFlight testing, and owner declarations in App Store
+Connect remain required. This update supersedes the older recommendation at the
+end of this historical audit.
+
 ## Scope
 
 This audit reviewed the repository as a release candidate against
@@ -134,7 +166,7 @@ The audit added a browser regression for the full missing release path:
 - Confirm live workout survives closing and reopening the installed PWA.
 - Confirm backup export and restore through iOS Files/share flows.
 
-## Release Recommendation
+## 2026-06-19 Release Recommendation
 
 Release candidate is recommended for physical-device validation. Physical iPhone
 installation and iOS file-flow checks remain required before declaring the MVP

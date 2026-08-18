@@ -25,7 +25,14 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const configured = readIntegrationHealth(process.env)
-  const ready = configured.mealAnalysis && configured.distributedAiProtection
+  const ready =
+    configured.accountDeletion &&
+    configured.authRelay &&
+    configured.cloudBackup &&
+    configured.distributedAiProtection &&
+    configured.foodSearch &&
+    configured.mealAnalysis &&
+    configured.supportContact
   observer.finish({ outcome: ready ? 'ready' : 'degraded', status: 200 })
   res.status(200).json({ configured, ok: true, ready })
 }

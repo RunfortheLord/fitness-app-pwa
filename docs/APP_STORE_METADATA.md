@@ -116,6 +116,10 @@ Privacy-policy statements and App Store answers must cover the exact behavior of
 Supabase, OpenAI, Apple, Google, USDA, Open Food Facts, and any enabled feedback
 or notification provider. Do not publish the label until Xcode's combined
 privacy report and the production configuration have been reviewed together.
+The app-level working declaration is committed at
+`ios/App/App/PrivacyInfo.xcprivacy`; update it whenever production data flows
+change. It conservatively declares email, user ID, health, fitness, meal photos,
+and other user content for app functionality, with no tracking.
 
 ## Submission Gates
 
