@@ -46,9 +46,10 @@ a guarantee that the application is immune to every attack.
 - Deployment headers restrict scripts, connections, framing, referrers, mixed
   content, and powerful browser features while retaining the camera, location,
   and motion capabilities the user explicitly invokes.
-- Dependency audit, Dependabot, repository secret checks, security-focused
-  ESLint rules, unit tests, and Chromium/WebKit end-to-end tests provide
-  automated regression coverage.
+- Dependency audit, package signature verification, Dependabot, repository
+  secret checks, security-focused ESLint rules, unit tests, and Chromium/WebKit
+  end-to-end tests provide automated regression coverage. GitHub Actions are
+  pinned to immutable commits and checkout does not retain its workflow token.
 
 ## Release-Blocking Security Checks
 
@@ -66,8 +67,35 @@ a guarantee that the application is immune to every attack.
 - The public production origin returns the expected CSP, Permissions Policy,
   HSTS, referrer, MIME-sniffing, and anti-framing headers.
 - No developer-stable URLs or test credentials remain in the App Store archive.
-- GitHub branch protection requires CI and security checks before merging the
-  release branch.
+- Enable GitHub branch protection or rulesets that require CI and security
+  checks before merging the release branch. Until the account plan supports
+  that control, do not merge directly to `main`; verify the checks on the
+  release branch first.
+
+## Operator Account Hardening Before Mac Access
+
+1. Add phishing-resistant passkeys and MFA to the primary email account,
+   GitHub, Vercel, Supabase, OpenAI, Google, and Apple accounts. Store recovery
+   codes offline and do not use SMS as the only second factor.
+2. Review active sessions, authorized OAuth/GitHub apps, personal access tokens,
+   deploy hooks, integrations, and team members. Revoke anything unknown or no
+   longer required.
+3. Revoke and recreate the Vercel CLI token after checking the Vercel activity
+   log. Do not keep a long-lived `VERCEL_TOKEN` in `.env.local` when the CLI's
+   protected credential store is sufficient.
+4. Mark credentials and connection strings as Sensitive in Vercel. Rotate any
+   credential that was previously exposed as a readable/non-sensitive value,
+   then redeploy because environment changes do not alter old deployments.
+5. Put production provider keys in provider-specific projects with minimum
+   permissions, usage limits, budget alerts, and separate development and
+   production credentials.
+6. Enable GitHub Dependabot alerts, secret scanning, code scanning, and branch
+   protection when the repository plan supports them. The portable CI checks
+   remain mandatory regardless of plan.
+7. Review Supabase Auth rate limits, password policy, bot protection, RLS
+   policies, database SSL enforcement, project members, and Auth audit logs.
+8. Review Vercel Firewall and function logs for unusual 401, 403, 429, 5xx, or
+   request-volume spikes without logging request bodies or user health data.
 
 ## Monitoring Before Release
 
@@ -87,15 +115,16 @@ or fitness records.
 
 ## Credential Rotation
 
-| Credential                      | Rotation trigger                                                       |
-| ------------------------------- | ---------------------------------------------------------------------- |
-| Apple client secret             | Before its six-month expiry and immediately after suspected exposure   |
-| Apple `.p8` key                 | Suspected exposure, staff/access change, or Apple-directed replacement |
-| Supabase service-role key       | Suspected exposure or project access change                            |
-| OpenAI key                      | Suspected exposure, unexplained spend, or provider access change       |
-| Redis/KV and QStash credentials | Suspected exposure or integration replacement                          |
-| Rate-limit HMAC secret          | Suspected exposure; coordinate with limiter-key rollover               |
-| Feedback webhook and push keys  | Suspected exposure or destination change                               |
+| Credential                      | Rotation trigger                                                        |
+| ------------------------------- | ----------------------------------------------------------------------- |
+| Apple client secret             | Before its six-month expiry and immediately after suspected exposure    |
+| Apple `.p8` key                 | Suspected exposure, staff/access change, or Apple-directed replacement  |
+| Supabase service-role key       | Suspected exposure or project access change                             |
+| OpenAI key                      | Suspected exposure, unexplained spend, or provider access change        |
+| Redis/KV and QStash credentials | Suspected exposure or integration replacement                           |
+| Rate-limit HMAC secret          | Suspected exposure; coordinate with limiter-key rollover                |
+| Feedback webhook and push keys  | Suspected exposure or destination change                                |
+| Vercel/GitHub access tokens     | Suspected exposure, unused scope, device loss, or account access change |
 
 Record the owner, creation date, expiry date, last rotation, and next review in a
 private credential register outside the repository.

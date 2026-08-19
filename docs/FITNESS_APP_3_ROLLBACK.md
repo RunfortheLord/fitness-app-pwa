@@ -80,7 +80,7 @@ Set Goal math core (`src/domain/goalMacros.ts`, unused by the UI) shipped.
 1. **Restore the stable alias first** (minimize downtime), pointing it back to
    the recorded pre-change deployment:
    ```sh
-   set -a; . ./.env.local; set +a   # provides VERCEL_TOKEN
+   npx vercel whoami                 # use the CLI credential store
    npx vercel alias set \
      fitness-app-n80n9nsv1-adamshugart27-4515s-projects.vercel.app \
      fitness-app-pwa-eight.vercel.app
