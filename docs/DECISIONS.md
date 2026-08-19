@@ -1147,3 +1147,19 @@ individual — no LLC — Texas). These supersede the earlier "US-only first" an
   statement, trial-start event, cross-platform entitlement, existing-user trial,
   complimentary-grant revocation. LLC + insurance strongly worth revisiting given
   worldwide health-data processing as an individual.
+
+## 2026-08-19: Two-phase launch — validation config vs store/subscription target
+
+Clarifies the relationship between the two prior 2026-08-19 entries so agents do
+not conflate them. See `docs/LAUNCH_PLAN.md` (authoritative).
+
+- **Steps 0–7 (soft-launch validation):** free, US-only, no mandatory login,
+  subscription/entitlement/locked-mode code OFF, PWA first. Purpose: measure
+  retention at ~$0 legal cost.
+- **Step 8 (store/subscription target, only after retention is proven):** the
+  worldwide + 18+ + Apple IAP/Google Play billing decisions apply HERE. That is
+  when the built subscription code is turned on, stores are configured, and the
+  worldwide legal drafts (Terms/Privacy/EU reps/etc.) come into force.
+- Storefront/marketing copy (`docs/STOREFRONT_LISTING.md`) is scoped to the
+  soft-launch config; reusing it for the app stores must revisit age gating,
+  territory, and subscription language.
