@@ -20,9 +20,9 @@ default-OFF flag until Step 8.
 | # | Step | Owner | Status |
 |---|------|-------|--------|
 | 1 | **Lock launch settings** — free, US-only, no login, subs OFF, PWA first | decided | ✅ done |
-| 2 | **Add basic privacy-friendly metrics** — track app-open, workout logged, meal logged, run tracked, next-day return; anonymous, no PII, disclosed. *Blocker for measuring anything.* | Claude | ▶ in progress |
-| 3 | **Deploy the PWA to a public URL** (Vercel) + verify install-to-homescreen. Produces the shareable link = the launch. *Gated: after Step 2 + owner OK (public launch action).* | Claude + owner OK | ⏳ queued |
-| 4 | **Storefront basics** — name, one-line pitch, short description, 3–5 screenshots. Lead with "private, local-first, no account, works offline." Reused later for app stores. | Claude drafts / owner supplies | ▶ in progress |
+| 2 | **Add basic privacy-friendly metrics** — track app-open, workout logged, meal logged, run tracked, next-day return; anonymous, no PII, disclosed. *Blocker for measuring anything.* | Claude | ✅ done (merged, ships OFF) |
+| 3 | **Deploy the PWA to a public URL** (Vercel) + verify install-to-homescreen. Produces the shareable link = the launch. *Gated: after Step 2 + owner OK (public launch action).* | Claude + owner OK | ⏳ ready — awaiting owner go |
+| 4 | **Storefront basics** — name, one-line pitch, short description, 3–5 screenshots. Lead with "private, local-first, no account, works offline." Reused later for app stores. | Claude drafts / owner supplies | ✅ done (docs/STOREFRONT_LISTING.md) |
 | 5 | **Pick niche + channels** — ONE audience; 3–4 places they gather (subreddits/Discord/TikTok/IG). | owner | ☐ todo |
 | 6 | **Soft launch** — share the link in those channels over a week; ask for feedback. | owner | ☐ todo |
 | 7 | **Watch metrics 30 days** — installs, activation, D7 & D30 retention. Target: **~20%+ still using at day 30.** | owner (Claude sets up view) | ☐ todo |
