@@ -1,5 +1,15 @@
 /// <reference types="node" />
 import { handleFoodResolve } from '../../src/server/foodProviderApi.js'
+import {
+  checkFoodRouteRateLimit,
+  FOOD_REQUEST_TIMEOUT_MS,
+  MAX_FOOD_REQUEST_BODY_BYTES,
+  statusForFoodError,
+} from '../../src/server/foodRouteSupport.js'
+import {
+  createRequestObserver,
+  readBoundedJsonObject,
+} from '../../src/server/serverHttp.js'
 
 type VercelRequest = {
   method?: string
@@ -19,9 +29,16 @@ type ProviderErrorResponse = {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const observer = createRequestObserver({
+    headers: req.headers,
+    method: req.method,
+    route: '/api/foods/details',
+  })
   res.setHeader('Cache-Control', 'no-store')
+  res.setHeader('X-Request-ID', observer.requestId)
 
   if (req.method !== 'POST') {
+    observer.finish({ outcome: 'method_not_allowed', status: 405 })
     res.status(405).json({
       ok: false,
       error: { code: 'invalid_request', message: 'Method not allowed.' },
@@ -29,28 +46,75 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return
   }
 
-  const body = readBody(req.body)
+  const parsedBody = readBoundedJsonObject(
+    req.body,
+    MAX_FOOD_REQUEST_BODY_BYTES,
+  )
+  if ('reason' in parsedBody) {
+    const status = parsedBody.reason === 'payload_too_large' ? 413 : 400
+    observer.finish({ outcome: parsedBody.reason, status })
+    res.status(status).json({
+      ok: false,
+      error: {
+        code: 'invalid_request',
+        message: 'The food-details request is invalid.',
+      },
+    })
+    return
+  }
+  const rateLimit = await checkFoodRouteRateLimit(req, 'details')
+  if (!rateLimit.allowed) {
+    res.setHeader('Retry-After', String(rateLimit.retryAfterSeconds))
+    observer.finish({ outcome: 'rate_limited', status: 429 })
+    res.status(429).json({
+      ok: false,
+      error: {
+        code: 'rate_limited',
+        message: 'Food details are being requested too quickly.',
+      },
+    })
+    return
+  }
+
+  const body = parsedBody.data
+  const controller = new AbortController()
+  const timeoutId = setTimeout(
+    () => controller.abort(),
+    FOOD_REQUEST_TIMEOUT_MS,
+  )
   const result = await handleFoodResolve(
     {
       provider: readString(body.provider) as never,
       providerRecordId: readString(body.providerRecordId),
     },
     { usdaApiKey: readApiKey(req) },
-  )
+    controller.signal,
+  ).finally(() => clearTimeout(timeoutId))
 
   if (result.ok) {
+    observer.finish({
+      cache: result.meta.cache,
+      outcome: 'success',
+      provider: 'usda',
+      rateLimiterAvailable: rateLimit.available,
+      status: 200,
+    })
     res.status(200).json(result)
     return
   }
 
   const errorResult = result as ProviderErrorResponse
-  res.status(statusForError(errorResult.error.code)).json(errorResult)
-}
-
-function readBody(body: unknown): Record<string, unknown> {
-  return typeof body === 'object' && body !== null
-    ? (body as Record<string, unknown>)
-    : {}
+  const status = statusForFoodError(errorResult.error.code)
+  if (status === 429) {
+    res.setHeader('Retry-After', '60')
+  }
+  observer.finish({
+    outcome: errorResult.error.code,
+    provider: 'usda',
+    rateLimiterAvailable: rateLimit.available,
+    status,
+  })
+  res.status(status).json(errorResult)
 }
 
 function readString(value: unknown) {
@@ -66,26 +130,4 @@ function readApiKey(req: VercelRequest) {
   return headerKey && headerKey.trim()
     ? headerKey
     : process.env.USDA_FDC_API_KEY
-}
-
-function statusForError(code: string) {
-  switch (code) {
-    case 'invalid_request':
-    case 'query_too_short':
-    case 'missing_api_key':
-      return 400
-    case 'invalid_api_key':
-      return 401
-    case 'provider_rate_limited':
-      return 429
-    case 'provider_timeout':
-      return 504
-    case 'provider_unavailable':
-    case 'offline':
-      return 503
-    case 'no_acceptable_results':
-      return 404
-    default:
-      return 500
-  }
 }

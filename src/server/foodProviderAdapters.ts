@@ -13,12 +13,14 @@ import {
   type NormalizedFoodPortion,
   type NormalizedFoodResult,
 } from '../domain/foodProviderModels.js'
+import { applyOfficialRestaurantMenuCorrection } from '../domain/officialRestaurantMenuCorrections.js'
 import { ProviderError } from './foodProviderErrors.js'
 
 export type ProviderSearchInput = {
   query: string
   page: number
   pageSize: number
+  language?: 'en' | 'es'
   signal?: AbortSignal
   now?: Date
 }
@@ -34,12 +36,50 @@ const USDA_SEARCH_URL = 'https://api.nal.usda.gov/fdc/v1/foods/search'
 const USDA_FOOD_URL = 'https://api.nal.usda.gov/fdc/v1/food'
 const OFF_SEARCH_URL = 'https://world.openfoodfacts.org/cgi/search.pl'
 const OFF_PRODUCT_URL = 'https://world.openfoodfacts.org/api/v2/product'
-const USER_AGENT = 'FitnessLog/0.0.0 (local-first fitness PWA)'
+const USER_AGENT = 'FitnessLog/0.9.0 (local-first fitness PWA)'
 
 export function createUsdaAdapter(
   apiKey: string | undefined,
   fetcher: Fetcher = fetch,
 ): ProviderAdapter {
+  // USDA returns results ranked by its own relevance, so for staple queries the
+  // many branded products literally named "MILK"/"WHITE RICE" can fill the whole
+  // page and starve the canonical Common section. Query the canonical data types
+  // and Branded separately, then merge, so both are always represented.
+  async function fetchRecords(
+    query: string,
+    dataType: string[],
+    page: number,
+    pageSize: number,
+    signal?: AbortSignal,
+  ): Promise<unknown[]> {
+    const url = new URL(USDA_SEARCH_URL)
+    url.searchParams.set('api_key', apiKey as string)
+    const response = await fetchWithTimeout(
+      fetcher,
+      url,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'User-Agent': USER_AGENT,
+        },
+        body: JSON.stringify({
+          query,
+          pageSize,
+          pageNumber: page,
+          dataType,
+        }),
+      },
+      signal,
+    )
+    const payload = await readProviderJson(response)
+    return isRecord(payload) && Array.isArray(payload.foods)
+      ? payload.foods
+      : []
+  }
+
   return {
     id: 'usda',
     async search(input) {
@@ -47,33 +87,38 @@ export function createUsdaAdapter(
         throw new ProviderError('missing_api_key', 'USDA API key is missing.')
       }
 
-      const url = new URL(USDA_SEARCH_URL)
-      url.searchParams.set('api_key', apiKey)
-      const response = await fetchWithTimeout(
-        fetcher,
-        url,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-            'User-Agent': USER_AGENT,
-          },
-          body: JSON.stringify({
-            query: input.query,
-            pageSize: input.pageSize,
-            pageNumber: input.page,
-            dataType: ['Foundation', 'SR Legacy', 'Survey (FNDDS)', 'Branded'],
-          }),
-        },
-        input.signal,
-      )
-      const payload = await readProviderJson(response)
-      const records =
-        isRecord(payload) && Array.isArray(payload.foods) ? payload.foods : []
-      const foods = records
-        .map((record) => normalizeUsdaFood(record, input.now ?? new Date()))
+      const [canonical, branded] = await Promise.all([
+        fetchRecords(
+          input.query,
+          ['Foundation', 'SR Legacy', 'Survey (FNDDS)'],
+          input.page,
+          // The provider's first 20 canonical matches can be dominated by
+          // flavored/prepared derivatives. Give the ranker a wider candidate
+          // pool for the normal first-page UI search so the plain food can win.
+          input.page === 1 && input.pageSize >= 20 ? 50 : input.pageSize,
+          input.signal,
+        ),
+        fetchRecords(
+          input.query,
+          ['Branded'],
+          input.page,
+          input.pageSize,
+          input.signal,
+        ),
+      ])
+
+      const now = input.now ?? new Date()
+      const seenIds = new Set<string>()
+      const foods = [...canonical, ...branded]
+        .map((record) => normalizeUsdaFood(record, now))
         .filter((food): food is NormalizedFoodResult => food !== null)
+        .filter((food) => {
+          if (seenIds.has(food.id)) {
+            return false
+          }
+          seenIds.add(food.id)
+          return true
+        })
       return groupDuplicateFoods(rankFoods(foods, input.query))
     },
   }
@@ -92,15 +137,20 @@ export function createOpenFoodFactsAdapter(
       url.searchParams.set('json', '1')
       url.searchParams.set('page', String(input.page))
       url.searchParams.set('page_size', String(input.pageSize))
+      const language = input.language ?? 'en'
+      url.searchParams.set('lc', language)
       url.searchParams.set(
         'fields',
         [
           'code',
           'product_name',
+          'product_name_es',
           'generic_name',
+          'generic_name_es',
           'brands',
           'brands_tags',
           'categories',
+          'categories_es',
           'serving_size',
           'serving_quantity',
           'nutriments',
@@ -127,7 +177,7 @@ export function createOpenFoodFactsAdapter(
           : []
       const foods = records
         .map((record) =>
-          normalizeOpenFoodFactsFood(record, input.now ?? new Date()),
+          normalizeOpenFoodFactsFood(record, input.now ?? new Date(), language),
         )
         .filter((food): food is NormalizedFoodResult => food !== null)
       return groupDuplicateFoods(rankFoods(foods, input.query))
@@ -180,6 +230,7 @@ export async function lookupUsdaBarcode(
     query: barcode,
     page: 1,
     pageSize: 10,
+    language: 'en',
     signal,
   })
   return (
@@ -275,7 +326,7 @@ export function normalizeUsdaFood(
     readIsoDate(record.availableDate) ??
     readIsoDate(record.publicationDate)
 
-  return {
+  return applyOfficialRestaurantMenuCorrection({
     id: stableProviderId('usda', fdcId),
     source: {
       provider: 'usda',
@@ -314,12 +365,13 @@ export function normalizeUsdaFood(
     alternateResultIds: [],
     groupingReasons: [],
     normalizerVersion: FOOD_NORMALIZER_VERSION,
-  }
+  })
 }
 
 export function normalizeOpenFoodFactsFood(
   record: unknown,
   now: Date,
+  language: 'en' | 'es' = 'en',
 ): NormalizedFoodResult | null {
   if (!isRecord(record)) {
     return null
@@ -348,16 +400,40 @@ export function normalizeOpenFoodFactsFood(
     return null
   }
   const name =
+    (language === 'es' ? readString(record.product_name_es) : null) ??
+    (language === 'es' ? readString(record.generic_name_es) : null) ??
     readString(record.product_name) ??
     readString(record.generic_name) ??
-    'Open Food Facts product'
-  const gramsPerServing = readNumber(record.serving_quantity)
+    (language === 'es'
+      ? 'Producto de Open Food Facts'
+      : 'Open Food Facts product')
+  const reportedServingSize = readString(record.serving_size)
+  const reportedGrams = readNumber(record.serving_quantity)
+  const reportedGramsPerServing =
+    reportedGrams !== null && reportedGrams > 0 ? reportedGrams : null
+  const parsedServingSize = parsePortionText(reportedServingSize)
+  const usesPer100GramFallback =
+    !perServingValidation.ok &&
+    per100Validation.ok &&
+    reportedGramsPerServing === null
   const serving = createServing({
-    quantity: 1,
-    unit: readString(record.serving_size) ?? 'serving',
-    description: readString(record.serving_size) ?? '',
-    gramsPerServing,
-    conversionSource: 'provider_serving_weight',
+    quantity: usesPer100GramFallback
+      ? 100
+      : (parsedServingSize?.amount ?? reportedGramsPerServing ?? 1),
+    unit: usesPer100GramFallback
+      ? 'g'
+      : (parsedServingSize?.unit ??
+        (reportedGramsPerServing === null ? 'serving' : 'g')),
+    description: usesPer100GramFallback
+      ? '100 g'
+      : (reportedServingSize ??
+        (reportedGramsPerServing === null
+          ? ''
+          : `${reportedGramsPerServing} g`)),
+    gramsPerServing: usesPer100GramFallback ? 100 : reportedGramsPerServing,
+    conversionSource: usesPer100GramFallback
+      ? 'per_100g'
+      : 'provider_serving_weight',
   })
   const macrosPer100Grams = per100Validation.ok
     ? toMacros(per100Validation.macros)
@@ -390,7 +466,9 @@ export function normalizeOpenFoodFactsFood(
     },
     name,
     brandName,
-    foodCategory: readString(record.categories),
+    foodCategory:
+      (language === 'es' ? readString(record.categories_es) : null) ??
+      readString(record.categories),
     descriptionQualifiers: [],
     rawCookedStatus: rawCooked.rawCookedStatus,
     rawCookedBasis: rawCooked.rawCookedBasis,
@@ -522,9 +600,14 @@ function extractUsdaMacros(nutrients: unknown[]) {
 function extractUsdaPortions(
   record: Record<string, unknown>,
 ): NormalizedFoodPortion[] {
-  const portions = Array.isArray(record.foodPortions) ? record.foodPortions : []
-  return portions
-    .map((portion) => {
+  // The detail endpoint returns structured `foodPortions`; the search endpoint
+  // instead returns `foodMeasures` whose readable portion lives in
+  // `disseminationText` (e.g. "1 cup"). Parse whichever is present so a
+  // search-logged food still exposes its real household portions.
+  const fromPortions = (
+    Array.isArray(record.foodPortions) ? record.foodPortions : []
+  )
+    .map((portion): NormalizedFoodPortion | null => {
       if (!isRecord(portion)) {
         return null
       }
@@ -542,6 +625,70 @@ function extractUsdaPortions(
       }
     })
     .filter((portion): portion is NormalizedFoodPortion => portion !== null)
+
+  const fromMeasures = (
+    Array.isArray(record.foodMeasures) ? record.foodMeasures : []
+  )
+    .filter(isRecord)
+    .sort(
+      (left, right) =>
+        (readNumber(left.rank) ?? 999) - (readNumber(right.rank) ?? 999),
+    )
+    .map((measure): NormalizedFoodPortion | null => {
+      const gramWeight = readNumber(measure.gramWeight)
+      const parsed = parsePortionText(readString(measure.disseminationText))
+      if (!parsed || gramWeight === null) {
+        return null
+      }
+      return {
+        amount: parsed.amount,
+        unit: parsed.unit,
+        description: parsed.unit,
+        gramWeight,
+      }
+    })
+    .filter((portion): portion is NormalizedFoodPortion => portion !== null)
+
+  return [...fromPortions, ...fromMeasures]
+}
+
+// Parses a USDA foodMeasure label such as "1 cup", "1/2 cup", or "1 cup, NFS"
+// into an amount and a clean unit. Returns null for unusable text like
+// "Quantity not specified".
+function parsePortionText(
+  text: string | null,
+): { amount: number; unit: string } | null {
+  if (!text) {
+    return null
+  }
+  const trimmed = text.trim()
+  if (!trimmed || /quantity not specified/i.test(trimmed)) {
+    return null
+  }
+  const match = trimmed.match(
+    // The shared numeric prefix avoids the overlapping alternation in the old form.
+    // eslint-disable-next-line security/detect-unsafe-regex
+    /^(\d+(?:\.\d+|\/\d+)?)\s+(.+)$/,
+  )
+  let amount = 1
+  let unit = trimmed
+  if (match) {
+    amount = parseFractionText(match[1])
+    unit = match[2]
+  }
+  unit = unit.replace(/,?\s*nfs$/i, '').trim()
+  if (!unit || amount <= 0) {
+    return null
+  }
+  return { amount, unit }
+}
+
+function parseFractionText(value: string): number {
+  if (value.includes('/')) {
+    const [numerator, denominator] = value.split('/').map(Number)
+    return denominator ? numerator / denominator : 0
+  }
+  return Number(value)
 }
 
 function gramsFromUsdaServingSize(record: Record<string, unknown>) {
@@ -555,6 +702,9 @@ function gramsFromUsdaServingSize(record: Record<string, unknown>) {
   }
   if (unit === 'oz' || unit === 'ounce' || unit === 'ounces') {
     return servingSize * 28.349523125
+  }
+  if (unit === 'ml' || unit === 'milliliter' || unit === 'milliliters') {
+    return servingSize
   }
   return null
 }

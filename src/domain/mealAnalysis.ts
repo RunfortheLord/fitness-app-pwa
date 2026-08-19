@@ -1,0 +1,63 @@
+import { z } from 'zod'
+
+const estimatedIngredientSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    servingQuantity: z.number().finite().positive().max(10_000),
+    servingUnit: z.string().trim().min(1).max(32),
+    calories: z.number().finite().nonnegative().max(20_000),
+    proteinGrams: z.number().finite().nonnegative().max(2_000),
+    carbohydrateGrams: z.number().finite().nonnegative().max(2_000),
+    fatGrams: z.number().finite().nonnegative().max(2_000),
+  })
+  .strict()
+
+export const mealAnalysisSchema = z
+  .object({
+    recipeName: z.string().trim().min(1).max(120),
+    confidence: z.enum(['low', 'medium', 'high']),
+    assumptions: z.array(z.string().trim().min(1).max(240)).max(8),
+    ingredients: z.array(estimatedIngredientSchema).min(1).max(20),
+  })
+  .strict()
+
+export type MealAnalysis = z.infer<typeof mealAnalysisSchema>
+
+export function createRecipeDraftFromMealAnalysis(analysis: MealAnalysis) {
+  const assumptions = analysis.assumptions.length
+    ? ` Assumptions: ${analysis.assumptions.join('; ')}`
+    : ''
+
+  return {
+    name: analysis.recipeName,
+    notes: `AI meal-photo estimate (${analysis.confidence} confidence).${assumptions}`,
+    components: analysis.ingredients.map((ingredient) => ({
+      foodId: null,
+      servingMultiplier: 1,
+      foodSnapshot: {
+        foodName: ingredient.name,
+        brandName: null,
+        servingQuantity: ingredient.servingQuantity,
+        servingUnit: ingredient.servingUnit,
+        servingDescription: `${formatQuantity(ingredient.servingQuantity)} ${ingredient.servingUnit}`,
+        caloriesPerServing: ingredient.calories,
+        proteinGramsPerServing: ingredient.proteinGrams,
+        carbohydrateGramsPerServing: ingredient.carbohydrateGrams,
+        fatGramsPerServing: ingredient.fatGrams,
+        macroBasis: 'per_serving' as const,
+        rawCookedStatus: 'unknown' as const,
+        notes: 'Estimated from an AI-analyzed meal photo.',
+      },
+    })),
+  }
+}
+
+export type GeneratedRecipeDraft = ReturnType<
+  typeof createRecipeDraftFromMealAnalysis
+>
+
+function formatQuantity(value: number) {
+  return Number.isInteger(value)
+    ? String(value)
+    : String(Number(value.toFixed(2)))
+}

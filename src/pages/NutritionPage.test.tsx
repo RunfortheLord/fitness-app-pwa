@@ -1,4 +1,11 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -11,15 +18,22 @@ import {
   type GroupedFoodResult,
   type NormalizedFoodResult,
 } from '@domain/foodProviderModels'
+import { addLocalDays, formatLocalDate } from '@domain/dates'
+import { recommendationMealTypeForDate } from '@domain/meals'
+import { snapshotFood } from '@domain/snapshots'
 import { HomePage } from '@pages/HomePage'
 import { createSearchSections } from '@domain/foodSearchSections'
 import { NutritionPage } from '@pages/NutritionPage'
+import { clearCachedNutritionPageData } from '@pages/nutritionPageCache'
+import { createFoodRepository } from '@repositories/foodRepository'
 import { settingsRepository } from '@repositories/settingsRepository'
 import { initializeAppData } from '@services/appInitializationService'
+import { nutritionSummaryService } from '@services/nutritionSummaryService'
 import {
   FoodProviderClientError,
   searchProviderFoods,
 } from '@services/foodProviderClient'
+import { analyzeMealPhoto } from '@services/mealAnalysisClient'
 
 vi.mock('@services/foodProviderClient', () => {
   class MockFoodProviderClientError extends Error {
@@ -38,9 +52,20 @@ vi.mock('@services/foodProviderClient', () => {
   }
 })
 
+vi.mock('@services/mealAnalysisClient', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@services/mealAnalysisClient')>()
+  return {
+    ...actual,
+    analyzeMealPhoto: vi.fn(),
+  }
+})
+
 const mockSearchProviderFoods = vi.mocked(searchProviderFoods)
+const mockAnalyzeMealPhoto = vi.mocked(analyzeMealPhoto)
 
 beforeEach(async () => {
+  clearCachedNutritionPageData()
   mockSearchProviderFoods.mockReset()
   mockSearchProviderFoods.mockResolvedValue({
     provider: 'usda',
@@ -48,16 +73,312 @@ beforeEach(async () => {
     results: [],
     fallbackUsed: false,
   })
+  mockAnalyzeMealPhoto.mockReset()
   await db.delete()
   await db.open()
   await initializeAppData()
 })
 
 afterEach(async () => {
+  cleanup()
+  vi.restoreAllMocks()
+  clearCachedNutritionPageData()
   await db.delete()
 })
 
 describe('NutritionPage', () => {
+  it('keeps loaded dashboard data in place when returning to Nutrition', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await waitFor(() =>
+      expect(screen.queryByText('Loading nutrition')).not.toBeInTheDocument(),
+    )
+    await user.click(screen.getByRole('link', { name: 'Home' }))
+    vi.spyOn(nutritionSummaryService, 'getDailySummary').mockImplementation(
+      () => new Promise(() => undefined),
+    )
+    await user.click(screen.getByRole('link', { name: 'Nutrition' }))
+
+    expect(screen.queryByText('Loading nutrition')).not.toBeInTheDocument()
+    expect(screen.getByText('Daily nutrition totals')).toBeInTheDocument()
+  })
+
+  it('keeps camera options open through scrolling and resets on navigation', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Open camera options' }),
+    )
+    expect(
+      screen.getByRole('menu', { name: 'Camera options' }),
+    ).toBeInTheDocument()
+
+    fireEvent.scroll(window)
+    fireEvent.pointerDown(document.body)
+    expect(
+      screen.getByRole('menu', { name: 'Camera options' }),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('link', { name: 'Home' }))
+    await user.click(screen.getByRole('link', { name: 'Nutrition' }))
+    expect(
+      screen.queryByRole('menu', { name: 'Camera options' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('opens barcode and AI choices below the food camera action', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Open camera options' }),
+    )
+
+    const menu = screen.getByRole('menu', { name: 'Camera options' })
+    expect(
+      within(menu).getByRole('menuitem', { name: 'Scan barcode' }),
+    ).toBeInTheDocument()
+    await user.click(
+      within(menu).getByRole('menuitem', { name: 'Analyze meal photo' }),
+    )
+
+    expect(
+      await screen.findByRole('heading', { name: 'AI meal camera' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/Review every ingredient before logging food/),
+    ).toBeInTheDocument()
+    await expect(db.savedMeals.count()).resolves.toBe(0)
+  })
+
+  it('opens barcode scanning as a focused subpage', async () => {
+    const user = userEvent.setup()
+    const rendered = renderNutrition()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Open camera options' }),
+    )
+    await user.click(screen.getByRole('menuitem', { name: 'Scan barcode' }))
+
+    expect(
+      await screen.findByRole(
+        'heading',
+        { name: 'Scan barcode' },
+        { timeout: 10_000 },
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Enable camera' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/Video stays on this device/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Back to nutrition' }))
+    const overview = rendered.container.querySelector('.nutrition-overview')
+    expect(overview).not.toBeNull()
+    expect(
+      within(overview as HTMLElement).getByLabelText('Selected date'),
+    ).toBeInTheDocument()
+    expect(
+      within(overview as HTMLElement).getByRole('group', {
+        name: 'Nutrition mode',
+      }),
+    ).toBeInTheDocument()
+    expect(document.body).not.toHaveClass('food-search-open')
+  })
+
+  it('returns to food search when the AI camera was launched there', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await openFoodSearch(user)
+    await user.click(
+      screen.getByRole('button', { name: 'Open camera options' }),
+    )
+    await user.click(
+      screen.getByRole('menuitem', { name: 'Analyze meal photo' }),
+    )
+    await user.click(
+      await screen.findByRole('button', { name: 'Back to nutrition' }),
+    )
+
+    expect(
+      screen.getByRole('searchbox', { name: 'Search foods' }),
+    ).toBeInTheDocument()
+  })
+
+  it('logs a captured meal and only saves the recipe when selected', async () => {
+    const user = userEvent.setup()
+    mockAnalyzeMealPhoto.mockResolvedValue({
+      recipeName: 'Photo chicken bowl',
+      confidence: 'medium',
+      assumptions: ['One cup of cooked rice'],
+      ingredients: [
+        {
+          name: 'Grilled chicken',
+          servingQuantity: 5,
+          servingUnit: 'oz',
+          calories: 240,
+          proteinGrams: 45,
+          carbohydrateGrams: 0,
+          fatGrams: 5,
+        },
+        {
+          name: 'Cooked rice',
+          servingQuantity: 1,
+          servingUnit: 'cup',
+          calories: 205,
+          proteinGrams: 4,
+          carbohydrateGrams: 45,
+          fatGrams: 0.4,
+        },
+      ],
+    })
+
+    const stop = vi.fn()
+    const originalMediaDevices = navigator.mediaDevices
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop }],
+        }),
+      },
+    })
+    const play = vi
+      .spyOn(HTMLMediaElement.prototype, 'play')
+      .mockResolvedValue()
+    const videoWidth = vi
+      .spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get')
+      .mockReturnValue(1200)
+    const videoHeight = vi
+      .spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get')
+      .mockReturnValue(900)
+    const getContext = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue({
+        drawImage: vi.fn(),
+      } as unknown as CanvasRenderingContext2D)
+    const toDataUrl = vi
+      .spyOn(HTMLCanvasElement.prototype, 'toDataURL')
+      .mockReturnValue('data:image/jpeg;base64,photo-bytes')
+
+    try {
+      renderNutrition()
+      await user.click(
+        await screen.findByRole('button', { name: 'Open camera options' }),
+      )
+      await user.click(
+        screen.getByRole('menuitem', { name: 'Analyze meal photo' }),
+      )
+      await user.click(
+        await screen.findByRole('button', { name: 'Take meal photo' }),
+      )
+      await user.click(
+        await screen.findByRole('button', { name: 'Analyze meal' }),
+      )
+
+      expect(
+        await screen.findByDisplayValue('Photo chicken bowl'),
+      ).toBeInTheDocument()
+      expect(screen.getByText('Grilled chicken')).toBeInTheDocument()
+      expect(screen.getByText('Cooked rice')).toBeInTheDocument()
+      expect(
+        screen.getByLabelText('Estimated total calories'),
+      ).toHaveTextContent('Calories: 445')
+      expect(
+        screen.queryByText(/AI-estimated nutrition/),
+      ).not.toBeInTheDocument()
+      const saveRecipe = screen.getByRole('checkbox', {
+        name: 'Save as recipe',
+      })
+      expect(saveRecipe).toHaveAttribute('aria-checked', 'false')
+      await expect(db.savedMeals.count()).resolves.toBe(0)
+
+      await user.click(
+        screen.getByRole('button', {
+          name: 'Edit Grilled chicken ingredient',
+        }),
+      )
+      expect(
+        screen.getByRole('dialog', { name: 'Ingredient details' }),
+      ).toBeInTheDocument()
+      const servingAmount = screen.getByRole('textbox', {
+        name: 'Serving amount',
+      })
+      expect(servingAmount).toHaveValue('5')
+      await user.clear(servingAmount)
+      await user.type(servingAmount, '10')
+      expect(screen.getByText(/Preview: 480 kcal/)).toBeInTheDocument()
+      await user.click(
+        screen.getByRole('button', { name: 'Update ingredient' }),
+      )
+      expect(
+        screen.getByLabelText('Estimated total calories'),
+      ).toHaveTextContent('Calories: 685')
+      expect(screen.getByText('10 oz')).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'Log food (2)' }))
+      await waitFor(async () => expect(await db.foodLogEntries.count()).toBe(2))
+      await expect(db.savedMeals.count()).resolves.toBe(0)
+      await expect(db.foodLogEntries.toArray()).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            computedCalories: 480,
+            foodSnapshot: expect.objectContaining({
+              foodName: 'Grilled chicken',
+            }),
+          }),
+        ]),
+      )
+      expect(
+        await screen.findByText('Logged 2 ingredients.'),
+      ).toBeInTheDocument()
+
+      await user.click(
+        screen.getByRole('button', { name: 'Open camera options' }),
+      )
+      await user.click(
+        screen.getByRole('menuitem', { name: 'Analyze meal photo' }),
+      )
+      await user.click(
+        await screen.findByRole('button', { name: 'Take meal photo' }),
+      )
+      await user.click(
+        await screen.findByRole('button', { name: 'Analyze meal' }),
+      )
+      const saveRecipeOnSecondScan = await screen.findByRole('checkbox', {
+        name: 'Save as recipe',
+      })
+      await user.click(saveRecipeOnSecondScan)
+      expect(saveRecipeOnSecondScan).toHaveAttribute('aria-checked', 'true')
+      await user.click(screen.getByRole('button', { name: 'Log food (2)' }))
+
+      await waitFor(async () => expect(await db.savedMeals.count()).toBe(1))
+      await expect(db.foodLogEntries.count()).resolves.toBe(4)
+      await expect(db.savedMeals.toArray()).resolves.toMatchObject([
+        {
+          name: 'Photo chicken bowl',
+          components: [
+            { foodId: null, foodSnapshot: { foodName: 'Grilled chicken' } },
+            { foodId: null, foodSnapshot: { foodName: 'Cooked rice' } },
+          ],
+        },
+      ])
+    } finally {
+      play.mockRestore()
+      videoWidth.mockRestore()
+      videoHeight.mockRestore()
+      getContext.mockRestore()
+      toDataUrl.mockRestore()
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: originalMediaDevices,
+      })
+    }
+  })
+
   it('creates, searches, logs, edits, deletes, and snapshots food logs', async () => {
     const user = userEvent.setup()
     await configureUsdaKey()
@@ -80,24 +401,29 @@ describe('NutritionPage', () => {
       ).not.toBeInTheDocument(),
     )
 
-    await user.type(
-      screen.getByRole('searchbox', { name: 'Search foods' }),
-      'rice',
-    )
-    await user.click(await screen.findByRole('button', { name: 'Select Rice' }))
+    await user.type(await openFoodSearch(user), 'rice')
+    await user.click(await screen.findByRole('button', { name: /^Open Rice,/ }))
     await user.clear(screen.getByRole('textbox', { name: 'Serving amount' }))
     await user.type(
       screen.getByRole('textbox', { name: 'Serving amount' }),
       '1.5',
     )
-    expect(screen.getByText(/Preview: 300 kcal/)).toBeInTheDocument()
+    expect(
+      within(screen.getByLabelText('Nutrition preview')).getByText('300 kcal'),
+    ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Log food' }))
 
+    // The added item appears in the subpage tray; return to the day view to see
+    // the logged totals.
+    expect(await screen.findByText('1 added · Done')).toBeInTheDocument()
+    await closeFoodSearch(user)
+
     expect(await screen.findByText('300 kcal')).toBeInTheDocument()
-    await expect(screen.findByText(/1.5x 1 cup/)).resolves.toBeInTheDocument()
+    await expect(screen.findByText(/1.5 cup/)).resolves.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Foods' }))
-    await user.click(screen.getByRole('button', { name: 'Edit Rice' }))
+    await user.type(await openFoodSearch(user), 'rice')
+    await user.click(await screen.findByRole('button', { name: 'Edit Rice' }))
     await user.clear(
       screen.getByRole('textbox', { name: 'Calories per serving' }),
     )
@@ -113,14 +439,24 @@ describe('NutritionPage', () => {
       foodSnapshot: { caloriesPerServing: 200, foodName: 'Rice' },
     })
 
+    await closeFoodSearch(user)
     await user.click(screen.getByRole('button', { name: 'Day' }))
     await user.click(screen.getByRole('button', { name: 'Edit Rice log' }))
-    const servingMultiplier = await screen.findByRole('textbox', {
-      name: 'Serving multiplier',
+    const editDialog = await screen.findByRole('dialog', {
+      name: 'Edit food log',
     })
-    await user.clear(servingMultiplier)
-    await user.type(servingMultiplier, '2')
-    await user.click(screen.getByRole('button', { name: 'Save log' }))
+    const servingAmount = within(editDialog).getByRole('textbox', {
+      name: 'Serving amount',
+    })
+    expect(servingAmount).toHaveValue('1.5')
+    expect(
+      within(editDialog).getByRole('textbox', { name: 'Serving unit' }),
+    ).toHaveValue('cup')
+    await user.clear(servingAmount)
+    await user.type(servingAmount, '2')
+    await user.click(
+      within(editDialog).getByRole('button', { name: 'Save log' }),
+    )
     await waitFor(async () => {
       const [entry] = await db.foodLogEntries.toArray()
       expect(entry.computedCalories).toBe(400)
@@ -138,11 +474,231 @@ describe('NutritionPage', () => {
     await expect(db.foodLogEntries.toArray()).resolves.toEqual([])
   })
 
+  it('quick-adds a food at its displayed serving from the search "+" without opening the sheet', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await user.click(screen.getByRole('button', { name: /Create custom food/ }))
+    await expectSaveFoodAvailable()
+    await fillFoodForm(user, {
+      name: 'Oats',
+      calories: '150',
+      protein: '5',
+      carbs: '27',
+      fat: '3',
+    })
+    await user.click(screen.getByRole('button', { name: 'Save food' }))
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: 'Create food' }),
+      ).not.toBeInTheDocument(),
+    )
+
+    await user.type(await openFoodSearch(user), 'oats')
+    // The "+" logs immediately at the displayed serving — no serving sheet opens.
+    await user.click(await screen.findByRole('button', { name: /^Log Oats,/ }))
+    expect(
+      screen.queryByRole('button', { name: 'Log food' }),
+    ).not.toBeInTheDocument()
+    expect(await screen.findByText('1 added · Done')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Edit Oats serving' }))
+    const editDialog = await screen.findByRole('dialog', {
+      name: 'Edit food log',
+    })
+    const servingAmount = within(editDialog).getByLabelText('Serving amount')
+    expect(
+      within(editDialog).getByRole('textbox', { name: 'Serving unit' }),
+    ).toHaveValue('cup')
+    await user.clear(servingAmount)
+    await user.type(servingAmount, '2')
+    await user.click(
+      within(editDialog).getByRole('button', { name: 'Save log' }),
+    )
+
+    await waitFor(async () => {
+      const [entry] = await db.foodLogEntries.toArray()
+      expect(entry).toMatchObject({
+        computedCalories: 300,
+        foodSnapshot: { foodName: 'Oats', caloriesPerServing: 150 },
+      })
+    })
+
+    await closeFoodSearch(user)
+    expect(await screen.findByText('300 kcal')).toBeInTheDocument()
+  })
+
+  it('shows and quick-adds local foods using their remembered serving calories', async () => {
+    const user = userEvent.setup()
+    const repository = createFoodRepository(db)
+    const food = await repository.createFood({
+      name: 'Gummi worms',
+      servingQuantity: 40,
+      servingUnit: 'g',
+      servingDescription: '',
+      caloriesPerServing: 300,
+      proteinGramsPerServing: 5,
+      carbohydrateGramsPerServing: 72.5,
+      fatGramsPerServing: 0,
+      notes: '',
+    })
+    await repository.logFood({
+      foodId: food.id,
+      localDate: '2026-07-01',
+      servingMultiplier: 27 / 40,
+    })
+    await repository.rememberFoodUnit({
+      foodId: food.id,
+      unitKey: 'g',
+      amount: 27,
+    })
+
+    renderNutrition()
+    await user.type(await openFoodSearch(user), 'gummi')
+
+    const selectFood = await screen.findByRole('button', {
+      name: 'Open Gummi worms, Last used: 27 g, 203 calories',
+    })
+    expect(within(selectFood).getByText('Last used: 27 g')).toBeInTheDocument()
+    expect(within(selectFood).getByText('203 kcal')).toBeInTheDocument()
+
+    await user.click(selectFood)
+    expect(
+      await screen.findByRole('textbox', { name: 'Serving amount' }),
+    ).toHaveValue('27')
+    expect(
+      within(screen.getByLabelText('Nutrition preview')).getByText('203 kcal'),
+    ).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole('button', { name: 'Set portion to 50 g' }),
+    )
+    expect(screen.getByRole('textbox', { name: 'Serving amount' })).toHaveValue(
+      '50',
+    )
+    expect(
+      within(screen.getByLabelText('Nutrition preview')).getByText('375 kcal'),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Use serving size' }))
+    expect(screen.getByRole('textbox', { name: 'Serving amount' })).toHaveValue(
+      '40',
+    )
+    expect(
+      within(screen.getByLabelText('Nutrition preview')).getByText('300 kcal'),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Close food details' }))
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Log Gummi worms, Last used: 27 g, 203 calories',
+      }),
+    )
+
+    await waitFor(async () => {
+      const entries = await db.foodLogEntries.orderBy('createdAt').toArray()
+      expect(entries).toHaveLength(2)
+      expect(entries[1]?.computedCalories).toBeCloseTo(202.5)
+    })
+
+    await user.click(
+      await screen.findByRole(
+        'button',
+        { name: 'Edit Gummi worms serving' },
+        { timeout: 5_000 },
+      ),
+    )
+    const editDialog = await screen.findByRole('dialog', {
+      name: 'Edit food log',
+    })
+    expect(
+      within(editDialog).getByRole('textbox', { name: 'Serving amount' }),
+    ).toHaveValue('27')
+    expect(
+      within(editDialog).getByRole('textbox', { name: 'Serving unit' }),
+    ).toHaveValue('g')
+  })
+
+  it('keeps the active food result sections stable while several foods are logged', async () => {
+    const user = userEvent.setup()
+    const repository = createFoodRepository(db)
+    for (const name of ['Oats', 'Oat cereal']) {
+      await repository.createFood({
+        name,
+        servingQuantity: 1,
+        servingUnit: 'serving',
+        servingDescription: '',
+        caloriesPerServing: 150,
+        proteinGramsPerServing: 5,
+        carbohydrateGramsPerServing: 27,
+        fatGramsPerServing: 3,
+        notes: '',
+      })
+    }
+    renderNutrition()
+
+    const search = await openFoodSearch(user)
+    expect(search.closest('.subpage-enter')).not.toBeNull()
+    await user.type(search, 'oat')
+    const customFoods = await screen.findByRole('region', {
+      name: 'Custom foods',
+    })
+    expect(within(customFoods).getByText('Oats')).toBeInTheDocument()
+    expect(within(customFoods).getByText('Oat cereal')).toBeInTheDocument()
+
+    const logOats = within(customFoods).getByRole('button', {
+      name: /^Log Oats,/,
+    })
+    for (let count = 1; count <= 12; count += 1) {
+      await user.click(logOats)
+      expect(
+        await screen.findByRole('button', {
+          name: new RegExp(`${count} added`),
+        }),
+      ).toBeInTheDocument()
+    }
+
+    expect(screen.queryByText('Food logged.')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('region', { name: 'Recently added' }),
+    ).not.toBeInTheDocument()
+    expect(within(customFoods).getByText('Oats')).toBeInTheDocument()
+    expect(within(customFoods).getByText('Oat cereal')).toBeInTheDocument()
+
+    await closeFoodSearch(user)
+    await user.type(await openFoodSearch(user), 'oat')
+    expect(
+      await screen.findByRole('region', { name: 'Recently added' }),
+    ).toBeInTheDocument()
+  })
+
+  it('opens the requested nutrition tab from the route parameter', async () => {
+    renderNutrition('/nutrition?tab=foods')
+
+    expect(await screen.findByText('Food library')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Foods' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+
+    cleanup()
+    renderNutrition('/nutrition?tab=day')
+
+    expect(await screen.findByRole('button', { name: 'Day' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(
+      await screen.findByText('Daily nutrition totals'),
+    ).toBeInTheDocument()
+  })
+
   it('saves manual targets and updates the home dashboard', async () => {
     const user = userEvent.setup()
     renderNutrition()
 
     await user.click(screen.getByRole('button', { name: 'Targets' }))
+    expect(screen.queryByText('Estimated maintenance')).not.toBeInTheDocument()
     await user.clear(screen.getByRole('textbox', { name: 'Calories' }))
     await user.type(screen.getByRole('textbox', { name: 'Calories' }), '1800')
     await user.clear(screen.getByRole('textbox', { name: 'Protein target' }))
@@ -173,7 +729,201 @@ describe('NutritionPage', () => {
     await user.click(screen.getByRole('link', { name: 'Home' }))
 
     expect(await screen.findByText('1800 kcal target')).toBeInTheDocument()
-    expect(await screen.findByText('0 g / 160 g')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('img', {
+        name: 'Daily calories logged and target graph',
+      }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/calories logged, 1800 target/)).toBeInTheDocument()
+  })
+
+  it('calculates a custom goal, returns to Targets, and offers manual updates', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await user.click(screen.getByRole('button', { name: 'Targets' }))
+
+    // Open the Set Goal subpage and confirm the back arrow escapes it.
+    await user.click(screen.getByRole('button', { name: 'Set Goal' }))
+    expect(
+      screen.getByRole('heading', {
+        name: 'Do you know your maintenance calories?',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen
+        .getByRole('heading', {
+          name: 'Do you know your maintenance calories?',
+        })
+        .closest('section'),
+    ).toHaveClass('subpage-enter')
+    await user.click(screen.getByRole('button', { name: 'Back to targets' }))
+    expect(
+      screen.getByRole('button', { name: 'Save targets' }),
+    ).toBeInTheDocument()
+
+    // Fill the seven inputs and calculate.
+    await user.click(screen.getByRole('button', { name: 'Set Goal' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Calculate my maintenance calories' }),
+    )
+    expect(
+      screen.getByRole('option', { name: 'Heavily active' }),
+    ).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Current body weight (lb)'), '180')
+    await user.type(screen.getByLabelText('Height (feet)'), '5')
+    await user.type(screen.getByLabelText('Height (inches)'), '10')
+    await user.selectOptions(
+      screen.getByLabelText('How active are you outside of exercise?'),
+      'moderately_active',
+    )
+    await user.type(screen.getByLabelText('Goal weight (lb)'), '170')
+    await user.type(screen.getByLabelText('Age'), '30')
+    await user.selectOptions(screen.getByLabelText('Sex'), 'male')
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    expect(
+      screen.getByRole('heading', { name: 'Goal Type: Cutting' }),
+    ).toBeInTheDocument()
+    expect(
+      screen
+        .getByRole('heading', { name: 'Goal Type: Cutting' })
+        .closest('section'),
+    ).toHaveClass('subpage-enter')
+    const rateSlider = screen.getByRole('slider', {
+      name: 'Weekly loss rate',
+    })
+    expect(rateSlider).toHaveValue('0.5')
+    expect(screen.getByText('Recommended')).toBeInTheDocument()
+    expect(screen.getByText(/0.9 lb\/week \(0.50%\)/)).toBeInTheDocument()
+    expect(screen.getByText('2313 kcal')).toBeInTheDocument()
+    expect(screen.getByText(/2026$/)).toBeInTheDocument()
+
+    fireEvent.input(rateSlider, { target: { value: '0.75' } })
+    expect(screen.getByText(/1.35 lb\/week \(0.75%\)/)).toBeInTheDocument()
+    expect(screen.getByText('2088 kcal')).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole('button', { name: 'Back to basic goal information' }),
+    )
+    expect(
+      (screen.getByLabelText('Goal weight (lb)') as HTMLInputElement).value,
+    ).toBe('170')
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    fireEvent.input(screen.getByRole('slider', { name: 'Weekly loss rate' }), {
+      target: { value: '0.75' },
+    })
+    await user.click(screen.getByRole('button', { name: 'Done' }))
+
+    expect(
+      await screen.findByText('Macros calculated and targets saved.'),
+    ).toBeInTheDocument()
+    expect(await screen.findByText('Estimated maintenance')).toBeInTheDocument()
+    expect(screen.getByText('2763 kcal')).toBeInTheDocument()
+    // Back on the Targets page with a goal-progress card (loads async).
+    expect(await screen.findByText(/Estimated finish:/)).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: 'Update Calories' }),
+    ).toBeInTheDocument()
+
+    const settings = await db.userSettings.get('settings')
+    expect(settings?.nutritionGoal).toMatchObject({
+      direction: 'cut',
+      goalWeightLb: 170,
+      calculationWeightLb: 180,
+      maintenanceCalorieSource: 'calculated',
+      formulaVersion: 1,
+    })
+    expect(settings?.nutritionGoal?.weeklyRateLb).toBeCloseTo(-1.35)
+    expect(settings?.nutritionTargets.calories).toBe(2088)
+
+    // With no body-weight history a manual update reports insufficient data and
+    // does not change calories.
+    await user.click(screen.getByRole('button', { name: 'Update Calories' }))
+    expect(
+      await screen.findByText(
+        'More body-weight data is needed before calories can be updated.',
+      ),
+    ).toBeInTheDocument()
+    const after = await db.userSettings.get('settings')
+    expect(after?.nutritionTargets.calories).toBe(2088)
+  })
+
+  it('closes the Set Goal sub-page with the Escape key', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await user.click(screen.getByRole('button', { name: 'Targets' }))
+    await user.click(screen.getByRole('button', { name: 'Set Goal' }))
+    expect(
+      screen.getByRole('heading', {
+        name: 'Do you know your maintenance calories?',
+      }),
+    ).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+
+    expect(
+      await screen.findByRole('button', { name: 'Save targets' }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows maintenance without a rate slider when goal weight matches current weight', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await user.click(screen.getByRole('button', { name: 'Targets' }))
+    await user.click(screen.getByRole('button', { name: 'Set Goal' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Calculate my maintenance calories' }),
+    )
+    await user.type(screen.getByLabelText('Current body weight (lb)'), '180')
+    await user.type(screen.getByLabelText('Height (feet)'), '5')
+    await user.type(screen.getByLabelText('Height (inches)'), '10')
+    await user.type(screen.getByLabelText('Goal weight (lb)'), '180')
+    await user.type(screen.getByLabelText('Age'), '30')
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    expect(
+      screen.getByRole('heading', { name: 'Goal Type: Maintenance' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('slider')).not.toBeInTheDocument()
+    expect(screen.getByText('Ongoing maintenance')).toBeInTheDocument()
+  })
+
+  it('sets a goal from manually entered maintenance calories', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await user.click(screen.getByRole('button', { name: 'Targets' }))
+    await user.click(screen.getByRole('button', { name: 'Set Goal' }))
+    await user.click(screen.getByRole('button', { name: 'Yes' }))
+
+    expect(
+      screen.getByRole('heading', { name: 'Maintenance calories' }),
+    ).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Maintenance calories'), '2500')
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    expect(screen.queryByLabelText('Height (feet)')).not.toBeInTheDocument()
+    await user.type(screen.getByLabelText('Current body weight (lb)'), '180')
+    await user.type(screen.getByLabelText('Goal weight (lb)'), '170')
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    expect(screen.getByText('2050 kcal')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Done' }))
+
+    expect(
+      await screen.findByText('Macros calculated and targets saved.'),
+    ).toBeInTheDocument()
+
+    const settings = await db.userSettings.get('settings')
+    expect(settings?.nutritionGoal).toMatchObject({
+      maintenanceCalorieSource: 'manual',
+      maintenanceCalories: 2500,
+      direction: 'cut',
+    })
+    expect(settings?.nutritionTargets.calories).toBe(2050)
   })
 
   it('shows the calorie equation and keeps Save food at the top of the form', async () => {
@@ -191,6 +941,15 @@ describe('NutritionPage', () => {
       saveButton.compareDocumentPosition(nameField) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
+    expect(
+      within(dialog).getByRole('button', { name: 'Back from create food' }),
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).queryByRole('textbox', { name: 'Brand or restaurant' }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(dialog).queryByRole('textbox', { name: 'Notes' }),
+    ).not.toBeInTheDocument()
 
     await fillFoodForm(user, {
       name: 'Oats',
@@ -206,6 +965,44 @@ describe('NutritionPage', () => {
     ).toBeInTheDocument()
   })
 
+  it('waits for a save attempt before showing required create-food errors', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await user.click(screen.getByRole('button', { name: /Create custom food/ }))
+    await expectSaveFoodAvailable()
+
+    const dialog = screen.getByRole('dialog', { name: 'Create food' })
+    const nameField = within(dialog).getByRole('textbox', { name: 'Name' })
+    const servingAmount = within(dialog).getByRole('textbox', {
+      name: 'Serving amount',
+    })
+    const servingUnit = within(dialog).getByRole('textbox', {
+      name: 'Serving unit',
+    })
+    expect(
+      within(dialog).queryByText('Food name is required.'),
+    ).not.toBeInTheDocument()
+    expect(
+      within(dialog).queryByText('Serving unit is required.'),
+    ).not.toBeInTheDocument()
+    expect(nameField).not.toHaveAttribute('aria-invalid', 'true')
+    expect(servingAmount).not.toHaveAttribute('aria-invalid', 'true')
+    expect(servingUnit).not.toHaveAttribute('aria-invalid', 'true')
+
+    await user.click(within(dialog).getByRole('button', { name: 'Save food' }))
+
+    expect(
+      within(dialog).getByText('Food name is required.'),
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).getByText('Serving unit is required.'),
+    ).toBeInTheDocument()
+    expect(nameField).toHaveAttribute('aria-invalid', 'true')
+    expect(servingAmount).toHaveAttribute('aria-invalid', 'false')
+    expect(servingUnit).toHaveAttribute('aria-invalid', 'true')
+  })
+
   it('searches with the server key when no user key is configured and surfaces a server missing-key response', async () => {
     const user = userEvent.setup()
     mockSearchProviderFoods.mockRejectedValue(
@@ -213,10 +1010,7 @@ describe('NutritionPage', () => {
     )
     renderNutrition()
 
-    await user.type(
-      await screen.findByRole('searchbox', { name: 'Search foods' }),
-      'rice',
-    )
+    await user.type(await openFoodSearch(user), 'rice')
 
     // Without a stored user key the client still attempts the search so the
     // server-configured USDA key can be used. Only a server missing_api_key
@@ -236,10 +1030,7 @@ describe('NutritionPage', () => {
     renderNutrition()
     await screen.findByText('Connected')
 
-    await user.type(
-      screen.getByRole('searchbox', { name: 'Search foods' }),
-      'r',
-    )
+    await user.type(await openFoodSearch(user), 'r')
     await delay(550)
     expect(mockSearchProviderFoods).not.toHaveBeenCalled()
 
@@ -260,6 +1051,74 @@ describe('NutritionPage', () => {
     )
   })
 
+  it('does not rerun provider search after plus-adding a matching food', async () => {
+    const user = userEvent.setup()
+    await configureUsdaKey()
+    mockSearchProviderFoods.mockResolvedValue({
+      provider: 'usda',
+      query: 'chicken',
+      results: [providerChicken()],
+      fallbackUsed: false,
+    })
+    renderNutrition()
+    await screen.findByText('Connected')
+
+    await user.type(await openFoodSearch(user), 'chicken')
+    await waitFor(() =>
+      expect(mockSearchProviderFoods).toHaveBeenCalledTimes(1),
+    )
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: /^Log Chicken breast cooked,/,
+      }),
+    )
+
+    expect(await screen.findByText(/1 added/)).toBeInTheDocument()
+    await waitFor(async () => {
+      expect(
+        await db.foodUnitPreferences.where('foodId').equals('usda:123').first(),
+      ).toMatchObject({ unitKey: 'oz', amount: 4 })
+    })
+    await delay(650)
+    expect(mockSearchProviderFoods).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses Spanish Open Food Facts search when the app language is Spanish', async () => {
+    const user = userEvent.setup()
+    await settingsRepository.saveLanguage('es')
+    mockSearchProviderFoods.mockResolvedValue({
+      provider: 'open_food_facts',
+      query: 'arroz',
+      results: [],
+      fallbackUsed: false,
+    })
+    renderNutrition()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Buscar alimentos' }),
+    )
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Buscar alimentos' }),
+      'arroz',
+    )
+    expect(mockSearchProviderFoods).not.toHaveBeenCalled()
+    await user.click(
+      screen.getByRole('button', { name: 'Buscar alimentos en español' }),
+    )
+
+    await waitFor(() =>
+      expect(mockSearchProviderFoods).toHaveBeenCalledWith(
+        expect.objectContaining({
+          query: 'arroz',
+          provider: 'open_food_facts',
+          language: 'es',
+          allowFallback: false,
+        }),
+      ),
+    )
+  })
+
   it('shows provider failures separately from no acceptable results', async () => {
     const user = userEvent.setup()
     await configureUsdaKey()
@@ -272,15 +1131,12 @@ describe('NutritionPage', () => {
     renderNutrition()
     await screen.findByText('Connected')
 
-    await user.type(
-      await screen.findByRole('searchbox', { name: 'Search foods' }),
-      'zzz',
-    )
+    await user.type(await openFoodSearch(user), 'zzz')
 
     expect(
       await screen.findByText(/Food providers are unavailable/),
     ).toBeInTheDocument()
-    expect(screen.getByText('No acceptable results')).toBeInTheDocument()
+    expect(screen.queryByText('No acceptable results')).not.toBeInTheDocument()
   })
 
   it('selects, converts, and logs external foods as immutable snapshots', async () => {
@@ -295,30 +1151,87 @@ describe('NutritionPage', () => {
     renderNutrition()
     await screen.findByText('Connected')
 
-    await user.type(
-      await screen.findByRole('searchbox', { name: 'Search foods' }),
-      'chicken',
-    )
-    await user.click(
-      await screen.findByRole('button', {
-        name: 'Select Chicken breast cooked',
-      }),
+    await user.type(await openFoodSearch(user), 'chicken')
+    const providerResult = await screen.findByRole('button', {
+      name: /^Open Chicken breast cooked,/,
+    })
+    const resultMeta =
+      within(providerResult).getByText('187.1 kcal').parentElement
+    if (!resultMeta) {
+      throw new Error('Expected provider result metadata row')
+    }
+    expect(resultMeta).toHaveClass('food-result-meta')
+    expect(within(resultMeta).getByText('4 oz cooked')).toBeInTheDocument()
+    expect(resultMeta).not.toContainElement(
+      within(providerResult).getByText('USDA Test Kitchen'),
     )
 
+    await user.click(providerResult)
+
+    const foodDetails = screen.getByRole('dialog', { name: 'Food details' })
+    const servingAmount = within(foodDetails).getByRole('textbox', {
+      name: 'Serving amount',
+    })
+    const servingUnit = within(foodDetails).getByRole('combobox', {
+      name: 'Serving unit',
+    })
+    const preview = within(foodDetails).getByLabelText('Nutrition preview')
+    expect(servingAmount).toHaveValue('4')
     expect(
-      screen.getByRole('dialog', { name: 'Food details' }),
-    ).toBeInTheDocument()
-    expect(screen.getByText('Protein 37.2 g')).toBeInTheDocument()
+      within(servingUnit)
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual(['oz cooked', 'g'])
+    expect(preview).toHaveTextContent('187 kcal')
+    expect(preview).toHaveTextContent('Protein')
     expect(screen.queryByText(/net/i)).not.toBeInTheDocument()
 
-    await user.selectOptions(screen.getByLabelText('Serving unit'), 'g')
-    await user.clear(screen.getByRole('textbox', { name: 'Serving amount' }))
+    expect(
+      within(foodDetails).getByRole('button', { name: 'Decrease portion' }),
+    ).toBeInTheDocument()
+    await user.click(
+      within(foodDetails).getByRole('button', { name: 'Increase portion' }),
+    )
+    expect(servingAmount).toHaveValue('5')
+    await user.click(
+      within(foodDetails).getByRole('button', { name: 'Decrease portion' }),
+    )
+    expect(servingAmount).toHaveValue('4')
+
+    const quickPortions = within(foodDetails).getByRole('group', {
+      name: 'Quick portions',
+    })
+    expect(
+      within(quickPortions)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['2', '4', '6', '8'])
+
+    await user.selectOptions(
+      servingUnit,
+      within(servingUnit).getByRole('option', { name: 'g' }),
+    )
+    expect(servingAmount).toHaveValue('113.398')
+    expect(preview).toHaveTextContent('187 kcal')
+    expect(
+      within(quickPortions)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['50', '100', '150', '200'])
+
+    await user.clear(servingAmount)
     await user.type(
-      screen.getByRole('textbox', { name: 'Serving amount' }),
+      within(foodDetails).getByRole('textbox', { name: 'Serving amount' }),
       '60',
     )
-    expect(screen.getByText(/Preview: 99 kcal/)).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Log food' }))
+    expect(
+      within(within(foodDetails).getByLabelText('Nutrition preview')).getByText(
+        '99 kcal',
+      ),
+    ).toBeInTheDocument()
+    await user.click(
+      within(foodDetails).getByRole('button', { name: 'Log food' }),
+    )
 
     let entry = await db.foodLogEntries.toCollection().first()
     await waitFor(async () => {
@@ -355,20 +1268,20 @@ describe('NutritionPage', () => {
     renderNutrition()
     await screen.findByText('Connected')
 
-    await user.type(
-      await screen.findByRole('searchbox', { name: 'Search foods' }),
-      'chicken',
-    )
+    await user.type(await openFoodSearch(user), 'chicken')
     await user.click(
       await screen.findByRole('button', {
-        name: 'Select Chicken breast cooked',
+        name: /^Open Chicken breast cooked,/,
       }),
     )
-    await user.click(screen.getByText('More results (1)'))
+    await user.click(screen.getByText('More options'))
     await user.click(screen.getByRole('button', { name: /Chicken breast raw/ }))
     expect(screen.getByText('Chicken breast raw')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Custom copy' }))
+    await user.click(screen.getByText('More options'))
+    await user.click(
+      screen.getByRole('button', { name: 'Create corrected copy' }),
+    )
     expect(
       screen.getByRole('dialog', { name: 'Create food' }),
     ).toBeInTheDocument()
@@ -385,6 +1298,97 @@ describe('NutritionPage', () => {
       .first()
     expect(saved).toMatchObject({ name: 'Corrected chicken' })
     expect(saved?.sourceType).toBeUndefined()
+    expect(saved?.brandName).toBeNull()
+    expect(saved?.notes).toBe('')
+  })
+
+  it('surfaces strict matching saved recipes first in food search', async () => {
+    const user = userEvent.setup()
+    await seedSavedRecipe()
+    renderNutrition()
+
+    await user.type(await openFoodSearch(user), 'chicken rice')
+
+    const recipes = await screen.findByRole('region', { name: 'Recipes' })
+    expect(
+      within(recipes).getByRole('button', { name: /^Log Chicken and Rice,/ }),
+    ).toBeInTheDocument()
+
+    await user.click(
+      within(recipes).getByRole('button', { name: /^Log Chicken and Rice,/ }),
+    )
+
+    expect(
+      await screen.findByText('Logged Chicken and Rice (1 items).'),
+    ).toBeInTheDocument()
+    await expect(db.foodLogEntries.count()).resolves.toBe(1)
+  })
+
+  it('recommends up to eight foods from the previous two days until search begins', async () => {
+    const user = userEvent.setup()
+    const repository = createFoodRepository(db)
+    const today = formatLocalDate(new Date())
+    const mealType = recommendationMealTypeForDate(new Date())
+
+    for (let index = 0; index < 9; index += 1) {
+      const food = await repository.createFood({
+        name: `Meal choice ${index + 1}`,
+        servingQuantity: 1,
+        servingUnit: 'serving',
+        servingDescription: '',
+        caloriesPerServing: 100 + index,
+        proteinGramsPerServing: 10,
+        carbohydrateGramsPerServing: 10,
+        fatGramsPerServing: 2,
+        notes: '',
+      })
+      await repository.logFood({
+        foodId: food.id,
+        localDate:
+          index === 0 ? today : addLocalDays(today, index % 2 === 0 ? -2 : -1),
+        servingMultiplier: 1,
+        mealType,
+      })
+    }
+
+    renderNutrition()
+    const search = await openFoodSearch(user)
+    const recommended = await screen.findByRole('region', {
+      name: 'Recommended foods',
+    })
+    const recommendedRows = within(recommended).getAllByRole('button', {
+      name: /^Open Meal choice/,
+    })
+    expect(recommendedRows).toHaveLength(8)
+    expect(recommended).toHaveTextContent(
+      'From foods logged yesterday and the day before.',
+    )
+    expect(
+      within(recommended).queryByText('Meal choice 1'),
+    ).not.toBeInTheDocument()
+    await user.type(search, 'Meal choice 1')
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('region', { name: 'Recommended foods' }),
+      ).not.toBeInTheDocument(),
+    )
+    expect(
+      await screen.findByRole('button', { name: /^Open Meal choice 1,/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('does not create a recipe search section for one-character-off queries', async () => {
+    const user = userEvent.setup()
+    await seedSavedRecipe()
+    renderNutrition()
+
+    await user.type(await openFoodSearch(user), 'chicken ric')
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('region', { name: 'Recipes' }),
+      ).not.toBeInTheDocument(),
+    )
   })
 
   it('allows legitimate zero macros for custom foods', async () => {
@@ -424,9 +1428,14 @@ describe('NutritionPage', () => {
     await user.click(screen.getByRole('button', { name: 'Log quick add' }))
 
     expect(await screen.findByText('Quick add logged.')).toBeInTheDocument()
-    await expect(
-      screen.findByText(/1x 1 entry - 250 kcal - P 20 C 0 F 0/),
-    ).resolves.toBeInTheDocument()
+    const quickAddName = await screen.findByText('Snack')
+    expect(quickAddName.parentElement).toHaveTextContent(
+      /1 entry - 250 kcal - P 20 C 0 F 0/,
+    )
+    // Quick Add must not pollute the reusable food library/search.
+    await expect(db.foods.count()).resolves.toBe(0)
+    const [quickAddLog] = await db.foodLogEntries.toArray()
+    expect(quickAddLog.foodId).toBeNull()
 
     for (const name of [
       'Recent one',
@@ -450,27 +1459,24 @@ describe('NutritionPage', () => {
           screen.queryByRole('dialog', { name: 'Create food' }),
         ).not.toBeInTheDocument(),
       )
-      await user.type(
-        screen.getByRole('searchbox', { name: 'Search foods' }),
-        name,
-      )
+      await user.type(await openFoodSearch(user), name)
       await user.click(
-        await screen.findByRole('button', { name: `Select ${name}` }),
+        await screen.findByRole('button', {
+          name: new RegExp(`^Open ${name},`),
+        }),
       )
       await user.click(screen.getByRole('button', { name: 'Log food' }))
-      await user.clear(screen.getByRole('searchbox', { name: 'Search foods' }))
+      await closeFoodSearch(user)
       await new Promise((resolve) => setTimeout(resolve, 2))
     }
 
-    await user.type(
-      screen.getByRole('searchbox', { name: 'Search foods' }),
-      'Recent four',
-    )
-    expect(await screen.findByText('No acceptable results')).toBeInTheDocument()
+    await user.type(await openFoodSearch(user), 'Recent four')
+    // Recently added foods now surface first in the day-tab search when they
+    // match the query.
     expect(
-      screen.queryByRole('button', { name: 'Select Recent four' }),
-    ).not.toBeInTheDocument()
-    await user.clear(screen.getByRole('searchbox', { name: 'Search foods' }))
+      await screen.findByRole('button', { name: /^Open Recent four,/ }),
+    ).toBeInTheDocument()
+    await closeFoodSearch(user)
     await user.click(screen.getByRole('button', { name: 'Foods' }))
 
     const recentCard = await screen.findByRole('region', {
@@ -480,11 +1486,61 @@ describe('NutritionPage', () => {
     expect(within(recentCard).getByText('Recent three')).toBeInTheDocument()
     expect(within(recentCard).getByText('Recent two')).toBeInTheDocument()
     expect(within(recentCard).getByText('Recent one')).toBeInTheDocument()
-    expect(within(recentCard).getByText('Snack')).toBeInTheDocument()
+    // Quick Add entries log to the day only; they are not reusable recent foods.
+    expect(within(recentCard).queryByText('Snack')).not.toBeInTheDocument()
+  })
+
+  it('logs immediately from the Recent foods "+" without opening a sheet', async () => {
+    const user = userEvent.setup()
+    renderNutrition()
+
+    await user.click(screen.getByRole('button', { name: /Create custom food/ }))
+    await expectSaveFoodAvailable()
+    await fillFoodForm(user, {
+      name: 'Yogurt',
+      calories: '120',
+      protein: '10',
+      carbs: '9',
+      fat: '4',
+    })
+    await user.click(screen.getByRole('button', { name: 'Save food' }))
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: 'Create food' }),
+      ).not.toBeInTheDocument(),
+    )
+    await user.type(await openFoodSearch(user), 'Yogurt')
+    await user.click(
+      await screen.findByRole('button', { name: /^Log Yogurt,/ }),
+    )
+    await closeFoodSearch(user)
+
+    await user.click(screen.getByRole('button', { name: 'Foods' }))
+    const recentCard = await screen.findByRole('region', {
+      name: 'Recent foods',
+    })
+    const quickLogButton = within(recentCard).getByRole('button', {
+      name: /^Log Yogurt,/,
+    })
+    await user.click(quickLogButton)
+    await waitFor(() => expect(quickLogButton).toHaveClass('is-confirmed'))
+
+    // No serving sheet — the food logs straight to the selected day.
+    expect(
+      screen.queryByRole('button', { name: 'Log food' }),
+    ).not.toBeInTheDocument()
+    await waitFor(async () => {
+      const entries = await db.foodLogEntries.toArray()
+      expect(entries).toHaveLength(2)
+      expect(entries[1]).toMatchObject({
+        computedCalories: 120,
+        foodSnapshot: { foodName: 'Yogurt' },
+      })
+    })
   })
 })
 
-function renderNutrition() {
+function renderNutrition(initialEntry = '/nutrition') {
   const router = createMemoryRouter(
     [
       {
@@ -496,10 +1552,10 @@ function renderNutrition() {
         ],
       },
     ],
-    { initialEntries: ['/nutrition'] },
+    { initialEntries: [initialEntry] },
   )
 
-  render(<RouterProvider router={router} />)
+  return render(<RouterProvider router={router} />)
 }
 
 describe('createSearchSections', () => {
@@ -534,13 +1590,14 @@ describe('createSearchSections', () => {
       recentFoods: [],
     })
 
-    expect(sections[0].title).toBe('Recent and previously used')
+    expect(sections[0].title).toBe('Recently added')
     const common = sections.find((section) => section.title === 'Common')
     const brandedSection = sections.find(
       (section) => section.title === 'Branded',
     )
-    // 12 generic results are capped to the 8 most relevant, in rank order.
-    expect(common?.items).toHaveLength(8)
+    // 12 generic results are capped to the 5 most relevant, in rank order, to
+    // keep the Common grouping concise.
+    expect(common?.items).toHaveLength(5)
     expect(common?.items[0]).toMatchObject({
       type: 'external',
       food: { id: 'usda:0' },
@@ -639,6 +1696,43 @@ async function configureUsdaKey() {
   await settingsRepository.saveUsdaApiKey('test-usda-key', 'connected')
 }
 
+async function seedSavedRecipe() {
+  const repository = createFoodRepository(db)
+  const food = await repository.createFood({
+    name: 'Chicken',
+    servingQuantity: 1,
+    servingUnit: 'serving',
+    servingDescription: '',
+    caloriesPerServing: 200,
+    proteinGramsPerServing: 20,
+    carbohydrateGramsPerServing: 10,
+    fatGramsPerServing: 5,
+    notes: '',
+  })
+  await repository.createSavedMeal({
+    name: 'Chicken and Rice',
+    components: [
+      {
+        foodId: food.id,
+        foodSnapshot: snapshotFood(food),
+        servingMultiplier: 1,
+      },
+    ],
+  })
+}
+
+// Food search now lives in a subpage opened from the day/foods tabs. Tests that
+// drive the search field open it first via this helper.
+async function openFoodSearch(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('button', { name: 'Search foods' }))
+  return screen.getByRole('searchbox', { name: 'Search foods' })
+}
+
+// Returns to the day view from the search subpage.
+async function closeFoodSearch(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: 'Back to nutrition' }))
+}
+
 async function expectSaveFoodAvailable() {
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'Save food' })).toBeEnabled(),
@@ -656,7 +1750,11 @@ async function fillFoodForm(
   },
 ) {
   await user.type(screen.getByRole('textbox', { name: 'Name' }), values.name)
-  await user.type(screen.getByRole('textbox', { name: 'Serving amount' }), '1')
+  const servingAmount = screen.getByRole('textbox', {
+    name: 'Serving amount',
+  })
+  await user.clear(servingAmount)
+  await user.type(servingAmount, '1')
   await user.type(screen.getByRole('textbox', { name: 'Serving unit' }), 'cup')
   await user.type(
     screen.getByRole('textbox', { name: 'Calories per serving' }),

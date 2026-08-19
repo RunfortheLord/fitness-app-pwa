@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   handleFoodBarcodeLookup,
+  handleFoodResolve,
   handleFoodSearch,
   validateSearchRequest,
 } from './foodProviderApi'
@@ -33,6 +34,13 @@ describe('food provider API core', () => {
     expect(() =>
       validateSearchRequest({ query: 'rice\u0000', provider: 'usda' }),
     ).toThrow('control characters')
+    expect(() =>
+      validateSearchRequest({
+        query: 'arroz',
+        provider: 'open_food_facts',
+        language: 'de' as never,
+      }),
+    ).toThrow('Unsupported search language')
   })
 
   it('returns a server configuration error when the USDA key is missing', async () => {
@@ -95,6 +103,140 @@ describe('food provider API core', () => {
     expect(offCalls).toHaveLength(1)
   })
 
+  it('searches Open Food Facts with Spanish fields and returns Spanish names', async () => {
+    const fetcher = vi.fn(async (url: URL | RequestInfo) => {
+      void url
+      return jsonResponse({
+        products: [
+          {
+            code: '8410000000001',
+            product_name: 'Tomato Soup',
+            product_name_es: 'Sopa de tomate',
+            categories: 'Soups',
+            categories_es: 'Sopas',
+            nutriments: {
+              'energy-kcal_100g': 45,
+              proteins_100g: 1.2,
+              carbohydrates_100g: 7.5,
+              fat_100g: 1.1,
+            },
+          },
+        ],
+      })
+    })
+
+    const response = await handleFoodSearch(
+      {
+        query: 'sopa de tomate',
+        provider: 'open_food_facts',
+        language: 'es',
+      },
+      { fetcher },
+    )
+
+    expect(response).toMatchObject({
+      ok: true,
+      data: {
+        provider: 'open_food_facts',
+        results: [{ name: 'Sopa de tomate', foodCategory: 'Sopas' }],
+      },
+    })
+    const requestedUrl = new URL(String(fetcher.mock.calls[0]?.[0]))
+    expect(requestedUrl.searchParams.get('lc')).toBe('es')
+    expect(requestedUrl.searchParams.get('fields')).toContain('product_name_es')
+    expect(requestedUrl.searchParams.get('fields')).toContain('categories_es')
+  })
+
+  it('retries a misspelled query with a corrected spelling and merges canonical results', async () => {
+    const fetcher = vi.fn(
+      async (url: URL | RequestInfo, init?: RequestInit) => {
+        const href = String(url)
+        if (!href.includes('api.nal.usda.gov')) {
+          return jsonResponse({ products: [] })
+        }
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+          query: string
+          dataType?: string[]
+        }
+        const isBranded = Boolean(body.dataType?.includes('Branded'))
+        if (body.query === 'chicken' && !isBranded) {
+          return jsonResponse({
+            foods: [usdaFoodRecord(1, 'Chicken Breast, cooked', 'Foundation')],
+          })
+        }
+        if (body.query === 'chiken' && isBranded) {
+          return jsonResponse({
+            foods: [usdaFoodRecord(2, 'CHIKEN FINGERS', 'Branded')],
+          })
+        }
+        return jsonResponse({ foods: [] })
+      },
+    )
+
+    const response = await handleFoodSearch(
+      { query: 'chiken', provider: 'usda' },
+      { usdaApiKey: 'USDA_FDC_API_KEY_TEST_SENTINEL', fetcher },
+    )
+
+    expect(response.ok).toBe(true)
+    const names =
+      response.ok && isSearchData(response.data)
+        ? response.data.results.map((result) => result.name)
+        : []
+    expect(names).toContain('Chicken Breast, cooked')
+    expect(names).toContain('CHIKEN FINGERS')
+  })
+
+  it('does not issue a correction retry for a correctly spelled query', async () => {
+    const fetcher = vi.fn(async (url: URL | RequestInfo) => {
+      const href = String(url)
+      if (href.includes('api.nal.usda.gov')) {
+        return jsonResponse({ foods: [] })
+      }
+      return jsonResponse({ products: [] })
+    })
+
+    await handleFoodSearch(
+      { query: 'chicken', provider: 'usda' },
+      { usdaApiKey: 'USDA_FDC_API_KEY_TEST_SENTINEL', fetcher },
+    )
+
+    // One search => canonical + branded data-type calls only; no corrected retry.
+    const usdaCalls = fetcher.mock.calls.filter(([url]) =>
+      String(url).includes('api.nal.usda.gov'),
+    )
+    expect(usdaCalls).toHaveLength(2)
+  })
+
+  it('requests a wider canonical candidate pool for first-page UI searches', async () => {
+    const requestBodies: Array<{ dataType?: string[]; pageSize?: number }> = []
+    const fetcher = vi.fn(
+      async (_url: URL | RequestInfo, init?: RequestInit) => {
+        requestBodies.push(
+          JSON.parse(String(init?.body ?? '{}')) as {
+            dataType?: string[]
+            pageSize?: number
+          },
+        )
+        return jsonResponse({ foods: [] })
+      },
+    )
+
+    await handleFoodSearch(
+      { query: 'strawberry', provider: 'usda', page: 1, pageSize: 20 },
+      { usdaApiKey: 'USDA_FDC_API_KEY_TEST_SENTINEL', fetcher },
+    )
+
+    expect(
+      requestBodies.find((body) => !body.dataType?.includes('Branded'))
+        ?.pageSize,
+    ).toBe(50)
+    expect(
+      requestBodies.find((body) => body.dataType?.includes('Branded'))
+        ?.pageSize,
+    ).toBe(20)
+  })
+
   it('coalesces concurrent identical cache misses and evicts by bounded size', async () => {
     let now = 1_000
     const cache = new TtlCache<string>(2, 100, () => now)
@@ -116,6 +258,78 @@ describe('food provider API core', () => {
 
     now = 2_000
     expect(cache.get('b')).toBeNull()
+  })
+
+  it('caches normalized USDA search, detail, and barcode results', async () => {
+    const fetcher = vi.fn(async (url: URL | RequestInfo) => {
+      const href = String(url)
+      if (href.includes('/food/123')) {
+        return jsonResponse(usdaFoodRecord(123, 'Cached rice', 'Foundation'))
+      }
+      if (href.includes('openfoodfacts')) {
+        return jsonResponse({ product: null })
+      }
+      return jsonResponse({
+        foods: [
+          {
+            ...usdaFoodRecord(123, 'Cached rice', 'Foundation'),
+            gtinUpc: '012345678905',
+          },
+        ],
+      })
+    })
+    const caches = createTestCaches()
+    const config = {
+      caches,
+      fetcher,
+      usdaApiKey: 'USDA_FDC_API_KEY_TEST_SENTINEL',
+    }
+
+    const firstSearch = await handleFoodSearch(
+      { provider: 'usda', query: 'cached rice' },
+      config,
+    )
+    const secondSearch = await handleFoodSearch(
+      { provider: 'usda', query: '  CACHED   RICE ' },
+      config,
+    )
+    expect(firstSearch).toMatchObject({ meta: { cache: 'miss' } })
+    expect(secondSearch).toMatchObject({ meta: { cache: 'hit' } })
+    expect(fetcher).toHaveBeenCalledTimes(2)
+
+    await handleFoodResolve(
+      { provider: 'usda', providerRecordId: '123' },
+      config,
+    )
+    const cachedDetail = await handleFoodResolve(
+      { provider: 'usda', providerRecordId: '123' },
+      config,
+    )
+    expect(cachedDetail).toMatchObject({ meta: { cache: 'hit' } })
+    expect(fetcher).toHaveBeenCalledTimes(3)
+
+    await handleFoodBarcodeLookup({ barcode: '012345678905' }, config)
+    const cachedBarcode = await handleFoodBarcodeLookup(
+      { barcode: '012345678905' },
+      config,
+    )
+    expect(cachedBarcode).toMatchObject({ meta: { cache: 'hit' } })
+    expect(fetcher).toHaveBeenCalledTimes(6)
+  })
+
+  it('bypasses search cache for API-key connection tests', async () => {
+    const fetcher = vi.fn<typeof fetch>(async () => jsonResponse({ foods: [] }))
+    const config = {
+      bypassCache: true,
+      caches: createTestCaches(),
+      fetcher,
+      usdaApiKey: 'USDA_FDC_API_KEY_TEST_SENTINEL',
+    }
+
+    await handleFoodSearch({ provider: 'usda', query: 'rice' }, config)
+    await handleFoodSearch({ provider: 'usda', query: 'rice' }, config)
+
+    expect(fetcher).toHaveBeenCalledTimes(4)
   })
 
   it('prefers complete USDA barcode records over Open Food Facts conflicts', async () => {
@@ -176,6 +390,27 @@ function jsonResponse(payload: unknown) {
   })
 }
 
+function isSearchData(
+  data: unknown,
+): data is { results: Array<{ name: string }> } {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    Array.isArray((data as { results?: unknown }).results)
+  )
+}
+
+function usdaFoodRecord(id: number, description: string, dataType: string) {
+  return {
+    fdcId: id,
+    description,
+    dataType,
+    servingSize: 100,
+    servingSizeUnit: 'g',
+    foodNutrients: usdaMacros(),
+  }
+}
+
 function usdaMacros() {
   return [
     { nutrientId: 1008, value: 150 },
@@ -183,4 +418,12 @@ function usdaMacros() {
     { nutrientId: 1005, value: 25 },
     { nutrientId: 1004, value: 5 },
   ]
+}
+
+function createTestCaches() {
+  return {
+    barcode: new TtlCache<unknown>(20, 60_000),
+    details: new TtlCache<unknown>(20, 60_000),
+    search: new TtlCache<unknown>(20, 60_000),
+  }
 }

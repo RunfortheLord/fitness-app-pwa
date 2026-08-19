@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import packageJson from '../../package.json'
 import vercelConfig from '../../vercel.json'
 
 type VercelHeader = {
@@ -30,6 +31,16 @@ describe('deployment cache headers', () => {
     expect(cacheControlFor(config, '/((?!api/).*)')).toBe(
       'no-cache, must-revalidate',
     )
+  })
+
+  it('keeps developer-stable deployments isolated from stable', () => {
+    expect(packageJson.scripts['deploy:dev-stable']).toContain(
+      '--project fitness-app-pwa-dev-stable',
+    )
+    expect(packageJson.scripts['deploy:dev-stable']).toContain(
+      'VITE_DEPLOYMENT_CHANNEL=dev-stable',
+    )
+    expect(packageJson.scripts['deploy:stable']).not.toContain('--project')
   })
 })
 

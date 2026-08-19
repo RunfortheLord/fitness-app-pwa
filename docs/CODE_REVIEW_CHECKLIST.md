@@ -3,9 +3,16 @@
 ## Product Correctness
 
 - Does the change match the binding requirements in `docs/PRODUCT_REQUIREMENTS.md`?
+- Does it remain inside the frozen boundary in `docs/V1_SCOPE_FREEZE.md`?
 - Did the author read the relevant docs before implementation?
 - Does the change avoid unrequested scope expansion?
-- Does it avoid excluded features: accounts, backend, cloud sync, AI recommendations, external food databases, subscriptions, social features, wearables, graphs, adherence scores, e1RM, automatic calorie adjustment, and automatic progression?
+- Does it avoid excluded features: required accounts, realtime multi-device
+  cloud sync, AI coaching or automatic AI actions, subscriptions,
+  advertisements, social features, wearables, automatic calorie adjustment,
+  automatic program advancement, and unrelated expansion?
+- If it touches approved optional authentication, snapshot backup, AI meal
+  analysis, or store distribution, does it preserve signed-out offline use and
+  explicit user review?
 - Are unavoidable assumptions recorded in `docs/DECISIONS.md`?
 
 ## Data Integrity
@@ -24,6 +31,9 @@
 
 - Does every schema change include a database migration?
 - Are persisted fields kept or migrated rather than silently renamed/deleted?
+- Are the bundle/application identifiers, IndexedDB database, local-storage
+  keys, persisted IDs, and backup-format identifiers unchanged by public-name
+  or store work?
 - Are migrations tested from supported prior schemas?
 - Are backup schema compatibility and unsupported future versions handled?
 - Does migration failure avoid silent data loss?
@@ -33,6 +43,7 @@
 - Does the app shell remain cacheable and usable offline?
 - Are user records stored in IndexedDB rather than service-worker cache?
 - Do core flows work without network access after installation?
+- Do core flows work without creating or signing into an account?
 - Is service-worker update behavior deliberate and recoverable?
 - Does active workout state survive reload and restart?
 
@@ -67,9 +78,25 @@
 ## Security and Privacy
 
 - Are secrets absent from the diff?
+- Does `npm run security:check` pass?
+- Do deployed pages retain the CSP, Permissions Policy, referrer, HSTS,
+  MIME-sniffing, and anti-framing headers defined in `vercel.json`?
+- Are new network/provider origins narrowly added to the CSP rather than using
+  broad script or connection allowances?
+- Are server endpoints origin checked where appropriate, input bounded, and
+  protected by a distributed limiter when abuse has cost or destructive impact?
+- Are request bodies, tokens, OAuth codes, PKCE values, GPS samples, meal
+  photographs, and fitness records excluded from operational logs?
 - Is imported JSON validated before writing to IndexedDB?
 - Are destructive actions confirmed?
-- Are backups kept local and never uploaded by app behavior?
+- Do local exports remain local unless the user separately enables the approved
+  cloud snapshot feature?
+- Are account deletion, cloud-data deletion, and local Clear all data distinct,
+  correctly scoped, and confirmed?
+- Does optional cloud backup remain a snapshot service with IndexedDB as the
+  source of truth?
+- Are AI estimates reviewed and explicitly accepted before they can mutate
+  local records?
 - Are broad error-swallowing blocks avoided?
 
 ## Scope Control

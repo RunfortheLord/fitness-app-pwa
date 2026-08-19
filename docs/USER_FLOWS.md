@@ -5,45 +5,99 @@
 1. User opens the installed PWA or visits the app in Safari.
 2. App loads the application shell.
 3. App initializes IndexedDB if no local database exists.
-4. App shows Home with empty dashboard cards and no account prompt.
-5. User can open Settings to set calorie and macro targets.
+4. App shows Home with empty dashboard cards. If signed out, it also shows a
+   dismissible prompt offering optional Google or Apple sign-in for automatic
+   snapshot backup.
+5. User can open Nutrition to set calorie and macro targets.
 6. User can use Add, Nutrition, Training, and History without signing in.
 7. If offline after installation, app still opens and shows local data.
+
+## Managing An Optional Account And Cloud Backup
+
+1. User opens Settings while continuing to use all local features without an
+   account.
+2. User may choose Google or Apple sign-in to enable cloud snapshot backup.
+3. Authentication links the optional cloud snapshot to the signed-in user;
+   IndexedDB remains the source of truth.
+4. User may sign out without deleting local data.
+5. User may delete app-controlled cloud data while retaining local data.
+6. User may choose Delete account in-app. After destructive confirmation, the
+   app deletes the app-managed authentication account and app-controlled cloud
+   rows, signs out, and leaves IndexedDB unchanged.
+7. Clearing local data remains a separate destructive action with its own
+   confirmation.
 
 ## Creating a Food
 
 1. User opens Nutrition or taps Add.
 2. User chooses Create Food.
-3. App opens a bottom sheet or full form.
-4. User enters name, optional brand, serving quantity, serving unit, calories,
-   optional protein, optional total carbohydrates, optional fat, and optional
-   notes.
+3. App opens a custom-food subpage.
+4. User enters name, serving quantity, serving unit, calories, optional protein,
+   optional total carbohydrates, and optional fat.
 5. App validates required fields and nonnegative nutrition values. Blank
    optional macros save as zero.
 6. User saves.
 7. App stores the reusable food with created and updated timestamps.
 8. Food appears in search and recent foods after use.
 
+## Setting a Nutrition Goal
+
+1. User opens Nutrition, chooses Targets, then Set Goal.
+2. User enters current and desired weight, height, age, sex, and activity level.
+3. User continues to a second step showing the goal type derived from the
+   desired weight.
+4. For Cutting or Bulking, the app starts the weekly-rate slider at its fixed
+   Recommended marker and updates the displayed rate and end date as it moves.
+5. User chooses Done.
+6. App saves the goal and calculated calorie/macro targets and returns to
+   Targets.
+
 ## Logging Food
 
 1. User opens Nutrition for the selected local date.
-2. User searches recent foods, custom foods, previously used foods, or remote
-   providers.
-3. App searches remote providers only after a USDA FoodData Central API key is
-   saved, at least three normalized characters are entered, and the request
-   debounce elapses.
-4. User selects a food.
-5. App opens a detail sheet with calories, protein, total carbohydrates, fat,
+2. With no search text, app shows up to four distinct foods most recently
+   logged for the current time-of-day meal during the last seven local calendar
+   dates.
+3. User can select a recommendation or search strict saved-recipe matches,
+   recent foods, custom foods, previously used foods, or remote providers.
+   Entering any search text hides the recommendation section.
+4. App searches remote providers only after at least three normalized
+   characters are entered and the request debounce elapses.
+5. User selects a food.
+6. App opens a detail sheet with calories, protein, total carbohydrates, fat,
    serving amount, and available serving units.
-6. User edits serving amount or chooses grams/mass ounces when reliable
+7. User edits serving amount or chooses grams/mass ounces when reliable
    conversion is available.
-7. App previews calories and macros for that amount.
-8. User logs the food.
-9. App creates a date-based log entry that snapshots the food values and
-   provider metadata when known.
-10. Daily totals update immediately.
-11. If a reusable or provider-retained food changes later, this logged entry
+8. App previews calories and macros for that amount.
+9. User logs the food.
+10. App creates a date-based log entry that snapshots the food values and
+    provider metadata when known.
+11. Daily totals update immediately.
+12. If a reusable or provider-retained food changes later, this logged entry
     keeps its original snapshot values.
+
+## Creating A Recipe From A Meal Photo
+
+1. User opens Nutrition and selects the camera action.
+2. User selects AI, then takes up to three photos with the rear-facing camera or
+   imports them from the device photo library.
+3. The app resizes and compresses each photo below the request ceiling.
+4. The same-origin server route sends the bounded request to OpenAI using a
+   server-only credential; the provider key is never stored on the device.
+5. The app validates the structured ingredient and nutrition estimates.
+6. The existing recipe builder opens with an estimated recipe name,
+   snapshot-only ingredients, assumptions, and estimate context.
+7. The total calories appear prominently. Ingredients are shown as tappable
+   food-style rows in a vertical list, with the detected serving and macro
+   summary.
+8. User can open any ingredient to inspect detailed macros and change its
+   serving amount. User can also search for additional ingredients.
+9. Save as recipe is available as an off-by-default checkmark.
+10. User reviews the draft and presses Log food. The app logs every ingredient
+    snapshot to the selected date, optionally saves the recipe when checked, and
+    exits the subpage.
+11. If no ingredients are detected, the app shows "AI failed" for approximately
+    three seconds and returns to the page that launched the camera.
 
 ## Correcting an Imported Food
 
@@ -62,12 +116,12 @@
 4. User enters bodyweight in pounds by default.
 5. App validates a positive realistic numeric value.
 6. User saves.
-7. App creates a new timestamped bodyweight entry for that local date.
+7. App creates a bodyweight entry for that local date. If an entry already
+   exists, the sheet opens it for correction instead of creating another.
 8. Home immediately refreshes current bodyweight, selected-date status, and the
    compact trend summary.
-9. If the user needs to correct the selected date's latest entry, the user
-   chooses Edit Latest, changes the value, and saves. The app updates that
-   selected record instead of rewriting other same-day records.
+9. If the user needs to correct the selected date's entry, the user chooses
+   Edit Latest, changes the value, and saves.
 
 ## Viewing Bodyweight Progress
 
@@ -75,11 +129,25 @@
 2. User chooses View Graph from the Bodyweight card.
 3. App opens History in the Bodyweight Progress view.
 4. User chooses 1M, 3M, 6M, or All range.
-5. App plots each retained bodyweight entry by timestamp. Multiple same-day
-   entries remain separate points.
+5. App plots each retained bodyweight entry by date. Legacy duplicate-date
+   records remain available for backup compatibility.
 6. User taps or focuses a point.
 7. App shows the selected entry's bodyweight, local date, and timestamp.
 8. Empty and one-point states avoid showing a misleading trend.
+
+## Viewing Calorie Insights
+
+1. User opens Home and chooses 1W or 1M on the Calories card.
+2. App redraws the compact logged-calorie bars and applicable target line for
+   the selected range.
+3. User chooses View more.
+4. App opens the calorie details subpage with the selected range retained.
+5. User may choose 1W, 1M, or 3M.
+6. App shows the full calorie chart, days with positive calories logged,
+   logging consistency, average logged calories, average target, and average
+   surplus, deficit, or on-target state for comparable logged days. Comparison
+   averages are unavailable if there are no comparable days.
+7. User returns to Home with the Back action or normal browser navigation.
 
 ## Creating an Exercise
 
@@ -97,8 +165,10 @@
 1. User opens Training.
 2. User chooses Create Program.
 3. User enters program name and optional notes.
-4. User adds ordered workout days.
-5. User gives each day a name and optional notes.
+4. User taps the plus control at the end of the day-tab row, enters a day name,
+   and saves each ordered workout day.
+5. The day-name input closes after saving so the selected-day editor remains
+   compact.
 6. User adds prescribed exercises to each day.
 7. For each prescribed exercise, user may set target sets, target reps or range, target RIR, rest override, and notes.
 8. User saves the program template.
@@ -117,15 +187,21 @@
 ## Manually Selecting a Workout Day
 
 1. User opens Home or Training.
-2. User views the active program and its workout days.
-3. User selects a workout day manually.
-4. App opens the workout-day detail.
-5. App shows prescribed exercises, target set information, and previous performance where available.
-6. User chooses Start Workout.
+2. User taps the active program week control and may select any week in the
+   program. The app restores that week's saved day check-offs.
+3. Scheduled deload options are labeled sequentially as `Deload N` by deload
+   occurrence; regular options retain their program position as `Week N`.
+4. User selects a workout day manually.
+5. App opens the workout-day detail.
+6. App shows prescribed exercises, target set information, and previous performance where available.
+7. User chooses Start Workout.
+8. When every day in the selected week is complete, the app selects the next
+   incomplete higher week without choosing or starting a workout day.
 
 ## Starting a Workout
 
-1. User starts from a manually selected workout day.
+1. User starts from a manually selected workout day, or explicitly starts the
+   named next unchecked day from Home.
 2. App checks whether another active workout or active run exists.
 3. If a workout exists, app offers Resume or Discard Existing Workout with
    confirmation.
@@ -133,8 +209,12 @@
    confirmation.
 5. If no active activity exists, app creates an active workout session.
 6. App snapshots the source active-cycle day structure into the active workout.
-7. App records local date and start timestamp.
-8. App opens the live workout screen.
+7. App snapshots the selected program week and whether it is a deload. Deloads
+   use one fewer set and target 3 additional RIR. A dedicated remembered-history
+   estimate uses the last completed matching program day, then comparable
+   non-deload exercise history as fallback; Smart progression is not used.
+8. App records local date and start timestamp.
+9. App opens the live workout screen.
 
 ## Completing Sets
 
@@ -143,9 +223,21 @@
 3. For weighted exercises, user enters weight, reps, optional RIR, and completion status.
 4. App persists changes immediately or near-immediately.
 5. When a set is marked complete, app starts or offers the rest timer using the configured rest duration.
-6. User may pause, skip, extend, or dismiss the rest timer.
-7. User may edit completed sets.
-8. User may add or delete sets.
+6. After the final incomplete set in an exercise is completed, app advances to
+   the adjacent next exercise when one exists.
+7. User may swipe between exercises. Swiping back to an already-completed
+   exercise leaves it selected until the user navigates again.
+8. Skipping an exercise records the skip and advances to the adjacent next
+   exercise when one exists.
+9. The fixed session row shows the rest countdown with 30-second subtract and
+   add controls. Exercise Options provides pause/resume, clear, total workout
+   time, and the rest-duration wheels.
+10. Changing the wheel immediately restarts the current countdown at the
+    selected duration and uses that duration for later sets of the exercise.
+11. If the installed Home Screen PWA has outside-app alerts enabled, each timer
+    change cancels or reschedules its pending Web Push notification.
+12. User may edit completed sets.
+13. User may add or delete sets.
 
 ## Replacing an Exercise
 
@@ -161,41 +253,36 @@
 
 1. User taps Finish Workout.
 2. App validates that at least one set or explicit skipped exercise exists.
-3. User confirms completion.
-4. App saves a historical workout with start time, completion time, duration, exercises, sets, skipped exercises, and source references.
-5. App compares the performed workout to the source active-cycle day.
-6. If no structural changes are detected, app closes the active workout and shows workout history detail.
-7. If changes are detected, app opens detected-change review.
-
-## Reviewing Detected Changes
-
-1. App shows a checklist titled Changes Detected.
-2. Each structural change appears as an individual item.
-3. User reviews set added, set removed, exercise added, exercise skipped or removed, exercise replaced, or exercise order changed items.
-4. Performed weight, reps, RIR, completion status, and duration are not listed as structural changes.
-5. User may leave every item unselected.
-6. User proceeds to destination selection or finishes without applying changes.
-
-## Applying a Change to Cycle, Template, Both, or Neither
-
-1. User selects one detected structural change.
-2. User chooses one destination: current active cycle only, reusable program template only, both active cycle and template, or neither.
-3. User repeats this for each change they want to apply.
-4. User confirms.
-5. App applies selected changes in a transaction.
-6. If any update fails, app rolls back all related cycle/template updates and keeps the saved workout intact.
-7. App records which changes were applied or rejected in workout history.
+3. The confirmation shows an unchecked Save all live workout changes option.
+4. User optionally checks the option, then confirms completion.
+5. App waits for pending live edits and saves a historical workout with start
+   time, completion time, duration, exercises, sets, skipped exercises, and
+   source references.
+6. App compares the performed workout to the source active-cycle day.
+7. When the option remains unchecked, app records all detected changes as not
+   applied and leaves the active cycle and reusable template unchanged.
+8. When the option is checked, app applies every detected structural change and
+   progression recommendation to both available program sources in one
+   transaction.
+9. If applying changes fails, app keeps the saved workout, shows a warning, and
+   rolls back the related cycle/template updates.
+10. App closes the active workout and shows workout history detail.
 
 ## Viewing Workout History
 
 1. User opens History.
-2. App lists completed workouts and completed runs as one compact row per
-   history item.
-3. User opens a workout row.
-4. App shows source program/day when applicable, start time, completion time, duration, exercise details, performed sets, skipped exercises, and change review outcomes.
-5. User may edit recorded performance values.
-6. Edits do not change the source program template.
-7. User may delete the historical workout only after confirmation.
+2. User chooses Most recent or By program. The app restores the previous choice
+   and selected program on later visits.
+3. Most recent lists completed workouts and runs as one compact row per item.
+4. By program lists programs; opening one shows all of its completed workouts.
+5. User opens a workout row.
+6. App shows source program/day when applicable, start time, completion time, duration, exercise details, performed sets, skipped exercises, and change review outcomes.
+7. User reviews recorded performance values as read-only history. Deload
+   workouts remain labeled and saved here.
+8. To delete a history day, user returns to the history list, chooses Select,
+   picks one history card, and chooses Delete.
+9. App asks "Delete day permanently?" before permanently removing the selected
+   history day.
 
 ## Viewing Strength Graphs
 
@@ -208,8 +295,10 @@
 ## Tracking a Run
 
 1. User opens Run.
-2. App shows Start Run without requesting location permission yet.
-3. User taps Start Run.
+2. App shows Start Outdoor Run, Start Treadmill, and Log Run Manually without
+   requesting location or motion permission yet.
+3. User chooses an outdoor GPS run, treadmill sensing with stride length, or a
+   completed manual entry.
 4. App checks that no active run or active lifting workout exists, then starts
    foreground geolocation. If a lifting workout exists, the user can resume it
    or explicitly discard it before starting the run.
@@ -223,6 +312,25 @@
 9. User taps Finish and confirms.
 10. App saves the completed run and keeps samples, pauses, splits,
     classifications, and GPS-gap markers for History and backup.
+
+## Manually Logging a Run
+
+1. User opens Run and chooses Log Run Manually.
+2. User selects outdoor/other or treadmill and enters date, distance, duration,
+   and optional notes.
+3. App validates positive distance and duration, derives average pace, and
+   saves a completed run directly to History.
+
+## Tracking a Treadmill Run
+
+1. User opens Run, chooses Start Treadmill, enters stride length, and explicitly
+   grants motion access when the device requires it.
+2. App counts foreground device-motion steps and derives estimated distance
+   from the stored stride length.
+3. Elapsed time updates every second. Pause and resume exclude paused time from
+   moving time.
+4. User finishes the run and can review its type, steps, estimated distance,
+   duration, and pace in History.
 
 ## Viewing Run History
 
@@ -239,7 +347,8 @@
 2. User chooses Export Backup.
 3. App creates a full-fidelity JSON backup with backup schema version and database schema version.
 4. App offers the JSON file for local download/share.
-5. User may also choose CSV export for readable spreadsheet files.
+5. User may also choose Export all fitness data for a local archive of readable
+   spreadsheet-ready CSV files.
 6. JSON and CSV exports use historical food-log snapshots, including food name,
    optional brand or restaurant, provider identity when known, serving amount,
    consumed multiplier, calories, protein, total carbohydrates, fat, and
@@ -271,6 +380,19 @@
 7. User logs bodyweight, workouts, and foreground runs offline when browser
    location permission and platform behavior allow it.
 8. App persists all changes locally.
-9. When online again, no cloud sync is attempted.
-10. If a newer application version is available later, app notifies the user
-    deliberately.
+9. When online again, signed-in users receive an automatic full-snapshot cloud
+   backup. Signed-out users continue with local data only.
+10. If a newer application version is available later, the ready service worker
+    activates and the reopened app shows its versioned What's New notice.
+
+## Installing From A Public App Store
+
+1. User installs the public iOS or Android build.
+2. The app opens into the same local-first experience and does not require
+   account creation.
+3. The store wrapper initializes or upgrades the existing local schema without
+   renaming persisted compatibility identifiers.
+4. User may remain offline, use local core features, and export or restore a
+   local JSON backup.
+5. Optional authentication and cloud snapshot backup remain separately
+   discoverable and removable from Settings.

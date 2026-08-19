@@ -1,5 +1,6 @@
 import {
   GRAMS_PER_OUNCE,
+  isRestaurantFoodCategory,
   normalizeFoodText,
   type NormalizedFoodResult,
 } from '@domain/foodProviderModels'
@@ -9,15 +10,19 @@ export type FoodServingSource = Food | NormalizedFoodResult
 
 export type FoodServingOption = {
   amount: number
+  controlUnit: 'g' | 'oz' | 'portion'
+  fromServingMultiplier: (multiplier: number) => number | null
   key: string
   label: string
   group: 'primary' | 'more'
   grams: number | null
   toServingMultiplier: (amount: number) => number | null
+  unitLabel: string
 }
 
 type ServingParts = {
   name: string
+  foodCategory: string | null
   unit: string
   description: string
   quantity: number
@@ -40,54 +45,128 @@ export function servingOptionsForFood(
 ): FoodServingOption[] {
   const parts = servingParts(food)
   const primary = choosePrimaryServing(parts)
-  const options: FoodServingOption[] = [primary]
+  // Expose every real provider household portion (e.g. "1 breast", "1 cup")
+  // with its true gram weight, ordered after the default and before the
+  // weight units. Duplicates of the default collapse in dedupeOptions.
+  const options: FoodServingOption[] = [
+    primary,
+    ...(primary.key === 'serving' ? [] : [baseServingOption(parts)]),
+    ...householdPortionOptions(parts),
+  ]
 
-  if (parts.reliable && parts.gramsPerServing && parts.ouncesPerServing) {
-    options.push({
-      amount: parts.ouncesPerServing,
-      key: 'oz',
-      label: 'oz',
-      group: 'primary',
-      grams: GRAMS_PER_OUNCE,
-      toServingMultiplier: (amount) => amount / parts.ouncesPerServing!,
-    })
-    options.push({
-      amount: parts.gramsPerServing,
-      key: 'g',
-      label: 'g',
-      group: 'more',
-      grams: 1,
-      toServingMultiplier: (amount) => amount / parts.gramsPerServing!,
-    })
-    options.push({
-      amount: 100,
-      key: '100g',
-      label: '100 g',
-      group: 'more',
-      grams: 100,
-      toServingMultiplier: (amount) => amount / parts.gramsPerServing!,
-    })
-  } else if (!options.some((option) => option.key === 'g')) {
-    options.push({
-      amount: 1,
-      key: 'g',
-      label: 'g',
-      group: 'more',
-      grams: null,
-      toServingMultiplier: () => null,
-    })
+  if (parts.reliable && parts.gramsPerServing) {
+    if (
+      parts.ouncesPerServing &&
+      !options.some((option) => option.controlUnit === 'oz')
+    ) {
+      options.push({
+        amount: parts.ouncesPerServing,
+        controlUnit: 'oz',
+        fromServingMultiplier: (multiplier) =>
+          (multiplier * parts.gramsPerServing!) / GRAMS_PER_OUNCE,
+        key: 'oz',
+        label: 'oz',
+        group: 'primary',
+        grams: GRAMS_PER_OUNCE,
+        toServingMultiplier: (amount) =>
+          (amount * GRAMS_PER_OUNCE) / parts.gramsPerServing!,
+        unitLabel: 'oz',
+      })
+    }
+    if (!options.some((option) => option.controlUnit === 'g')) {
+      options.push({
+        amount: parts.gramsPerServing,
+        controlUnit: 'g',
+        fromServingMultiplier: (multiplier) =>
+          multiplier * parts.gramsPerServing!,
+        key: 'g',
+        label: 'g',
+        group: 'more',
+        grams: 1,
+        toServingMultiplier: (amount) => amount / parts.gramsPerServing!,
+        unitLabel: 'g',
+      })
+    }
   }
 
   const deduped = dedupeOptions(options)
   if (rememberedUnitKey) {
-    const remembered = deduped.find(
-      (option) => option.key === rememberedUnitKey,
-    )
+    const remembered = findServingOption(deduped, rememberedUnitKey)
     if (remembered) {
       return [remembered, ...deduped.filter((option) => option !== remembered)]
     }
   }
   return deduped
+}
+
+// Finds a persisted serving choice. Concise gram/ounce base servings can now
+// use the `serving` key, while older preferences stored `g`, `oz`, or the
+// `100g` pseudo-unit. Resolve those keys by their control unit so existing
+// last-used portions survive without a data migration.
+export function findServingOption(
+  options: FoodServingOption[],
+  unitKey: string,
+): FoodServingOption | undefined {
+  const exact = options.find((option) => option.key === unitKey)
+  if (exact) {
+    return exact
+  }
+  const normalizedKey = canonicalServingKey(unitKey)
+  const matchingUnit = options.find(
+    (option) => canonicalServingKey(option.unitLabel) === normalizedKey,
+  )
+  if (matchingUnit) {
+    return matchingUnit
+  }
+  const compatibleControlUnit =
+    unitKey === '100g'
+      ? 'g'
+      : unitKey === 'g' || unitKey === 'oz'
+        ? unitKey
+        : null
+  return compatibleControlUnit
+    ? options.find((option) => option.controlUnit === compatibleControlUnit)
+    : undefined
+}
+
+// Provider sheets express the chosen amount against the provider's original
+// macro basis. Restaurant foods may be persisted against a canonical listed
+// item/count serving instead. Rebase the multiplier by physical weight (or a
+// positive macro as a safe fallback) so nutrition is applied exactly once.
+export function rebaseProviderServingMultiplier(
+  source: NormalizedFoodResult,
+  persisted: Food,
+  sourceMultiplier: number,
+) {
+  const sourceGrams = source.serving.gramsPerServing
+  const persistedGrams = persisted.gramsPerServing
+  if (
+    sourceGrams !== null &&
+    sourceGrams > 0 &&
+    persistedGrams !== null &&
+    persistedGrams !== undefined &&
+    persistedGrams > 0
+  ) {
+    return (sourceMultiplier * sourceGrams) / persistedGrams
+  }
+
+  const sourceMacros = source.macrosPerServing ?? source.macrosPer100Grams
+  if (sourceMacros) {
+    const macroPairs = [
+      [sourceMacros.calories, persisted.caloriesPerServing],
+      [sourceMacros.proteinGrams, persisted.proteinGramsPerServing],
+      [sourceMacros.carbohydrateGrams, persisted.carbohydrateGramsPerServing],
+      [sourceMacros.fatGrams, persisted.fatGramsPerServing],
+    ]
+    const comparable = macroPairs.find(
+      ([sourceValue, persistedValue]) => sourceValue > 0 && persistedValue > 0,
+    )
+    if (comparable) {
+      return (sourceMultiplier * comparable[0]) / comparable[1]
+    }
+  }
+
+  return sourceMultiplier
 }
 
 export function formatFoodServingLabel(food: FoodServingSource) {
@@ -109,6 +188,86 @@ export function formatCalories(value: number | undefined | null) {
   return String(Math.round(value ?? 0))
 }
 
+const ONE_THIRD = 1 / 3
+
+// Quick-amount chips offered for the chosen unit. Serving/portion units get the
+// common cooking fractions and small multiples; weight units get sensible
+// gram/ounce steps instead, since "¼ g" is meaningless.
+export function quantityChipsForUnit(unitKey: string): number[] {
+  if (unitKey === 'oz') {
+    return [1, 2, 3, 4, 6, 8]
+  }
+  if (unitKey === 'g' || unitKey === '100g') {
+    return [25, 50, 100, 150, 200]
+  }
+  return [0.25, ONE_THIRD, 0.5, 0.75, 1, 1.5, 2]
+}
+
+// A compact four-choice row for the primary logging sheet. The more extensive
+// cooking-fraction set remains available to recipe ingredient editing.
+export function portionChipsForUnit(
+  controlUnit: FoodServingOption['controlUnit'],
+): number[] {
+  if (controlUnit === 'oz') {
+    return [2, 4, 6, 8]
+  }
+  if (controlUnit === 'g') {
+    return [50, 100, 150, 200]
+  }
+  return [0.5, 1, 1.5, 2]
+}
+
+const FRACTION_CHIP_LABELS: Array<[number, string]> = [
+  [0.25, '¼'],
+  [ONE_THIRD, '⅓'],
+  [0.5, '½'],
+  [0.75, '¾'],
+  [1.5, '1½'],
+]
+
+export function formatQuantityChipLabel(value: number): string {
+  const fraction = FRACTION_CHIP_LABELS.find(
+    ([candidate]) => Math.abs(candidate - value) < 1e-6,
+  )
+  return fraction ? fraction[1] : formatAmountValue(value)
+}
+
+// Step size for the −/+ stepper, matched to how each unit is usually adjusted.
+export function amountStepForUnit(unitKey: string): number {
+  if (unitKey === 'g' || unitKey === '100g') {
+    return 10
+  }
+  if (unitKey === 'oz') {
+    return 1
+  }
+  return 0.5
+}
+
+// Next amount after a stepper tap, or null when a decrement would reach a
+// non-positive amount (so the − button can be disabled at the bottom).
+export function nextSteppedAmount(
+  current: number,
+  unitKey: string,
+  direction: 1 | -1,
+): number | null {
+  const step = amountStepForUnit(unitKey)
+  const next = Math.round((current + direction * step) * 1000) / 1000
+  return next > 0 ? next : null
+}
+
+// Stringifies a chip/stepper amount for the text input without trailing-zero or
+// long-decimal noise (e.g. ⅓ → "0.333", 1 → "1").
+export function formatAmountValue(value: number): string {
+  return String(Math.round(value * 1000) / 1000)
+}
+
+// Resulting weight for the chosen amount, shown next to the live macros so the
+// logged gram weight is never ambiguous.
+export function formatGrams(value: number): string {
+  const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10
+  return `${rounded} g`
+}
+
 export function formatMacroGram(value: number | undefined | null) {
   return (Math.round((value ?? 0) * 10) / 10).toFixed(1)
 }
@@ -117,10 +276,6 @@ function choosePrimaryServing(parts: ServingParts): FoodServingOption {
   const text = normalizeFoodText(
     `${parts.name} ${parts.description} ${parts.unit}`,
   )
-  const sourcePortion = sourceHouseholdPortion(parts)
-  if (sourcePortion) {
-    return sourcePortion
-  }
 
   const withGrams = (
     amount: number,
@@ -129,6 +284,11 @@ function choosePrimaryServing(parts: ServingParts): FoodServingOption {
     grams: number,
   ): FoodServingOption => ({
     amount,
+    controlUnit: controlUnitForLabel(label),
+    fromServingMultiplier: (multiplier) =>
+      parts.gramsPerServing
+        ? (multiplier * parts.gramsPerServing * amount) / grams
+        : null,
     key,
     label,
     group: 'primary',
@@ -137,92 +297,337 @@ function choosePrimaryServing(parts: ServingParts): FoodServingOption {
       parts.gramsPerServing
         ? ((entered / amount) * grams) / parts.gramsPerServing
         : null,
+    unitLabel: unitLabelFromServingLabel(label),
   })
 
-  if (
-    parts.reliable &&
-    text.includes('chicken breast') &&
-    parts.rawCookedStatus === 'raw'
-  ) {
-    return withGrams(4, 'oz', '4 oz raw', 4 * GRAMS_PER_OUNCE)
+  // Restaurant records should use the menu/provider portion (for example,
+  // one sandwich or six nuggets) even when the item name also contains a
+  // generic meat-cut phrase such as "chicken breast".
+  if (isRestaurantFood(parts)) {
+    const listedServing =
+      sourceHouseholdPortion(parts, true) ?? describedHouseholdPortion(parts)
+    if (listedServing) {
+      return listedServing
+    }
   }
-  if (parts.reliable && text.includes('chicken breast')) {
-    return withGrams(4, 'oz', '4 oz cooked', 4 * GRAMS_PER_OUNCE)
+
+  // Meat is conventionally logged by weight, so default a plain cut to ounces —
+  // even ahead of a household portion or branded serving label.
+  if (parts.reliable && text.includes('chicken breast') && isMeatCut(text)) {
+    return withGrams(
+      4,
+      'oz',
+      parts.rawCookedStatus === 'raw' ? '4 oz raw' : '4 oz cooked',
+      4 * GRAMS_PER_OUNCE,
+    )
   }
+  if (parts.reliable && isMeatCut(text)) {
+    return withGrams(4, 'oz', '4 oz', 4 * GRAMS_PER_OUNCE)
+  }
+
+  const sourcePortion = sourceHouseholdPortion(parts)
+  if (sourcePortion) {
+    return sourcePortion
+  }
+
+  const describedPortion = describedHouseholdPortion(parts)
+  if (describedPortion) {
+    return describedPortion
+  }
+
   if (
     parts.reliable &&
     text.includes('rice') &&
     parts.rawCookedStatus !== 'raw'
   ) {
-    return withGrams(1, 'cup', '1 cup', parts.gramsPerServing ?? 158)
+    return withGrams(1, 'cup', '1 cup', 158)
   }
   if (parts.reliable && /\beggs?\b/u.test(text)) {
-    return withGrams(1, 'egg', '1 egg', parts.gramsPerServing ?? 50)
+    return withGrams(1, 'egg', '1 egg', 50)
   }
   if (parts.reliable && /\bbanana\b/u.test(text)) {
     return withGrams(1, 'medium-banana', '1 medium banana', 118)
   }
   if (parts.reliable && /\bwaffles?\b/u.test(text)) {
-    return withGrams(1, 'waffle', '1 waffle', parts.gramsPerServing ?? 40)
+    return withGrams(1, 'waffle', '1 waffle', 40)
   }
   if (parts.reliable && /\bbread\b/u.test(text)) {
-    return withGrams(1, 'slice', '1 slice', parts.gramsPerServing ?? 28)
+    return withGrams(1, 'slice', '1 slice', 28)
   }
   if (parts.reliable && /\btortillas?\b/u.test(text)) {
-    return withGrams(1, 'tortilla', '1 tortilla', parts.gramsPerServing ?? 45)
-  }
-  if (
-    parts.reliable &&
-    /\b(beef|pork|fish|salmon|tuna|turkey|meat|steak)\b/u.test(text)
-  ) {
-    return withGrams(4, 'oz', '4 oz', 4 * GRAMS_PER_OUNCE)
+    return withGrams(1, 'tortilla', '1 tortilla', 45)
   }
 
   const label = servingDescription(parts)
   return {
     amount: parts.quantity,
+    controlUnit: controlUnitForLabel(baseServingUnitLabel(parts)),
+    fromServingMultiplier: (multiplier) => multiplier * parts.quantity,
     key: 'serving',
     label,
     group: 'primary',
     grams: parts.gramsPerServing,
     toServingMultiplier: (amount) => amount / parts.quantity,
+    unitLabel: baseServingUnitLabel(parts),
   }
 }
 
-function sourceHouseholdPortion(parts: ServingParts): FoodServingOption | null {
+function isRestaurantFood(parts: ServingParts) {
+  return isRestaurantFoodCategory(parts.foodCategory)
+}
+
+function baseServingOption(parts: ServingParts): FoodServingOption {
+  return {
+    amount: parts.quantity,
+    controlUnit: controlUnitForLabel(baseServingUnitLabel(parts)),
+    fromServingMultiplier: (multiplier) => multiplier * parts.quantity,
+    key: 'serving',
+    label: servingDescription(parts),
+    group: 'primary',
+    grams: parts.gramsPerServing,
+    toServingMultiplier: (amount) => amount / parts.quantity,
+    unitLabel: baseServingUnitLabel(parts),
+  }
+}
+
+// True for a recognizable cut of meat/fish/poultry, but not for prepared dishes
+// that merely contain meat (a sandwich, soup, nugget, etc.), which keep their
+// own household or label serving.
+function isMeatCut(text: string): boolean {
+  const meat =
+    /\b(chicken|beef|pork|turkey|fish|salmon|tuna|shrimp|steak|lamb|bacon|ham|sausage|veal|bison|venison|cod|tilapia|halibut|meat)\b/u
+  const preparedDish =
+    /\b(sandwich|nugget|nuggets|mcnugget|mcnuggets|piece|pieces|tender|tenders|wing|wings|soup|salad|wrap|burrito|taco|pizza|bake|casserole|stew|pie|roll|pasta|noodle|rice|curry|bowl|sub|patty|jerky|sauce|gravy|broth|spread|dip|popper|poppers|finger|fingers|stick|sticks|ball|balls|cake|loaf|dog|dumpling|ravioli|lasagna|quesadilla|enchilada|nacho|nachos|chowder|bisque)\b/u
+  return meat.test(text) && !preparedDish.test(text)
+}
+
+// Skipped portion units that carry no useful household meaning.
+const UNUSABLE_PORTION_UNITS = new Set([
+  '',
+  'serving',
+  'undetermined',
+  'quantity not specified',
+  'portion',
+])
+
+const SPOON_UNITS = new Set(['tablespoon', 'teaspoon'])
+
+// Detailed USDA foods can list a dozen portion variants; keep the dropdown
+// usable by showing only the few most common (the provider already ranks them)
+// and dropping near-identical ones that share a gram weight.
+const MAX_PORTION_OPTIONS = 4
+
+// Turns provider household portions into selectable serving options with their
+// true gram weights. Requires a reliable per-serving gram weight to convert a
+// portion back into a serving multiplier.
+function householdPortionOptions(parts: ServingParts): FoodServingOption[] {
+  const gramsPerServing = parts.gramsPerServing
+  if (!gramsPerServing || gramsPerServing <= 0) {
+    return []
+  }
+  const options: FoodServingOption[] = []
+  const seenGrams = new Set<number>()
+  for (const portion of parts.sourcePortions) {
+    if (options.length >= MAX_PORTION_OPTIONS) {
+      break
+    }
+    if (
+      portion.gramWeight === null ||
+      portion.gramWeight <= 0 ||
+      !portion.unit ||
+      isMassOrMachineUnit(portion.unit) ||
+      UNUSABLE_PORTION_UNITS.has(canonicalServingKey(portion.unit))
+    ) {
+      continue
+    }
+    const grams = portion.gramWeight
+    const gramsKey = Math.round(grams)
+    if (seenGrams.has(gramsKey)) {
+      continue
+    }
+    seenGrams.add(gramsKey)
+    const amount = portion.amount > 0 ? portion.amount : 1
+    const key = canonicalServingKey(portion.unit)
+    options.push({
+      amount,
+      controlUnit: 'portion',
+      fromServingMultiplier: (multiplier: number) =>
+        (multiplier * gramsPerServing * amount) / grams,
+      key,
+      label: `${round(amount)} ${portion.unit.trim()} (${round(grams)} g)`,
+      group: 'primary',
+      grams,
+      toServingMultiplier: (entered: number) =>
+        ((entered / amount) * grams) / gramsPerServing,
+      unitLabel: portion.unit.trim(),
+    })
+  }
+  return options
+}
+
+function sourceHouseholdPortion(
+  parts: ServingParts,
+  preferSourcePortions = false,
+): FoodServingOption | null {
   const branded =
     parts.providerDataType === 'Branded' || parts.providerDataType === 'product'
-  if (branded && parts.unit && !isMassOnly(parts.unit)) {
-    return {
-      amount: parts.quantity,
-      key: 'serving',
-      label: servingDescription(parts),
-      group: 'primary',
-      grams: parts.gramsPerServing,
-      toServingMultiplier: (amount) => amount / parts.quantity,
-    }
+  const listedBase =
+    parts.unit && !isMassOrMachineUnit(parts.unit)
+      ? baseServingOption(parts)
+      : null
+  if (
+    listedBase &&
+    ((!preferSourcePortions && branded) || parts.sourcePortions.length === 0)
+  ) {
+    return listedBase
   }
-  const portion = parts.sourcePortions.find(
+  const portions = parts.sourcePortions.filter(
     (candidate) =>
       candidate.gramWeight &&
       candidate.gramWeight > 0 &&
       candidate.unit &&
-      !isMassOnly(candidate.unit),
+      !isMassOrMachineUnit(candidate.unit) &&
+      !UNUSABLE_PORTION_UNITS.has(canonicalServingKey(candidate.unit)),
   )
+  const portion = preferredSourcePortion(parts, portions)
   if (!portion) {
-    return null
+    return listedBase
   }
+  const portionKey = canonicalServingKey(portion.unit)
+  const plainBagel =
+    /^bagels?$/u.test(normalizeFoodText(parts.name)) &&
+    ['medium', 'regular', 'standard'].includes(portionKey)
+  const displayUnit = plainBagel ? 'bagel' : portion.unit
+  const key = canonicalServingKey(displayUnit)
   return {
     amount: portion.amount,
-    key: normalizeFoodText(portion.unit) || 'portion',
-    label: `${round(portion.amount)} ${portion.unit}`,
+    controlUnit: 'portion',
+    fromServingMultiplier: (multiplier) =>
+      parts.gramsPerServing
+        ? (multiplier * parts.gramsPerServing * portion.amount) /
+          portion.gramWeight!
+        : null,
+    key,
+    label: `${round(portion.amount)} ${displayUnit}`,
     group: 'primary',
     grams: portion.gramWeight,
     toServingMultiplier: (amount) =>
       parts.gramsPerServing
-        ? (amount * portion.gramWeight!) / parts.gramsPerServing
+        ? ((amount / portion.amount) * portion.gramWeight!) /
+          parts.gramsPerServing
         : null,
+    unitLabel: displayUnit.trim(),
   }
+}
+
+function preferredSourcePortion(
+  parts: ServingParts,
+  portions: ServingParts['sourcePortions'],
+) {
+  if (portions.length <= 1) {
+    return portions[0] ?? null
+  }
+
+  const text = normalizeFoodText(`${parts.name} ${parts.description}`)
+  const preferSpoon =
+    /\b(oil|dressing|sauce|syrup|honey|butter|mayo|mayonnaise|spread|dip)\b/u.test(
+      text,
+    )
+  if (preferSpoon) {
+    return (
+      portions.find((portion) =>
+        SPOON_UNITS.has(canonicalServingKey(portion.unit)),
+      ) ??
+      portions[0] ??
+      null
+    )
+  }
+
+  // Provider rank is not always the most realistic default: USDA lists a
+  // miniature bagel before a regular one, for example. Prefer a normal-sized
+  // household portion when one is explicitly supplied.
+  if (!isRestaurantFood(parts)) {
+    if (/\b(strawberry|strawberries|berry|berries)\b/u.test(text)) {
+      const cup = portions.find(
+        (portion) => canonicalServingKey(portion.unit) === 'cup',
+      )
+      if (cup) {
+        return cup
+      }
+    }
+    const standardSize = portions.find((portion) =>
+      ['medium', 'regular', 'standard'].includes(
+        canonicalServingKey(portion.unit),
+      ),
+    )
+    if (standardSize) {
+      return standardSize
+    }
+  }
+
+  return portions[0] ?? null
+}
+
+function describedHouseholdPortion(
+  parts: ServingParts,
+): FoodServingOption | null {
+  if (!parts.reliable || !parts.gramsPerServing) {
+    return null
+  }
+  if (!isMassOrMachineUnit(parts.unit) && normalizeFoodText(parts.unit)) {
+    return null
+  }
+  const parsed = parseServingText(parts.description)
+  if (
+    !parsed ||
+    isMassOrMachineUnit(parsed.unit) ||
+    UNUSABLE_PORTION_UNITS.has(parsed.key)
+  ) {
+    return null
+  }
+  return {
+    amount: parsed.amount,
+    controlUnit: controlUnitForLabel(parsed.unit),
+    fromServingMultiplier: (multiplier) => multiplier * parsed.amount,
+    key: parsed.key,
+    label: `${round(parsed.amount)} ${parsed.unit}`,
+    group: 'primary',
+    grams: parts.gramsPerServing,
+    toServingMultiplier: (amount) => amount / parsed.amount,
+    unitLabel: parsed.unit,
+  }
+}
+
+function parseServingText(
+  value: string,
+): { amount: number; key: string; unit: string } | null {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return null
+  }
+  const match = trimmed.match(
+    // The shared numeric prefix avoids the overlapping alternation in the old form.
+    // eslint-disable-next-line security/detect-unsafe-regex
+    /^(\d+(?:\.\d+|\/\d+)?)\s+(.+)$/u,
+  )
+  if (!match) {
+    return null
+  }
+  const amount = parseAmount(match[1])
+  const unit = match[2].replace(/,?\s*nfs$/iu, '').trim()
+  const key = canonicalServingKey(unit)
+  if (!Number.isFinite(amount) || amount <= 0 || !unit || !key) {
+    return null
+  }
+  return { amount, key, unit }
+}
+
+function parseAmount(value: string) {
+  if (!value.includes('/')) {
+    return Number(value)
+  }
+  const [numerator, denominator] = value.split('/').map(Number)
+  return denominator ? numerator / denominator : Number.NaN
 }
 
 function servingDescription(parts: ServingParts) {
@@ -243,10 +648,36 @@ function servingDescription(parts: ServingParts) {
   return base
 }
 
+function baseServingUnitLabel(parts: ServingParts) {
+  const unit = (parts.unit || parts.description || 'serving').trim()
+  if (parts.quantity === 1 && parseServingText(unit)) {
+    return `serving (${unit})`
+  }
+  return unitLabelFromServingLabel(unit)
+}
+
+function unitLabelFromServingLabel(value: string) {
+  const parsed = parseServingText(value)
+  const withoutAmount = parsed?.unit ?? (value.trim() || 'serving')
+  return withoutAmount.replace(/\s*\([^)]*\)\s*$/u, '').trim() || 'serving'
+}
+
+function controlUnitForLabel(value: string): FoodServingOption['controlUnit'] {
+  const normalized = normalizeFoodText(unitLabelFromServingLabel(value))
+  if (['g', 'gram', 'grams', 'grm'].includes(normalized)) {
+    return 'g'
+  }
+  if (['oz', 'onz', 'ounce', 'ounces'].includes(normalized.split(' ')[0])) {
+    return 'oz'
+  }
+  return 'portion'
+}
+
 function servingParts(food: FoodServingSource): ServingParts {
   if ('serving' in food) {
     return {
       name: food.name,
+      foodCategory: food.foodCategory,
       unit: food.serving.unit,
       description: food.serving.description,
       quantity: food.serving.quantity,
@@ -260,6 +691,7 @@ function servingParts(food: FoodServingSource): ServingParts {
   }
   return {
     name: food.name,
+    foodCategory: food.foodCategory ?? null,
     unit: food.servingUnit,
     description: food.servingDescription,
     quantity: food.servingQuantity,
@@ -272,11 +704,39 @@ function servingParts(food: FoodServingSource): ServingParts {
   }
 }
 
-function isMassOnly(unit: string) {
+function isMassOrMachineUnit(unit: string) {
   const normalized = normalizeFoodText(unit)
-  return ['g', 'gram', 'grams', 'oz', 'ounce', 'ounces', '100g'].includes(
-    normalized,
-  )
+  return [
+    'g',
+    'gram',
+    'grams',
+    'grm',
+    'oz',
+    'onz',
+    'ounce',
+    'ounces',
+    'ml',
+    'milliliter',
+    'milliliters',
+    '100g',
+  ].includes(normalized)
+}
+
+function canonicalServingKey(unit: string) {
+  const normalized = normalizeFoodText(unit)
+  if (['tbsp', 'tbs', 'tablespoons'].includes(normalized)) {
+    return 'tablespoon'
+  }
+  if (['tsp', 'teaspoons'].includes(normalized)) {
+    return 'teaspoon'
+  }
+  if (['onz', 'ounce', 'ounces'].includes(normalized)) {
+    return 'oz'
+  }
+  if (['grm', 'gram', 'grams'].includes(normalized)) {
+    return 'g'
+  }
+  return normalized
 }
 
 function dedupeOptions(options: FoodServingOption[]) {

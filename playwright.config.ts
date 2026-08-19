@@ -6,18 +6,22 @@ export default defineConfig({
   // Retry transient failures (e.g. occasional WebKit timing flakes under full
   // parallel load). Genuine failures still fail every attempt; the trace is
   // captured on the first retry for diagnosis.
-  retries: 2,
+  retries: process.env.CI ? 2 : 0,
   fullyParallel: true,
   workers: 4,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL: 'http://127.0.0.1:4187',
     trace: 'on-first-retry',
   },
   webServer: {
-    command: 'npm run build && npm run preview -- --host 127.0.0.1 --port 4173',
-    url: 'http://127.0.0.1:4173',
-    reuseExistingServer: false,
+    // Launch Vite directly so Playwright owns the actual server process on
+    // Windows and can terminate it cleanly after the suite. Wrapping it in npm
+    // can orphan the child process and leave an otherwise-finished run hanging.
+    command:
+      'node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 4187',
+    url: 'http://127.0.0.1:4187',
+    reuseExistingServer: process.env.PLAYWRIGHT_REUSE_SERVER === '1',
   },
   projects: [
     {

@@ -52,6 +52,43 @@ describe('food provider adapters', () => {
     expect(food?.macrosPerServing?.fatGrams).toBeCloseTo(4.32)
   })
 
+  it('parses search-result foodMeasures into household portions, ranked and cleaned', () => {
+    const food = normalizeUsdaFood(
+      {
+        fdcId: 555,
+        description: 'Rice, white, cooked',
+        dataType: 'Survey (FNDDS)',
+        foodNutrients: [
+          { nutrientId: 1008, value: 130 },
+          { nutrientId: 1003, value: 2.7 },
+          { nutrientId: 1005, value: 28 },
+          { nutrientId: 1004, value: 0.3 },
+        ],
+        foodMeasures: [
+          {
+            disseminationText: 'Quantity not specified',
+            gramWeight: 158,
+            rank: 2,
+          },
+          { disseminationText: '1 cup', gramWeight: 186, rank: 1 },
+          { disseminationText: '1 cup, NFS', gramWeight: 200, rank: 3 },
+        ],
+      },
+      now,
+    )
+
+    const portions = food?.serving.sourcePortions ?? []
+    // "Quantity not specified" is dropped; rank 1 comes first.
+    expect(portions.map((portion) => portion.unit)).toEqual(['cup', 'cup'])
+    expect(portions[0]).toMatchObject({
+      amount: 1,
+      unit: 'cup',
+      gramWeight: 186,
+    })
+    // The rank-1 portion seeds the base serving weight.
+    expect(food?.serving.gramsPerServing).toBe(186)
+  })
+
   it('normalizes USDA branded and restaurant-like records while preserving brand and barcode metadata', () => {
     const food = normalizeUsdaFood(
       {
@@ -85,6 +122,137 @@ describe('food provider adapters', () => {
         conversionReliable: true,
       },
     })
+  })
+
+  it.each([
+    {
+      fdcId: 170790,
+      description: 'CHICK-FIL-A, chicken sandwich',
+      staleMacros: [249, 16.28, 20.89, 11.19],
+      expectedBrand: 'Chick-fil-A',
+      expectedServing: { quantity: 1, unit: 'sandwich' },
+      expectedMacros: {
+        calories: 420,
+        proteinGrams: 29,
+        carbohydrateGrams: 41,
+        fatGrams: 18,
+      },
+      expectedSource: 'Chick-fil-A official U.S. menu',
+    },
+    {
+      fdcId: 173297,
+      description: "McDONALD'S, Chicken McNUGGETS",
+      staleMacros: [302, 15.79, 15.09, 19.81],
+      expectedBrand: "McDonald's",
+      expectedServing: { quantity: 6, unit: 'pieces' },
+      expectedMacros: {
+        calories: 250,
+        proteinGrams: 14,
+        carbohydrateGrams: 15,
+        fatGrams: 15,
+      },
+      expectedSource: "McDonald's official U.S. menu",
+    },
+  ])(
+    'uses reviewed official menu nutrition for USDA restaurant record $fdcId',
+    ({
+      fdcId,
+      description,
+      staleMacros,
+      expectedBrand,
+      expectedServing,
+      expectedMacros,
+      expectedSource,
+    }) => {
+      const food = normalizeUsdaFood(
+        {
+          fdcId,
+          description,
+          dataType: 'SR Legacy',
+          foodCategory: 'Fast Foods',
+          foodNutrients: [
+            { nutrientId: 1008, value: staleMacros[0] },
+            { nutrientId: 1003, value: staleMacros[1] },
+            { nutrientId: 1005, value: staleMacros[2] },
+            { nutrientId: 1004, value: staleMacros[3] },
+          ],
+        },
+        now,
+      )
+
+      expect(food).toMatchObject({
+        brandName: expectedBrand,
+        foodCategory: 'Restaurant Foods',
+        serving: {
+          ...expectedServing,
+          gramsPerServing: null,
+          conversionReliable: false,
+        },
+        macrosPerServing: expectedMacros,
+        macrosPer100Grams: null,
+        macroBasis: 'per_serving',
+        source: {
+          providerDataType: 'Official restaurant menu correction',
+          sourceName: expectedSource,
+          sourceUpdatedAt: '2026-07-19T00:00:00.000Z',
+        },
+      })
+    },
+  )
+
+  it('does not apply an official restaurant correction when the stable ID name does not match', () => {
+    const food = normalizeUsdaFood(
+      {
+        fdcId: 170790,
+        description: 'Different restaurant sandwich',
+        dataType: 'SR Legacy',
+        foodCategory: 'Fast Foods',
+        foodNutrients: [
+          { nutrientId: 1008, value: 300 },
+          { nutrientId: 1003, value: 12 },
+          { nutrientId: 1005, value: 30 },
+          { nutrientId: 1004, value: 14 },
+        ],
+      },
+      now,
+    )
+
+    expect(food).toMatchObject({
+      name: 'Different restaurant sandwich',
+      macrosPer100Grams: { calories: 300 },
+      source: { sourceName: 'USDA FoodData Central' },
+    })
+  })
+
+  it('treats USDA milliliter serving sizes as reliable serving weight', () => {
+    const food = normalizeUsdaFood(
+      {
+        fdcId: 457,
+        description: 'Milk',
+        dataType: 'Branded',
+        brandOwner: 'Dairy Brand',
+        servingSize: 236,
+        servingSizeUnit: 'ml',
+        householdServingFullText: '1 cup',
+        foodNutrients: [
+          { nutrientId: 1008, value: 55 },
+          { nutrientId: 1003, value: 3.4 },
+          { nutrientId: 1005, value: 5 },
+          { nutrientId: 1004, value: 0.1 },
+        ],
+      },
+      now,
+    )
+
+    expect(food).toMatchObject({
+      serving: {
+        quantity: 236,
+        unit: 'ml',
+        description: '1 cup',
+        gramsPerServing: 236,
+      },
+    })
+    expect(food?.macrosPerServing?.calories).toBeCloseTo(129.8)
   })
 
   it('rejects USDA records missing required macros but keeps legitimate zero values', () => {
@@ -158,7 +326,54 @@ describe('food provider adapters', () => {
         carbohydrateGrams: 57.5,
         fatGrams: 30.9,
       },
-      serving: { gramsPerServing: 15 },
+      serving: {
+        quantity: 15,
+        unit: 'g',
+        description: '15 g',
+        gramsPerServing: 15,
+      },
+    })
+  })
+
+  it('prefers Spanish Open Food Facts names and categories for Spanish search', () => {
+    const food = normalizeOpenFoodFactsFood(
+      {
+        code: '8410000000001',
+        product_name: 'Tomato Soup',
+        product_name_es: 'Sopa de tomate',
+        generic_name: 'Prepared soup',
+        generic_name_es: 'Sopa preparada',
+        categories: 'Soups',
+        categories_es: 'Sopas',
+        nutriments: {
+          'energy-kcal_100g': 45,
+          proteins_100g: 1.2,
+          carbohydrates_100g: 7.5,
+          fat_100g: 1.1,
+        },
+      },
+      now,
+      'es',
+    )
+
+    expect(food).toMatchObject({
+      name: 'Sopa de tomate',
+      foodCategory: 'Sopas',
+      normalizedSearchName: 'sopa de tomate',
+      serving: {
+        quantity: 100,
+        unit: 'g',
+        description: '100 g',
+        gramsPerServing: 100,
+        conversionReliable: true,
+        conversionSource: 'per_100g',
+      },
+      macrosPerServing: {
+        calories: 45,
+        proteinGrams: 1.2,
+        carbohydrateGrams: 7.5,
+        fatGrams: 1.1,
+      },
     })
   })
 

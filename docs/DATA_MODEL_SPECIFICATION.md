@@ -8,6 +8,10 @@
 - Use schema versions for both database migrations and backup format.
 - Store graph-ready historical records for bodyweight progress.
 - Snapshot mutable reference data into historical records when needed to preserve history.
+- Public naming is presentation-only. The IndexedDB database name
+  (`training-log`), object-store and field names, local-storage keys, persisted
+  IDs, and backup-format identifiers are compatibility contracts and must not be
+  renamed for **Vigorune** or a later public name.
 
 ## ID Format
 
@@ -44,17 +48,26 @@ foreign-key ID fields and sort indexes.
 ### UserSettings
 
 - `id`
+- `language`: `en` by default; supports `en` and `es`
 - `weightUnit`: default `lb`
 - `energyUnit`: default `kcal`
 - `nutritionTargets`
 - `timerSoundEnabled`
 - `selectedTimerSoundId`
+- `timerBannersEnabled`
+- `rirTrackingEnabled`: defaults to `false`; controls whether RIR inputs and
+  RIR-based workout estimates are enabled
+- `workoutAutofillMode`: `history_copy` by default, or
+  `smart_progression`; controls how completed exercise history prefills new
+  workout sets
+- `historySortMode`: `recent` by default, or `program`
+- `historyProgramId`: nullable persisted program drilldown identifier
 - `createdAt`
 - `updatedAt`
 
 ### ApiKeyIntegrationSettings
 
-- `id`: currently `usda_fooddata_central`
+- `id`: `usda_fooddata_central` or `google_gemini`
 - `apiKey`: user-supplied key stored only in device-local IndexedDB
 - `status`: `not_configured`, `testing`, `connected`, `invalid_key`,
   `rate_limited`, `network_unavailable`, or `service_unavailable`
@@ -73,6 +86,9 @@ and restore payloads.
 - `fatGrams`
 - Targets are manually entered and may be stored as current settings first.
 - Future dated target history may be added without changing food log records.
+- Calorie graphs derive one row per local calendar date from immutable food-log
+  calories and the latest target created by the end of that date. Dates before
+  the first stored target have a zero target.
 
 ### Food
 
@@ -86,15 +102,17 @@ and restore payloads.
 - `proteinGramsPerServing`
 - `carbohydrateGramsPerServing`
 - `fatGramsPerServing`
-- Optional `brandName` for private custom foods.
+- Optional `brandName` for private custom foods. The current custom-food form
+  writes `null`.
 - Optional provider metadata: `brandName`, `sourceType`, `provider`,
-  `providerRecordId`, `providerDataType`, `sourceName`, `sourceUrl`, `barcode`,
-  `barcodeSource`, `sourceUpdatedAt`, `providerIngestedAt`, and
-  `normalizerVersion`
+  `providerRecordId`, `providerDataType`, `foodCategory`, `sourceName`,
+  `sourceUrl`, `barcode`, `barcodeSource`, `sourceUpdatedAt`,
+  `providerIngestedAt`, and `normalizerVersion`
 - Optional serving conversion metadata: `gramsPerServing`, `ouncesPerServing`,
   `servingConversionReliable`, and `servingConversionSource`
 - Optional classification metadata: `macroBasis` and `rawCookedStatus`
-- `notes`
+- `notes`: retained for backups and older data; the current custom-food form
+  writes an empty string.
 - `status`: `active` or `archived`
 - `createdAt`
 - `updatedAt`
@@ -105,8 +123,9 @@ Previously used provider foods may be retained in this table for offline recent
 or previously used search results.
 
 Private custom food creation requires name, serving quantity, serving unit, and
-calories. Optional macros default to zero when left blank. Active private custom
-food names are unique after trimming and case folding.
+calories. Optional macros default to zero when left blank. The current form does
+not collect brand or notes. Active private custom food names are unique after
+trimming and case folding.
 
 ### FoodUnitPreference
 
@@ -163,10 +182,10 @@ record.
 - `carbohydrateGramsPerServing`
 - `fatGramsPerServing`
 - Optional provider snapshot metadata: `snapshotId`, `brandName`, `sourceType`,
-  `provider`, `providerRecordId`, `providerDataType`, `gramsPerServing`,
-  `ouncesPerServing`, `servingConversionReliable`, `servingConversionSource`,
-  `macroBasis`, `rawCookedStatus`, `sourceUpdatedAt`, `providerIngestedAt`, and
-  `normalizerVersion`
+  `provider`, `providerRecordId`, `providerDataType`, `foodCategory`,
+  `gramsPerServing`, `ouncesPerServing`, `servingConversionReliable`,
+  `servingConversionSource`, `macroBasis`, `rawCookedStatus`,
+  `sourceUpdatedAt`, `providerIngestedAt`, and `normalizerVersion`
 - `notes`: legacy-compatible field retained for backups and restore; the
   current live-workout UI does not write exercise-level notes.
 
@@ -247,6 +266,9 @@ Provider snapshot metadata is optional so old local food logs remain readable.
 - `name`
 - `notes`
 - `workoutDays`
+- `durationWeeks`: planned program duration
+- `deloadWeekNumbers`: ordered unique 1-based scheduled deload weeks
+- `deloadSchedulingEnabled`: whether the schedule is visible and applied
 - `status`: `active` or `archived`
 - `createdAt`
 - `updatedAt`
@@ -279,6 +301,10 @@ Provider snapshot metadata is optional so old local food logs remain readable.
 - `name`
 - `notes`
 - `workoutDays`
+- `durationWeeks`
+- `currentWeekNumber`: currently selected 1-based week
+- `deloadWeekNumbers`: independent activation-time snapshot
+- `deloadSchedulingEnabled`: independent activation-time enabled snapshot
 - `status`: `active`, `inactive`, or `archived`
 - `activatedAt`
 - `createdAt`
@@ -294,11 +320,19 @@ Provider snapshot metadata is optional so old local food logs remain readable.
 - `localDate`
 - `name`
 - `workoutSnapshot`
+- `programWeekNumber`: selected week snapshotted at start
+- `isDeload`: scheduled deload status snapshotted at start
 - `exercises`
+
+Each active-workout exercise may store `sessionTargetRepsMin` and
+`sessionTargetRepsMax`. These values are current-session overrides and never
+mutate the active cycle or program template.
+
 - `notes`: legacy-compatible field retained for backups and restore; the
   current live-workout UI does not write workout-level notes.
 - `startedAt`
 - `elapsedPausedSeconds`
+- `pausedAt`: nullable timestamp for the current whole-workout pause
 - `activeRestTimer`
 - `createdAt`
 - `updatedAt`
@@ -340,12 +374,17 @@ Provider snapshot metadata is optional so old local food logs remain readable.
 - `id`
 - `startedAt`
 - `durationSeconds`
+- `elapsedPausedSeconds`
+- `pausedAt`: always `null` after completion; retained for backup compatibility
 - `pausedAt`
 - `accumulatedPausedSeconds`
 - `status`: `running`, `paused`, `dismissed`, or `completed`
 - Remaining time is derived from timestamps.
 - Live workout completion alerts are keyed by the timer record and completed
   status so alerts are not duplicated by rerenders or reloads.
+- Native iOS local notifications are derived from this state and are not stored
+  as an additional database record. One stable native notification identifier
+  is canceled or replaced after each timer mutation.
 
 ### WorkoutHistoryEntry
 
@@ -358,6 +397,9 @@ Provider snapshot metadata is optional so old local food logs remain readable.
 - `startedAt`
 - `completedAt`
 - `durationSeconds`
+- `programWeekNumber`
+- `isDeload`; deload entries remain immutable history but are excluded from
+  derived Estimated 1RM and Total volume points
 - `exercises`
 - `notes`: legacy-compatible field retained for backups and restore; the
   current workout completion flow does not prompt for workout notes.
@@ -426,6 +468,10 @@ not rewrite completed `WorkoutHistorySet` values.
 - `distanceMeters`
 - `currentPaceSecondsPerMile`
 - `averageMovingPaceSecondsPerMile`
+- `trackingMode`: `gps`, `treadmill`, or `manual`; legacy records migrate to
+  `gps`
+- `treadmillStepCount`
+- `treadmillStrideMeters`: nullable
 - `hasGpsGap`
 - `lowPaceAlertedAt`
 - `notes`
@@ -549,6 +595,27 @@ not add distance or moving time.
   history, historical program/day snapshots, nutrition logs, bodyweight data,
   custom foods, custom exercises, settings, API-key settings, barcode settings,
   and existing database/storage identifiers.
+- Schema version 13 adds run tracking mode, treadmill step count, and treadmill
+  stride metadata. Existing runs migrate to GPS mode without changing recorded
+  distance, time, samples, splits, pauses, or classifications.
+- Schema version 14 backfills blank active-cycle exercise notes from their
+  source template prescriptions without overwriting nonblank active notes.
+- Schema version 15 derives the current active-program week from persisted day
+  check-offs without changing completed workout history.
+- Schema version 16 repairs only the reusable USDA foods that have reviewed
+  official restaurant-menu corrections and resets their unit preferences to
+  the official item/count serving. It does not rewrite food-log or saved-meal
+  snapshots.
+- Schema version 17 adds nullable whole-workout `pausedAt` state to active and
+  historical workout records. Existing records migrate with `pausedAt: null`;
+  completed history and accumulated pause totals are unchanged.
+- Schema version 20 adds scheduled deload weeks, workout week/deload snapshots,
+  and persisted History organization/filter preferences. Existing programs
+  migrate with no deload weeks, existing workouts migrate as regular workouts,
+  and History defaults to Most recent.
+- Schema version 21 adds explicit deload-scheduling enabled state and initializes
+  default editable deload-week selections without renaming stores, records, or
+  identifiers.
 
 ## Transaction Boundaries
 
@@ -580,7 +647,8 @@ not add distance or moving time.
 - JSON backup is authoritative and full fidelity.
 - CSV export is derived from stores for readability and does not need to support restore.
 - Import preview summarizes counts, schema versions, conflicts, and whether merge or replace is selected.
-- Current backup format version is `1`, separate from IndexedDB schema version `9`.
+- Current backup format version is `1`, separate from IndexedDB schema version
+  `21`.
 - Backup root fields are `backupFormatVersion`, `databaseSchemaVersion`,
   `applicationVersion`, `exportedAt`, and `data`.
 - Restore supports backup format version `1` when the backup database schema

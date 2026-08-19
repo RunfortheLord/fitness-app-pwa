@@ -3,11 +3,14 @@ import type { LocalDateString } from '@domain/dates'
 export type IsoTimestamp = string
 export type EntityStatus = 'active' | 'archived'
 export type ExerciseStatus = EntityStatus | 'hidden'
-export type WeightUnit = 'lb'
+export type WeightUnit = 'lb' | 'kg'
+export type AppLanguage = 'en' | 'es'
 export type EnergyUnit = 'kcal'
+export type WorkoutAutofillMode = 'history_copy' | 'smart_progression'
+export type HistorySortMode = 'recent' | 'program'
 export type FoodSourceType = 'local' | 'provider'
 export type FoodProviderId = 'usda' | 'open_food_facts'
-export type IntegrationProviderId = 'usda_fooddata_central'
+export type IntegrationProviderId = 'usda_fooddata_central' | 'google_gemini'
 export type IntegrationConnectionStatus =
   | 'not_configured'
   | 'testing'
@@ -17,6 +20,7 @@ export type IntegrationConnectionStatus =
   | 'network_unavailable'
   | 'service_unavailable'
 export type RawCookedStatus = 'raw' | 'cooked' | 'unknown'
+export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack'
 export type FoodMacroBasis = 'per_serving' | 'per_100g' | 'both'
 export type FoodConversionSource =
   | 'provider_serving_weight'
@@ -54,6 +58,13 @@ export type AppMetadata = {
   id: 'app'
   databaseSchemaVersion: number
   backupSchemaVersion: number
+  storagePersistenceStatus?: 'granted' | 'denied' | 'unsupported' | 'error'
+  storagePersistenceCheckedAt?: IsoTimestamp | null
+  /** When the automatic cloud backup last succeeded, used to detect staleness. */
+  lastAutomaticBackupAt?: IsoTimestamp | null
+  /** Account-scoped hashes used to avoid re-upserting unchanged calorie days. */
+  dailyNutritionSyncUserId?: string | null
+  dailyNutritionSyncFingerprints?: Record<string, string>
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }
@@ -70,11 +81,27 @@ export type NutritionTarget = {
 
 export type UserSettings = {
   id: 'settings'
+  language?: AppLanguage
   weightUnit: WeightUnit
   energyUnit: EnergyUnit
   nutritionTargets: NutritionTargetValues
+  nutritionGoal?: NutritionGoal | null
   timerSoundEnabled?: boolean
   selectedTimerSoundId?: string
+  timerBannersEnabled?: boolean
+  /** RIR fields and prompts hide everywhere when false. Defaults to false. */
+  rirTrackingEnabled?: boolean
+  /** How prior completed sets prefill a newly started workout. */
+  workoutAutofillMode?: WorkoutAutofillMode
+  /** Persisted History list organization. */
+  historySortMode?: HistorySortMode
+  /** Persisted program drilldown while History is organized by program. */
+  historyProgramId?: string | null
+  /**
+   * Legacy user-wide rest-timer preference retained for older local data. New
+   * rest default edits are stored on each exercise.
+   */
+  defaultRestSeconds?: number
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }
@@ -95,10 +122,60 @@ export type NutritionTargetValues = {
   fatGrams: number
 }
 
+export type GoalSex = 'male' | 'female'
+
+export type GoalActivityLevel =
+  | 'sedentary'
+  | 'lightly_active'
+  | 'moderately_active'
+  | 'heavily_active'
+
+export type GoalDirection = 'cut' | 'bulk' | 'maintain'
+export type GoalMaintenanceCalorieSource = 'calculated' | 'manual'
+
+export type GoalCalorieUpdate = {
+  appliedAt: IsoTimestamp
+  deltaKcal: number
+  trendWeightLb: number
+  observedWeeklyChangeLb: number
+  /**
+   * Signature of the trend data that produced this update. Used to avoid
+   * applying the same adjustment twice from unchanged trend data.
+   */
+  signature: string
+}
+
+/**
+ * A custom nutrition goal derived from the Set Goal inputs. Stored additively
+ * on {@link UserSettings} so users without a goal are unaffected. The fields
+ * are sufficient to reproduce and update the plan deterministically.
+ */
+export type NutritionGoal = {
+  goalWeightLb: number
+  /** Bodyweight the plan was calculated from (trend weight or a manual value). */
+  calculationWeightLb: number
+  heightInches: number
+  ageYears: number
+  sex: GoalSex
+  activityLevel: GoalActivityLevel
+  direction: GoalDirection
+  /** Intended weekly bodyweight change in pounds (negative for a cut). */
+  weeklyRateLb: number
+  maintenanceCalorieSource?: GoalMaintenanceCalorieSource
+  maintenanceCalories: number
+  targets: NutritionTargetValues
+  estimatedFinishDate: LocalDateString | null
+  formulaVersion: number
+  lastCalorieUpdate?: GoalCalorieUpdate | null
+  createdAt: IsoTimestamp
+  updatedAt: IsoTimestamp
+}
+
 export type Food = {
   id: string
   name: string
   brandName?: string | null
+  foodCategory?: string | null
   servingQuantity: number
   servingUnit: string
   servingDescription: string
@@ -123,6 +200,8 @@ export type Food = {
   normalizerVersion?: number | null
   rawCookedStatus?: RawCookedStatus
   macroBasis?: FoodMacroBasis
+  /** Starred by the user for one-tap re-logging. Undefined means not favorite. */
+  isFavorite?: boolean
   notes: string
   status: EntityStatus
   createdAt: IsoTimestamp
@@ -151,6 +230,7 @@ export type FoodSnapshot = {
   snapshotId?: string
   foodName: string
   brandName?: string | null
+  foodCategory?: string | null
   sourceType?: FoodSourceType
   provider?: FoodProviderId | null
   providerRecordId?: string | null
@@ -179,12 +259,35 @@ export type FoodLogEntry = {
   localDate: LocalDateString
   foodId: string | null
   foodSnapshot: FoodSnapshot
+  mealType: MealType
   servingMultiplier: number
   computedCalories: number
   computedProteinGrams: number
   computedCarbohydrateGrams: number
   computedFatGrams: number
   notes: string
+  createdAt: IsoTimestamp
+  updatedAt: IsoTimestamp
+}
+
+export type SavedMealComponent = {
+  /** Reference to the source food when it still exists; the snapshot is authoritative. */
+  foodId: string | null
+  foodSnapshot: FoodSnapshot
+  servingMultiplier: number
+}
+
+/**
+ * A named, reusable combination of foods (e.g. "my usual oatmeal bowl").
+ * Components carry immutable snapshots so a saved meal keeps logging correctly
+ * even after its source foods are edited or removed.
+ */
+export type SavedMeal = {
+  id: string
+  name: string
+  components: SavedMealComponent[]
+  notes: string
+  status: EntityStatus
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }
@@ -200,6 +303,7 @@ export type BodyweightEntry = {
 }
 
 export type RunStatus = 'active' | 'paused' | 'completed' | 'cancelled'
+export type RunTrackingMode = 'gps' | 'treadmill' | 'manual'
 export type RunSampleDecision = 'accepted' | 'rejected' | 'gap'
 export type RunSampleRejectionReason =
   | 'first_sample'
@@ -223,6 +327,9 @@ export type Run = {
   distanceMeters: number
   currentPaceSecondsPerMile: number | null
   averageMovingPaceSecondsPerMile: number | null
+  trackingMode?: RunTrackingMode
+  treadmillStepCount?: number
+  treadmillStrideMeters?: number | null
   hasGpsGap: boolean
   lowPaceAlertedAt: IsoTimestamp | null
   notes: string
@@ -343,6 +450,26 @@ export type ProgramTemplate = {
   notes: string
   status: EntityStatus
   lastActiveAt?: IsoTimestamp | null
+  /** True for the immutable seeded built-in program library entries. */
+  isBuiltIn?: boolean
+  /** Training level shown for built-in programs (e.g. "Beginner"). */
+  level?: string | null
+  /** Goal/category shown for built-in programs. */
+  goal?: string | null
+  /** Planned length of the program in weeks (built-ins default to 10). */
+  durationWeeks?: number | null
+  /** 1-based scheduled deload weeks within the program duration. */
+  deloadWeekNumbers?: number[]
+  /** Whether the deload-week schedule is shown and applied. Defaults to false. */
+  deloadSchedulingEnabled?: boolean
+  /**
+   * When true, live workouts for this program prompt for RIR on every set
+   * (and prefill the exercise's target RIR on each), instead of the final set
+   * only. Defaults to false.
+   */
+  trackRirEverySet?: boolean
+  /** Seed version of a built-in template, for idempotent re-seeding. */
+  builtInSeedVersion?: number | null
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }
@@ -384,6 +511,33 @@ export type ActiveProgramCycle = {
   notes: string
   status: 'active' | 'inactive' | 'archived'
   activatedAt: IsoTimestamp
+  /** Planned length in weeks, snapshotted from the template at activation. */
+  durationWeeks?: number | null
+  /** User-selected week; completing all of its days can advance it. */
+  currentWeekNumber?: number | null
+  /** Scheduled deload weeks snapshotted from the template at activation. */
+  deloadWeekNumbers?: number[]
+  /** Whether the snapshotted deload-week schedule is active. */
+  deloadSchedulingEnabled?: boolean
+  /** Track RIR on every set, snapshotted from the template at activation. */
+  trackRirEverySet?: boolean
+  createdAt: IsoTimestamp
+  updatedAt: IsoTimestamp
+}
+
+/**
+ * A per-week check-off for a day in an active cycle. Records reset each week
+ * (they are keyed by weekNumber), so the active-cycle card can show which day is
+ * next in the current week. Written automatically when a workout for the day is
+ * completed and toggled manually from the dashboard.
+ */
+export type ActiveCycleDayCheck = {
+  id: string
+  activeCycleId: string
+  dayId: string
+  /** 1-based week of the cycle, advanced by completed day check-offs. */
+  weekNumber: number
+  checked: boolean
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }
@@ -442,8 +596,16 @@ export type Workout = {
   completedAt: IsoTimestamp | null
   durationSeconds: number | null
   elapsedPausedSeconds: number
+  /** Current session-level pause. Missing on records created before schema 17. */
+  pausedAt?: IsoTimestamp | null
   activeRestTimer: RestTimerState | null
   status: 'active' | 'completed' | 'cancelled'
+  /** Snapshotted at start: prompt RIR on every set, not just the final set. */
+  trackRirEverySet?: boolean
+  /** Selected program week snapshotted when the workout starts. */
+  programWeekNumber?: number | null
+  /** Whether this workout started from a scheduled deload week. */
+  isDeload?: boolean
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }
@@ -465,6 +627,12 @@ export type WorkoutExercise = {
   notes: string
   skipped: boolean
   replacementOfExerciseId: string | null
+  /** Active-workout rep target. Missing on records created before schema 18. */
+  sessionTargetRepsMin?: number | null
+  /** Active-workout rep target. Missing on records created before schema 18. */
+  sessionTargetRepsMax?: number | null
+  /** Active-workout RIR target, including a deload adjustment when applicable. */
+  sessionTargetRir?: number | null
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }

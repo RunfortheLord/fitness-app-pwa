@@ -1,11 +1,14 @@
 import { Footprints, Pause, Play, Square, Timer } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import {
   Card,
   EmptyState,
+  FormField,
   LoadingState,
   ModalConfirmationDialog,
+  NumericInput,
   PageContainer,
   PrimaryButton,
   SecondaryButton,
@@ -13,48 +16,75 @@ import {
   StatusMessage,
   ValidationMessage,
 } from '@components/ui'
+import { useLanguage } from '@components/languageContextValue'
+import { formatLocalDate } from '@domain/dates'
 import {
   formatDistance,
   formatDuration,
   formatPace,
 } from '@domain/runFormatting'
+import { calculateLiveRunMetrics, METERS_PER_MILE } from '@domain/runTracking'
+import {
+  createTreadmillMotionState,
+  processTreadmillMotion,
+} from '@domain/treadmillTracking'
 import { runRepository, type RunStructure } from '@repositories/runRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
-import type { Run, RunAlertResponse } from '@shared-types/app'
+import type { Run, RunAlertResponse, RunTrackingMode } from '@shared-types/app'
+import {
+  getCachedRunPageData,
+  preloadRunPageData,
+  setCachedRunPageData,
+  type RunPageLoadedState,
+} from '@pages/runPageCache'
 
 type RunPageState =
   | { status: 'loading' }
-  | { status: 'idle' }
-  | { status: 'ready'; structure: RunStructure }
+  | RunPageLoadedState
   | { status: 'error'; message: string }
 
 export function RunPage() {
-  const [state, setState] = useState<RunPageState>({ status: 'loading' })
+  const { language, t } = useLanguage()
+  const cachedPageData = getCachedRunPageData()
+  const [state, setState] = useState<RunPageState>(
+    () => cachedPageData?.state ?? { status: 'loading' },
+  )
   const [geoError, setGeoError] = useState<string | null>(null)
   const [finishRequested, setFinishRequested] = useState(false)
   const [discardRequested, setDiscardRequested] = useState(false)
   const [activeWorkoutConflictId, setActiveWorkoutConflictId] = useState<
     string | null
   >(null)
+  const [activeWorkoutId, setActiveWorkoutId] = useState<string | null>(
+    () => cachedPageData?.activeWorkoutId ?? null,
+  )
   const [lowPacePrompt, setLowPacePrompt] = useState(false)
-  const watchId = useRef<number | null>(null)
+  // Capture the mount time once; the active-run interval keeps it current.
+  // eslint-disable-next-line react-hooks/purity
+  const [clockNow, setClockNow] = useState(Date.now())
+  const [manualFormOpen, setManualFormOpen] = useState(false)
+  const [treadmillFormOpen, setTreadmillFormOpen] = useState(false)
+  const [savedMessage, setSavedMessage] = useState<string | null>(null)
+  const [manualDate, setManualDate] = useState(formatLocalDate(new Date()))
+  const [manualDistanceMiles, setManualDistanceMiles] = useState('')
+  const [manualDurationMinutes, setManualDurationMinutes] = useState('')
+  const [manualNotes, setManualNotes] = useState('')
+  const [manualMode, setManualMode] =
+    useState<Extract<RunTrackingMode, 'manual' | 'treadmill'>>('manual')
+  const [treadmillStrideInches, setTreadmillStrideInches] = useState('30')
+  const gpsTracker = useRef<GpsTrackerHandle | null>(null)
+  const treadmillMotion = useRef(createTreadmillMotionState())
+  const storedTreadmillSteps = useRef(0)
 
   useEffect(() => {
     let isCurrent = true
-    void runRepository
-      .getActiveRun()
-      .then(async (run) => {
+    void preloadRunPageData()
+      .then((data) => {
         if (!isCurrent) {
           return
         }
-        setState(
-          run
-            ? {
-                status: 'ready',
-                structure: await runRepository.getRunStructure(run.id),
-              }
-            : { status: 'idle' },
-        )
+        setActiveWorkoutId(data.activeWorkoutId)
+        setState(data.state)
       })
       .catch((caught: unknown) => {
         if (isCurrent) {
@@ -67,22 +97,48 @@ export function RunPage() {
       })
     return () => {
       isCurrent = false
-      stopGpsWatch(watchId.current)
-      watchId.current = null
+      stopGpsTracking(gpsTracker.current)
+      gpsTracker.current = null
     }
   }, [])
 
   const activeRunId = state.status === 'ready' ? state.structure.run.id : null
   const activeRunStatus =
     state.status === 'ready' ? state.structure.run.status : null
+  const activeRunMode =
+    state.status === 'ready'
+      ? (state.structure.run.trackingMode ?? 'gps')
+      : null
+  const activeTreadmillSteps =
+    state.status === 'ready' ? (state.structure.run.treadmillStepCount ?? 0) : 0
 
   useEffect(() => {
-    if (!activeRunId || activeRunStatus !== 'active') {
-      stopGpsWatch(watchId.current)
-      watchId.current = null
+    storedTreadmillSteps.current = activeTreadmillSteps
+  }, [activeTreadmillSteps])
+
+  const reload = useCallback(
+    async (runId: string) => {
+      const nextState: RunPageLoadedState = {
+        status: 'ready',
+        structure: await runRepository.getRunStructure(runId),
+      }
+      setCachedRunPageData({ activeWorkoutId, state: nextState })
+      setState(nextState)
+    },
+    [activeWorkoutId],
+  )
+
+  useEffect(() => {
+    if (
+      !activeRunId ||
+      activeRunStatus !== 'active' ||
+      activeRunMode !== 'gps'
+    ) {
+      stopGpsTracking(gpsTracker.current)
+      gpsTracker.current = null
       return
     }
-    watchId.current = startGpsWatch(activeRunId, {
+    gpsTracker.current = startGpsTracking(activeRunId, {
       onError: (message) => setGeoError(message || null),
       onSample: (result) => {
         setState({ status: 'ready', structure: result.structure })
@@ -93,10 +149,73 @@ export function RunPage() {
       },
     })
     return () => {
-      stopGpsWatch(watchId.current)
-      watchId.current = null
+      stopGpsTracking(gpsTracker.current)
+      gpsTracker.current = null
     }
-  }, [activeRunId, activeRunStatus])
+  }, [activeRunId, activeRunMode, activeRunStatus])
+
+  useEffect(() => {
+    if (state.status !== 'ready' || activeRunStatus === 'completed') {
+      return
+    }
+    const timer = window.setInterval(() => setClockNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [activeRunId, activeRunStatus, state.status])
+
+  useEffect(() => {
+    if (
+      state.status !== 'ready' ||
+      activeRunStatus !== 'active' ||
+      activeRunMode !== 'treadmill' ||
+      !activeRunId
+    ) {
+      return
+    }
+    const runId = activeRunId
+    treadmillMotion.current = createTreadmillMotionState(
+      storedTreadmillSteps.current,
+    )
+    const onMotion = (event: DeviceMotionEvent) => {
+      const acceleration =
+        event.accelerationIncludingGravity ?? event.acceleration
+      if (
+        acceleration?.x == null ||
+        acceleration.y == null ||
+        acceleration.z == null
+      ) {
+        return
+      }
+      const previousCount = treadmillMotion.current.stepCount
+      treadmillMotion.current = processTreadmillMotion(
+        treadmillMotion.current,
+        {
+          timestamp: event.timeStamp,
+          x: acceleration.x,
+          y: acceleration.y,
+          z: acceleration.z,
+        },
+      )
+      if (treadmillMotion.current.stepCount === previousCount) {
+        return
+      }
+      void runRepository
+        .recordTreadmillSteps(
+          runId,
+          treadmillMotion.current.stepCount,
+          new Date(),
+        )
+        .then(() => reload(runId))
+        .catch((caught: unknown) =>
+          setGeoError(
+            caught instanceof Error
+              ? caught.message
+              : 'Treadmill motion could not be recorded.',
+          ),
+        )
+    }
+    window.addEventListener('devicemotion', onMotion)
+    return () => window.removeEventListener('devicemotion', onMotion)
+  }, [activeRunId, activeRunMode, activeRunStatus, reload, state.status])
 
   useEffect(() => {
     function beforeUnload(event: BeforeUnloadEvent) {
@@ -113,21 +232,15 @@ export function RunPage() {
     return () => window.removeEventListener('beforeunload', beforeUnload)
   }, [state])
 
-  async function reload(runId: string) {
-    setState({
-      status: 'ready',
-      structure: await runRepository.getRunStructure(runId),
-    })
-  }
-
   async function startRun() {
+    blurActiveControl()
     setGeoError(null)
     if (!('geolocation' in navigator)) {
       setGeoError(formatGeoError('unsupported'))
       return
     }
     try {
-      const run = await runRepository.startRun()
+      const run = await runRepository.startRun(new Date(), 'gps')
       await reload(run.id)
     } catch (caught) {
       const message =
@@ -142,39 +255,133 @@ export function RunPage() {
     }
   }
 
+  async function startTreadmillRun() {
+    blurActiveControl()
+    setGeoError(null)
+    const strideInches = Number(treadmillStrideInches)
+    if (
+      !Number.isFinite(strideInches) ||
+      strideInches < 10 ||
+      strideInches > 80
+    ) {
+      setGeoError('Stride length must be between 10 and 80 inches.')
+      return
+    }
+    if (!(await requestTreadmillMotionPermission())) {
+      setGeoError(
+        'Motion access is required for treadmill sensing. Allow Motion & Fitness access and try again.',
+      )
+      return
+    }
+    try {
+      const run = await runRepository.startRun(
+        new Date(),
+        'treadmill',
+        strideInches * 0.0254,
+      )
+      treadmillMotion.current = createTreadmillMotionState()
+      setTreadmillFormOpen(false)
+      await reload(run.id)
+    } catch (caught) {
+      setGeoError(
+        caught instanceof Error
+          ? caught.message
+          : 'Treadmill run could not start.',
+      )
+    }
+  }
+
+  async function saveManualRun() {
+    blurActiveControl()
+    setGeoError(null)
+    const distanceMiles = Number(manualDistanceMiles)
+    const durationMinutes = Number(manualDurationMinutes)
+    try {
+      await runRepository.logManualRun({
+        localDate: manualDate,
+        distanceMeters: distanceMiles * METERS_PER_MILE,
+        elapsedSeconds: Math.round(durationMinutes * 60),
+        notes: manualNotes,
+        trackingMode: manualMode,
+      })
+      setManualDistanceMiles('')
+      setManualDurationMinutes('')
+      setManualNotes('')
+      setManualFormOpen(false)
+      setSavedMessage('Run saved to History.')
+    } catch (caught) {
+      setGeoError(
+        caught instanceof Error ? caught.message : 'Run could not be saved.',
+      )
+    }
+  }
+
   async function discardWorkoutAndStartRun() {
     if (!activeWorkoutConflictId) {
       return
     }
     await workoutRepository.discardWorkout(activeWorkoutConflictId)
     setActiveWorkoutConflictId(null)
+    setActiveWorkoutId(null)
     await startRun()
   }
 
   async function pauseRun(run: Run) {
-    await runRepository.pauseRun(run.id)
-    await reload(run.id)
+    setRunStatusImmediately(run, 'paused')
+    try {
+      await runRepository.pauseRun(run.id)
+      await reload(run.id)
+    } catch (caught) {
+      setGeoError(
+        caught instanceof Error ? caught.message : 'Run could not pause.',
+      )
+      await reload(run.id)
+    }
   }
 
   async function resumeRun(run: Run) {
-    await runRepository.resumeRun(run.id)
-    await reload(run.id)
+    setRunStatusImmediately(run, 'active')
+    try {
+      await runRepository.resumeRun(run.id)
+      await reload(run.id)
+    } catch (caught) {
+      setGeoError(
+        caught instanceof Error ? caught.message : 'Run could not resume.',
+      )
+      await reload(run.id)
+    }
+  }
+
+  function setRunStatusImmediately(run: Run, status: 'active' | 'paused') {
+    setState((current) =>
+      current.status === 'ready'
+        ? {
+            ...current,
+            structure: {
+              ...current.structure,
+              run: { ...current.structure.run, ...run, status },
+            },
+          }
+        : current,
+    )
   }
 
   async function finishRun(run: Run) {
     await runRepository.finishRun(run.id)
-    stopGpsWatch(watchId.current)
-    watchId.current = null
+    stopGpsTracking(gpsTracker.current)
+    gpsTracker.current = null
     setFinishRequested(false)
     await reload(run.id)
   }
 
   async function discardRun(run: Run) {
     await runRepository.discardRun(run.id)
-    stopGpsWatch(watchId.current)
-    watchId.current = null
+    stopGpsTracking(gpsTracker.current)
+    gpsTracker.current = null
     setDiscardRequested(false)
-    setState({ status: 'idle' })
+    const nextState: RunPageLoadedState = { status: 'idle' }
+    setCachedRunPageData({ activeWorkoutId, state: nextState })
+    setState(nextState)
   }
 
   async function respondToLowPace(run: Run, response: RunAlertResponse) {
@@ -189,7 +396,7 @@ export function RunPage() {
   if (state.status === 'loading') {
     return (
       <PageContainer>
-        <LoadingState label="Loading run tracker" />
+        <LoadingState label="Loading run tracker" variant="cards" />
       </PageContainer>
     )
   }
@@ -205,20 +412,87 @@ export function RunPage() {
   if (state.status === 'idle') {
     return (
       <PageContainer>
-        <SectionHeader title="Run" />
         {geoError ? <ValidationMessage message={geoError} /> : null}
+        {savedMessage ? (
+          <StatusMessage tone="success">{savedMessage}</StatusMessage>
+        ) : null}
         <Card>
           <EmptyState
-            title="No active run"
-            message="GPS collection starts only after Start Run."
+            title="Choose a run"
+            message="Track outside with GPS, sense treadmill steps, or add a completed run manually."
             action={
-              <PrimaryButton type="button" onClick={startRun}>
-                <Play aria-hidden="true" size={18} />
-                Start Run
-              </PrimaryButton>
+              <div className="run-start-actions">
+                {activeWorkoutId ? (
+                  <Link className="button button-primary" to="/workout">
+                    {t('Finish current workout')}
+                  </Link>
+                ) : (
+                  <>
+                    <PrimaryButton type="button" onClick={startRun}>
+                      <Play aria-hidden="true" size={18} />
+                      Start Outdoor Run
+                    </PrimaryButton>
+                    <SecondaryButton
+                      type="button"
+                      onClick={() => {
+                        setTreadmillFormOpen((current) => !current)
+                        setManualFormOpen(false)
+                      }}
+                    >
+                      Start Treadmill
+                    </SecondaryButton>
+                    <SecondaryButton
+                      type="button"
+                      onClick={() => {
+                        setManualFormOpen((current) => !current)
+                        setTreadmillFormOpen(false)
+                      }}
+                    >
+                      Log Run Manually
+                    </SecondaryButton>
+                  </>
+                )}
+              </div>
             }
           />
         </Card>
+        {treadmillFormOpen ? (
+          <Card title="Treadmill sensing">
+            <p className="muted">
+              Keep the phone secured on your body. Steps and estimated distance
+              use motion sensing and your stride length.
+            </p>
+            <FormField id="treadmill-stride" label="Stride length (inches)">
+              <NumericInput
+                id="treadmill-stride"
+                min="10"
+                max="80"
+                onChange={(event) =>
+                  setTreadmillStrideInches(event.currentTarget.value)
+                }
+                value={treadmillStrideInches}
+              />
+            </FormField>
+            <PrimaryButton type="button" onClick={startTreadmillRun}>
+              Start Treadmill Run
+            </PrimaryButton>
+          </Card>
+        ) : null}
+        {manualFormOpen ? (
+          <ManualRunForm
+            date={manualDate}
+            distanceMiles={manualDistanceMiles}
+            durationMinutes={manualDurationMinutes}
+            mode={manualMode}
+            notes={manualNotes}
+            onDate={setManualDate}
+            onDistance={setManualDistanceMiles}
+            onDuration={setManualDurationMinutes}
+            onMode={setManualMode}
+            onNotes={setManualNotes}
+            onSave={saveManualRun}
+          />
+        ) : null}
         <RunLimitations />
         <ModalConfirmationDialog
           confirmLabel="Resume Active Workout"
@@ -230,73 +504,84 @@ export function RunPage() {
           title="Workout in progress"
         >
           <p>
-            An active workout is in progress. Resume it, discard it before
-            starting this run, or cancel.
+            {t(
+              'An active workout is in progress. Resume it, discard it before starting this run, or cancel.',
+            )}
           </p>
           <SecondaryButton
             className="button-danger"
             type="button"
             onClick={() => void discardWorkoutAndStartRun()}
           >
-            Discard Active Workout
+            {t('Discard Active Workout')}
           </SecondaryButton>
         </ModalConfirmationDialog>
       </PageContainer>
     )
   }
 
-  const { run, splits, classifications } = state.structure
+  const { splits, classifications, pauses } = state.structure
+  const run = {
+    ...state.structure.run,
+    ...calculateLiveRunMetrics(
+      state.structure.run,
+      pauses,
+      new Date(clockNow).toISOString(),
+    ),
+  }
   const completed = run.status === 'completed'
 
   return (
     <PageContainer>
-      <SectionHeader title={completed ? 'Run complete' : 'Run'} />
+      <SectionHeader title={completed ? 'Run complete' : 'Active run'} />
       {!completed ? (
         <SecondaryButton
           className="button-danger"
           type="button"
           onClick={() => setDiscardRequested(true)}
         >
-          Discard Run
+          {t('Discard Run')}
         </SecondaryButton>
       ) : null}
       <p className="visually-hidden" aria-live="polite">
-        Run status {run.status}. Distance {formatDistance(run.distanceMeters)}.
+        {t('Run status')} {t(run.status)}. {t('Distance')}{' '}
+        {formatDistance(run.distanceMeters)}.
       </p>
       {geoError ? <ValidationMessage message={geoError} /> : null}
-      {run.hasGpsGap ? (
-        <StatusMessage tone="warning">
-          GPS signal gap detected. Distance was not fabricated across the gap.
-        </StatusMessage>
-      ) : null}
-
       <Card className="run-hero">
         <div className="run-status-row">
           <span>
             <Footprints aria-hidden="true" size={18} />
-            {run.status}
+            {t(run.status)}
           </span>
           <span>
             <Timer aria-hidden="true" size={18} />
             {formatDuration(run.elapsedSeconds)}
           </span>
+          <span>{run.trackingMode === 'treadmill' ? 'Treadmill' : 'GPS'}</span>
         </div>
         <div className="run-metrics">
           <span>
             <strong>{formatDistance(run.distanceMeters)}</strong>
-            <small>Distance</small>
+            <small>{t('Distance')}</small>
           </span>
+          {run.trackingMode === 'treadmill' ? (
+            <span>
+              <strong>{run.treadmillStepCount ?? 0}</strong>
+              <small>Steps sensed</small>
+            </span>
+          ) : null}
           <span>
             <strong>{formatDuration(run.movingSeconds)}</strong>
-            <small>Moving time</small>
+            <small>{t('Moving time')}</small>
           </span>
           <span>
             <strong>{formatPace(run.currentPaceSecondsPerMile)}</strong>
-            <small>Current pace</small>
+            <small>{t('Current pace')}</small>
           </span>
           <span>
             <strong>{formatPace(run.averageMovingPaceSecondsPerMile)}</strong>
-            <small>Average moving pace</small>
+            <small>{t('Average moving pace')}</small>
           </span>
         </div>
       </Card>
@@ -307,12 +592,12 @@ export function RunPage() {
             {run.status === 'active' ? (
               <SecondaryButton type="button" onClick={() => pauseRun(run)}>
                 <Pause aria-hidden="true" size={18} />
-                Pause
+                {t('Pause')}
               </SecondaryButton>
             ) : (
               <PrimaryButton type="button" onClick={() => resumeRun(run)}>
                 <Play aria-hidden="true" size={18} />
-                Resume
+                {t('Resume')}
               </PrimaryButton>
             )}
             <SecondaryButton
@@ -321,7 +606,7 @@ export function RunPage() {
               onClick={() => setFinishRequested(true)}
             >
               <Square aria-hidden="true" size={18} />
-              Finish
+              {t('Finish')}
             </SecondaryButton>
           </div>
         </Card>
@@ -332,11 +617,13 @@ export function RunPage() {
           <div className="run-split-list">
             {splits.map((split) => (
               <div key={split.id}>
-                <strong>Mile {split.mileNumber}</strong>
+                <strong>
+                  {t('Mile')} {split.mileNumber}
+                </strong>
                 <span>{formatPace(split.paceSecondsPerMile)}</span>
                 <small>
-                  {formatDuration(split.movingSeconds)} moving -{' '}
-                  {formatDuration(split.elapsedSeconds)} elapsed
+                  {formatDuration(split.movingSeconds)} {t('moving')} -{' '}
+                  {formatDuration(split.elapsedSeconds)} {t('elapsed')}
                 </small>
               </div>
             ))}
@@ -354,13 +641,17 @@ export function RunPage() {
           <ul className="compact-list">
             {classifications.map((classification) => (
               <li key={classification.id}>
-                <span>{classification.type}</span>
-                <strong>{formatTimestamp(classification.startedAt)}</strong>
+                <span>{t(classification.type)}</span>
+                <strong>
+                  {formatTimestamp(classification.startedAt, language)}
+                </strong>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="muted">No walking or rest classifications recorded.</p>
+          <p className="muted">
+            {t('No walking or rest classifications recorded.')}
+          </p>
         )}
       </Card>
       <RunLimitations />
@@ -373,8 +664,9 @@ export function RunPage() {
         title="Finish run?"
       >
         <p>
-          Save this run to History with its elapsed time, moving time, samples,
-          splits, classifications, and GPS-gap markers.
+          {t(
+            'Save this run to History with its elapsed time, moving time, samples, splits, classifications, and GPS-gap markers.',
+          )}
         </p>
       </ModalConfirmationDialog>
 
@@ -386,8 +678,9 @@ export function RunPage() {
         title="Discard run?"
       >
         <p>
-          This permanently discards the active run and all recorded GPS data. It
-          will not appear in history, graphs, or statistics.
+          {t(
+            'This permanently discards the active run and all recorded GPS data. It will not appear in history, graphs, or statistics.',
+          )}
         </p>
       </ModalConfirmationDialog>
 
@@ -399,8 +692,9 @@ export function RunPage() {
         title="Still running?"
       >
         <p>
-          Your recent pace has stayed low. Classify it without changing stored
-          GPS samples.
+          {t(
+            'Your recent pace has stayed low. Classify it without changing stored GPS samples.',
+          )}
         </p>
         <div className="button-row">
           <SecondaryButton
@@ -427,7 +721,102 @@ export function RunPage() {
   )
 }
 
-function startGpsWatch(
+function ManualRunForm({
+  date,
+  distanceMiles,
+  durationMinutes,
+  mode,
+  notes,
+  onDate,
+  onDistance,
+  onDuration,
+  onMode,
+  onNotes,
+  onSave,
+}: {
+  date: string
+  distanceMiles: string
+  durationMinutes: string
+  mode: Extract<RunTrackingMode, 'manual' | 'treadmill'>
+  notes: string
+  onDate: (value: Run['localDate']) => void
+  onDistance: (value: string) => void
+  onDuration: (value: string) => void
+  onMode: (value: Extract<RunTrackingMode, 'manual' | 'treadmill'>) => void
+  onNotes: (value: string) => void
+  onSave: () => void
+}) {
+  return (
+    <Card title="Log completed run">
+      <div className="manual-run-form">
+        <FormField id="manual-run-date" label="Date">
+          <input
+            id="manual-run-date"
+            onChange={(event) => {
+              const value = event.currentTarget.value
+              if (isLocalDate(value)) {
+                onDate(value)
+              }
+            }}
+            type="date"
+            value={date}
+          />
+        </FormField>
+        <FormField id="manual-run-type" label="Run type">
+          <select
+            id="manual-run-type"
+            onChange={(event) => {
+              const value = event.currentTarget.value
+              if (isManualRunMode(value)) {
+                onMode(value)
+              }
+            }}
+            value={mode}
+          >
+            <option value="manual">Outdoor / other</option>
+            <option value="treadmill">Treadmill</option>
+          </select>
+        </FormField>
+        <FormField id="manual-run-distance" label="Distance (miles)">
+          <NumericInput
+            id="manual-run-distance"
+            min="0.01"
+            onChange={(event) => onDistance(event.currentTarget.value)}
+            placeholder="3.1"
+            value={distanceMiles}
+          />
+        </FormField>
+        <FormField id="manual-run-duration" label="Duration (minutes)">
+          <NumericInput
+            id="manual-run-duration"
+            min="0.02"
+            onChange={(event) => onDuration(event.currentTarget.value)}
+            placeholder="30"
+            value={durationMinutes}
+          />
+        </FormField>
+        <FormField id="manual-run-notes" label="Notes">
+          <textarea
+            id="manual-run-notes"
+            onChange={(event) => onNotes(event.currentTarget.value)}
+            rows={3}
+            value={notes}
+          />
+        </FormField>
+        <PrimaryButton type="button" onClick={onSave}>
+          Save Run
+        </PrimaryButton>
+      </div>
+    </Card>
+  )
+}
+
+type GpsTrackerHandle = {
+  watchId: number
+  refreshTimer: number | null
+}
+
+function startGpsTracking(
   runId: string,
   callbacks: {
     onError: (message: string) => void
@@ -441,43 +830,94 @@ function startGpsWatch(
     callbacks.onError(formatGeoError('unsupported'))
     return null
   }
-  return navigator.geolocation.watchPosition(
-    (position) => {
-      const timestamp = new Date(position.timestamp).toISOString()
-      void runRepository
-        .addSample(runId, {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          timestamp,
-          accuracyMeters: position.coords.accuracy,
-          altitudeMeters: position.coords.altitude,
+  const options: PositionOptions = {
+    enableHighAccuracy: true,
+    maximumAge: 0,
+    timeout: 15000,
+  }
+  const onPosition = (position: GeolocationPosition) => {
+    const timestamp = new Date(position.timestamp).toISOString()
+    void runRepository
+      .addSample(runId, {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        timestamp,
+        accuracyMeters: position.coords.accuracy,
+        altitudeMeters: position.coords.altitude,
+      })
+      .then(async (result) => {
+        callbacks.onError('')
+        callbacks.onSample({
+          structure: await runRepository.getRunStructure(runId),
+          lowPaceAlert: result.lowPaceAlert,
         })
-        .then(async (result) => {
-          callbacks.onError('')
-          callbacks.onSample({
-            structure: await runRepository.getRunStructure(runId),
-            lowPaceAlert: result.lowPaceAlert,
-          })
-        })
-        .catch((caught: unknown) => {
-          callbacks.onError(
-            caught instanceof Error ? caught.message : formatGeoError('signal'),
-          )
-        })
-    },
-    (error) => callbacks.onError(formatPositionError(error)),
-    {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 15000,
-    },
+      })
+      .catch((caught: unknown) => {
+        callbacks.onError(
+          caught instanceof Error ? caught.message : formatGeoError('signal'),
+        )
+      })
+  }
+  const onError = (error: GeolocationPositionError) =>
+    callbacks.onError(formatPositionError(error))
+  const watchId = navigator.geolocation.watchPosition(
+    onPosition,
+    onError,
+    options,
   )
+  const refreshTimer =
+    typeof navigator.geolocation.getCurrentPosition === 'function'
+      ? window.setInterval(
+          () =>
+            navigator.geolocation.getCurrentPosition(
+              onPosition,
+              onError,
+              options,
+            ),
+          5000,
+        )
+      : null
+  return { watchId, refreshTimer }
 }
 
-function stopGpsWatch(watchId: number | null) {
-  if (watchId !== null && 'geolocation' in navigator) {
-    navigator.geolocation.clearWatch(watchId)
+function stopGpsTracking(handle: GpsTrackerHandle | null) {
+  if (!handle) {
+    return
   }
+  if ('geolocation' in navigator) {
+    navigator.geolocation.clearWatch(handle.watchId)
+  }
+  if (handle.refreshTimer !== null) {
+    window.clearInterval(handle.refreshTimer)
+  }
+}
+
+async function requestTreadmillMotionPermission() {
+  if (!('DeviceMotionEvent' in window)) {
+    return false
+  }
+  const motionEvent = window.DeviceMotionEvent as typeof DeviceMotionEvent & {
+    requestPermission?: () => Promise<'granted' | 'denied'>
+  }
+  return motionEvent.requestPermission
+    ? (await motionEvent.requestPermission()) === 'granted'
+    : true
+}
+
+function blurActiveControl() {
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur()
+  }
+}
+
+function isLocalDate(value: string): value is Run['localDate'] {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)
+}
+
+function isManualRunMode(
+  value: string,
+): value is Extract<RunTrackingMode, 'manual' | 'treadmill'> {
+  return value === 'manual' || value === 'treadmill'
 }
 
 function notifyLowPaceIfSupported() {
@@ -518,17 +958,18 @@ function formatGeoError(
 }
 
 function RunLimitations() {
+  const { t } = useLanguage()
   return (
     <StatusMessage>
-      Foreground browser tracking is supported when location permission exists.
-      iOS and other browsers may suspend geolocation when the browser or
-      installed PWA is backgrounded.
+      {t(
+        'Foreground browser tracking is supported when location permission exists. iOS and other browsers may suspend geolocation when the browser or installed PWA is backgrounded.',
+      )}
     </StatusMessage>
   )
 }
 
-function formatTimestamp(timestamp: string) {
-  return new Intl.DateTimeFormat(undefined, {
+function formatTimestamp(timestamp: string, language: 'en' | 'es') {
+  return new Intl.DateTimeFormat(language === 'es' ? 'es' : 'en', {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(timestamp))

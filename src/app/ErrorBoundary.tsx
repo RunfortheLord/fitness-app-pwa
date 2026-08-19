@@ -8,11 +8,27 @@ export function ErrorBoundary() {
 
   return (
     <main className="app-fallback" aria-labelledby="error-title">
-      <h1 id="error-title">Training Log</h1>
+      <h1 id="error-title">Vigorune</h1>
       <p>{message}</p>
-      <Link className="button button-primary" to="/">
-        Return home
-      </Link>
+      <p className="muted">
+        Your saved data is still on this device. Reload the app, or open Data &
+        backup to export a recovery copy.
+      </p>
+      <div className="button-row">
+        <button
+          className="button button-primary"
+          onClick={() => window.location.reload()}
+          type="button"
+        >
+          Reload app
+        </button>
+        <Link className="button button-secondary" to="/settings?section=data">
+          Data &amp; backup
+        </Link>
+        <Link className="button button-secondary" to="/">
+          Return home
+        </Link>
+      </div>
     </main>
   )
 }

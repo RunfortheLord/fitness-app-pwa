@@ -15,8 +15,8 @@ test('production manifest exposes install metadata and icons', async ({
 
   const manifest = await manifestResponse.json()
   expect(manifest).toMatchObject({
-    name: 'Fitness Log',
-    short_name: 'Fitness',
+    name: 'Vigorune',
+    short_name: 'Vigorune',
     display: 'standalone',
     orientation: 'portrait-primary',
     theme_color: '#101011',
@@ -37,6 +37,62 @@ test('production manifest exposes install metadata and icons', async ({
     'href',
     '/apple-touch-icon.png',
   )
+})
+
+test('handles an installed-app OAuth callback before loading the app shell', async ({
+  page,
+}) => {
+  await page.route('**/api/auth/relay', async (route) => {
+    await route.fulfill({ json: { ok: true }, status: 202 })
+  })
+
+  await page.goto(
+    '/auth/callback/123e4567-e89b-42d3-a456-426614174000?code=one-time-code',
+  )
+
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Sign-in approved' }),
+  ).toBeVisible()
+  await expect(page).toHaveURL('/settings?auth_relay_callback=received')
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Home' }),
+  ).toHaveCount(0)
+})
+
+test('returns a standalone OAuth callback to app Settings', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const browserMatchMedia = window.matchMedia.bind(window)
+    window.matchMedia = (query) =>
+      query === '(display-mode: standalone)'
+        ? {
+            addEventListener: () => undefined,
+            addListener: () => undefined,
+            dispatchEvent: () => false,
+            matches: true,
+            media: query,
+            onchange: null,
+            removeEventListener: () => undefined,
+            removeListener: () => undefined,
+          }
+        : browserMatchMedia(query)
+  })
+  await page.route('**/api/auth/relay', async (route) => {
+    await route.fulfill({ json: { ok: true }, status: 202 })
+  })
+
+  await page.goto(
+    '/auth/callback/123e4567-e89b-42d3-a456-426614174000?code=one-time-code',
+  )
+
+  await expect(
+    page.getByText('Returning to Vigorune Settings to finish your session.'),
+  ).toBeVisible()
+  await expect(page).toHaveURL('/settings?auth_relay_callback=received')
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Settings' }),
+  ).toBeVisible()
 })
 
 test('registers the service worker in the production build', async ({
@@ -63,76 +119,87 @@ test('registers the service worker in the production build', async ({
   )
 })
 
-test('loads cached app shell and navigates while offline', async ({
-  browserName,
-  context,
+test(
+  'loads cached app shell and navigates while offline',
+  {
+    tag: '@smoke',
+  },
+  async ({ browserName, context, page }) => {
+    test.skip(
+      browserName !== 'chromium',
+      'Offline service worker coverage runs in Chromium.',
+    )
+
+    await installControlledServiceWorker(page, context)
+    await expectCachedShell(page)
+
+    await context.setOffline(true)
+    await page.goto('/nutrition')
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Nutrition' }),
+    ).toBeVisible()
+    await expect(
+      page.getByText('Offline. Changes stay on this device.'),
+    ).toBeVisible()
+
+    await page.goto('/training')
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Current Program' }),
+    ).toBeVisible()
+    await page.getByRole('button', { name: 'Exercise Library' }).click()
+    await expect(
+      page.getByText('Barbell Bench Press', { exact: true }),
+    ).toBeVisible()
+
+    await page.goto('/history')
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'History' }),
+    ).toBeVisible()
+  },
+)
+
+test(
+  'persists IndexedDB records created while offline',
+  {
+    tag: '@smoke',
+  },
+  async ({ browserName, context, page }) => {
+    test.skip(
+      browserName !== 'chromium',
+      'Offline service worker coverage runs in Chromium.',
+    )
+
+    await installControlledServiceWorker(page, context)
+    await context.setOffline(true)
+
+    await page.goto('/training')
+    await waitForExerciseLibrary(page)
+    await page.getByLabel('Create exercise').click()
+    await page.getByRole('textbox', { name: 'Name' }).fill('Offline DB press')
+    await fillRestInputs(page, '90')
+    await page.getByRole('button', { name: 'Save exercise' }).click()
+    await expect(page.getByText('Offline DB press')).toBeVisible({
+      timeout: 15_000,
+    })
+
+    await page.reload()
+    await waitForExerciseLibrary(page)
+    await expect(page.getByText('Offline DB press')).toBeVisible()
+  },
+)
+
+test('activates an available update without interrupting the active app', async ({
   page,
 }) => {
-  test.skip(
-    browserName !== 'chromium',
-    'Offline service worker coverage runs in Chromium.',
-  )
-
-  await installControlledServiceWorker(page, context)
-  await expectCachedShell(page)
-
-  await context.setOffline(true)
-  await page.goto('/nutrition')
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Nutrition' }),
-  ).toBeVisible()
-  await expect(
-    page.getByText('Offline. Changes stay on this device.'),
-  ).toBeVisible()
-
-  await page.goto('/training')
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Training' }),
-  ).toBeVisible()
-  await page.getByRole('button', { name: 'Exercise Library' }).click()
-  await expect(
-    page.getByText('Barbell Bench Press', { exact: true }),
-  ).toBeVisible()
-
-  await page.goto('/history')
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'History' }),
-  ).toBeVisible()
-})
-
-test('persists IndexedDB records created while offline', async ({
-  browserName,
-  context,
-  page,
-}) => {
-  test.skip(
-    browserName !== 'chromium',
-    'Offline service worker coverage runs in Chromium.',
-  )
-
-  await installControlledServiceWorker(page, context)
-  await context.setOffline(true)
-
-  await page.goto('/training')
-  await waitForExerciseLibrary(page)
-  await page.getByLabel('Create exercise').click()
-  await page.getByRole('textbox', { name: 'Name' }).fill('Offline DB press')
-  await fillRestInputs(page, '90')
-  await page.getByRole('button', { name: 'Save exercise' }).click()
-  await expect(page.getByText('Offline DB press')).toBeVisible({
-    timeout: 15_000,
-  })
-
-  await page.reload()
-  await waitForExerciseLibrary(page)
-  await expect(page.getByText('Offline DB press')).toBeVisible()
-})
-
-test('shows and applies the update availability action', async ({ page }) => {
   await page.goto('/?pwaTest=1')
   await expect(
     page.getByRole('heading', { level: 1, name: 'Home' }),
   ).toBeVisible()
+  const signInPrompt = page.getByRole('complementary', {
+    name: 'Your data stays local',
+  })
+  await signInPrompt.getByRole('button', { name: 'Continue offline' }).click()
+  await expect(signInPrompt).not.toBeVisible()
 
   await page.evaluate(() => {
     const testWindow = window as Window & {
@@ -150,9 +217,7 @@ test('shows and applies the update availability action', async ({ page }) => {
     )
   })
 
-  await expect(page.getByText('Update available.')).toBeVisible()
-  await page.getByRole('button', { name: 'Update now' }).click()
-  await expect(page.getByRole('button', { name: 'Updating' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Update now' })).toHaveCount(0)
   await expect
     .poll(() =>
       page.evaluate(() => {
@@ -163,34 +228,41 @@ test('shows and applies the update availability action', async ({ page }) => {
       }),
     )
     .toBe(true)
-  await expect(page.getByText(/close the app and open it again/)).toBeVisible()
 })
 
-test('recovers an active workout after an offline reload', async ({
-  browserName,
-  context,
-  page,
-}) => {
-  test.skip(
-    browserName !== 'chromium',
-    'Offline service worker coverage runs in Chromium.',
-  )
+test(
+  'recovers an active workout after an offline reload',
+  {
+    tag: '@smoke',
+  },
+  async ({ browserName, context, page }) => {
+    test.skip(
+      browserName !== 'chromium',
+      'Offline service worker coverage runs in Chromium.',
+    )
 
-  await installControlledServiceWorker(page, context)
-  await createActiveWorkout(page)
-  await context.setOffline(true)
+    await installControlledServiceWorker(page, context)
+    await createActiveWorkout(page)
+    await context.setOffline(true)
 
-  await page.reload()
-  await expect(
-    page.getByRole('textbox', { name: 'Workout notes' }),
-  ).toHaveCount(0)
-  await expect(page.getByRole('textbox', { name: 'Set 1 Weight' })).toHaveValue(
-    '105',
-  )
-  await expect(page.getByRole('textbox', { name: 'Set 1 Reps' })).toHaveValue(
-    '8',
-  )
-})
+    await page.reload()
+    await expect(
+      page.getByRole('textbox', { name: 'Workout notes' }),
+    ).toHaveCount(0)
+    await expect(
+      page.getByRole('textbox', { name: 'Set 1 Weight' }),
+    ).toHaveValue('105')
+    await expect(page.getByRole('textbox', { name: 'Set 1 Reps' })).toHaveValue(
+      '8',
+    )
+    await page.getByRole('button', { name: 'More exercise actions' }).click()
+    await expect(
+      page
+        .getByRole('dialog', { name: 'Exercise options' })
+        .getByRole('button', { name: 'Resume workout timer' }),
+    ).toBeVisible()
+  },
+)
 
 async function installControlledServiceWorker(
   page: Page,
@@ -251,7 +323,7 @@ async function createActiveWorkout(page: Page) {
   await page.getByRole('button', { name: 'Save exercise' }).click()
 
   await page
-    .getByLabel('Current active cycle')
+    .getByLabel('Current Program')
     .getByRole('button', { name: 'Create program' })
     .click()
   await page
@@ -260,12 +332,9 @@ async function createActiveWorkout(page: Page) {
   await page.getByRole('button', { name: 'Save program' }).click()
 
   const builder = page.getByRole('dialog', { name: 'Edit template' })
-  await builder
-    .getByRole('textbox', { name: 'Add workout day' })
-    .fill('Offline A')
-  await builder.getByRole('button', { name: 'Add day' }).click()
+  await addWorkoutDay(builder, 'Offline A')
   await builder.getByRole('button', { name: 'Add exercise' }).click()
-  await addPrescription(builder, 'Offline recovery press', '1')
+  await addPrescription(builder, 'Offline recovery press', '2')
   await closeBuilder(builder)
 
   await page
@@ -275,7 +344,7 @@ async function createActiveWorkout(page: Page) {
     .getByRole('dialog', { name: 'Activate program?' })
     .getByRole('button', { name: 'Activate' })
     .click()
-  await page.getByRole('button', { name: /Offline A/ }).click()
+  await page.getByRole('button', { name: /^Offline A/ }).click()
   await page
     .getByRole('dialog', { name: 'Offline A' })
     .getByRole('button', { name: 'Start Workout' })
@@ -284,7 +353,7 @@ async function createActiveWorkout(page: Page) {
   await page.getByRole('textbox', { name: 'Set 1 Weight' }).fill('105')
   await page.getByRole('textbox', { name: 'Set 1 Reps' }).fill('8')
   await page.getByRole('button', { name: 'Complete set 1' }).click()
-  await expect(page.getByText('Rest timer')).toBeVisible()
+  await expect(page.locator('.live-session-rest-timer')).toBeVisible()
   await expect(page.getByRole('textbox', { name: 'Set 1 Reps' })).toHaveValue(
     '8',
   )
@@ -319,11 +388,22 @@ async function addPrescription(
     await builder.getByRole('textbox', { name: 'Max reps' }).fill('10')
   }
   await builder.getByRole('button', { name: 'Save prescription' }).click()
+  await expect(builder.getByLabel('Prescription editor')).not.toBeVisible({
+    timeout: 15_000,
+  })
+}
+
+async function addWorkoutDay(builder: Locator, name: string) {
+  await builder.getByRole('button', { name: 'Add workout day' }).click()
+  await builder
+    .getByRole('textbox', { name: 'New workout day name' })
+    .fill(name)
+  await builder.getByRole('button', { name: 'Save workout day' }).click()
 }
 
 async function closeBuilder(builder: Locator) {
-  await builder.getByRole('button', { name: /^Close edit/ }).click()
-  await expect(builder).not.toBeVisible()
+  await builder.getByRole('button', { name: /^Back from edit/ }).click()
+  await expect(builder).not.toBeVisible({ timeout: 15_000 })
 }
 
 async function fillRestInputs(page: Page, rest: string) {

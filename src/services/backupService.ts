@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import packageJson from '../../package.json'
 import {
   BACKUP_SCHEMA_VERSION,
   DATABASE_SCHEMA_VERSION,
@@ -7,7 +8,13 @@ import {
   type TrainingLogDatabase,
 } from '@db/database'
 import { getTrackingMethod } from '@domain/trackingMethods'
+import {
+  BUILT_IN_EXERCISES,
+  BUILT_IN_EXERCISE_SEED_VERSION,
+} from '@domain/exerciseLibrary'
+import { BUILT_IN_PROGRAM_SEED_VERSION } from '@domain/programLibrarySeed'
 import { createExerciseRepository } from '@repositories/exerciseRepository'
+import { createBuiltInProgramSeedRecords } from '@repositories/programRepository'
 import type {
   ActiveCycleWorkoutDay,
   ActiveCycleWorkoutExercise,
@@ -29,6 +36,7 @@ import type {
   RunPause,
   RunSample,
   RunSplit,
+  SavedMeal,
   TemplateWorkoutExercise,
   UserSettings,
   Workout,
@@ -38,16 +46,19 @@ import type {
   WorkoutHistorySet,
   WorkoutSet,
 } from '@shared-types/app'
+import { createFitnessDataExport } from '@services/dataExportService'
 
 export const BACKUP_FORMAT_VERSION = 1
-export const APPLICATION_VERSION = '0.0.0'
+export const CLOUD_SNAPSHOT_FORMAT_VERSION = 1
+export const APPLICATION_VERSION = packageJson.version
 export const MAX_BACKUP_FILE_BYTES = 20 * 1024 * 1024
 
-const tableNames = [
+export const BACKUP_TABLE_NAMES = [
   'userSettings',
   'nutritionTargets',
   'foods',
   'foodLogEntries',
+  'savedMeals',
   'foodUnitPreferences',
   'barcodeProductCache',
   'bodyweightEntries',
@@ -73,13 +84,14 @@ const tableNames = [
   'runClassifications',
 ] as const
 
-type DataTableName = (typeof tableNames)[number]
+type DataTableName = (typeof BACKUP_TABLE_NAMES)[number]
 
 export type BackupData = {
   userSettings: UserSettings[]
   nutritionTargets: NutritionTarget[]
   foods: Food[]
   foodLogEntries: FoodLogEntry[]
+  savedMeals: SavedMeal[]
   foodUnitPreferences: FoodUnitPreference[]
   barcodeProductCache: BarcodeProductCache[]
   bodyweightEntries: BodyweightEntry[]
@@ -112,6 +124,21 @@ export type JsonBackup = {
   exportedAt: string
   data: BackupData
 }
+
+export type CompactCloudSnapshot = {
+  cloudSnapshotFormatVersion: number
+  sourceBackupFormatVersion: number
+  databaseSchemaVersion: number
+  applicationVersion: string
+  exportedAt: string
+  seedManifest: {
+    builtInExerciseSeedVersion: number
+    builtInProgramSeedVersion: number
+  }
+  data: BackupData
+}
+
+export type CloudSnapshot = JsonBackup | CompactCloudSnapshot
 
 export type BackupPreview = {
   filename: string
@@ -171,7 +198,8 @@ const muscleGroupSchema = z.enum([
   'hip abductors',
   'hip adductors',
 ])
-const weightUnitSchema = z.literal('lb')
+const weightUnitSchema = z.enum(['lb', 'kg'])
+const appLanguageSchema = z.enum(['en', 'es'])
 const energyUnitSchema = z.literal('kcal')
 const foodSourceTypeSchema = z.enum(['local', 'provider'])
 const foodProviderSchema = z.enum(['usda', 'open_food_facts'])
@@ -205,13 +233,55 @@ const nutritionTargetValuesSchema = z.object({
   carbohydrateGrams: nonNegativeNumber,
   fatGrams: nonNegativeNumber,
 })
+const nutritionGoalSchema = z.object({
+  goalWeightLb: z.number().finite(),
+  calculationWeightLb: z.number().finite(),
+  heightInches: z.number().finite(),
+  ageYears: z.number().finite(),
+  sex: z.enum(['male', 'female']),
+  activityLevel: z.enum([
+    'sedentary',
+    'lightly_active',
+    'moderately_active',
+    'heavily_active',
+  ]),
+  direction: z.enum(['cut', 'bulk', 'maintain']),
+  weeklyRateLb: z.number().finite(),
+  maintenanceCalorieSource: z.enum(['calculated', 'manual']).optional(),
+  maintenanceCalories: nonNegativeNumber,
+  targets: nutritionTargetValuesSchema,
+  estimatedFinishDate: localDateSchema.nullable(),
+  formulaVersion: z.number().int(),
+  lastCalorieUpdate: z
+    .object({
+      appliedAt: isoTimestampSchema,
+      deltaKcal: z.number().finite(),
+      trendWeightLb: z.number().finite(),
+      observedWeeklyChangeLb: z.number().finite(),
+      signature: z.string(),
+    })
+    .nullable()
+    .optional(),
+  createdAt: isoTimestampSchema,
+  updatedAt: isoTimestampSchema,
+})
 const userSettingsSchema = z.object({
   id: z.literal('settings'),
+  language: appLanguageSchema.optional().default('en'),
   weightUnit: weightUnitSchema,
   energyUnit: energyUnitSchema,
   nutritionTargets: nutritionTargetValuesSchema,
+  nutritionGoal: nutritionGoalSchema.nullable().optional(),
   timerSoundEnabled: z.boolean().optional().default(true),
   selectedTimerSoundId: z.string().optional().default('rest-complete-chime'),
+  timerBannersEnabled: z.boolean().optional().default(true),
+  rirTrackingEnabled: z.boolean().optional().default(false),
+  workoutAutofillMode: z
+    .enum(['history_copy', 'smart_progression'])
+    .optional()
+    .default('history_copy'),
+  historySortMode: z.enum(['recent', 'program']).optional().default('recent'),
+  historyProgramId: nullableId.optional().default(null),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })
@@ -224,6 +294,7 @@ const foodSnapshotSchema = z.object({
   snapshotId: idSchema.optional(),
   foodName: z.string(),
   brandName: z.union([z.string(), z.null()]).optional().default(null),
+  foodCategory: z.union([z.string(), z.null()]).optional().default(null),
   sourceType: foodSourceTypeSchema.optional().default('local'),
   provider: z.union([foodProviderSchema, z.null()]).optional().default(null),
   providerRecordId: z.union([z.string(), z.null()]).optional().default(null),
@@ -303,12 +374,29 @@ const foodLogEntrySchema = z.object({
   localDate: localDateSchema,
   foodId: nullableId,
   foodSnapshot: foodSnapshotSchema,
+  // Tolerate backups taken before meal grouping existed: missing or invalid
+  // values fall back to the catch-all "snack" meal.
+  mealType: z.enum(['breakfast', 'lunch', 'dinner', 'snack']).catch('snack'),
   servingMultiplier: nonNegativeNumber,
   computedCalories: nonNegativeNumber,
   computedProteinGrams: nonNegativeNumber,
   computedCarbohydrateGrams: nonNegativeNumber,
   computedFatGrams: nonNegativeNumber,
   notes: z.string(),
+  createdAt: isoTimestampSchema,
+  updatedAt: isoTimestampSchema,
+})
+const savedMealComponentSchema = z.object({
+  foodId: nullableId,
+  foodSnapshot: foodSnapshotSchema,
+  servingMultiplier: nonNegativeNumber,
+})
+const savedMealSchema = z.object({
+  id: idSchema,
+  name: z.string(),
+  components: z.array(savedMealComponentSchema),
+  notes: z.string(),
+  status: entityStatusSchema,
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })
@@ -375,6 +463,17 @@ const programTemplateSchema = z.object({
   notes: z.string(),
   status: entityStatusSchema,
   lastActiveAt: z.union([isoTimestampSchema, z.null()]).optional(),
+  isBuiltIn: z.boolean().optional(),
+  level: z.union([z.string(), z.null()]).optional(),
+  goal: z.union([z.string(), z.null()]).optional(),
+  durationWeeks: z.union([z.number().int().positive(), z.null()]).optional(),
+  deloadWeekNumbers: z
+    .array(z.number().int().positive())
+    .optional()
+    .default([1]),
+  deloadSchedulingEnabled: z.boolean().optional().default(false),
+  trackRirEverySet: z.boolean().optional(),
+  builtInSeedVersion: z.union([z.number(), z.null()]).optional(),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })
@@ -413,6 +512,21 @@ const activeProgramCycleSchema = z.object({
   notes: z.string(),
   status: z.enum(['active', 'inactive', 'archived']),
   activatedAt: isoTimestampSchema,
+  durationWeeks: z.union([z.number().int().positive(), z.null()]).optional(),
+  currentWeekNumber: z
+    .union([z.number().int().positive(), z.null()])
+    .optional(),
+  deloadWeekNumbers: z
+    .array(z.number().int().positive())
+    .optional()
+    .default([1]),
+  deloadSchedulingEnabled: z.boolean().optional().default(false),
+  trackRirEverySet: z.boolean().optional(),
+  programWeekNumber: z
+    .union([z.number().int().positive(), z.null()])
+    .optional()
+    .default(null),
+  isDeload: z.boolean().optional().default(false),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })
@@ -515,8 +629,10 @@ const workoutSchema = z.object({
   completedAt: z.union([isoTimestampSchema, z.null()]),
   durationSeconds: z.union([nonNegativeInteger, z.null()]),
   elapsedPausedSeconds: nonNegativeInteger,
+  pausedAt: z.union([isoTimestampSchema, z.null()]).optional().default(null),
   activeRestTimer: z.union([restTimerStateSchema, z.null()]),
   status: z.enum(['active', 'completed', 'cancelled']),
+  trackRirEverySet: z.boolean().optional(),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })
@@ -530,6 +646,18 @@ const workoutExerciseSchema = z.object({
   notes: z.string(),
   skipped: z.boolean(),
   replacementOfExerciseId: nullableId,
+  sessionTargetRepsMin: z
+    .union([nonNegativeInteger, z.null()])
+    .optional()
+    .default(null),
+  sessionTargetRepsMax: z
+    .union([nonNegativeInteger, z.null()])
+    .optional()
+    .default(null),
+  sessionTargetRir: z
+    .union([nonNegativeNumber, z.null()])
+    .optional()
+    .default(null),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
 })
@@ -629,6 +757,11 @@ const runSchema = z.object({
   distanceMeters: nonNegativeNumber,
   currentPaceSecondsPerMile: z.union([nonNegativeInteger, z.null()]),
   averageMovingPaceSecondsPerMile: z.union([nonNegativeInteger, z.null()]),
+  trackingMode: z.enum(['gps', 'treadmill', 'manual']).optional(),
+  treadmillStepCount: nonNegativeInteger.optional(),
+  treadmillStrideMeters: z
+    .union([z.number().finite().positive(), z.null()])
+    .optional(),
   hasGpsGap: z.boolean(),
   lowPaceAlertedAt: z.union([isoTimestampSchema, z.null()]),
   notes: z.string(),
@@ -693,6 +826,7 @@ const backupDataSchema = z.object({
   nutritionTargets: z.array(nutritionTargetSchema),
   foods: z.array(foodSchema),
   foodLogEntries: z.array(foodLogEntrySchema),
+  savedMeals: z.array(savedMealSchema).optional().default([]),
   foodUnitPreferences: z.array(foodUnitPreferenceSchema).optional().default([]),
   barcodeProductCache: z
     .array(barcodeProductCacheSchema)
@@ -729,11 +863,24 @@ const jsonBackupSchema = z.object({
   data: backupDataSchema,
 })
 
+const compactCloudSnapshotSchema = z.object({
+  cloudSnapshotFormatVersion: z.number().int().positive(),
+  sourceBackupFormatVersion: z.number().int().positive(),
+  databaseSchemaVersion: z.number().int().positive(),
+  applicationVersion: z.string().min(1),
+  exportedAt: isoTimestampSchema,
+  seedManifest: z.object({
+    builtInExerciseSeedVersion: z.number().int().positive(),
+    builtInProgramSeedVersion: z.number().int().positive(),
+  }),
+  data: backupDataSchema,
+})
+
 export function createBackupService(database: TrainingLogDatabase = db) {
   return {
     async createJsonBackup(now = new Date()) {
       const exportedAt = now.toISOString()
-      const data = await readBackupData(database)
+      const data = await readBackupData(database, { includeRunSamples: true })
       const backup: JsonBackup = {
         backupFormatVersion: BACKUP_FORMAT_VERSION,
         databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
@@ -758,6 +905,53 @@ export function createBackupService(database: TrainingLogDatabase = db) {
         backup,
         filename: createReadableFilename(
           'training-log-backup',
+          exportedAt,
+          'json',
+        ),
+        json: `${JSON.stringify(backup, null, 2)}\n`,
+      }
+    },
+
+    async createCloudBackup(now = new Date()) {
+      const exportedAt = now.toISOString()
+      const data = await readBackupData(database, { includeRunSamples: false })
+      const restorableBackup: JsonBackup = {
+        backupFormatVersion: BACKUP_FORMAT_VERSION,
+        databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+        applicationVersion: APPLICATION_VERSION,
+        exportedAt,
+        data,
+      }
+      const backup: CompactCloudSnapshot = {
+        cloudSnapshotFormatVersion: CLOUD_SNAPSHOT_FORMAT_VERSION,
+        sourceBackupFormatVersion: BACKUP_FORMAT_VERSION,
+        databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+        applicationVersion: APPLICATION_VERSION,
+        exportedAt,
+        seedManifest: {
+          builtInExerciseSeedVersion: BUILT_IN_EXERCISE_SEED_VERSION,
+          builtInProgramSeedVersion: BUILT_IN_PROGRAM_SEED_VERSION,
+        },
+        data: compactCloudBackupData(data),
+      }
+
+      await database.backupMetadata.put({
+        id: `export-${exportedAt}`,
+        backupSchemaVersion: BACKUP_FORMAT_VERSION,
+        databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+        exportedAt,
+        importedAt: null,
+        mode: 'export',
+        summary: `${countRecords(data)} records exported`,
+        createdAt: exportedAt,
+        updatedAt: exportedAt,
+      })
+
+      return {
+        backup,
+        restorableBackup,
+        filename: createReadableFilename(
+          'training-log-cloud-backup',
           exportedAt,
           'json',
         ),
@@ -849,17 +1043,24 @@ export function createBackupService(database: TrainingLogDatabase = db) {
 
     async createCsvArchive(now = new Date()) {
       const exportedAt = now.toISOString()
-      const data = await readBackupData(database)
-      const files = createCsvFiles(data)
-      return {
-        blob: createTarArchive(files),
-        filename: createReadableFilename(
-          'training-log-csv-export',
-          exportedAt,
-          'tar',
-        ),
-        files: files.map((file) => file.name),
+      const data = await readBackupData(database, { includeRunSamples: true })
+      const backup: JsonBackup = {
+        backupFormatVersion: BACKUP_FORMAT_VERSION,
+        databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+        applicationVersion: APPLICATION_VERSION,
+        exportedAt,
+        data,
       }
+      return createFitnessDataExport(backup, {
+        now,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        tableNames: BACKUP_TABLE_NAMES,
+        backupJsonSchema: createBackupJsonSchema(),
+        validateCanonicalBackup(candidate) {
+          const validation = validateBackup(candidate, 'generated export')
+          return validation.ok ? [] : validation.preview.errors
+        },
+      })
     },
   }
 }
@@ -899,17 +1100,81 @@ export function validateBackup(
     : { ok: true, backup, preview }
 }
 
+export function validateCloudSnapshot(
+  input: unknown,
+  filename: string,
+): ParsedBackupResult {
+  if (!isUnknownRecord(input) || !('cloudSnapshotFormatVersion' in input)) {
+    return validateBackup(input, filename)
+  }
+
+  const version = input.cloudSnapshotFormatVersion
+  if (version !== CLOUD_SNAPSHOT_FORMAT_VERSION) {
+    const displayedVersion =
+      typeof version === 'number' && Number.isFinite(version)
+        ? String(version)
+        : 'unknown'
+    return invalidPreview(filename, [
+      `Cloud snapshot format version ${displayedVersion} is not supported.`,
+    ])
+  }
+
+  const parsed = compactCloudSnapshotSchema.safeParse(input)
+  if (!parsed.success) {
+    return invalidPreview(filename, parsed.error.issues.map(formatZodIssue))
+  }
+  if (parsed.data.sourceBackupFormatVersion !== BACKUP_FORMAT_VERSION) {
+    return invalidPreview(filename, [
+      `Backup format version ${parsed.data.sourceBackupFormatVersion} is not supported.`,
+    ])
+  }
+  if (
+    parsed.data.seedManifest.builtInExerciseSeedVersion >
+      BUILT_IN_EXERCISE_SEED_VERSION ||
+    parsed.data.seedManifest.builtInProgramSeedVersion >
+      BUILT_IN_PROGRAM_SEED_VERSION
+  ) {
+    return invalidPreview(filename, [
+      'Cloud snapshot seed version is newer than this app supports.',
+    ])
+  }
+
+  const expanded: JsonBackup = {
+    backupFormatVersion: parsed.data.sourceBackupFormatVersion,
+    databaseSchemaVersion: parsed.data.databaseSchemaVersion,
+    applicationVersion: parsed.data.applicationVersion,
+    exportedAt: parsed.data.exportedAt,
+    data: expandCompactCloudBackupData(parsed.data.data as BackupData),
+  }
+  const validation = validateBackup(expanded, filename)
+  if (parsed.data.data.runSamples.length === 0 || !validation.ok) {
+    return validation
+  }
+  return {
+    ok: false,
+    preview: {
+      ...validation.preview,
+      errors: [
+        ...validation.preview.errors,
+        'Compact cloud snapshots cannot contain GPS run samples.',
+      ],
+    },
+  }
+}
+
 async function readBackupData(
   database: TrainingLogDatabase,
+  options: { includeRunSamples: boolean },
 ): Promise<BackupData> {
   return database.transaction(
     'r',
-    tableNames.map((name) => database[name]),
+    BACKUP_TABLE_NAMES.map((name) => database[name]),
     async () => ({
       userSettings: await sortedTable(database.userSettings),
       nutritionTargets: await sortedTable(database.nutritionTargets),
       foods: await sortedTable(database.foods),
       foodLogEntries: await sortedTable(database.foodLogEntries),
+      savedMeals: await sortedTable(database.savedMeals),
       foodUnitPreferences: await sortedTable(database.foodUnitPreferences),
       barcodeProductCache: await sortedTable(database.barcodeProductCache),
       bodyweightEntries: await sortedTable(database.bodyweightEntries),
@@ -939,7 +1204,9 @@ async function readBackupData(
       ),
       appliedWorkoutChanges: await sortedTable(database.appliedWorkoutChanges),
       runs: await sortedTable(database.runs),
-      runSamples: await sortedTable(database.runSamples),
+      runSamples: options.includeRunSamples
+        ? await sortedTable(database.runSamples)
+        : [],
       runPauses: await sortedTable(database.runPauses),
       runSplits: await sortedTable(database.runSplits),
       runClassifications: await sortedTable(database.runClassifications),
@@ -956,26 +1223,22 @@ async function sortedTable<T extends { id: string }>(table: {
 }
 
 async function putBackupData(database: TrainingLogDatabase, data: BackupData) {
-  const sanitizedData = sanitizeProgramBackupData(data)
   await database.userSettings.bulkPut(data.userSettings)
   await database.nutritionTargets.bulkPut(data.nutritionTargets)
   await database.foods.bulkPut(data.foods)
   await database.foodLogEntries.bulkPut(data.foodLogEntries)
+  await database.savedMeals.bulkPut(data.savedMeals)
   await database.foodUnitPreferences.bulkPut(data.foodUnitPreferences)
   await database.barcodeProductCache.bulkPut(data.barcodeProductCache)
   await database.bodyweightEntries.bulkPut(data.bodyweightEntries)
   await database.exercises.bulkPut(data.exercises)
-  await database.programTemplates.bulkPut(sanitizedData.programTemplates)
-  await database.templateWorkoutDays.bulkPut(sanitizedData.templateWorkoutDays)
-  await database.templateWorkoutExercises.bulkPut(
-    sanitizedData.templateWorkoutExercises,
-  )
-  await database.activeProgramCycles.bulkPut(sanitizedData.activeProgramCycles)
-  await database.activeCycleWorkoutDays.bulkPut(
-    sanitizedData.activeCycleWorkoutDays,
-  )
+  await database.programTemplates.bulkPut(data.programTemplates)
+  await database.templateWorkoutDays.bulkPut(data.templateWorkoutDays)
+  await database.templateWorkoutExercises.bulkPut(data.templateWorkoutExercises)
+  await database.activeProgramCycles.bulkPut(data.activeProgramCycles)
+  await database.activeCycleWorkoutDays.bulkPut(data.activeCycleWorkoutDays)
   await database.activeCycleWorkoutExercises.bulkPut(
-    sanitizedData.activeCycleWorkoutExercises,
+    data.activeCycleWorkoutExercises,
   )
   await database.workouts.bulkPut(data.workouts)
   await database.workoutExercises.bulkPut(data.workoutExercises)
@@ -992,54 +1255,106 @@ async function putBackupData(database: TrainingLogDatabase, data: BackupData) {
   await database.runClassifications.bulkPut(data.runClassifications)
 }
 
-function sanitizeProgramBackupData(data: BackupData): BackupData {
-  const activeCycles = data.activeProgramCycles.map((cycle) => ({
-    ...cycle,
-    notes: '',
-    status: cycle.status === 'archived' ? 'inactive' : cycle.status,
-  }))
-  const lastActiveByTemplate = new Map<string, string>()
-  for (const cycle of activeCycles) {
-    if (!cycle.sourceTemplateId) {
-      continue
-    }
-    const existing = lastActiveByTemplate.get(cycle.sourceTemplateId)
-    if (!existing || cycle.activatedAt > existing) {
-      lastActiveByTemplate.set(cycle.sourceTemplateId, cycle.activatedAt)
-    }
-  }
-
+function compactCloudBackupData(data: BackupData): BackupData {
+  const seeds = deterministicBuiltInBackupRecords()
   return {
     ...data,
-    programTemplates: data.programTemplates.map((template) => ({
-      ...template,
-      notes: '',
-      status: 'active',
-      lastActiveAt:
-        template.lastActiveAt ?? lastActiveByTemplate.get(template.id) ?? null,
-    })),
-    templateWorkoutDays: data.templateWorkoutDays.map((day) => ({
-      ...day,
-      notes: '',
-    })),
-    templateWorkoutExercises: data.templateWorkoutExercises.map((exercise) => ({
-      ...exercise,
-      targetDurationSeconds: null,
-      notes: '',
-    })),
-    activeProgramCycles: activeCycles,
-    activeCycleWorkoutDays: data.activeCycleWorkoutDays.map((day) => ({
-      ...day,
-      notes: '',
-    })),
-    activeCycleWorkoutExercises: data.activeCycleWorkoutExercises.map(
-      (exercise) => ({
-        ...exercise,
-        targetDurationSeconds: null,
-        notes: '',
-      }),
+    exercises: omitExactSeedRecords(data.exercises, seeds.exercises),
+    programTemplates: omitExactSeedRecords(
+      data.programTemplates,
+      seeds.programTemplates,
+    ),
+    templateWorkoutDays: omitExactSeedRecords(
+      data.templateWorkoutDays,
+      seeds.templateWorkoutDays,
+    ),
+    templateWorkoutExercises: omitExactSeedRecords(
+      data.templateWorkoutExercises,
+      seeds.templateWorkoutExercises,
     ),
   }
+}
+
+function expandCompactCloudBackupData(data: BackupData): BackupData {
+  const seeds = deterministicBuiltInBackupRecords()
+  return {
+    ...data,
+    exercises: mergeSeedRecords(seeds.exercises, data.exercises),
+    programTemplates: mergeSeedRecords(
+      seeds.programTemplates,
+      data.programTemplates,
+    ),
+    templateWorkoutDays: mergeSeedRecords(
+      seeds.templateWorkoutDays,
+      data.templateWorkoutDays,
+    ),
+    templateWorkoutExercises: mergeSeedRecords(
+      seeds.templateWorkoutExercises,
+      data.templateWorkoutExercises,
+    ),
+  }
+}
+
+function deterministicBuiltInBackupRecords() {
+  const programRecords = createBuiltInProgramSeedRecords(BUILT_IN_EXERCISES)
+  return {
+    exercises: [...BUILT_IN_EXERCISES],
+    ...programRecords,
+  }
+}
+
+function omitExactSeedRecords<T extends { id: string }>(
+  records: T[],
+  seeds: readonly T[],
+) {
+  const seedsById = new Map(seeds.map((seed) => [seed.id, seed]))
+  return records.filter((record) => {
+    const seed = seedsById.get(record.id)
+    return !seed || !deepEqual(record, seed)
+  })
+}
+
+function mergeSeedRecords<T extends { id: string }>(
+  seeds: readonly T[],
+  records: T[],
+) {
+  const merged = new Map(seeds.map((seed) => [seed.id, seed]))
+  for (const record of records) {
+    merged.set(record.id, record)
+  }
+  return [...merged.values()].toSorted((left, right) =>
+    left.id.localeCompare(right.id),
+  )
+}
+
+function deepEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) {
+    return true
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => deepEqual(value, right[index]))
+    )
+  }
+  if (!isUnknownRecord(left) || !isUnknownRecord(right)) {
+    return false
+  }
+  const leftKeys = Object.keys(left).toSorted()
+  const rightKeys = Object.keys(right).toSorted()
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) =>
+        key === rightKeys[index] && deepEqual(left[key], right[key]),
+    )
+  )
+}
+
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function writableTables(database: TrainingLogDatabase) {
@@ -1052,14 +1367,18 @@ function writableTables(database: TrainingLogDatabase) {
 
 function clearableDataTables(database: TrainingLogDatabase) {
   return [
-    ...tableNames.map((name) => database[name]),
+    ...BACKUP_TABLE_NAMES.map((name) => database[name]),
     database.apiKeyIntegrationSettings,
+    // Weekly day check-offs are ephemeral state (not part of the backup
+    // payload), but must still be wiped on reset/restore so a fresh import
+    // does not inherit stale checkmarks.
+    database.activeCycleDayChecks,
   ]
 }
 
 function validateRelationshipIntegrity(data: BackupData) {
   const errors: string[] = []
-  for (const tableName of tableNames) {
+  for (const tableName of BACKUP_TABLE_NAMES) {
     errors.push(...findDuplicateIds(data[tableName], tableName))
   }
 
@@ -1388,7 +1707,10 @@ function createPreview(
   errors: string[],
 ): BackupPreview {
   const counts = Object.fromEntries(
-    tableNames.map((tableName) => [tableName, backup.data[tableName].length]),
+    BACKUP_TABLE_NAMES.map((tableName) => [
+      tableName,
+      backup.data[tableName].length,
+    ]),
   ) as Record<DataTableName, number>
 
   return {
@@ -1425,12 +1747,15 @@ function invalidPreview(
 
 function emptyBackupData(): BackupData {
   return Object.fromEntries(
-    tableNames.map((tableName) => [tableName, []]),
+    BACKUP_TABLE_NAMES.map((tableName) => [tableName, []]),
   ) as unknown as BackupData
 }
 
 function countRecords(data: BackupData) {
-  return tableNames.reduce((sum, tableName) => sum + data[tableName].length, 0)
+  return BACKUP_TABLE_NAMES.reduce(
+    (sum, tableName) => sum + data[tableName].length,
+    0,
+  )
 }
 
 function formatZodIssue(issue: z.core.$ZodIssue) {
@@ -1448,7 +1773,7 @@ export function createReadableFilename(
 }
 
 export function createCsvFiles(data: BackupData) {
-  return tableNames.map((tableName) => ({
+  return BACKUP_TABLE_NAMES.map((tableName) => ({
     name: `${tableName}.csv`,
     content: toCsv(data[tableName]),
   }))
@@ -1490,57 +1815,6 @@ export function csvEscape(value: string) {
   return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value
 }
 
-function createTarArchive(files: Array<{ name: string; content: string }>) {
-  const encoder = new TextEncoder()
-  const chunks: Uint8Array[] = []
-  for (const file of files) {
-    const bytes = encoder.encode(file.content)
-    chunks.push(createTarHeader(file.name, bytes.length))
-    chunks.push(bytes)
-    chunks.push(new Uint8Array((512 - (bytes.length % 512)) % 512))
-  }
-  chunks.push(new Uint8Array(1024))
-  return new Blob(chunks.map(toBlobPart), { type: 'application/x-tar' })
-}
-
-function toBlobPart(chunk: Uint8Array) {
-  const copy = new Uint8Array(chunk.byteLength)
-  copy.set(chunk)
-  return copy.buffer
-}
-
-function createTarHeader(filename: string, size: number) {
-  const header = new Uint8Array(512)
-  writeTarField(header, 0, 100, filename)
-  writeTarField(header, 100, 8, '0000644')
-  writeTarField(header, 108, 8, '0000000')
-  writeTarField(header, 116, 8, '0000000')
-  writeTarField(header, 124, 12, size.toString(8).padStart(11, '0'))
-  writeTarField(
-    header,
-    136,
-    12,
-    Math.floor(Date.now() / 1000)
-      .toString(8)
-      .padStart(11, '0'),
-  )
-  header.fill(32, 148, 156)
-  header[156] = '0'.charCodeAt(0)
-  writeTarField(header, 257, 6, 'ustar')
-  writeTarField(header, 263, 2, '00')
-  const checksum = header.reduce((sum, value) => sum + value, 0)
-  writeTarField(header, 148, 8, checksum.toString(8).padStart(6, '0'))
-  header[154] = 0
-  header[155] = 32
-  return header
-}
-
-function writeTarField(
-  header: Uint8Array,
-  offset: number,
-  length: number,
-  value: string,
-) {
-  const bytes = new TextEncoder().encode(value)
-  header.set(bytes.slice(0, length - 1), offset)
+export function createBackupJsonSchema() {
+  return z.toJSONSchema(jsonBackupSchema, { target: 'draft-7' })
 }

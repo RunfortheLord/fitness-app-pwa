@@ -2,12 +2,17 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { DATABASE_SCHEMA_VERSION, type TrainingLogDatabase } from '@db/database'
 import { BUILT_IN_EXERCISES } from '@domain/exerciseLibrary'
+import { BUILT_IN_PROGRAMS } from '@domain/programLibrarySeed'
+import { createExerciseRepository } from '@repositories/exerciseRepository'
+import { createFoodRepository } from '@repositories/foodRepository'
+import { createProgramRepository } from '@repositories/programRepository'
 import { createSettingsRepository } from '@repositories/settingsRepository'
 import {
   createBackupService,
   createCsvFiles,
   csvEscape,
   validateBackup,
+  validateCloudSnapshot,
 } from '@services/backupService'
 import { createTestDatabase, destroyTestDatabase } from '@test/database'
 import {
@@ -34,16 +39,19 @@ describe('backupService', () => {
   it('creates deterministic full-fidelity JSON backup metadata and table coverage', async () => {
     const food = await seedFood(database)
     await seedProgram(database)
-    await createSettingsRepository(database).saveNutritionTargets({
+    const settings = createSettingsRepository(database)
+    await settings.saveNutritionTargets({
       calories: 2400,
       proteinGrams: 180,
       carbohydrateGrams: 250,
       fatGrams: 70,
     })
+    await settings.saveLanguage('es')
     await database.foodLogEntries.add({
       id: 'food-log-1',
       localDate: testLocalDate,
       foodId: food.id,
+      mealType: 'lunch',
       foodSnapshot: {
         foodName: food.name,
         servingQuantity: food.servingQuantity,
@@ -140,7 +148,7 @@ describe('backupService', () => {
     expect(result.backup).toMatchObject({
       backupFormatVersion: 1,
       databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
-      applicationVersion: '0.0.0',
+      applicationVersion: '1.0.0',
       exportedAt: '2026-06-19T14:15:16.000Z',
     })
     expect(Object.keys(result.backup.data)).toEqual([
@@ -148,6 +156,7 @@ describe('backupService', () => {
       'nutritionTargets',
       'foods',
       'foodLogEntries',
+      'savedMeals',
       'foodUnitPreferences',
       'barcodeProductCache',
       'bodyweightEntries',
@@ -173,6 +182,7 @@ describe('backupService', () => {
       'runClassifications',
     ])
     expect(result.backup.data.foods[0]?.id).toBe(food.id)
+    expect(result.backup.data.userSettings[0]?.language).toBe('es')
     expect(result.backup.data.foodLogEntries[0]).toMatchObject({
       id: 'food-log-1',
       foodId: food.id,
@@ -244,6 +254,9 @@ describe('backupService', () => {
       distanceMeters: 3218.688,
       currentPaceSecondsPerMile: null,
       averageMovingPaceSecondsPerMile: 750,
+      trackingMode: 'treadmill',
+      treadmillStepCount: 4100,
+      treadmillStrideMeters: 0.75,
       hasGpsGap: true,
       lowPaceAlertedAt: '2026-06-19T12:12:00.000Z',
       notes: '',
@@ -301,6 +314,11 @@ describe('backupService', () => {
       latitude: 41.88,
       decision: 'accepted',
     })
+    expect(result.backup.data.runs[0]).toMatchObject({
+      trackingMode: 'treadmill',
+      treadmillStepCount: 4100,
+      treadmillStrideMeters: 0.75,
+    })
     expect(
       createCsvFiles(result.backup.data).map((file) => file.name),
     ).toContain('runSamples.csv')
@@ -315,10 +333,248 @@ describe('backupService', () => {
       new Date('2026-06-19T15:00:00.000Z'),
     )
 
-    await expect(database.runs.count()).resolves.toBe(1)
+    await expect(database.runs.toArray()).resolves.toEqual([
+      expect.objectContaining({
+        trackingMode: 'treadmill',
+        treadmillStepCount: 4100,
+        treadmillStrideMeters: 0.75,
+      }),
+    ])
     await expect(database.runSamples.count()).resolves.toBe(1)
     await expect(database.runSplits.count()).resolves.toBe(1)
     await expect(database.runClassifications.count()).resolves.toBe(1)
+  })
+
+  it('omits high-volume GPS samples from cloud backups without changing manual backups', async () => {
+    await database.runs.add({
+      id: 'run-1',
+      localDate: testLocalDate,
+      status: 'completed',
+      startedAt: '2026-06-19T12:00:00.000Z',
+      completedAt: '2026-06-19T12:30:00.000Z',
+      elapsedSeconds: 1800,
+      movingSeconds: 1500,
+      distanceMeters: 3218.688,
+      currentPaceSecondsPerMile: null,
+      averageMovingPaceSecondsPerMile: 750,
+      trackingMode: 'gps',
+      hasGpsGap: false,
+      lowPaceAlertedAt: null,
+      notes: '',
+      createdAt: '2026-06-19T12:00:00.000Z',
+      updatedAt: '2026-06-19T12:30:00.000Z',
+    })
+    await database.runSamples.add({
+      id: 'sample-1',
+      runId: 'run-1',
+      latitude: 41.88,
+      longitude: -87.63,
+      timestamp: '2026-06-19T12:00:00.000Z',
+      accuracyMeters: 8,
+      altitudeMeters: null,
+      decision: 'accepted',
+      rejectionReason: 'first_sample',
+      segmentDistanceMeters: 0,
+      createdAt: '2026-06-19T12:00:00.000Z',
+    })
+
+    const service = createBackupService(database)
+    const manual = await service.createJsonBackup(
+      new Date('2026-06-19T14:00:00.000Z'),
+    )
+    const cloud = await service.createCloudBackup(
+      new Date('2026-06-19T14:05:00.000Z'),
+    )
+
+    expect(manual.backup.data.runSamples).toHaveLength(1)
+    expect(cloud.backup.data.runs).toHaveLength(1)
+    expect(cloud.backup.data.runSamples).toEqual([])
+    expect(validateCloudSnapshot(cloud.backup, cloud.filename).ok).toBe(true)
+  })
+
+  it('compacts exact deterministic seeds and expands to equivalent user-visible data', async () => {
+    await createExerciseRepository(database).seedBuiltInExercises()
+    await createProgramRepository(database).seedBuiltInPrograms()
+    const customProgram = await seedProgram(database)
+    const customExercise = (
+      await database.exercises.where({ origin: 'custom' }).toArray()
+    )[0]
+    if (!customExercise) {
+      throw new Error('Expected a custom exercise.')
+    }
+    await seedCompletedHistory(database, customExercise)
+
+    const service = createBackupService(database)
+    const exportedAt = new Date('2026-06-19T14:05:00.000Z')
+    const manual = await service.createJsonBackup(exportedAt)
+    const cloud = await service.createCloudBackup(exportedAt)
+
+    expect(cloud.backup).toMatchObject({
+      cloudSnapshotFormatVersion: 1,
+      sourceBackupFormatVersion: 1,
+    })
+    expect(cloud.backup.data.exercises).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: customExercise.id }),
+      ]),
+    )
+    expect(
+      cloud.backup.data.exercises.some((exercise) =>
+        exercise.id.startsWith('builtin:'),
+      ),
+    ).toBe(false)
+    expect(
+      cloud.backup.data.programTemplates.some((program) => program.isBuiltIn),
+    ).toBe(false)
+
+    const validation = validateCloudSnapshot(cloud.backup, cloud.filename)
+    const normalizedManual = validateBackup(manual.backup, manual.filename)
+    expect(validation.ok).toBe(true)
+    expect(normalizedManual.ok).toBe(true)
+    if (!validation.ok) {
+      throw new Error('Expected compact cloud snapshot to validate.')
+    }
+    if (!normalizedManual.ok) {
+      throw new Error('Expected manual backup to validate.')
+    }
+    expect(validation.backup.data).toEqual(normalizedManual.backup.data)
+    expect(validation.backup.data.workoutHistoryEntries).toEqual(
+      normalizedManual.backup.data.workoutHistoryEntries,
+    )
+    expect(validation.backup.data.workoutHistoryExercises).toEqual(
+      normalizedManual.backup.data.workoutHistoryExercises,
+    )
+    expect(validation.backup.data.workoutHistorySets).toEqual(
+      normalizedManual.backup.data.workoutHistorySets,
+    )
+
+    await service.clearAllData()
+    await service.restoreReplace(validation.backup)
+
+    await expect(
+      database.exercises.get(customExercise.id),
+    ).resolves.toMatchObject({
+      name: customExercise.name,
+      origin: 'custom',
+    })
+    await expect(
+      database.programTemplates.get(customProgram.template.id),
+    ).resolves.toMatchObject({
+      name: customProgram.template.name,
+    })
+    await expect(
+      database.workoutHistorySets.get('compact-history-set'),
+    ).resolves.toEqual(normalizedManual.backup.data.workoutHistorySets[0])
+    await expect(
+      database.exercises.where({ origin: 'built_in' }).count(),
+    ).resolves.toBe(BUILT_IN_EXERCISES.length)
+    await expect(
+      database.programTemplates
+        .filter((program) => Boolean(program.isBuiltIn))
+        .count(),
+    ).resolves.toBe(BUILT_IN_PROGRAMS.length)
+  })
+
+  it('preserves modified built-in records instead of treating their IDs as reconstructible', async () => {
+    const exercises = createExerciseRepository(database)
+    await exercises.seedBuiltInExercises()
+    await createProgramRepository(database).seedBuiltInPrograms()
+    const modifiedAt = '2026-06-20T00:00:00.000Z'
+    await database.exercises.update('builtin:barbell-bench-press', {
+      defaultRestSeconds: 999,
+      updatedAt: modifiedAt,
+    })
+    const builtInProgram = await database.programTemplates
+      .filter((program) => Boolean(program.isBuiltIn))
+      .first()
+    if (!builtInProgram) {
+      throw new Error('Expected a built-in program.')
+    }
+    await database.programTemplates.update(builtInProgram.id, {
+      lastActiveAt: modifiedAt,
+    })
+
+    const compact = await createBackupService(database).createCloudBackup()
+    expect(compact.backup.data.exercises).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          defaultRestSeconds: 999,
+          id: 'builtin:barbell-bench-press',
+        }),
+      ]),
+    )
+    expect(compact.backup.data.programTemplates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: builtInProgram.id,
+          lastActiveAt: modifiedAt,
+        }),
+      ]),
+    )
+
+    const validation = validateCloudSnapshot(compact.backup, compact.filename)
+    expect(validation.ok).toBe(true)
+    if (!validation.ok) {
+      throw new Error('Expected modified built-ins to validate.')
+    }
+    expect(
+      validation.backup.data.exercises.filter(
+        (exercise) => exercise.id === 'builtin:barbell-bench-press',
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        defaultRestSeconds: 999,
+        updatedAt: modifiedAt,
+      }),
+    ])
+  })
+
+  it('rejects unsupported compact versions and GPS-bearing compact snapshots', async () => {
+    const compact = await createBackupService(database).createCloudBackup()
+    expect(
+      validateCloudSnapshot(
+        { ...compact.backup, cloudSnapshotFormatVersion: 999 },
+        'future-cloud.json',
+      ).preview.errors[0],
+    ).toMatch(/not supported/)
+    expect(
+      validateCloudSnapshot(
+        {
+          ...compact.backup,
+          seedManifest: {
+            ...compact.backup.seedManifest,
+            builtInExerciseSeedVersion: 999,
+          },
+        },
+        'future-seed-cloud.json',
+      ).preview.errors[0],
+    ).toMatch(/newer/)
+    expect(
+      validateCloudSnapshot(
+        {
+          ...compact.backup,
+          data: {
+            ...compact.backup.data,
+            runSamples: [
+              {
+                id: 'sample-1',
+                runId: 'missing-run',
+                latitude: 41.88,
+                longitude: -87.63,
+                timestamp: '2026-06-19T12:00:00.000Z',
+                accuracyMeters: 8,
+                altitudeMeters: null,
+                decision: 'accepted',
+                rejectionReason: 'first_sample',
+                segmentDistanceMeters: 0,
+                createdAt: '2026-06-19T12:00:00.000Z',
+              },
+            ],
+          },
+        },
+        'gps-cloud.json',
+      ).ok,
+    ).toBe(false)
   })
 
   it('exports provider food log snapshots in JSON and CSV without refetching providers', async () => {
@@ -326,6 +582,7 @@ describe('backupService', () => {
       id: 'provider-log-1',
       localDate: testLocalDate,
       foodId: 'usda:123',
+      mealType: 'dinner',
       foodSnapshot: {
         snapshotId: 'snapshot-1',
         foodName: 'Chicken breast cooked',
@@ -534,6 +791,54 @@ describe('backupService', () => {
     ).resolves.toBe(1)
   })
 
+  it('round-trips provider food categories while accepting legacy backups without them', async () => {
+    const service = createBackupService(database)
+    const repository = createFoodRepository(database)
+    const food = await seedFood(database)
+    await database.foods.update(food.id, {
+      foodCategory: 'Restaurant Foods',
+    })
+    await repository.logFood({
+      foodId: food.id,
+      localDate: testLocalDate,
+      servingMultiplier: 1,
+    })
+
+    const backup = (await service.createJsonBackup()).backup
+    expect(backup.data.foods[0]?.foodCategory).toBe('Restaurant Foods')
+    expect(backup.data.foodLogEntries[0]?.foodSnapshot.foodCategory).toBe(
+      'Restaurant Foods',
+    )
+
+    const legacyBackup = structuredClone(backup)
+    delete legacyBackup.data.foods[0]?.foodCategory
+    delete legacyBackup.data.foodLogEntries[0]?.foodSnapshot.foodCategory
+    const legacyValidation = validateBackup(legacyBackup, 'legacy-food.json')
+    expect(legacyValidation.ok).toBe(true)
+    if (!legacyValidation.ok) {
+      throw new Error('Expected legacy food backup to validate.')
+    }
+    expect(legacyValidation.backup.data.foods[0]?.foodCategory).toBeNull()
+    expect(
+      legacyValidation.backup.data.foodLogEntries[0]?.foodSnapshot.foodCategory,
+    ).toBeNull()
+
+    await database.foods.clear()
+    await database.foodLogEntries.clear()
+    await service.restoreReplace(backup)
+
+    await expect(database.foods.get(food.id)).resolves.toMatchObject({
+      foodCategory: 'Restaurant Foods',
+    })
+    await expect(database.foodLogEntries.toArray()).resolves.toEqual([
+      expect.objectContaining({
+        foodSnapshot: expect.objectContaining({
+          foodCategory: 'Restaurant Foods',
+        }),
+      }),
+    ])
+  })
+
   it('preserves original data when restore transaction fails', async () => {
     const service = createBackupService(database)
     const originalFood = await seedFood(database)
@@ -721,4 +1026,64 @@ function resultExerciseSnapshot(exercises: Exercise[]) {
     throw new Error('Expected seeded exercise.')
   }
   return exercise
+}
+
+async function seedCompletedHistory(
+  database: TrainingLogDatabase,
+  exercise: Exercise,
+) {
+  const timestamp = '2026-06-18T13:00:00.000Z'
+  await database.workoutHistoryEntries.add({
+    id: 'compact-history',
+    sourceActiveCycleId: null,
+    sourceTemplateId: null,
+    sourceDayId: null,
+    localDate: testLocalDate,
+    name: 'Completed history',
+    workoutSnapshot: {
+      activeCycleName: null,
+      templateName: null,
+      dayName: 'Ad hoc',
+      dayNotes: '',
+    },
+    notes: 'immutable snapshot',
+    startedAt: '2026-06-18T12:00:00.000Z',
+    completedAt: timestamp,
+    durationSeconds: 3_600,
+    elapsedPausedSeconds: 0,
+    activeRestTimer: null,
+    status: 'completed',
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  })
+  await database.workoutHistoryExercises.add({
+    id: 'compact-history-exercise',
+    workoutId: 'compact-history',
+    exerciseId: exercise.id,
+    exerciseSnapshot: {
+      exerciseName: exercise.name,
+      notes: exercise.notes,
+      defaultRestSeconds: exercise.defaultRestSeconds,
+      trackingMethodId: exercise.trackingMethodId,
+      trackingMetrics: exercise.trackingMetrics,
+    },
+    sourcePrescribedExerciseId: null,
+    orderIndex: 0,
+    notes: '',
+    skipped: false,
+    replacementOfExerciseId: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  })
+  await database.workoutHistorySets.add({
+    id: 'compact-history-set',
+    workoutId: 'compact-history',
+    workoutExerciseId: 'compact-history-exercise',
+    setNumber: 1,
+    metricValues: { reps: 8, weight: 135 },
+    rir: 2,
+    completed: true,
+    completedAt: '2026-06-18T12:30:00.000Z',
+    restSecondsUsed: 120,
+  })
 }

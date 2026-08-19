@@ -1,5 +1,38 @@
 # Roadmap
 
+## Version 1 Release Freeze — 2026-08-18
+
+The approved Version 1 boundary is recorded in `docs/V1_SCOPE_FREEZE.md` and
+`docs/PRODUCT_REQUIREMENTS.md`. Work through release gaps without adding
+unrelated features.
+
+### Release Work Remaining
+
+- Reconcile implementation status against the frozen requirements, with focused
+  attention to the untracked startup/preload chain, barcode subpage replacement,
+  IndexedDB migrations, active-workout persistence, and cloud-data deletion.
+- Complete and validate optional Google and Apple authentication without making
+  either provider a prerequisite for local use.
+- Validate in-app app-account deletion and app-controlled cloud-data deletion as
+  operations separate from local Clear all data.
+- Prepare and validate public Apple App Store and Google Play packaging while
+  preserving all persisted and platform compatibility identifiers.
+- Run the full release gate, physical-device offline/data-preservation checks,
+  migration/backup checks, and store-specific QA before release.
+
+### Explicitly Deferred Beyond Version 1
+
+- Subscriptions, advertisements, social networking, and public profiles.
+- Wearable and health-platform integrations.
+- Realtime multi-device synchronization or cloud-first storage.
+- AI coaching, automatic AI logging, and automatic target or program changes.
+- Automatic program advancement and other unrequested expansion.
+
+## Historical Delivery Sequence
+
+The milestones below are the repository's original implementation sequence.
+They are retained for context, not as a conflicting current scope definition.
+
 ## Milestone 1: Project Foundation
 
 - Initialize app framework and tooling.
@@ -76,9 +109,10 @@
 
 - Save completed workout history.
 - Detect structural changes against source active-cycle day.
-- Present individual detected-change checklist.
-- Support active-cycle-only, template-only, both, and neither destinations.
-- Apply selected changes transactionally.
+- Present an unchecked option to save all detected live changes.
+- Leave both the active cycle and reusable template unchanged by default.
+- Apply all reviewed changes to both available program sources transactionally
+  only after explicit opt-in.
 - Record applied and rejected changes in history.
 - Add tests for each detected-change type and transaction failure.
 

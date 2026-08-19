@@ -10,6 +10,7 @@ export function snapshotFood(food: Food): FoodSnapshot {
     snapshotId: crypto.randomUUID(),
     foodName: food.name,
     brandName: food.brandName ?? null,
+    foodCategory: food.foodCategory ?? null,
     sourceType: food.sourceType ?? 'local',
     provider: food.provider ?? null,
     providerRecordId: food.providerRecordId ?? null,

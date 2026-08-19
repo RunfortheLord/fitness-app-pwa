@@ -2,6 +2,41 @@
 
 Audit date: 2026-06-19
 
+## Store Readiness Update — 2026-08-18
+
+Repository-controlled App Store preparation is complete through the Windows
+release-candidate stage. The current candidate adds Apple/Google optional auth,
+cloud backup and account deletion, public privacy/support/deletion routes,
+security headers, distributed abuse controls, secret/dependency scanning,
+store metadata drafts, an app-level Apple privacy manifest, localized iOS
+permission copy, and automated native/web preflight checks.
+
+The full release gate passed on 2026-08-18: TypeScript, ESLint, Prettier, secret
+scan, production dependency audit, 912 unit tests, 185 Playwright tests with 13
+intentional platform skips, production build, Capacitor sync, and iOS wrapper
+verification. Developer-stable live header and protected-route checks also
+passed.
+
+Run the production-origin preflight with:
+
+```text
+npm run store:verify-web -- https://your-production-origin.example
+```
+
+The developer-stable configuration blockers were resolved on 2026-08-19.
+`/api/health` reports the release integrations ready, including account
+deletion, support contact, food search, cloud backup, and the auth relay. A
+fresh dedicated Supabase secret key is active and the superseded key was
+revoked. Live Redis relay and USDA search checks passed; installed users are
+not asked to provide a USDA credential. The monitored public support address
+is configured. These results apply to developer-stable only and do not promote
+or certify the stable production origin.
+
+Apple Developer configuration, Xcode archive validation, the combined privacy
+report, physical-iPhone/TestFlight testing, and owner declarations in App Store
+Connect remain required. This update supersedes the older recommendation at the
+end of this historical audit.
+
 ## Scope
 
 This audit reviewed the repository as a release candidate against
@@ -134,7 +169,7 @@ The audit added a browser regression for the full missing release path:
 - Confirm live workout survives closing and reopening the installed PWA.
 - Confirm backup export and restore through iOS Files/share flows.
 
-## Release Recommendation
+## 2026-06-19 Release Recommendation
 
 Release candidate is recommended for physical-device validation. Physical iPhone
 installation and iOS file-flow checks remain required before declaring the MVP

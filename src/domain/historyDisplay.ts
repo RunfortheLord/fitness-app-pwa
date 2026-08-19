@@ -1,4 +1,5 @@
 import { getTrackingMethod } from '@domain/trackingMethods'
+import { formatWorkoutDuration } from '@domain/workoutTiming'
 import type {
   TrackingMetric,
   WorkoutHistoryEntry,
@@ -113,7 +114,7 @@ export function formatHistoryDuration(seconds: number | null | undefined) {
   if (!seconds || seconds <= 0) {
     return null
   }
-  return `${Math.round(seconds / 60)} min`
+  return formatWorkoutDuration(seconds)
 }
 
 function hasSetPerformance(set: WorkoutHistorySet) {

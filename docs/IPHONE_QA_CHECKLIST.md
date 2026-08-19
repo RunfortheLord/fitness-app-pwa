@@ -36,11 +36,31 @@ as passed from desktop emulation, Playwright, or simulator testing.
 - [ ] Verify safe areas.
 - [ ] Verify no Safari controls appear in standalone mode.
 
+## Public iOS Release
+
+- [ ] Confirm the public display name is Vigorune while the bundle identifier
+      remains `com.adamshugart.fitnesslog`.
+- [ ] Install an update over a prior build and verify all IndexedDB records,
+      local-storage preferences, active activity state, and backup compatibility
+      remain intact.
+- [ ] Verify every core local flow works without creating an account.
+- [ ] Verify optional Google and Apple sign-in, snapshot backup, sign out, cloud
+      data deletion, and account deletion on a release-signed build.
+- [ ] Confirm OAuth opens in the system browser and `vigorune://auth-complete`
+      returns to Settings without exposing an authorization code in app history.
+- [ ] Confirm Apple private relay email works and returning Apple users are not
+      assumed to provide a name or non-relay email.
+- [ ] Confirm cloud/account deletion leaves local data intact unless Clear all
+      data is separately confirmed.
+- [ ] Complete App Store signing, entitlement, privacy, permission-copy, and
+      physical-device review before submission.
+
 ## Core Workflow
 
 - [ ] Log bodyweight from Home.
-- [ ] Log a second bodyweight entry on the same local date and confirm both are retained.
-- [ ] Edit the latest selected-date bodyweight entry.
+- [ ] Log bodyweight again on the same local date and confirm the existing entry
+      is edited rather than duplicated.
+- [ ] Edit the selected-date bodyweight entry.
 - [ ] Confirm Home current bodyweight, selected-date status, and compact trend update immediately after save.
 - [ ] Open Bodyweight Progress from Home.
 - [ ] Change 1M, 3M, 6M, and All range controls with touch and keyboard.
@@ -49,7 +69,25 @@ as passed from desktop emulation, Playwright, or simulator testing.
 - [ ] Search foods with one character and confirm remote search does not run.
 - [ ] Search foods with two or more characters and confirm loading, results, and empty states fit without horizontal scrolling.
 - [ ] Select a provider food, adjust serving amount, and confirm calories and macros preview correctly.
+- [ ] Confirm one Chick-fil-A sandwich and six McDonald's Chicken McNuggets use
+      one complete restaurant serving and do not multiply the provider calories
+      by the item count.
+- [ ] Repeat the restaurant-serving check with another provider-listed whole
+      item (such as a burger or steak), reuse it from local history, and confirm
+      its original restaurant portion and calories are preserved.
+- [ ] On Home, switch the calorie graph between 1W and 1M and confirm the card
+      remains within the viewport.
+- [ ] Open View more, switch among 1W, 1M, and 3M, and confirm logging
+      consistency and average versus-target values update with the chart.
+- [ ] Confirm Serving size and Your portion are distinct, Last used matches the
+      calories shown, and one-tap logging uses that exact amount.
+- [ ] Use decrement, increment, and all four quick-portion buttons at 390 px and
+      confirm every control is at least 44 CSS pixels without horizontal scroll.
+- [ ] Switch a reliable provider food between a household portion, ounces, and
+      grams and confirm calories remain equivalent.
 - [ ] Confirm grams and mass ounces appear only when a reliable gram weight exists.
+- [ ] Edit a logged food and confirm the amount is shown in its snapshot unit,
+      never as a serving multiplier.
 - [ ] Open More Results for duplicate provider entries and select an alternate.
 - [ ] Create a custom copy of an imported provider food.
 - [ ] Log food.
@@ -59,9 +97,11 @@ as passed from desktop emulation, Playwright, or simulator testing.
 - [ ] Choose a workout day.
 - [ ] Start workout.
 - [ ] Confirm only one exercise workspace is visible at a time.
-- [ ] Navigate exercises with Previous and Next.
+- [ ] Navigate exercises by swiping horizontally and confirm no Previous or Next
+      buttons are shown.
 - [ ] Enter weight, reps, RIR, and completed status.
-- [ ] Confirm RIR appears only on the final programmed set.
+- [ ] Confirm RIR appears according to the saved tracking mode: final programmed
+      set by default or every programmed set when enabled for the program.
 - [ ] Confirm per-side exercises label rep values per side and do not double the stored value.
 - [ ] Add a set.
 - [ ] Confirm an added unprogrammed set does not move the final-set RIR prompt.
@@ -69,7 +109,7 @@ as passed from desktop emulation, Playwright, or simulator testing.
 - [ ] Skip an exercise.
 - [ ] Add an exercise during the workout and confirm it appears in exercise navigation.
 - [ ] Use the rest timer.
-- [ ] Use +30 seconds, -30 seconds, stop, and clear.
+- [ ] Use +30 seconds, -30 seconds, pause/resume, and clear.
 - [ ] Confirm subtracting time never creates a negative remaining time.
 - [ ] Confirm the timer continues while navigating between exercises.
 - [ ] Confirm timer completion feedback appears when browser capabilities allow it.
@@ -78,18 +118,29 @@ as passed from desktop emulation, Playwright, or simulator testing.
 - [ ] Resume the workout.
 - [ ] Discard an active workout from the live workout screen only after the confirmation dialog.
 - [ ] Finish workout.
-- [ ] Review detected changes.
+- [ ] Confirm the save-all live workout changes option is unchecked by default;
+      test both leaving the program unchanged and explicitly applying all
+      reviewed changes.
 - [ ] View workout history.
 - [ ] Open Run.
-- [ ] Confirm no location permission prompt appears before tapping Start Run.
-- [ ] Tap Start Run and handle the location permission prompt.
+- [ ] Confirm no location or motion prompt appears before choosing a run mode.
+- [ ] Tap Start Outdoor Run and handle the location permission prompt.
 - [ ] Confirm Start Run offers resume or discard when a lifting workout is active.
 - [ ] Confirm elapsed time, moving time, distance, current pace, average moving pace, and mile splits remain readable around 390 x 844.
 - [ ] Pause and resume a run.
 - [ ] Close and reopen the app with an active run and confirm it resumes without fabricated GPS points.
 - [ ] Finish a run only after the confirmation dialog.
 - [ ] Discard an active run only after the confirmation dialog.
-- [ ] View completed run history and confirm splits, walking/rest classification, and GPS-gap labels are readable.
+- [ ] Confirm outdoor elapsed time updates every second and GPS distance keeps
+      updating from repeated foreground fixes.
+- [ ] Start a treadmill run, allow motion access, secure the phone on the body,
+      and confirm steps and estimated distance update.
+- [ ] Manually log both an outdoor run and treadmill run with date, distance,
+      duration, and notes.
+- [ ] View completed run History and confirm each run is a separate card with
+      tracking type, distance, duration, and pace.
+- [ ] In the native wrapper, confirm running motion does not open the system
+      Undo Typing dialog.
 - [ ] Background the installed PWA and confirm any GPS suspension is represented as a limitation/gap rather than claimed continuous tracking.
 - [ ] Confirm no route samples appear in console logs or external network requests.
 - [ ] Physical-device GPS accuracy, permission, and background-suspension behavior still require this manual iPhone pass.
@@ -136,8 +187,8 @@ as passed from desktop emulation, Playwright, or simulator testing.
 - [ ] Install the current deployment.
 - [ ] Deploy a visible version change.
 - [ ] Reopen the app.
-- [ ] Verify the update notification.
-- [ ] Activate the update.
+- [ ] Verify a waiting update activates without an update button.
+- [ ] Reopen the updated app and verify the new What’s New banner appears.
 - [ ] Verify user data remains intact.
 
 ## Backup

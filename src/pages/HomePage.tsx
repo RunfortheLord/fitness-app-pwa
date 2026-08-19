@@ -1,34 +1,42 @@
-import { LineChart, Scale } from 'lucide-react'
+import { History, LineChart, Scale } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import {
   Card,
   DateSelector,
-  EmptyState,
   LoadingState,
   MetricCard,
   PageContainer,
   PrimaryButton,
   SecondaryButton,
+  SegmentedControl,
   StatusMessage,
 } from '@components/ui'
+import { CalorieHistoryChart } from '@components/CalorieHistoryChart'
+import { useLanguage } from '@components/languageContextValue'
 import {
   addLocalDays,
   formatLocalDate,
   formatSelectedDateLabel,
   type LocalDateString,
 } from '@domain/dates'
-import {
-  formatBodyweightChange,
-  formatWeight,
-  type BodyweightTrendSummary,
-} from '@domain/bodyweightProgress'
+import { currentTimeAwareTrendWeight } from '@domain/bodyweightTrend'
+import { formatProgramWeekLabel } from '@domain/programWeeks'
+import { formatWeight as formatWeightWithUnit } from '@domain/weightUnits'
+import type { BodyweightEntry } from '@shared-types/app'
 import { useDashboardContext } from '@hooks/useDashboardContext'
+import { useWeightUnit } from '@hooks/useWeightUnit'
+import { workoutRepository } from '@repositories/workoutRepository'
 import {
   dashboardService,
   type DashboardData,
 } from '@services/dashboardService'
+import {
+  calorieHistoryService,
+  type CalorieHistoryRange,
+  type DailyCalorieHistory,
+} from '@services/calorieHistoryService'
 
 type DashboardLoadState =
   | { status: 'loading'; selectedDate: null }
@@ -39,7 +47,24 @@ type DashboardLoadState =
       dashboard: DashboardData
     }
 
+type HomeCalorieRange = Extract<CalorieHistoryRange, '1w' | '1m'>
+
+type ExtendedCalorieHistoryState =
+  | {
+      status: 'ready'
+      selectedDate: LocalDateString
+      revision: number
+      history: DailyCalorieHistory[]
+    }
+  | {
+      status: 'error'
+      selectedDate: LocalDateString
+      revision: number
+    }
+  | null
+
 export function HomePage() {
+  const { language, t } = useLanguage()
   const {
     dashboardRevision,
     openBodyweightSheet,
@@ -48,10 +73,21 @@ export function HomePage() {
   } = useDashboardContext()
   const navigate = useNavigate()
   const today = formatLocalDate(new Date())
-  const [dashboardState, setDashboardState] = useState<DashboardLoadState>({
-    status: 'loading',
-    selectedDate: null,
-  })
+  const [dashboardState, setDashboardState] = useState<DashboardLoadState>(
+    () => {
+      const cached = dashboardService.getCachedDashboardData(selectedDate)
+      return cached
+        ? { status: 'ready', selectedDate, dashboard: cached }
+        : { status: 'loading', selectedDate: null }
+    },
+  )
+  const [isStartingWorkout, setIsStartingWorkout] = useState(false)
+  const [calorieRange, setCalorieRange] = useState<HomeCalorieRange>('1w')
+  const [extendedCalorieHistory, setExtendedCalorieHistory] =
+    useState<ExtendedCalorieHistoryState>(null)
+  const [startWorkoutError, setStartWorkoutError] = useState<string | null>(
+    null,
+  )
 
   useEffect(() => {
     let isCurrent = true
@@ -85,11 +121,44 @@ export function HomePage() {
     }
   }, [dashboardRevision, selectedDate])
 
+  useEffect(() => {
+    if (calorieRange !== '1m') {
+      return
+    }
+
+    let isCurrent = true
+    void calorieHistoryService
+      .getHistory(selectedDate, calorieRange)
+      .then((history) => {
+        if (isCurrent) {
+          setExtendedCalorieHistory({
+            status: 'ready',
+            selectedDate,
+            revision: dashboardRevision,
+            history,
+          })
+        }
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setExtendedCalorieHistory({
+            status: 'error',
+            selectedDate,
+            revision: dashboardRevision,
+          })
+        }
+      })
+
+    return () => {
+      isCurrent = false
+    }
+  }, [calorieRange, dashboardRevision, selectedDate])
+
   const dashboard =
     dashboardState.status === 'ready' &&
     dashboardState.selectedDate === selectedDate
       ? dashboardState.dashboard
-      : undefined
+      : dashboardService.getCachedDashboardData(selectedDate)
   const isDashboardLoading = !dashboard
 
   const caloriesConsumed = Math.round(dashboard?.nutrition.totals.calories ?? 0)
@@ -97,24 +166,64 @@ export function HomePage() {
   const caloriesRemaining = Math.round(
     dashboard?.nutrition.remainingCalories ?? 0,
   )
+  const trendWeight = dashboard
+    ? currentTimeAwareTrendWeight(dashboard.bodyweightEntries)
+    : null
+  const extendedHistoryMatches =
+    extendedCalorieHistory?.selectedDate === selectedDate &&
+    extendedCalorieHistory.revision === dashboardRevision
+  const calorieHistory =
+    calorieRange === '1w'
+      ? (dashboard?.calorieHistory ?? [])
+      : extendedHistoryMatches && extendedCalorieHistory?.status === 'ready'
+        ? extendedCalorieHistory.history
+        : null
+  const calorieHistoryError =
+    calorieRange === '1m' &&
+    extendedHistoryMatches &&
+    extendedCalorieHistory?.status === 'error'
+
+  async function startNextWorkout() {
+    const activeProgram = dashboard?.activeProgram
+    if (!activeProgram?.nextDay) {
+      return
+    }
+    setIsStartingWorkout(true)
+    setStartWorkoutError(null)
+    try {
+      await workoutRepository.startWorkout({
+        activeCycleId: activeProgram.cycle.id,
+        dayId: activeProgram.nextDay.id,
+        localDate: selectedDate,
+      })
+      await navigate('/workout')
+    } catch (caught) {
+      setStartWorkoutError(
+        caught instanceof Error ? caught.message : 'Workout could not start.',
+      )
+      setIsStartingWorkout(false)
+    }
+  }
 
   return (
     <PageContainer>
       <DateSelector
-        dateLabel={formatSelectedDateLabel(selectedDate)}
+        dateLabel={formatSelectedDateLabel(selectedDate, language)}
         onNext={() => setSelectedDate(addLocalDays(selectedDate, 1))}
         onPrevious={() => setSelectedDate(addLocalDays(selectedDate, -1))}
         onToday={() => setSelectedDate(today)}
       />
 
-      {isDashboardLoading ? <LoadingState label="Loading dashboard" /> : null}
+      {isDashboardLoading ? (
+        <LoadingState label="Loading dashboard" variant="cards" />
+      ) : null}
       {dashboard ? (
         <div
           aria-label="Dashboard ready"
           className="visually-hidden"
           role="status"
         >
-          Dashboard ready
+          {t('Dashboard ready')}
         </div>
       ) : null}
       {dashboardState.status === 'error' ? (
@@ -122,14 +231,76 @@ export function HomePage() {
           Dashboard data could not be loaded.
         </StatusMessage>
       ) : null}
+      {startWorkoutError ? (
+        <StatusMessage tone="warning">{startWorkoutError}</StatusMessage>
+      ) : null}
 
-      <section className="home-action-grid" aria-label="Home shortcuts">
-        <Card className="home-action-card">
-          <div className="dashboard-shortcuts">
+      {dashboard ? (
+        <>
+          <Card
+            className="home-action-card home-workout-card"
+            title={
+              dashboard?.activeWorkout
+                ? 'Workout in progress'
+                : (dashboard?.activeProgram?.cycle.name ?? 'No active program')
+            }
+          >
+            <div className="dashboard-shortcuts">
+              {dashboard?.activeWorkout ? (
+                <>
+                  <PrimaryButton
+                    type="button"
+                    onClick={() => void navigate('/workout')}
+                  >
+                    Resume workout
+                  </PrimaryButton>
+                  <p className="home-action-meta">
+                    {dashboard.activeWorkout.name} -{' '}
+                    {t('Started {date}', {
+                      date: dashboard.activeWorkout.localDate,
+                    })}
+                  </p>
+                </>
+              ) : dashboard.activeProgram?.nextDay ? (
+                <>
+                  <PrimaryButton
+                    disabled={isStartingWorkout}
+                    type="button"
+                    onClick={() => void startNextWorkout()}
+                  >
+                    {isStartingWorkout
+                      ? t('Starting...')
+                      : t('Start {day}', {
+                          day: dashboard.activeProgram.nextDay.name,
+                        })}
+                  </PrimaryButton>
+                  <p className="home-action-meta">
+                    {formatProgramWeekLabel(
+                      dashboard.activeProgram.weekNumber,
+                      dashboard.activeProgram.cycle.deloadSchedulingEnabled
+                        ? dashboard.activeProgram.cycle.deloadWeekNumbers
+                        : [],
+                    )}{' '}
+                    · {t('Next workout')}
+                  </p>
+                </>
+              ) : (
+                <PrimaryButton
+                  type="button"
+                  onClick={() => void navigate('/training?createProgram=1')}
+                >
+                  Create program
+                </PrimaryButton>
+              )}
+            </div>
+          </Card>
+
+          <section className="home-utility-nav" aria-label="Home shortcuts">
             <SecondaryButton
               type="button"
               onClick={() => void navigate('/history?source=home')}
             >
+              <History aria-hidden="true" size={18} />
               View all history
             </SecondaryButton>
             <SecondaryButton
@@ -137,235 +308,139 @@ export function HomePage() {
               onClick={() => void navigate('/history?view=graphs')}
             >
               <LineChart aria-hidden="true" size={18} />
-              Graphs
+              {t('Graphs')}
             </SecondaryButton>
             <SecondaryButton
               type="button"
               onClick={() => void navigate('/history?view=bodyweight')}
             >
               <Scale aria-hidden="true" size={18} />
-              Bodyweight
+              {t('Bodyweight')}
             </SecondaryButton>
-          </div>
-        </Card>
+          </section>
 
-        <Card
-          className="home-action-card"
-          title={dashboard?.activeProgram?.cycle.name ?? 'No active program'}
-        >
-          <div className="dashboard-shortcuts">
-            <PrimaryButton
-              type="button"
-              disabled={!dashboard?.activeProgram?.days.length}
-              onClick={() => void navigate('/training')}
-            >
-              Start workout
-            </PrimaryButton>
-            {dashboard?.activeProgram?.days.length ? (
-              <SecondaryButton type="button">
-                {dashboard.activeProgram.days[0]?.name}
-              </SecondaryButton>
-            ) : (
-              <SecondaryButton type="button">Create program</SecondaryButton>
-            )}
-          </div>
-        </Card>
-      </section>
+          <section className="metric-grid" aria-label="Daily summary">
+            <HomeBodyweightSummary
+              trendWeight={trendWeight}
+              lastRecorded={dashboard?.currentBodyweight}
+              onLog={() => openBodyweightSheet(selectedDate)}
+              onView={() => void navigate('/history?view=bodyweight')}
+            />
+            <MetricCard
+              label="Calories remaining"
+              onClick={() => void navigate('/nutrition?tab=day')}
+              value={`${caloriesRemaining}`}
+              detail={
+                calorieTarget > 0
+                  ? `${calorieTarget} kcal target`
+                  : 'Target not set'
+              }
+            />
+          </section>
 
-      <section className="metric-grid" aria-label="Daily summary">
-        <MetricCard
-          label="Calories consumed"
-          value={`${caloriesConsumed}`}
-          detail={`${calorieTarget} kcal target`}
-        />
-        <MetricCard
-          label="Calories remaining"
-          value={`${caloriesRemaining}`}
-          detail={
-            calorieTarget > 0 ? 'Based on current target' : 'Target not set'
-          }
-        />
-      </section>
-
-      <Card title="Nutrition">
-        <div className="macro-progress-list">
-          <MacroProgress
-            label="Protein"
-            value={dashboard?.nutrition.totals.proteinGrams ?? 0}
-            target={dashboard?.nutrition.targets.proteinGrams ?? 0}
-          />
-          <MacroProgress
-            label="Carbohydrates"
-            value={dashboard?.nutrition.totals.carbohydrateGrams ?? 0}
-            target={dashboard?.nutrition.targets.carbohydrateGrams ?? 0}
-          />
-          <MacroProgress
-            label="Fat"
-            value={dashboard?.nutrition.totals.fatGrams ?? 0}
-            target={dashboard?.nutrition.targets.fatGrams ?? 0}
-          />
-        </div>
-        {caloriesConsumed === 0 ? (
-          <EmptyState
-            title="No foods logged"
-            message="Daily totals are ready for manual nutrition logs."
-            action={
+          <Card className="home-calories-card" title="Calories">
+            <SegmentedControl
+              label={t('Home calorie range')}
+              onChange={(value) => setCalorieRange(value as HomeCalorieRange)}
+              options={[
+                { label: '1W', value: '1w' },
+                { label: '1M', value: '1m' },
+              ]}
+              value={calorieRange}
+            />
+            {calorieHistory ? (
+              <CalorieHistoryChart compact history={calorieHistory} />
+            ) : null}
+            {!calorieHistory && !calorieHistoryError ? (
+              <LoadingState label={t('Loading calorie history')} />
+            ) : null}
+            {calorieHistoryError ? (
+              <StatusMessage tone="warning">
+                {t('Calorie history could not load.')}
+              </StatusMessage>
+            ) : null}
+            <div className="button-row home-calorie-actions">
+              {caloriesConsumed === 0 ? (
+                <SecondaryButton
+                  type="button"
+                  onClick={() => void navigate('/nutrition?logFood=1')}
+                >
+                  Log food
+                </SecondaryButton>
+              ) : null}
               <SecondaryButton
                 type="button"
-                onClick={() => void navigate('/nutrition?logFood=1')}
+                onClick={() =>
+                  void navigate(
+                    `/calories?range=${calorieRange}&end=${selectedDate}`,
+                  )
+                }
               >
-                Log food
+                {t('View more')}
               </SecondaryButton>
-            }
-          />
-        ) : null}
-      </Card>
+            </div>
+          </Card>
 
-      <Card title="Bodyweight">
-        <div className="card-row">
-          <span className="quick-action-icon">
-            <Scale aria-hidden="true" size={20} />
-          </span>
-          <div>
-            {dashboard?.currentBodyweight ? (
-              <>
-                <p className="metric-value metric-value-small">
-                  {formatWeight(dashboard.currentBodyweight.weight)}{' '}
-                  {dashboard.currentBodyweight.unit}
-                </p>
-                <p className="muted">
-                  Current from {dashboard.currentBodyweight.localDate}
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="metric-value metric-value-small">No entry</p>
-                <p className="muted">Log bodyweight to start a trend.</p>
-              </>
-            )}
-          </div>
-        </div>
-        {dashboard?.bodyweight ? (
-          <p className="muted">
-            Selected date: {formatWeight(dashboard.bodyweight.weight)}{' '}
-            {dashboard.bodyweight.unit}
-          </p>
-        ) : (
-          <p className="muted">Selected date: no bodyweight entry</p>
-        )}
-        <HomeBodyweightTrend trend={dashboard?.bodyweightTrend} />
-        <div className="button-row">
-          <PrimaryButton
-            type="button"
-            onClick={() => openBodyweightSheet(selectedDate)}
-          >
-            Log bodyweight
-          </PrimaryButton>
-          {dashboard?.bodyweight ? (
-            <SecondaryButton
-              type="button"
-              onClick={() =>
-                openBodyweightSheet({
-                  entryId: dashboard.bodyweight?.id,
-                  localDate: selectedDate,
-                })
-              }
-            >
-              Edit latest
-            </SecondaryButton>
+          {dashboard.metadata ? (
+            <div className="visually-hidden">
+              Local database schema {dashboard.metadata.databaseSchemaVersion};
+              backup schema {dashboard.metadata.backupSchemaVersion}.
+            </div>
           ) : null}
-          <SecondaryButton
-            type="button"
-            onClick={() => void navigate('/history?view=bodyweight')}
-          >
-            View graph
-          </SecondaryButton>
-        </div>
-      </Card>
-
-      {dashboard?.activeWorkout ? (
-        <Card title="Resume workout">
-          <p className="metric-value metric-value-small">
-            {dashboard.activeWorkout.name}
-          </p>
-          <p className="muted">Started {dashboard.activeWorkout.localDate}</p>
-          <div className="button-row">
-            <PrimaryButton
-              type="button"
-              onClick={() => void navigate('/workout')}
-            >
-              Resume workout
-            </PrimaryButton>
-          </div>
-        </Card>
-      ) : null}
-
-      {dashboard?.metadata ? (
-        <div className="visually-hidden">
-          Local database schema {dashboard.metadata.databaseSchemaVersion};
-          backup schema {dashboard.metadata.backupSchemaVersion}.
-        </div>
+        </>
       ) : null}
     </PageContainer>
   )
 }
 
-function HomeBodyweightTrend({
-  trend,
+function HomeBodyweightSummary({
+  trendWeight,
+  lastRecorded,
+  onLog,
+  onView,
 }: {
-  trend: BodyweightTrendSummary | undefined
+  trendWeight: number | null
+  lastRecorded: BodyweightEntry | undefined
+  onLog: () => void
+  onView: () => void
 }) {
-  if (!trend || trend.status === 'empty') {
-    return (
-      <div className="home-trend" aria-label="Bodyweight trend">
-        <span>No trend yet</span>
-        <small>Add at least two entries to show change.</small>
-      </div>
-    )
-  }
-
-  if (trend.status === 'single') {
-    return (
-      <div className="home-trend" aria-label="Bodyweight trend">
-        <span>One entry</span>
-        <small>{trend.text}</small>
-      </div>
-    )
-  }
-
+  const { t } = useLanguage()
+  const weightUnit = useWeightUnit()
   return (
-    <div className="home-trend" aria-label="Bodyweight trend">
-      <span>{formatBodyweightChange(trend.change)}</span>
-      <small>{trend.text}</small>
-    </div>
-  )
-}
-
-function MacroProgress({
-  label,
-  target,
-  value,
-}: {
-  label: string
-  target: number
-  value: number
-}) {
-  const roundedValue = Math.round(value)
-  const roundedTarget = Math.round(target)
-  const percentage =
-    roundedTarget > 0 ? Math.min(100, (roundedValue / roundedTarget) * 100) : 0
-
-  return (
-    <div className="macro-progress">
-      <div>
-        <span>{label}</span>
-        <strong>
-          {roundedValue} g / {roundedTarget} g
-        </strong>
+    <Card
+      aria-label={t('Bodyweight')}
+      className="metric-card home-bodyweight-summary"
+    >
+      <div className="home-bw-metric">
+        <div className="home-bw-stat">
+          <span className="home-bw-value">
+            {trendWeight !== null
+              ? formatWeightWithUnit(trendWeight, weightUnit, 'bodyweight')
+              : '—'}
+          </span>
+          <span className="home-bw-caption">{t('Trend weight')}</span>
+        </div>
+        <div className="home-bw-stat">
+          <span className="home-bw-value home-bw-value-secondary">
+            {lastRecorded
+              ? formatWeightWithUnit(
+                  lastRecorded.weight,
+                  weightUnit,
+                  'bodyweight',
+                )
+              : t('No entry')}
+          </span>
+          <span className="home-bw-caption">{t('Last recorded')}</span>
+        </div>
       </div>
-      <div className="progress-track" aria-hidden="true">
-        <span style={{ width: `${percentage}%` }} />
+      <div className="button-row home-bodyweight-actions">
+        <PrimaryButton type="button" onClick={onLog}>
+          Log bodyweight
+        </PrimaryButton>
+        <SecondaryButton type="button" onClick={onView}>
+          View graph
+        </SecondaryButton>
       </div>
-    </div>
+    </Card>
   )
 }

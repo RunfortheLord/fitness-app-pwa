@@ -21,11 +21,9 @@ export function registerServiceWorkerUpdateHandler(
   }
 
   const workbox = new Workbox('/sw.js')
-  let reloadForConfirmedUpdate = false
 
   const update: ServiceWorkerUpdate = {
     applyUpdate() {
-      reloadForConfirmedUpdate = true
       workbox.messageSkipWaiting()
     },
     checkForUpdate() {
@@ -35,12 +33,6 @@ export function registerServiceWorkerUpdateHandler(
 
   workbox.addEventListener('waiting', () => {
     onUpdateReady(update)
-  })
-
-  workbox.addEventListener('controlling', () => {
-    if (reloadForConfirmedUpdate) {
-      window.location.reload()
-    }
   })
 
   function checkForUpdate() {

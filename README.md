@@ -1,8 +1,8 @@
-# Fitness Log
+# Vigorune
 
 [![CI](https://github.com/RunfortheLord/fitness-app-pwa/actions/workflows/ci.yml/badge.svg)](https://github.com/RunfortheLord/fitness-app-pwa/actions/workflows/ci.yml)
 
-Fitness Log is a local-first fitness tracking PWA under initial development. The app uses React, TypeScript, Vite, React Router, Dexie, and `vite-plugin-pwa`.
+Vigorune is a local-first fitness tracking PWA and native-store project. The app uses React, TypeScript, Vite, React Router, Dexie, Capacitor, and `vite-plugin-pwa`.
 
 ## Requirements
 

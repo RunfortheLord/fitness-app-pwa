@@ -8,17 +8,17 @@ Set Goal math core (`src/domain/goalMacros.ts`, unused by the UI) shipped.
 
 ## Key references
 
-| Item | Value |
-|------|-------|
-| Production branch | `main` |
-| Stable production URL | https://fitness-app-pwa-eight.vercel.app |
-| Pre-change Git SHA | `219a2280e86c6c041106b04f74e07d85f822901f` (`219a228`) |
-| Pre-change recovery tag | `pre-fitness-app-3-update-20260623-1326` (annotated, → `219a228`) |
-| Pre-change Vercel deployment (ROLLBACK TARGET) | id `dpl_zBnoxXA6WaJAJZdCQpFyj6pk5z32` — `https://fitness-app-n80n9nsv1-adamshugart27-4515s-projects.vercel.app` |
-| New Vercel deployment (current production) | id `dpl_GGxpisRytWDyro3ZWc8ssHtJQmoR` — `https://fitness-app-14f7amatp-adamshugart27-4515s-projects.vercel.app` |
-| Superseded interim deployment | id `dpl_GZMfPsFnAUzSeu5uP7RDYX6NVUqa` — `https://fitness-app-ocm1r68u7-adamshugart27-4515s-projects.vercel.app` (first Batch-1 deploy; replaced by the clean-build redeploy) |
-| Deployed commit | `0ab19b3` (verified via `/build-info.json`) |
-| Vercel project | `fitness-app-pwa` (org `team_SMU4EzReKZGL5BPjbbwcG3aN`, scope `adamshugart27-4515s-projects`) |
+| Item                                           | Value                                                                                                                                                                        |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Production branch                              | `main`                                                                                                                                                                       |
+| Stable production URL                          | https://fitness-app-pwa-eight.vercel.app                                                                                                                                     |
+| Pre-change Git SHA                             | `219a2280e86c6c041106b04f74e07d85f822901f` (`219a228`)                                                                                                                       |
+| Pre-change recovery tag                        | `pre-fitness-app-3-update-20260623-1326` (annotated, → `219a228`)                                                                                                            |
+| Pre-change Vercel deployment (ROLLBACK TARGET) | id `dpl_zBnoxXA6WaJAJZdCQpFyj6pk5z32` — `https://fitness-app-n80n9nsv1-adamshugart27-4515s-projects.vercel.app`                                                              |
+| New Vercel deployment (current production)     | id `dpl_GGxpisRytWDyro3ZWc8ssHtJQmoR` — `https://fitness-app-14f7amatp-adamshugart27-4515s-projects.vercel.app`                                                              |
+| Superseded interim deployment                  | id `dpl_GZMfPsFnAUzSeu5uP7RDYX6NVUqa` — `https://fitness-app-ocm1r68u7-adamshugart27-4515s-projects.vercel.app` (first Batch-1 deploy; replaced by the clean-build redeploy) |
+| Deployed commit                                | `0ab19b3` (verified via `/build-info.json`)                                                                                                                                  |
+| Vercel project                                 | `fitness-app-pwa` (org `team_SMU4EzReKZGL5BPjbbwcG3aN`, scope `adamshugart27-4515s-projects`)                                                                                |
 
 ## New commits created by this task (oldest → newest)
 
@@ -80,7 +80,7 @@ Set Goal math core (`src/domain/goalMacros.ts`, unused by the UI) shipped.
 1. **Restore the stable alias first** (minimize downtime), pointing it back to
    the recorded pre-change deployment:
    ```sh
-   set -a; . ./.env.local; set +a   # provides VERCEL_TOKEN
+   npx vercel whoami                 # use the CLI credential store
    npx vercel alias set \
      fitness-app-n80n9nsv1-adamshugart27-4515s-projects.vercel.app \
      fitness-app-pwa-eight.vercel.app

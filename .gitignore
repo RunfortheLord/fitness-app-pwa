@@ -7,6 +7,7 @@ test-results/
 .vercel/
 .env
 .env.*
+!.env.example
 reference/*.mp4
 reference/*.MP4
 reference/frames/

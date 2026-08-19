@@ -15,6 +15,7 @@ export type SaveBodyweightInput = {
 
 export type UpdateBodyweightInput = {
   id: string
+  localDate?: LocalDateString
   weight: number
   notes?: string
 }
@@ -32,6 +33,9 @@ function validateBodyweight(weight: number) {
   }
 }
 
+const DUPLICATE_BODYWEIGHT_DATE_ERROR =
+  'A bodyweight entry already exists for this date.'
+
 export function createBodyweightRepository(
   database: TrainingLogDatabase = db,
   testHooks: BodyweightRepositoryTestHooks = {},
@@ -44,6 +48,13 @@ export function createBodyweightRepository(
         'rw',
         database.bodyweightEntries,
         async () => {
+          const existing = await database.bodyweightEntries
+            .where({ localDate: input.localDate })
+            .first()
+          if (existing) {
+            throw new Error(DUPLICATE_BODYWEIGHT_DATE_ERROR)
+          }
+
           const entry: BodyweightEntry = {
             id: createId(),
             localDate: input.localDate,
@@ -63,19 +74,36 @@ export function createBodyweightRepository(
 
     async updateBodyweight(input: UpdateBodyweightInput) {
       validateBodyweight(input.weight)
-      const existing = await database.bodyweightEntries.get(input.id)
-      if (!existing) {
-        throw new Error('Bodyweight entry was not found.')
-      }
+      return database.transaction(
+        'rw',
+        database.bodyweightEntries,
+        async () => {
+          const existing = await database.bodyweightEntries.get(input.id)
+          if (!existing) {
+            throw new Error('Bodyweight entry was not found.')
+          }
 
-      const entry: BodyweightEntry = {
-        ...existing,
-        weight: input.weight,
-        notes: input.notes ?? existing.notes,
-        updatedAt: new Date().toISOString(),
-      }
-      await database.bodyweightEntries.put(entry)
-      return entry
+          const localDate = input.localDate ?? existing.localDate
+          if (localDate !== existing.localDate) {
+            const entryOnDate = await database.bodyweightEntries
+              .where({ localDate })
+              .first()
+            if (entryOnDate) {
+              throw new Error(DUPLICATE_BODYWEIGHT_DATE_ERROR)
+            }
+          }
+
+          const entry: BodyweightEntry = {
+            ...existing,
+            localDate,
+            weight: input.weight,
+            notes: input.notes ?? existing.notes,
+            updatedAt: new Date().toISOString(),
+          }
+          await database.bodyweightEntries.put(entry)
+          return entry
+        },
+      )
     },
 
     getBodyweightEntry(id: string) {

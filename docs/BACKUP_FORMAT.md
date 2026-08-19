@@ -3,12 +3,49 @@
 ## Current Versions
 
 - Backup format version: `1`
-- Compatible database schema versions: backups with `databaseSchemaVersion` less than or equal to the app's current IndexedDB schema version `8` can be restored after validation.
+- Compact cloud snapshot format version: `1` (a separate envelope, not a
+  reinterpretation of backup format 1)
+- Compatible database schema versions: backups with `databaseSchemaVersion`
+  less than or equal to the app's current IndexedDB schema version `21` can be
+  restored after validation.
 - API key integration settings are not exported in backups. Replacing local data
   from a backup clears the saved API key integration record.
-- Application restore support: application version `0.0.0` can restore backup format version `1`.
+- Application restore support: application version `0.9.0` can restore backup format version `1`.
 
 The backup format version is intentionally separate from the IndexedDB database schema version. A database migration does not automatically imply a backup format change, and a backup format change does not automatically imply an IndexedDB migration.
+
+## Compact Cloud Snapshot
+
+Automatic and manual cloud backup writes use a separate root envelope with:
+
+- `cloudSnapshotFormatVersion`
+- `sourceBackupFormatVersion`
+- `databaseSchemaVersion`
+- `applicationVersion`
+- `exportedAt`
+- `seedManifest`
+- `data`
+
+Compact cloud snapshot format 1 uses source backup format 1 and keeps the same
+table names and record schemas. It excludes a built-in exercise, built-in
+program template, template day, or template exercise only when the stored
+record exactly equals the application's deterministic seed record. A stable ID
+or built-in-looking name alone is never enough to omit data. Custom copies,
+modified built-ins, user-created templates, archived or hidden choices, and all
+non-seed records remain explicit.
+
+Cloud restore continues to accept legacy JSON backup-format-1 snapshots. For a
+compact snapshot, restore validates the compact envelope, reconstructs current
+deterministic seed records from the same application seed definitions, overlays
+preserved records by stable ID, and validates the resulting full backup and all
+relationships before modifying IndexedDB. The expanded data then uses the same
+single replace transaction as manual restore. Unsupported future cloud snapshot
+versions and compact snapshots containing GPS run samples are rejected without
+partial clearing.
+
+The compact representation is cloud-only. It does not change the user-facing
+manual JSON backup, ZIP export, IndexedDB schema, local source-of-truth model,
+replace-only semantics, or 8 MiB final serialized cloud-row cap.
 
 ## JSON Backup
 
@@ -50,6 +87,11 @@ but restore keeps older fields readable so historical backups do not corrupt
 unrelated workout data. These legacy note fields do not create active UI
 controls.
 
+Workout records include nullable `pausedAt` state and accumulated paused
+seconds. Older backups that omit `pausedAt` restore it as `null`. Completed
+history always stores `pausedAt: null` after folding any final pause into the
+accumulated total.
+
 Detected workout changes may include type `progression_recommendation` with
 optional `recommendationReason` and `recommendationSummary`. These records are
 unchecked by default in review and are applied only to selected future
@@ -72,6 +114,14 @@ active-program references are included in JSON backups because they are local
 user workflow state needed to restore the app faithfully. USDA API key
 integration settings remain excluded.
 
+RIR tracking and workout-autofill mode are also backed up. Older backups that
+omit them restore with RIR tracking disabled and Recorded history autofill.
+History organization and selected-program filter are backed up; older backups
+restore to Most recent with no selected program. Program/template records back
+up scheduled deload week numbers, and workout/history records back up their
+snapshotted week number and deload status. Older backups restore with no
+scheduled deload weeks and regular workout status.
+
 ## Restore Behavior
 
 Restore validates the complete backup before modifying IndexedDB. Validation covers root metadata, supported backup format version, database schema compatibility, required fields, IDs, duplicate IDs, timestamps, local dates, numeric values, enum values, parent-child relationships, source references, and snapshot structure.
@@ -82,43 +132,41 @@ The supported restore mode is replace. Merge restore is unavailable in this rele
 
 Replace restore validates first, then writes all restored user data in one Dexie transaction. If the transaction fails, the original database state is preserved. Required app metadata is reinitialized after a successful restore. Built-in exercises are reseeded idempotently after restore so older backups gain the offline library without duplicating records.
 
-## CSV Export
+## Fitness Data ZIP Export
 
-CSV export creates a local TAR archive containing one CSV file per exported table:
+The user-facing **Export all fitness data** action creates a conventional ZIP
+archive. Every entry is contained by one timestamped top-level directory. The
+archive contains:
 
-- `userSettings.csv`
-- `nutritionTargets.csv`
-- `foods.csv`
-- `foodLogEntries.csv`
-- `foodUnitPreferences.csv`
-- `barcodeProductCache.csv`
-- `bodyweightEntries.csv`
-- `exercises.csv`
-- `programTemplates.csv`
-- `templateWorkoutDays.csv`
-- `templateWorkoutExercises.csv`
-- `activeProgramCycles.csv`
-- `activeCycleWorkoutDays.csv`
-- `activeCycleWorkoutExercises.csv`
-- `workouts.csv`
-- `workoutExercises.csv`
-- `workoutSets.csv`
-- `workoutHistoryEntries.csv`
-- `workoutHistoryExercises.csv`
-- `workoutHistorySets.csv`
-- `detectedWorkoutChanges.csv`
-- `appliedWorkoutChanges.csv`
-- `runs.csv`
-- `runSamples.csv`
-- `runPauses.csv`
-- `runSplits.csv`
-- `runClassifications.csv`
+- `README.txt`, with versions, units, timezone, inventory, and a privacy warning;
+- `manifest.json`, with export metadata, table counts, table descriptions,
+  generated column metadata, and SHA-256 checksums when Web Crypto is available;
+- `backup/fitness-data-backup.json`, the existing restore-compatible,
+  full-fidelity JSON backup;
+- `backup/schema.json`, generated from the same Zod schema used to validate
+  restore files;
+- one typed JSON array under `backup/` for every explicitly allowlisted backup
+  table, including empty arrays;
+- spreadsheet-oriented reports under `reports/`: workout history, daily
+  nutrition, food log, bodyweight, programs, exercise library, and export
+  summary.
 
-CSV files include headers, stable IDs, parent IDs, ordering fields, timestamps, local dates, archived status, source IDs, and escaped values for commas, quotation marks, line breaks, and empty values. Nested snapshot fields are serialized as JSON inside the CSV cell.
+The complete JSON backup remains authoritative. Individual table JSON files
+preserve nulls, booleans, numbers, arrays, nested objects, stable IDs, and
+relationships without double-stringifying nested values. The schema file and
+manifest retain the complete defined structure when a table has no records.
+`apiKeyIntegrationSettings`, backup audit metadata, transient active-cycle
+check-offs, and object URLs are not exported.
+
+Human-readable CSV reports use explicit headers, RFC 4180 quoting, CRLF line
+endings, Unicode, predictable ordering, normal unit columns, and `true`/`false`
+booleans. Text beginning with `=`, `+`, `-`, or `@` is prefixed with an
+apostrophe in reports to prevent spreadsheet formula injection. Authoritative
+JSON values are never modified for spreadsheet safety.
 
 Bodyweight CSV and JSON exports include every stored bodyweight entry,
-including multiple entries for the same local date. Export does not collapse,
-average, or rewrite same-day records used by the progress graph.
+including legacy duplicate-date records restored from older backups. Export
+does not collapse, average, or rewrite source records.
 
 Run CSV and JSON exports include active and completed runs plus raw GPS samples,
 sample decisions, rejection reasons, pause periods, splits, GPS-gap markers,
@@ -130,14 +178,23 @@ Estimated one-repetition-maximum graph values are derived from exported
 workout-history sets after restore. They are not a separate backup table and do
 not change the backup format version.
 
-Nutrition CSV and JSON exports use stored historical food-log snapshots. They
+Nutrition report and JSON exports use stored historical food-log snapshots. They
 include enough snapshot information to reconstruct local date, log timestamp,
 food name, optional brand or restaurant, provider identity when known, serving
 definition, consumed multiplier, calories, protein, total carbohydrates, fat,
 and reliable conversion metadata when available. Export never refetches provider
 records.
 
-CSV is intended for readable analysis and spreadsheet use. CSV import is not supported.
+CSV reports are intended for readable analysis and spreadsheet use. CSV import
+is not supported.
+
+Before compression and download, export validation checks required and unique
+paths, manifest record counts, JSON parsing, restore-schema and relationship
+validation, table checksums when supported, and disallowed secret field names.
+If legacy local records fail the latest relationship or schema validation, the
+archive is still downloaded with its authoritative raw backup and an
+`EXPORT_WARNINGS.txt` report. Packaging failures and unsafe archive paths still
+prevent download.
 
 ## Clear All Data
 
@@ -147,4 +204,9 @@ Users should export a JSON backup before clearing data if they may need to resto
 
 ## Privacy
 
-Backup, restore, CSV export, and clear-all operations use browser APIs and IndexedDB on the local device. Files are not uploaded to a server, cloud backup is not created, and accounts are not involved.
+Local backup, restore, CSV export, and clear-all operations use browser APIs and
+IndexedDB on the device. Creating a local export never uploads that file or
+requires an account. Optional signed-in cloud backup separately uploads a
+validated snapshot as documented in `docs/CLOUD_SYNC.md`; GPS run samples remain
+local-only while manual JSON export retains the full-fidelity local format.
+Cloud backup does not change that local format or make cloud data authoritative.

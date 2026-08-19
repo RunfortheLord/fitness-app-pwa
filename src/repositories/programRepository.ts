@@ -1,11 +1,25 @@
 import { db, type TrainingLogDatabase } from '@db/database'
 import { createId } from '@domain/ids'
+import {
+  BUILT_IN_PROGRAMS,
+  BUILT_IN_PROGRAM_SEED_VERSION,
+} from '@domain/programLibrarySeed'
 import { snapshotExercise } from '@domain/snapshots'
+import {
+  clampProgramDurationWeeks,
+  currentProgramWeek,
+  DEFAULT_DELOAD_WEEK_NUMBERS,
+  DEFAULT_PROGRAM_DURATION_WEEKS,
+  nextProgramWeekAfterCompletion,
+  normalizeDeloadWeekNumbers,
+} from '@domain/programWeeks'
 import type { ExerciseUsageSummary } from '@domain/exerciseSearch'
 import type {
+  ActiveCycleDayCheck,
   ActiveCycleWorkoutDay,
   ActiveCycleWorkoutExercise,
   ActiveProgramCycle,
+  Exercise,
   ProgramTemplate,
   ProgramTemplateDay,
   TemplateWorkoutExercise,
@@ -33,6 +47,10 @@ export type CreateTemplateDayInput = {
 export type CreateProgramTemplateInput = {
   name: string
   notes?: string
+  durationWeeks?: number | null
+  deloadWeekNumbers?: number[]
+  deloadSchedulingEnabled?: boolean
+  trackRirEverySet?: boolean
   days: CreateTemplateDayInput[]
 }
 
@@ -56,11 +74,203 @@ export type ProgramRepositoryTestHooks = {
   afterActiveCycleAdded?: () => void | Promise<void>
 }
 
+// Fixed timestamp so re-seeding a built-in program is deterministic.
+export const BUILT_IN_PROGRAM_CREATED_AT = '2026-06-19T00:00:00.000Z'
+
+export function builtInProgramTemplateId(slug: string) {
+  return `builtin-program:${slug}`
+}
+
+export function createBuiltInProgramSeedRecords(
+  exercises: readonly Exercise[],
+) {
+  const exerciseById = new Map(
+    exercises.map((exercise) => [exercise.id, exercise]),
+  )
+  const programTemplates: ProgramTemplate[] = []
+  const templateWorkoutDays: ProgramTemplateDay[] = []
+  const templateWorkoutExercises: TemplateWorkoutExercise[] = []
+
+  for (const program of BUILT_IN_PROGRAMS) {
+    const templateId = builtInProgramTemplateId(program.slug)
+    programTemplates.push({
+      id: templateId,
+      name: program.name,
+      notes: program.notes ?? '',
+      status: 'active',
+      lastActiveAt: null,
+      isBuiltIn: true,
+      level: program.level,
+      goal: program.goal,
+      durationWeeks: program.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
+      deloadWeekNumbers: [...DEFAULT_DELOAD_WEEK_NUMBERS],
+      deloadSchedulingEnabled: false,
+      builtInSeedVersion: BUILT_IN_PROGRAM_SEED_VERSION,
+      createdAt: BUILT_IN_PROGRAM_CREATED_AT,
+      updatedAt: BUILT_IN_PROGRAM_CREATED_AT,
+    })
+
+    for (const [dayIndex, day] of program.days.entries()) {
+      const dayId = `${templateId}::d${dayIndex}`
+      templateWorkoutDays.push({
+        id: dayId,
+        templateId,
+        name: day.name,
+        notes: day.notes ?? '',
+        orderIndex: dayIndex,
+        createdAt: BUILT_IN_PROGRAM_CREATED_AT,
+        updatedAt: BUILT_IN_PROGRAM_CREATED_AT,
+      })
+
+      for (const [exerciseIndex, prescription] of day.exercises.entries()) {
+        const exercise = exerciseById.get(prescription.exerciseId)
+        if (!exercise) {
+          throw new Error(
+            `Built-in program exercise ${prescription.exerciseId} was not found in the exercise library.`,
+          )
+        }
+        templateWorkoutExercises.push({
+          id: `${dayId}::e${exerciseIndex}`,
+          templateId,
+          dayId,
+          exerciseId: exercise.id,
+          exerciseSnapshot: snapshotExercise(exercise),
+          orderIndex: exerciseIndex,
+          targetSetCount: prescription.targetSetCount,
+          targetWeight: null,
+          targetDurationSeconds: null,
+          targetDistance: null,
+          targetRepsMin: prescription.targetRepsMin,
+          targetRepsMax: prescription.targetRepsMax,
+          targetRir: prescription.targetRir,
+          restSecondsOverride: null,
+          notes: prescription.notes ?? '',
+          createdAt: BUILT_IN_PROGRAM_CREATED_AT,
+          updatedAt: BUILT_IN_PROGRAM_CREATED_AT,
+        })
+      }
+    }
+  }
+
+  return {
+    programTemplates,
+    templateWorkoutDays,
+    templateWorkoutExercises,
+  }
+}
+
+function groupByTemplateId<T extends { templateId: string }>(records: T[]) {
+  const grouped = new Map<string, T[]>()
+  for (const record of records) {
+    const existing = grouped.get(record.templateId)
+    if (existing) {
+      existing.push(record)
+    } else {
+      grouped.set(record.templateId, [record])
+    }
+  }
+  return grouped
+}
+
 export function createProgramRepository(
   database: TrainingLogDatabase = db,
   testHooks: ProgramRepositoryTestHooks = {},
 ) {
+  async function assertTemplateEditable(templateId: string) {
+    const template = await database.programTemplates.get(templateId)
+    if (template?.isBuiltIn) {
+      throw new Error(
+        'Built-in programs are read-only. Duplicate the program to make changes.',
+      )
+    }
+  }
+
   return {
+    /**
+     * Idempotently seeds the built-in program library. Built-in templates use
+     * stable IDs and a seed version, so re-running never duplicates them and
+     * never touches user-owned templates, active cycles, or workout history.
+     */
+    async seedBuiltInPrograms() {
+      await database.transaction(
+        'rw',
+        database.programTemplates,
+        database.templateWorkoutDays,
+        database.templateWorkoutExercises,
+        database.exercises,
+        async () => {
+          // Load the exercise library once instead of per-prescription so seeding
+          // stays fast (hundreds of prescriptions reference it).
+          const exercises = await database.exercises.toArray()
+
+          // Built-in programs reference built-in exercises by id. If the exercise
+          // library has not been seeded yet there is nothing valid to seed
+          // against, so skip instead of throwing. In normal startup
+          // seedBuiltInExercises() runs (and is awaited) before this, so the
+          // library is always present; an empty table only happens when a stale,
+          // in-flight seed call races a database reset (e.g. between tests).
+          if (exercises.length === 0) {
+            return
+          }
+
+          const seedRecords = createBuiltInProgramSeedRecords(exercises)
+          const daysByTemplate = groupByTemplateId(
+            seedRecords.templateWorkoutDays,
+          )
+          const exercisesByTemplate = groupByTemplateId(
+            seedRecords.templateWorkoutExercises,
+          )
+
+          const existingTemplates = new Map(
+            (await database.programTemplates.toArray()).map((template) => [
+              template.id,
+              template,
+            ]),
+          )
+
+          const templatesToSeed: ProgramTemplate[] = []
+          const daysToSeed: ProgramTemplateDay[] = []
+          const exercisesToSeed: TemplateWorkoutExercise[] = []
+
+          for (const seedTemplate of seedRecords.programTemplates) {
+            const templateId = seedTemplate.id
+            const existing = existingTemplates.get(templateId)
+            if (
+              existing &&
+              (existing.builtInSeedVersion ?? 0) >=
+                BUILT_IN_PROGRAM_SEED_VERSION
+            ) {
+              continue
+            }
+
+            // Replace an existing built-in's own source definition; on a fresh
+            // database there is nothing to delete, so skip the extra queries.
+            if (existing) {
+              await database.templateWorkoutExercises
+                .where({ templateId })
+                .delete()
+              await database.templateWorkoutDays.where({ templateId }).delete()
+            }
+
+            templatesToSeed.push({
+              ...seedTemplate,
+              lastActiveAt: existing?.lastActiveAt ?? null,
+              createdAt: existing?.createdAt ?? seedTemplate.createdAt,
+            })
+            daysToSeed.push(...(daysByTemplate.get(templateId) ?? []))
+            exercisesToSeed.push(...(exercisesByTemplate.get(templateId) ?? []))
+          }
+
+          if (templatesToSeed.length) {
+            await database.programTemplates.bulkPut(templatesToSeed)
+            await database.templateWorkoutDays.bulkPut(daysToSeed)
+            await database.templateWorkoutExercises.bulkPut(exercisesToSeed)
+          }
+        },
+      )
+      await backfillBlankBuiltInCopyNotes(database)
+    },
+
     async createProgramTemplate(input: CreateProgramTemplateInput) {
       const now = new Date().toISOString()
       const template: ProgramTemplate = {
@@ -69,6 +279,15 @@ export function createProgramRepository(
         notes: '',
         status: 'active',
         lastActiveAt: null,
+        durationWeeks: clampProgramDurationWeeks(
+          input.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
+        ),
+        deloadWeekNumbers: normalizeDeloadWeekNumbers(
+          input.deloadWeekNumbers ?? DEFAULT_DELOAD_WEEK_NUMBERS,
+          input.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
+        ),
+        deloadSchedulingEnabled: input.deloadSchedulingEnabled ?? false,
+        trackRirEverySet: input.trackRirEverySet ?? false,
         createdAt: now,
         updatedAt: now,
       }
@@ -158,6 +377,19 @@ export function createProgramRepository(
           if (!template) {
             throw new Error(`Program template ${templateId} was not found.`)
           }
+          const alreadyActive = await database.activeProgramCycles
+            .where({ status: 'active' })
+            .filter((cycle) => cycle.sourceTemplateId === templateId)
+            .first()
+          if (alreadyActive) {
+            const days = await database.activeCycleWorkoutDays
+              .where({ activeCycleId: alreadyActive.id })
+              .sortBy('orderIndex')
+            const exercises = await database.activeCycleWorkoutExercises
+              .where({ activeCycleId: alreadyActive.id })
+              .sortBy('orderIndex')
+            return { cycle: alreadyActive, days, exercises }
+          }
           const currentCycles = await database.activeProgramCycles
             .where({ status: 'active' })
             .toArray()
@@ -177,6 +409,15 @@ export function createProgramRepository(
             notes: '',
             status: 'active',
             activatedAt: now,
+            durationWeeks:
+              template.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
+            currentWeekNumber: 1,
+            deloadWeekNumbers: normalizeDeloadWeekNumbers(
+              template.deloadWeekNumbers,
+              template.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
+            ),
+            deloadSchedulingEnabled: template.deloadSchedulingEnabled ?? false,
+            trackRirEverySet: template.trackRirEverySet ?? false,
             createdAt: now,
             updatedAt: now,
           }
@@ -227,7 +468,7 @@ export function createProgramRepository(
                 targetRepsMax: sourceExercise.targetRepsMax,
                 targetRir: sourceExercise.targetRir,
                 restSecondsOverride: sourceExercise.restSecondsOverride,
-                notes: '',
+                notes: sourceExercise.notes,
                 createdAt: now,
                 updatedAt: now,
               }
@@ -270,17 +511,40 @@ export function createProgramRepository(
 
     async updateProgramTemplate(
       id: string,
-      input: Partial<Pick<ProgramTemplate, 'name'>>,
+      input: Partial<
+        Pick<
+          ProgramTemplate,
+          | 'name'
+          | 'durationWeeks'
+          | 'deloadWeekNumbers'
+          | 'deloadSchedulingEnabled'
+          | 'trackRirEverySet'
+        >
+      >,
     ) {
       const template = await database.programTemplates.get(id)
       if (!template) {
         throw new Error(`Program template ${id} was not found.`)
       }
+      if (template.isBuiltIn) {
+        throw new Error(
+          'Built-in programs are read-only. Duplicate the program to make changes.',
+        )
+      }
 
+      const durationWeeks =
+        input.durationWeeks != null
+          ? clampProgramDurationWeeks(input.durationWeeks)
+          : (template.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS)
       const updated: ProgramTemplate = {
         ...template,
         ...input,
-        notes: '',
+        durationWeeks,
+        deloadWeekNumbers: normalizeDeloadWeekNumbers(
+          input.deloadWeekNumbers ?? template.deloadWeekNumbers,
+          durationWeeks,
+        ),
+        notes: template.notes,
         updatedAt: new Date().toISOString(),
       }
       await database.programTemplates.put(updated)
@@ -299,6 +563,11 @@ export function createProgramRepository(
           const template = await database.programTemplates.get(id)
           if (!template) {
             throw new Error(`Program template ${id} was not found.`)
+          }
+          if (template.isBuiltIn) {
+            throw new Error(
+              'Built-in programs cannot be deleted. Duplicate the program to customize it.',
+            )
           }
           const activeCycle = await database.activeProgramCycles
             .where({ status: 'active' })
@@ -338,9 +607,14 @@ export function createProgramRepository(
       return this.createProgramTemplate({
         name: `${source.template.name} copy`,
         notes: '',
+        durationWeeks: source.template.durationWeeks ?? null,
+        deloadWeekNumbers: source.template.deloadWeekNumbers ?? [],
+        deloadSchedulingEnabled:
+          source.template.deloadSchedulingEnabled ?? false,
+        trackRirEverySet: source.template.trackRirEverySet ?? false,
         days: source.days.map((day) => ({
           name: day.name,
-          notes: '',
+          notes: day.notes,
           exercises: source.exercisesByDay[day.id].map((exercise) => ({
             exerciseId: exercise.exerciseId,
             targetSetCount: exercise.targetSetCount,
@@ -351,7 +625,7 @@ export function createProgramRepository(
             targetRepsMax: exercise.targetRepsMax,
             targetRir: exercise.targetRir,
             restSecondsOverride: exercise.restSecondsOverride,
-            notes: '',
+            notes: exercise.notes,
           })),
         })),
       })
@@ -371,6 +645,11 @@ export function createProgramRepository(
           if (!template) {
             throw new Error(`Program template ${templateId} was not found.`)
           }
+          if (template.isBuiltIn) {
+            throw new Error(
+              'Built-in programs are read-only. Duplicate the program to make changes.',
+            )
+          }
           const existingDays = await database.templateWorkoutDays
             .where({ templateId })
             .toArray()
@@ -378,7 +657,7 @@ export function createProgramRepository(
             id: createId(),
             templateId,
             name: input.name,
-            notes: '',
+            notes: input.notes ?? '',
             orderIndex: existingDays.length,
             createdAt: now,
             updatedAt: now,
@@ -399,7 +678,7 @@ export function createProgramRepository(
         throw new Error(`Program template day ${dayId} was not found.`)
       }
       const now = new Date().toISOString()
-      const updated = { ...day, ...input, notes: '', updatedAt: now }
+      const updated = { ...day, ...input, notes: day.notes, updatedAt: now }
       await database.transaction(
         'rw',
         database.programTemplates,
@@ -419,6 +698,7 @@ export function createProgramRepository(
       if (!day) {
         throw new Error(`Program template day ${dayId} was not found.`)
       }
+      await assertTemplateEditable(day.templateId)
       const now = new Date().toISOString()
       await database.transaction(
         'rw',
@@ -529,6 +809,7 @@ export function createProgramRepository(
           if (!day) {
             throw new Error(`Program template day ${dayId} was not found.`)
           }
+          await assertTemplateEditable(day.templateId)
           const exercise = await database.exercises.get(input.exerciseId)
           if (!exercise) {
             throw new Error(`Exercise ${input.exerciseId} was not found.`)
@@ -551,7 +832,7 @@ export function createProgramRepository(
             targetRepsMax: input.targetRepsMax ?? null,
             targetRir: input.targetRir ?? null,
             restSecondsOverride: input.restSecondsOverride ?? null,
-            notes: '',
+            notes: input.notes ?? '',
             createdAt: now,
             updatedAt: now,
           }
@@ -582,6 +863,7 @@ export function createProgramRepository(
               `Template exercise ${prescribedExerciseId} was not found.`,
             )
           }
+          await assertTemplateEditable(prescribed.templateId)
           const replacement = input.exerciseId
             ? await database.exercises.get(input.exerciseId)
             : undefined
@@ -614,7 +896,9 @@ export function createProgramRepository(
             restSecondsOverride: hasField(input, 'restSecondsOverride')
               ? (input.restSecondsOverride ?? null)
               : prescribed.restSecondsOverride,
-            notes: '',
+            notes: hasField(input, 'notes')
+              ? (input.notes ?? '')
+              : prescribed.notes,
             updatedAt: now,
           }
           await database.templateWorkoutExercises.put(updated)
@@ -634,6 +918,7 @@ export function createProgramRepository(
           `Template exercise ${prescribedExerciseId} was not found.`,
         )
       }
+      await assertTemplateEditable(prescribed.templateId)
       const now = new Date().toISOString()
       await database.transaction(
         'rw',
@@ -645,6 +930,154 @@ export function createProgramRepository(
           await database.programTemplates.update(prescribed.templateId, {
             updatedAt: now,
           })
+        },
+      )
+    },
+
+    async duplicateTemplateExercise(prescribedExerciseId: string) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        database.programTemplates,
+        database.templateWorkoutExercises,
+        async () => {
+          const prescribed =
+            await database.templateWorkoutExercises.get(prescribedExerciseId)
+          if (!prescribed) {
+            throw new Error(
+              `Template exercise ${prescribedExerciseId} was not found.`,
+            )
+          }
+          await assertTemplateEditable(prescribed.templateId)
+          const dayExercises = await database.templateWorkoutExercises
+            .where({ dayId: prescribed.dayId })
+            .sortBy('orderIndex')
+          const copy: TemplateWorkoutExercise = {
+            ...prescribed,
+            id: createId(),
+            createdAt: now,
+            updatedAt: now,
+          }
+          const index = dayExercises.findIndex(
+            (entry) => entry.id === prescribedExerciseId,
+          )
+          dayExercises.splice(index + 1, 0, copy)
+          await database.templateWorkoutExercises.add(copy)
+          await Promise.all(
+            dayExercises.map((entry, orderIndex) =>
+              database.templateWorkoutExercises.update(entry.id, {
+                orderIndex,
+                updatedAt: now,
+              }),
+            ),
+          )
+          await database.programTemplates.update(prescribed.templateId, {
+            updatedAt: now,
+          })
+          return copy
+        },
+      )
+    },
+
+    async moveTemplateExercise(
+      prescribedExerciseId: string,
+      targetDayId: string,
+    ) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        database.programTemplates,
+        database.templateWorkoutDays,
+        database.templateWorkoutExercises,
+        async () => {
+          const prescribed =
+            await database.templateWorkoutExercises.get(prescribedExerciseId)
+          if (!prescribed) {
+            throw new Error(
+              `Template exercise ${prescribedExerciseId} was not found.`,
+            )
+          }
+          await assertTemplateEditable(prescribed.templateId)
+          if (prescribed.dayId === targetDayId) {
+            return prescribed
+          }
+          const targetDay = await database.templateWorkoutDays.get(targetDayId)
+          if (!targetDay) {
+            throw new Error(
+              `Program template day ${targetDayId} was not found.`,
+            )
+          }
+          if (targetDay.templateId !== prescribed.templateId) {
+            throw new Error(
+              'Exercises can only move between days of the same program.',
+            )
+          }
+          const sourceDayId = prescribed.dayId
+          const targetCount = await database.templateWorkoutExercises
+            .where({ dayId: targetDayId })
+            .count()
+          const moved: TemplateWorkoutExercise = {
+            ...prescribed,
+            dayId: targetDayId,
+            orderIndex: targetCount,
+            updatedAt: now,
+          }
+          await database.templateWorkoutExercises.put(moved)
+          await reindexTemplateExercises(database, sourceDayId, now)
+          await database.programTemplates.update(prescribed.templateId, {
+            updatedAt: now,
+          })
+          return moved
+        },
+      )
+    },
+
+    async restoreTemplateExercise(exercise: TemplateWorkoutExercise) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        database.programTemplates,
+        database.templateWorkoutDays,
+        database.templateWorkoutExercises,
+        async () => {
+          await assertTemplateEditable(exercise.templateId)
+          const day = await database.templateWorkoutDays.get(exercise.dayId)
+          if (!day || day.templateId !== exercise.templateId) {
+            throw new Error(
+              'The workout day for this exercise no longer exists.',
+            )
+          }
+          const alreadyPresent = await database.templateWorkoutExercises.get(
+            exercise.id,
+          )
+          if (alreadyPresent) {
+            return alreadyPresent
+          }
+          const existing = await database.templateWorkoutExercises
+            .where({ dayId: exercise.dayId })
+            .sortBy('orderIndex')
+          const restored: TemplateWorkoutExercise = {
+            ...exercise,
+            updatedAt: now,
+          }
+          const insertAt = Math.min(
+            Math.max(exercise.orderIndex, 0),
+            existing.length,
+          )
+          existing.splice(insertAt, 0, restored)
+          await database.templateWorkoutExercises.put(restored)
+          await Promise.all(
+            existing.map((entry, orderIndex) =>
+              database.templateWorkoutExercises.update(entry.id, {
+                orderIndex,
+                updatedAt: now,
+              }),
+            ),
+          )
+          await database.programTemplates.update(exercise.templateId, {
+            updatedAt: now,
+          })
+          return restored
         },
       )
     },
@@ -751,6 +1184,91 @@ export function createProgramRepository(
       return this.getActiveCycleStructure(cycle.id)
     },
 
+    async listAllActiveCycleDayChecks(activeCycleId: string) {
+      return database.activeCycleDayChecks.where({ activeCycleId }).toArray()
+    },
+
+    async listActiveCycleDayChecks(activeCycleId: string, weekNumber: number) {
+      return database.activeCycleDayChecks
+        .where('[activeCycleId+weekNumber]')
+        .equals([activeCycleId, weekNumber])
+        .toArray()
+    },
+
+    // Manual toggle from the dashboard check-box. Upserts the per-week record so
+    // a completed-then-unchecked day stays unchecked until toggled again.
+    async setActiveCycleDayCheck(input: {
+      activeCycleId: string
+      dayId: string
+      weekNumber: number
+      checked: boolean
+    }) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        database.activeProgramCycles,
+        database.activeCycleWorkoutDays,
+        database.activeCycleDayChecks,
+        async () => {
+          const cycle = await database.activeProgramCycles.get(
+            input.activeCycleId,
+          )
+          if (!cycle) {
+            throw new Error(
+              `Active program cycle ${input.activeCycleId} was not found.`,
+            )
+          }
+          const existing = await database.activeCycleDayChecks
+            .where('[activeCycleId+dayId+weekNumber]')
+            .equals([input.activeCycleId, input.dayId, input.weekNumber])
+            .first()
+          const record: ActiveCycleDayCheck = existing
+            ? { ...existing, checked: input.checked, updatedAt: now }
+            : {
+                id: createId(),
+                activeCycleId: input.activeCycleId,
+                dayId: input.dayId,
+                weekNumber: input.weekNumber,
+                checked: input.checked,
+                createdAt: now,
+                updatedAt: now,
+              }
+          await database.activeCycleDayChecks.put(record)
+
+          const [days, checks] = await Promise.all([
+            database.activeCycleWorkoutDays
+              .where({ activeCycleId: cycle.id })
+              .toArray(),
+            database.activeCycleDayChecks
+              .where({ activeCycleId: cycle.id })
+              .toArray(),
+          ])
+          const currentWeekNumber = currentProgramWeek(
+            cycle.currentWeekNumber,
+            checks,
+            days.map((day) => day.id),
+          )
+          const nextWeekNumber =
+            input.checked && input.weekNumber === currentWeekNumber
+              ? nextProgramWeekAfterCompletion({
+                  checks,
+                  dayIds: days.map((day) => day.id),
+                  durationWeeks:
+                    cycle.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
+                  weekNumber: input.weekNumber,
+                })
+              : currentWeekNumber
+          if (nextWeekNumber !== currentWeekNumber) {
+            await database.activeProgramCycles.update(cycle.id, {
+              currentWeekNumber: nextWeekNumber,
+              updatedAt: now,
+            })
+          }
+          return record
+        },
+      )
+    },
+
     async getExerciseUsageSummary(): Promise<ExerciseUsageSummary> {
       const usage: ExerciseUsageSummary = {}
       const noteUsage = (exerciseId: string | null, timestamp: string) => {
@@ -813,16 +1331,42 @@ export function createProgramRepository(
 
     async updateActiveCycle(
       id: string,
-      input: Partial<Pick<ActiveProgramCycle, 'name'>>,
+      input: Partial<
+        Pick<
+          ActiveProgramCycle,
+          | 'name'
+          | 'durationWeeks'
+          | 'currentWeekNumber'
+          | 'deloadWeekNumbers'
+          | 'deloadSchedulingEnabled'
+          | 'trackRirEverySet'
+        >
+      >,
     ) {
       const cycle = await database.activeProgramCycles.get(id)
       if (!cycle) {
         throw new Error(`Active program cycle ${id} was not found.`)
       }
+      const durationWeeks =
+        input.durationWeeks != null
+          ? clampProgramDurationWeeks(input.durationWeeks)
+          : (cycle.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS)
+      const requestedWeekNumber =
+        input.currentWeekNumber ?? cycle.currentWeekNumber ?? 1
+      const currentWeekNumber = Math.min(
+        durationWeeks,
+        Math.max(1, Math.round(requestedWeekNumber)),
+      )
       const updated = {
         ...cycle,
         ...input,
-        notes: '',
+        durationWeeks,
+        currentWeekNumber,
+        deloadWeekNumbers: normalizeDeloadWeekNumbers(
+          input.deloadWeekNumbers ?? cycle.deloadWeekNumbers,
+          durationWeeks,
+        ),
+        notes: cycle.notes,
         updatedAt: new Date().toISOString(),
       }
       await database.activeProgramCycles.put(updated)
@@ -853,7 +1397,7 @@ export function createProgramRepository(
             activeCycleId,
             sourceTemplateDayId: null,
             name: input.name,
-            notes: '',
+            notes: input.notes ?? '',
             orderIndex: days.length,
             createdAt: now,
             updatedAt: now,
@@ -876,7 +1420,7 @@ export function createProgramRepository(
         throw new Error(`Active cycle day ${dayId} was not found.`)
       }
       const now = new Date().toISOString()
-      const updated = { ...day, ...input, notes: '', updatedAt: now }
+      const updated = { ...day, ...input, notes: day.notes, updatedAt: now }
       await database.transaction(
         'rw',
         database.activeProgramCycles,
@@ -1036,7 +1580,7 @@ export function createProgramRepository(
             targetRepsMax: input.targetRepsMax ?? null,
             targetRir: input.targetRir ?? null,
             restSecondsOverride: input.restSecondsOverride ?? null,
-            notes: '',
+            notes: input.notes ?? '',
             createdAt: now,
             updatedAt: now,
           }
@@ -1099,7 +1643,9 @@ export function createProgramRepository(
             restSecondsOverride: hasField(input, 'restSecondsOverride')
               ? (input.restSecondsOverride ?? null)
               : prescribed.restSecondsOverride,
-            notes: '',
+            notes: hasField(input, 'notes')
+              ? (input.notes ?? '')
+              : prescribed.notes,
             updatedAt: now,
           }
           await database.activeCycleWorkoutExercises.put(updated)
@@ -1132,6 +1678,153 @@ export function createProgramRepository(
           await database.activeProgramCycles.update(prescribed.activeCycleId, {
             updatedAt: now,
           })
+        },
+      )
+    },
+
+    async duplicateActiveCycleExercise(prescribedExerciseId: string) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        database.activeProgramCycles,
+        database.activeCycleWorkoutExercises,
+        async () => {
+          const prescribed =
+            await database.activeCycleWorkoutExercises.get(prescribedExerciseId)
+          if (!prescribed) {
+            throw new Error(
+              `Active cycle exercise ${prescribedExerciseId} was not found.`,
+            )
+          }
+          const dayExercises = await database.activeCycleWorkoutExercises
+            .where({ dayId: prescribed.dayId })
+            .sortBy('orderIndex')
+          const copy: ActiveCycleWorkoutExercise = {
+            ...prescribed,
+            id: createId(),
+            // A duplicate has no counterpart in the source template, so it
+            // must not participate in template change detection.
+            sourceTemplateExerciseId: null,
+            createdAt: now,
+            updatedAt: now,
+          }
+          const index = dayExercises.findIndex(
+            (entry) => entry.id === prescribedExerciseId,
+          )
+          dayExercises.splice(index + 1, 0, copy)
+          await database.activeCycleWorkoutExercises.add(copy)
+          await Promise.all(
+            dayExercises.map((entry, orderIndex) =>
+              database.activeCycleWorkoutExercises.update(entry.id, {
+                orderIndex,
+                updatedAt: now,
+              }),
+            ),
+          )
+          await database.activeProgramCycles.update(prescribed.activeCycleId, {
+            updatedAt: now,
+          })
+          return copy
+        },
+      )
+    },
+
+    async moveActiveCycleExercise(
+      prescribedExerciseId: string,
+      targetDayId: string,
+    ) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        database.activeProgramCycles,
+        database.activeCycleWorkoutDays,
+        database.activeCycleWorkoutExercises,
+        async () => {
+          const prescribed =
+            await database.activeCycleWorkoutExercises.get(prescribedExerciseId)
+          if (!prescribed) {
+            throw new Error(
+              `Active cycle exercise ${prescribedExerciseId} was not found.`,
+            )
+          }
+          if (prescribed.dayId === targetDayId) {
+            return prescribed
+          }
+          const targetDay =
+            await database.activeCycleWorkoutDays.get(targetDayId)
+          if (!targetDay) {
+            throw new Error(`Active cycle day ${targetDayId} was not found.`)
+          }
+          if (targetDay.activeCycleId !== prescribed.activeCycleId) {
+            throw new Error(
+              'Exercises can only move between days of the same program.',
+            )
+          }
+          const sourceDayId = prescribed.dayId
+          const targetCount = await database.activeCycleWorkoutExercises
+            .where({ dayId: targetDayId })
+            .count()
+          const moved: ActiveCycleWorkoutExercise = {
+            ...prescribed,
+            dayId: targetDayId,
+            orderIndex: targetCount,
+            updatedAt: now,
+          }
+          await database.activeCycleWorkoutExercises.put(moved)
+          await reindexActiveExercises(database, sourceDayId, now)
+          await database.activeProgramCycles.update(prescribed.activeCycleId, {
+            updatedAt: now,
+          })
+          return moved
+        },
+      )
+    },
+
+    async restoreActiveCycleExercise(exercise: ActiveCycleWorkoutExercise) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        database.activeProgramCycles,
+        database.activeCycleWorkoutDays,
+        database.activeCycleWorkoutExercises,
+        async () => {
+          const day = await database.activeCycleWorkoutDays.get(exercise.dayId)
+          if (!day || day.activeCycleId !== exercise.activeCycleId) {
+            throw new Error(
+              'The workout day for this exercise no longer exists.',
+            )
+          }
+          const alreadyPresent = await database.activeCycleWorkoutExercises.get(
+            exercise.id,
+          )
+          if (alreadyPresent) {
+            return alreadyPresent
+          }
+          const existing = await database.activeCycleWorkoutExercises
+            .where({ dayId: exercise.dayId })
+            .sortBy('orderIndex')
+          const restored: ActiveCycleWorkoutExercise = {
+            ...exercise,
+            updatedAt: now,
+          }
+          const insertAt = Math.min(
+            Math.max(exercise.orderIndex, 0),
+            existing.length,
+          )
+          existing.splice(insertAt, 0, restored)
+          await database.activeCycleWorkoutExercises.put(restored)
+          await Promise.all(
+            existing.map((entry, orderIndex) =>
+              database.activeCycleWorkoutExercises.update(entry.id, {
+                orderIndex,
+                updatedAt: now,
+              }),
+            ),
+          )
+          await database.activeProgramCycles.update(exercise.activeCycleId, {
+            updatedAt: now,
+          })
+          return restored
         },
       )
     },
@@ -1172,24 +1865,6 @@ export function createProgramRepository(
           })
         },
       )
-    },
-
-    async mergeTemplateDays(sourceDayId: string, destinationDayId: string) {
-      return mergeProgramDays({
-        database,
-        sourceDayId,
-        destinationDayId,
-        mode: 'template',
-      })
-    },
-
-    async mergeActiveCycleDays(sourceDayId: string, destinationDayId: string) {
-      return mergeProgramDays({
-        database,
-        sourceDayId,
-        destinationDayId,
-        mode: 'cycle',
-      })
     },
   }
 }
@@ -1333,101 +2008,136 @@ async function reindexActiveExercises(
   )
 }
 
-async function mergeProgramDays({
-  database,
-  destinationDayId,
-  mode,
-  sourceDayId,
-}: {
-  database: TrainingLogDatabase
-  destinationDayId: string
-  mode: 'template' | 'cycle'
-  sourceDayId: string
-}) {
-  if (sourceDayId === destinationDayId) {
-    throw new Error('Source and destination days must be different.')
-  }
-
+async function backfillBlankBuiltInCopyNotes(database: TrainingLogDatabase) {
   const now = new Date().toISOString()
-  if (mode === 'template') {
-    return database.transaction(
-      'rw',
-      database.programTemplates,
-      database.templateWorkoutDays,
-      database.templateWorkoutExercises,
-      async () => {
-        const [sourceDay, destinationDay] = await Promise.all([
-          database.templateWorkoutDays.get(sourceDayId),
-          database.templateWorkoutDays.get(destinationDayId),
-        ])
-        if (!sourceDay || !destinationDay) {
-          throw new Error('Merge days were not found.')
-        }
-        if (sourceDay.templateId !== destinationDay.templateId) {
-          throw new Error('Days must belong to the same program.')
-        }
-        const destinationExercises = await database.templateWorkoutExercises
-          .where({ dayId: destinationDayId })
-          .sortBy('orderIndex')
-        const sourceExercises = await database.templateWorkoutExercises
-          .where({ dayId: sourceDayId })
-          .sortBy('orderIndex')
-        await Promise.all(
-          sourceExercises.map((exercise, index) =>
-            database.templateWorkoutExercises.update(exercise.id, {
-              dayId: destinationDayId,
-              orderIndex: destinationExercises.length + index,
-              updatedAt: now,
-            }),
-          ),
-        )
-        await database.templateWorkoutDays.delete(sourceDayId)
-        await reindexTemplateDays(database, sourceDay.templateId, now)
-        await database.programTemplates.update(sourceDay.templateId, {
-          updatedAt: now,
-        })
-      },
-    )
-  }
-
-  return database.transaction(
+  await database.transaction(
     'rw',
-    database.activeProgramCycles,
-    database.activeCycleWorkoutDays,
+    database.programTemplates,
+    database.templateWorkoutDays,
+    database.templateWorkoutExercises,
     database.activeCycleWorkoutExercises,
     async () => {
-      const [sourceDay, destinationDay] = await Promise.all([
-        database.activeCycleWorkoutDays.get(sourceDayId),
-        database.activeCycleWorkoutDays.get(destinationDayId),
+      const [templates, days, exercises] = await Promise.all([
+        database.programTemplates.toArray(),
+        database.templateWorkoutDays.toArray(),
+        database.templateWorkoutExercises.toArray(),
       ])
-      if (!sourceDay || !destinationDay) {
-        throw new Error('Merge days were not found.')
-      }
-      if (sourceDay.activeCycleId !== destinationDay.activeCycleId) {
-        throw new Error('Days must belong to the same program.')
-      }
-      const destinationExercises = await database.activeCycleWorkoutExercises
-        .where({ dayId: destinationDayId })
-        .sortBy('orderIndex')
-      const sourceExercises = await database.activeCycleWorkoutExercises
-        .where({ dayId: sourceDayId })
-        .sortBy('orderIndex')
-      await Promise.all(
-        sourceExercises.map((exercise, index) =>
-          database.activeCycleWorkoutExercises.update(exercise.id, {
-            dayId: destinationDayId,
-            orderIndex: destinationExercises.length + index,
-            updatedAt: now,
-          }),
-        ),
+      const daysByTemplate = groupBySorted(days, 'templateId')
+      const exercisesByDay = groupBySorted(exercises, 'dayId')
+      const sourceStructures = templates
+        .filter((template) => template.isBuiltIn)
+        .map((template) => ({
+          template,
+          days: daysByTemplate.get(template.id) ?? [],
+        }))
+      const templateNotesById = new Map(
+        exercises.map((exercise) => [exercise.id, exercise.notes]),
       )
-      await database.activeCycleWorkoutDays.delete(sourceDayId)
-      await reindexActiveDays(database, sourceDay.activeCycleId, now)
-      await database.activeProgramCycles.update(sourceDay.activeCycleId, {
-        updatedAt: now,
-      })
+
+      for (const candidate of templates.filter(
+        (template) => !template.isBuiltIn,
+      )) {
+        const candidateDays = daysByTemplate.get(candidate.id) ?? []
+        const source = sourceStructures.find((structure) =>
+          programExerciseShapeMatches(
+            candidateDays,
+            structure.days,
+            exercisesByDay,
+          ),
+        )
+        if (!source) {
+          continue
+        }
+
+        for (const [dayIndex, candidateDay] of candidateDays.entries()) {
+          const sourceDay = source.days[dayIndex]
+          const candidateExercises = exercisesByDay.get(candidateDay.id) ?? []
+          const sourceExercises = exercisesByDay.get(sourceDay.id) ?? []
+
+          for (const [
+            exerciseIndex,
+            candidateExercise,
+          ] of candidateExercises.entries()) {
+            const sourceExercise = sourceExercises[exerciseIndex]
+            if (
+              sourceExercise?.notes.trim() &&
+              !candidateExercise.notes.trim()
+            ) {
+              await database.templateWorkoutExercises.update(
+                candidateExercise.id,
+                {
+                  notes: sourceExercise.notes,
+                  updatedAt: now,
+                },
+              )
+              templateNotesById.set(candidateExercise.id, sourceExercise.notes)
+            }
+          }
+        }
+      }
+
+      const activeExercises =
+        await database.activeCycleWorkoutExercises.toArray()
+      await Promise.all(
+        activeExercises.map((exercise) => {
+          if (
+            exercise.notes.trim() ||
+            exercise.sourceTemplateExerciseId === null
+          ) {
+            return undefined
+          }
+          const sourceNotes = templateNotesById.get(
+            exercise.sourceTemplateExerciseId,
+          )
+          if (!sourceNotes?.trim()) {
+            return undefined
+          }
+          return database.activeCycleWorkoutExercises.update(exercise.id, {
+            notes: sourceNotes,
+            updatedAt: now,
+          })
+        }),
+      )
     },
   )
+}
+
+function groupBySorted<
+  T extends { orderIndex: number },
+  K extends keyof T & string,
+>(items: T[], key: K) {
+  const grouped = new Map<string, T[]>()
+  for (const item of items) {
+    const groupKey = String(item[key])
+    grouped.set(groupKey, [...(grouped.get(groupKey) ?? []), item])
+  }
+  for (const group of grouped.values()) {
+    group.sort((a, b) => a.orderIndex - b.orderIndex)
+  }
+  return grouped
+}
+
+function programExerciseShapeMatches(
+  candidateDays: ProgramTemplateDay[],
+  sourceDays: ProgramTemplateDay[],
+  exercisesByDay: Map<string, TemplateWorkoutExercise[]>,
+) {
+  if (candidateDays.length !== sourceDays.length) {
+    return false
+  }
+  return candidateDays.every((candidateDay, dayIndex) => {
+    const sourceDay = sourceDays[dayIndex]
+    const candidateExercises = exercisesByDay.get(candidateDay.id) ?? []
+    const sourceExercises = exercisesByDay.get(sourceDay.id) ?? []
+    return (
+      candidateExercises.length === sourceExercises.length &&
+      candidateExercises.every(
+        (candidateExercise, exerciseIndex) =>
+          candidateExercise.exerciseId ===
+          sourceExercises[exerciseIndex]?.exerciseId,
+      )
+    )
+  })
 }
 
 export const programRepository = createProgramRepository()

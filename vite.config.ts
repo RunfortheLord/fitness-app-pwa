@@ -4,6 +4,8 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { defineConfig } from 'vitest/config'
 
+const isDeveloperStable = process.env.VITE_DEPLOYMENT_CHANNEL === 'dev-stable'
+
 export default defineConfig({
   plugins: [
     react(),
@@ -15,9 +17,11 @@ export default defineConfig({
         'icons/icon-512.png',
       ],
       manifest: {
-        name: 'Fitness Log',
-        short_name: 'Fitness',
-        description: 'A local-first fitness training log.',
+        name: isDeveloperStable ? 'Vigorune Dev' : 'Vigorune',
+        short_name: isDeveloperStable ? 'Vigorune Dev' : 'Vigorune',
+        description: isDeveloperStable
+          ? 'Developer-stable local-first fitness training log.'
+          : 'A local-first fitness training log.',
         theme_color: '#101011',
         background_color: '#101011',
         display: 'standalone',
@@ -48,7 +52,8 @@ export default defineConfig({
       workbox: {
         cleanupOutdatedCaches: true,
         clientsClaim: false,
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,mp3,webmanifest}'],
+        importScripts: ['/push-handler.js'],
         navigateFallbackDenylist: [/^\/api\//],
       },
     }),
@@ -71,7 +76,8 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    fileParallelism: false,
+    fileParallelism: true,
+    maxWorkers: 4,
     globals: true,
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['e2e/**', 'node_modules/**', 'dist/**'],

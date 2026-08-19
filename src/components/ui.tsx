@@ -1,26 +1,42 @@
 import type {
   ButtonHTMLAttributes,
+  CSSProperties,
   InputHTMLAttributes,
   HTMLAttributes,
+  MouseEvent,
+  PointerEvent as ReactPointerEvent,
   RefObject,
   ReactNode,
 } from 'react'
-import { useEffect, useId, useRef } from 'react'
-import { Check, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { useEffect, useId, useRef, useState } from 'react'
+import {
+  ArrowLeft,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Minus,
+  Plus,
+  X,
+} from 'lucide-react'
+
+import { useLanguage } from '@components/languageContextValue'
 
 type AppHeaderProps = {
-  title: string
+  title: string | null
   eyebrow?: string
   action?: ReactNode
 }
 
 export function AppHeader({ title, eyebrow, action }: AppHeaderProps) {
+  const { t } = useLanguage()
   return (
     <header className="app-header">
-      <div className="app-header-copy">
-        {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
-        <h1>{title}</h1>
-      </div>
+      {title ? (
+        <div className="app-header-copy">
+          {eyebrow ? <p className="eyebrow">{t(eyebrow)}</p> : null}
+          <h1>{t(title)}</h1>
+        </div>
+      ) : null}
       {action ? <div className="app-header-action">{action}</div> : null}
     </header>
   )
@@ -46,6 +62,7 @@ type CardProps = HTMLAttributes<HTMLElement> & {
 }
 
 export function Card({ children, className = '', title, ...props }: CardProps) {
+  const { t } = useLanguage()
   const titleId = title
     ? `${title.toLowerCase().replaceAll(' ', '-')}-title`
     : undefined
@@ -56,7 +73,7 @@ export function Card({ children, className = '', title, ...props }: CardProps) {
       aria-labelledby={titleId}
       {...props}
     >
-      {title ? <h2 id={titleId}>{title}</h2> : null}
+      {title ? <h2 id={titleId}>{t(title)}</h2> : null}
       {children}
     </section>
   )
@@ -64,18 +81,35 @@ export function Card({ children, className = '', title, ...props }: CardProps) {
 
 type MetricCardProps = {
   label: string
+  onClick?: () => void
   value: string
   detail?: string
 }
 
-export function MetricCard({ label, value, detail }: MetricCardProps) {
-  return (
-    <Card className="metric-card">
-      <p className="metric-label">{label}</p>
+export function MetricCard({ label, onClick, value, detail }: MetricCardProps) {
+  const { t } = useLanguage()
+  const content = (
+    <>
+      <p className="metric-label">{t(label)}</p>
       <p className="metric-value">{value}</p>
-      {detail ? <p className="muted">{detail}</p> : null}
-    </Card>
+      {detail ? <p className="muted">{t(detail)}</p> : null}
+    </>
   )
+
+  if (onClick) {
+    return (
+      <button
+        aria-label={t(`Open ${label.toLowerCase()}`)}
+        className="card metric-card metric-card-button"
+        onClick={onClick}
+        type="button"
+      >
+        {content}
+      </button>
+    )
+  }
+
+  return <Card className="metric-card">{content}</Card>
 }
 
 type SectionHeaderProps = {
@@ -84,9 +118,10 @@ type SectionHeaderProps = {
 }
 
 export function SectionHeader({ title, action }: SectionHeaderProps) {
+  const { t } = useLanguage()
   return (
     <div className="section-header">
-      <h2>{title}</h2>
+      <h2>{t(title)}</h2>
       {action ? <div>{action}</div> : null}
     </div>
   )
@@ -94,54 +129,343 @@ export function SectionHeader({ title, action }: SectionHeaderProps) {
 
 type BottomSheetProps = {
   children: ReactNode
+  dismissOnSwipeDown?: boolean
+  headerAction?: ReactNode
   isOpen: boolean
+  onAfterClose?: () => void
   onClose: () => void
   title: string
+  /**
+   * 'sheet' (default) renders the standard bottom sheet with a close button.
+   * 'page' renders a full-height sub-page with a leading back arrow, for flows
+   * the user navigates into and backs out of (e.g. editing a program).
+   */
+  variant?: 'sheet' | 'page'
+}
+
+const SHEET_EXIT_ANIMATION_MS = 220
+
+const inertBackgroundState = new WeakMap<
+  HTMLElement,
+  { count: number; wasInert: boolean }
+>()
+
+function acquireInertBackground(element: HTMLElement) {
+  const current = inertBackgroundState.get(element)
+  if (current) {
+    current.count += 1
+    return
+  }
+
+  inertBackgroundState.set(element, {
+    count: 1,
+    wasInert: element.inert === true,
+  })
+  element.inert = true
+}
+
+function releaseInertBackground(element: HTMLElement) {
+  const current = inertBackgroundState.get(element)
+  if (!current) {
+    return
+  }
+
+  current.count -= 1
+  if (current.count > 0) {
+    return
+  }
+
+  element.inert = current.wasInert
+  inertBackgroundState.delete(element)
+}
+
+function getSheetExitAnimationMs() {
+  if (import.meta.env.MODE === 'test') {
+    return 0
+  }
+
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    return 0
+  }
+
+  return SHEET_EXIT_ANIMATION_MS
 }
 
 export function BottomSheet({
   children,
+  dismissOnSwipeDown = true,
+  headerAction,
   isOpen,
+  onAfterClose,
   onClose,
   title,
+  variant = 'sheet',
 }: BottomSheetProps) {
+  const { language, t } = useLanguage()
   const titleId = useId()
+  const backdropRef = useRef<HTMLDivElement>(null)
   const sheetRef = useRef<HTMLElement>(null)
+  const onAfterCloseRef = useRef(onAfterClose)
+  const swipeRef = useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    startedAt: number
+  } | null>(null)
+  const [isPresent, setIsPresent] = useState(isOpen)
+  const [isClosing, setIsClosing] = useState(false)
+  const [swipeOffset, setSwipeOffset] = useState(0)
 
+  useEffect(() => {
+    onAfterCloseRef.current = onAfterClose
+  }, [onAfterClose])
+
+  /* eslint-disable react-hooks/set-state-in-effect --
+   * This component mirrors `isOpen` into transient presence state so close
+   * animations can finish before the dialog unmounts.
+   */
+  useEffect(() => {
+    if (isOpen) {
+      setIsPresent(true)
+      setIsClosing(false)
+      setSwipeOffset(0)
+      return
+    }
+
+    if (!isPresent) {
+      return
+    }
+
+    setIsClosing(true)
+    const exitAnimationMs = getSheetExitAnimationMs()
+    if (exitAnimationMs === 0) {
+      setIsPresent(false)
+      setIsClosing(false)
+      onAfterCloseRef.current?.()
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setIsPresent(false)
+      setIsClosing(false)
+      onAfterCloseRef.current?.()
+    }, exitAnimationMs)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [isOpen, isPresent])
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
+    const backdrop = backdropRef.current
+    if (!backdrop || !isPresent) {
+      return
+    }
+
+    const changed: HTMLElement[] = []
+    let activeBranch: HTMLElement = backdrop
+    while (activeBranch.parentElement) {
+      const parent = activeBranch.parentElement
+      for (const sibling of parent.children) {
+        if (sibling === activeBranch || !(sibling instanceof HTMLElement)) {
+          continue
+        }
+        changed.push(sibling)
+        acquireInertBackground(sibling)
+      }
+      if (parent === document.body) {
+        break
+      }
+      activeBranch = parent
+    }
+
+    return () => {
+      for (const element of changed) {
+        releaseInertBackground(element)
+      }
+    }
+  }, [isPresent])
+
+  // Release the background's inert state before focus management restores the
+  // element that launched the sheet.
   useDialogFocusManagement({
     containerRef: sheetRef,
-    isOpen,
+    isOpen: isPresent,
     onClose,
   })
 
-  if (!isOpen) {
+  if (!isPresent) {
     return null
   }
 
+  const isPage = variant === 'page'
+  const backdropClassName = [
+    'sheet-backdrop',
+    isPage ? 'sheet-backdrop--page' : '',
+    isClosing ? 'is-closing' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+  const sheetClassName = [
+    'bottom-sheet',
+    isPage ? 'bottom-sheet--page' : '',
+    dismissOnSwipeDown && !isPage ? 'is-swipe-dismissible' : '',
+    swipeOffset > 0 ? 'is-dragging' : '',
+    isClosing ? 'is-closing' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  function startSwipe(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!dismissOnSwipeDown || isPage || isClosing || event.button !== 0) {
+      return
+    }
+    swipeRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startedAt: event.timeStamp,
+    }
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }
+
+  function moveSwipe(event: ReactPointerEvent<HTMLDivElement>) {
+    const swipe = swipeRef.current
+    if (!swipe || swipe.pointerId !== event.pointerId) {
+      return
+    }
+    const deltaX = event.clientX - swipe.startX
+    const deltaY = event.clientY - swipe.startY
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 8) {
+      swipeRef.current = null
+      setSwipeOffset(0)
+      return
+    }
+    setSwipeOffset(Math.max(0, deltaY))
+  }
+
+  function finishSwipe(event: ReactPointerEvent<HTMLDivElement>) {
+    const swipe = swipeRef.current
+    if (!swipe || swipe.pointerId !== event.pointerId) {
+      return
+    }
+    swipeRef.current = null
+    const deltaY = Math.max(0, event.clientY - swipe.startY)
+    const elapsed = Math.max(1, event.timeStamp - swipe.startedAt)
+    const velocity = deltaY / elapsed
+    if (deltaY >= 72 || (deltaY >= 24 && velocity >= 0.65)) {
+      onClose()
+      return
+    }
+    setSwipeOffset(0)
+  }
+
+  function cancelSwipe() {
+    swipeRef.current = null
+    setSwipeOffset(0)
+  }
+
   return (
-    <div className="sheet-backdrop" role="presentation" onMouseDown={onClose}>
+    <div
+      className={backdropClassName}
+      ref={backdropRef}
+      role="presentation"
+      onMouseDown={isPage || isClosing ? undefined : onClose}
+    >
       <section
+        aria-hidden={isClosing ? true : undefined}
         aria-modal="true"
         aria-labelledby={titleId}
-        className="bottom-sheet"
+        className={sheetClassName}
         ref={sheetRef}
         role="dialog"
+        style={
+          swipeOffset > 0
+            ? ({
+                transform: `translate3d(0, ${swipeOffset}px, 0)`,
+              } satisfies CSSProperties)
+            : undefined
+        }
         tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="sheet-handle" aria-hidden="true" />
-        <div className="sheet-header">
-          <h2 id={titleId}>{title}</h2>
-          <IconButton
-            aria-label={`Close ${title.toLowerCase()}`}
-            onClick={onClose}
+        {isPage ? (
+          <div className="sheet-header sheet-header--page">
+            <IconButton
+              aria-label={
+                language === 'en'
+                  ? `Back from ${title.toLowerCase()}`
+                  : `${t('Back')}: ${t(title)}`
+              }
+              onClick={onClose}
+            >
+              <ArrowLeft aria-hidden="true" size={20} />
+            </IconButton>
+            <h2 id={titleId}>{t(title)}</h2>
+            {headerAction ? (
+              <div className="sheet-header-action">{headerAction}</div>
+            ) : null}
+          </div>
+        ) : (
+          <div
+            className="sheet-drag-region"
+            onPointerCancel={cancelSwipe}
+            onPointerDown={startSwipe}
+            onPointerMove={moveSwipe}
+            onPointerUp={finishSwipe}
           >
-            <X aria-hidden="true" size={20} />
-          </IconButton>
-        </div>
+            <div className="sheet-handle" aria-hidden="true" />
+            <div className="sheet-header">
+              <h2 id={titleId}>{t(title)}</h2>
+              <div className="sheet-header-action">
+                {headerAction}
+                <IconButton
+                  aria-label={
+                    language === 'en'
+                      ? `Close ${title.toLowerCase()}`
+                      : `${t('Close')}: ${t(title)}`
+                  }
+                  onClick={onClose}
+                >
+                  <X aria-hidden="true" size={20} />
+                </IconButton>
+              </div>
+            </div>
+          </div>
+        )}
         {children}
       </section>
     </div>
+  )
+}
+
+type SwitchControlProps = Omit<
+  InputHTMLAttributes<HTMLInputElement>,
+  'type'
+> & {
+  label: string
+}
+
+export function SwitchControl({
+  checked,
+  disabled,
+  label,
+  onChange,
+  ...props
+}: SwitchControlProps) {
+  const { t } = useLanguage()
+  return (
+    <label className="switch-row">
+      <span>{t(label)}</span>
+      <input
+        checked={checked}
+        disabled={disabled}
+        onChange={onChange}
+        role="switch"
+        type="checkbox"
+        {...props}
+      />
+      <span aria-hidden="true" className="switch-track" />
+    </label>
   )
 }
 
@@ -149,9 +473,10 @@ type ModalConfirmationDialogProps = {
   cancelLabel?: string
   children: ReactNode
   confirmLabel?: string
+  isConfirming?: boolean
   isOpen: boolean
   onCancel: () => void
-  onConfirm: () => void
+  onConfirm: () => void | Promise<unknown>
   title: string
 }
 
@@ -159,11 +484,13 @@ export function ModalConfirmationDialog({
   cancelLabel = 'Cancel',
   children,
   confirmLabel = 'Confirm',
+  isConfirming = false,
   isOpen,
   onCancel,
   onConfirm,
   title,
 }: ModalConfirmationDialogProps) {
+  const { t } = useLanguage()
   const titleId = useId()
   const dialogRef = useRef<HTMLElement>(null)
 
@@ -187,14 +514,23 @@ export function ModalConfirmationDialog({
         role="dialog"
         tabIndex={-1}
       >
-        <h2 id={titleId}>{title}</h2>
+        <h2 id={titleId}>{t(title)}</h2>
         <div className="dialog-body">{children}</div>
         <div className="dialog-actions">
-          <SecondaryButton type="button" onClick={onCancel}>
-            {cancelLabel}
+          <SecondaryButton
+            disabled={isConfirming}
+            type="button"
+            onClick={onCancel}
+          >
+            {t(cancelLabel)}
           </SecondaryButton>
-          <PrimaryButton type="button" onClick={onConfirm}>
-            {confirmLabel}
+          <PrimaryButton
+            aria-busy={isConfirming}
+            disabled={isConfirming}
+            type="button"
+            onClick={onConfirm}
+          >
+            {t(confirmLabel)}
           </PrimaryButton>
         </div>
       </section>
@@ -215,8 +551,18 @@ export function SegmentedControl({
   options,
   value,
 }: SegmentedControlProps) {
+  const { t } = useLanguage()
+  const segmentStyle = {
+    '--segment-count': options.length,
+  } as CSSProperties
+
   return (
-    <div className="segmented-control" aria-label={label} role="group">
+    <div
+      className="segmented-control"
+      aria-label={t(label)}
+      role="group"
+      style={segmentStyle}
+    >
       {options.map((option) => (
         <button
           aria-pressed={option.value === value}
@@ -224,7 +570,7 @@ export function SegmentedControl({
           onClick={() => onChange(option.value)}
           type="button"
         >
-          {option.label}
+          {t(option.label)}
         </button>
       ))}
     </div>
@@ -244,48 +590,113 @@ export function DateSelector({
   onPrevious,
   onToday,
 }: DateSelectorProps) {
+  const { t } = useLanguage()
   return (
-    <section className="date-selector" aria-label="Selected date">
-      <IconButton aria-label="Previous day" onClick={onPrevious}>
+    <section className="date-selector" aria-label={t('Selected date')}>
+      <IconButton aria-label={t('Previous day')} onClick={onPrevious}>
         <ChevronLeft aria-hidden="true" size={20} />
       </IconButton>
       <button
-        aria-label="Return to today"
+        aria-label={t('Return to today')}
         className="date-selector-current"
         onClick={onToday}
         type="button"
       >
         <span>{dateLabel}</span>
-        <small>Today</small>
+        <small>{t('Today')}</small>
       </button>
-      <IconButton aria-label="Next day" onClick={onNext}>
+      <IconButton aria-label={t('Next day')} onClick={onNext}>
         <ChevronRight aria-hidden="true" size={20} />
       </IconButton>
     </section>
   )
 }
 
+type AsyncButtonProps = Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  'onClick'
+> & {
+  onClick?: (event: MouseEvent<HTMLButtonElement>) => void | Promise<unknown>
+}
+
+/**
+ * Disables the button while an async `onClick` is in flight so a double-tap
+ * cannot submit twice. Synchronous handlers are unaffected.
+ */
+function useAsyncClick(onClick: AsyncButtonProps['onClick']): {
+  pending: boolean
+  handleClick?: (event: MouseEvent<HTMLButtonElement>) => void
+} {
+  const [pending, setPending] = useState(false)
+  const pendingRef = useRef(false)
+
+  if (!onClick) {
+    return { pending: false }
+  }
+
+  return {
+    pending,
+    handleClick: (event) => {
+      if (pendingRef.current) {
+        return
+      }
+      const result = onClick(event)
+      if (
+        result &&
+        typeof (result as PromiseLike<unknown>).then === 'function'
+      ) {
+        pendingRef.current = true
+        setPending(true)
+        void Promise.resolve(result).finally(() => {
+          pendingRef.current = false
+          setPending(false)
+        })
+      }
+    },
+  }
+}
+
 export function PrimaryButton({
   className = '',
+  disabled,
+  onClick,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement>) {
+}: AsyncButtonProps) {
+  const { t } = useLanguage()
+  const { pending, handleClick } = useAsyncClick(onClick)
+  const children =
+    typeof props.children === 'string' ? t(props.children) : props.children
   return (
     <button
       className={`button button-primary ${className}`.trim()}
+      disabled={disabled || pending}
+      onClick={handleClick}
       {...props}
-    />
+    >
+      {children}
+    </button>
   )
 }
 
 export function SecondaryButton({
   className = '',
+  disabled,
+  onClick,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement>) {
+}: AsyncButtonProps) {
+  const { t } = useLanguage()
+  const { pending, handleClick } = useAsyncClick(onClick)
+  const children =
+    typeof props.children === 'string' ? t(props.children) : props.children
   return (
     <button
       className={`button button-secondary ${className}`.trim()}
+      disabled={disabled || pending}
+      onClick={handleClick}
       {...props}
-    />
+    >
+      {children}
+    </button>
   )
 }
 
@@ -293,11 +704,17 @@ export function IconButton({
   className = '',
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  const { t } = useLanguage()
+  const ariaLabel =
+    typeof props['aria-label'] === 'string'
+      ? t(props['aria-label'])
+      : props['aria-label']
   return (
     <button
       className={`icon-button ${className}`.trim()}
       type="button"
       {...props}
+      aria-label={ariaLabel}
     />
   )
 }
@@ -317,19 +734,20 @@ export function FormField({
   id,
   label,
 }: FormFieldProps) {
+  const { t } = useLanguage()
   const helpId = helpText ? `${id}-help` : undefined
   const errorId = error ? `${id}-error` : undefined
 
   return (
     <div className="form-field">
-      <label htmlFor={id}>{label}</label>
+      <label htmlFor={id}>{t(label)}</label>
       {children}
       {helpText ? (
         <p className="field-help" id={helpId}>
-          {helpText}
+          {t(helpText)}
         </p>
       ) : null}
-      {error ? <ValidationMessage id={errorId} message={error} /> : null}
+      {error ? <ValidationMessage id={errorId} message={t(error)} /> : null}
     </div>
   )
 }
@@ -340,7 +758,79 @@ type NumericInputProps = Omit<
 >
 
 export function NumericInput(props: NumericInputProps) {
-  return <input inputMode="decimal" type="text" {...props} />
+  const { t } = useLanguage()
+  const placeholder =
+    typeof props.placeholder === 'string'
+      ? t(props.placeholder)
+      : props.placeholder
+  return (
+    <input
+      inputMode="decimal"
+      type="text"
+      {...props}
+      placeholder={placeholder}
+    />
+  )
+}
+
+/**
+ * Numeric input flanked by 44px minus/plus buttons so common adjustments
+ * never need the keyboard. Values stay strings (form state convention);
+ * stepping from an empty field starts at the minimum.
+ */
+export function StepperInput({
+  decrementLabel,
+  id,
+  incrementLabel,
+  max,
+  min = 0,
+  onValueChange,
+  step = 1,
+  value,
+}: {
+  decrementLabel: string
+  id: string
+  incrementLabel: string
+  max?: number
+  min?: number
+  onValueChange: (value: string) => void
+  step?: number
+  value: string
+}) {
+  function adjust(direction: -1 | 1) {
+    const current = Number(value)
+    const hasValue = value.trim() !== '' && Number.isFinite(current)
+    let next = hasValue ? current + direction * step : min
+    next = Math.max(min, next)
+    if (max !== undefined) {
+      next = Math.min(max, next)
+    }
+    // Round away float noise from fractional steps like 2.5.
+    onValueChange(String(Math.round(next * 100) / 100))
+  }
+  return (
+    <div className="stepper-input">
+      <IconButton
+        aria-label={decrementLabel}
+        className="stepper-button"
+        onClick={() => adjust(-1)}
+      >
+        <Minus aria-hidden="true" size={18} />
+      </IconButton>
+      <NumericInput
+        id={id}
+        onChange={(event) => onValueChange(event.target.value)}
+        value={value}
+      />
+      <IconButton
+        aria-label={incrementLabel}
+        className="stepper-button"
+        onClick={() => adjust(1)}
+      >
+        <Plus aria-hidden="true" size={18} />
+      </IconButton>
+    </div>
+  )
 }
 
 type EmptyStateProps = {
@@ -350,13 +840,14 @@ type EmptyStateProps = {
 }
 
 export function EmptyState({ action, message, title }: EmptyStateProps) {
+  const { t } = useLanguage()
   return (
     <div className="empty-state">
       <div className="empty-state-icon" aria-hidden="true">
         <Check size={22} />
       </div>
-      <h3>{title}</h3>
-      <p>{message}</p>
+      <h3>{t(title)}</h3>
+      <p>{t(message)}</p>
       {action ? <div>{action}</div> : null}
     </div>
   )
@@ -369,30 +860,95 @@ export function ValidationMessage({
   id?: string
   message: string
 }) {
+  const { t } = useLanguage()
   return (
     <p className="validation-message" id={id} role="alert">
-      {message}
+      {t(message)}
     </p>
   )
 }
 
 export function OfflineIndicator({ isOffline }: { isOffline: boolean }) {
+  const { t } = useLanguage()
   if (!isOffline) {
     return null
   }
 
   return (
     <aside className="offline-indicator" role="status">
-      Offline. Changes stay on this device.
+      {t('Offline. Changes stay on this device.')}
     </aside>
   )
 }
 
-export function LoadingState({ label = 'Loading' }: { label?: string }) {
+export function LoadingState({
+  label = 'Loading',
+  delayMs = 160,
+  variant = 'inline',
+}: {
+  label?: string
+  delayMs?: number
+  variant?: 'inline' | 'cards'
+}) {
+  const { t } = useLanguage()
+  // Hold back the spinner briefly so fast reads (IndexedDB is usually well
+  // under 100ms) render straight to content instead of flashing a skeleton.
+  const [isVisible, setIsVisible] = useState(delayMs <= 0)
+
+  useEffect(() => {
+    if (delayMs <= 0) {
+      return
+    }
+
+    const timeout = window.setTimeout(() => setIsVisible(true), delayMs)
+    return () => window.clearTimeout(timeout)
+  }, [delayMs])
+
   return (
-    <div className="loading-state" role="status">
-      <span aria-hidden="true" />
-      <p>{label}</p>
+    <div
+      className={`loading-state${isVisible ? '' : ' loading-state-pending'}`}
+      role="status"
+    >
+      {isVisible ? (
+        variant === 'cards' ? (
+          <>
+            <p className="visually-hidden">{t(label)}</p>
+            <div aria-hidden="true" className="loading-page-skeleton">
+              <div className="loading-skeleton-toolbar">
+                <span />
+                <strong />
+                <span />
+              </div>
+              <div className="loading-card loading-card-summary">
+                <span className="loading-card-title" />
+                <strong />
+                <div className="loading-skeleton-metrics">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              </div>
+              <div className="loading-card loading-card-list">
+                <span className="loading-card-title" />
+                {[0, 1].map((index) => (
+                  <div className="loading-list-row" key={index}>
+                    <i />
+                    <div>
+                      <span />
+                      <small />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <span aria-hidden="true" />
+            <p>{t(label)}</p>
+          </>
+        )
+      ) : null}
     </div>
   )
 }
@@ -404,10 +960,69 @@ export function StatusMessage({
   children: ReactNode
   tone?: 'neutral' | 'success' | 'warning'
 }) {
+  const { t } = useLanguage()
+  const content = typeof children === 'string' ? t(children) : children
   return (
     <aside className={`status-message status-message-${tone}`} role="status">
-      {children}
+      {content}
     </aside>
+  )
+}
+
+/**
+ * A transient confirmation that announces itself politely and auto-dismisses,
+ * so success messages do not pile up or shift page layout.
+ */
+export function Toast({
+  actionLabel,
+  message,
+  onAction,
+  onDismiss,
+  tone = 'success',
+  durationMs = 3500,
+}: {
+  actionLabel?: string
+  message: string | null
+  onAction?: () => void
+  onDismiss: () => void
+  tone?: 'neutral' | 'success' | 'warning'
+  durationMs?: number
+}) {
+  const { t } = useLanguage()
+  const onDismissRef = useRef(onDismiss)
+  useEffect(() => {
+    onDismissRef.current = onDismiss
+  }, [onDismiss])
+
+  useEffect(() => {
+    if (!message) {
+      return
+    }
+    const timeoutId = window.setTimeout(
+      () => onDismissRef.current(),
+      durationMs,
+    )
+    return () => window.clearTimeout(timeoutId)
+  }, [message, durationMs])
+
+  if (!message) {
+    return null
+  }
+
+  return (
+    <div className="toast-region" aria-live="polite">
+      <div className={`toast toast-${tone}`} role="status">
+        <span>{t(message)}</span>
+        {actionLabel && onAction ? (
+          <button className="toast-action" onClick={onAction} type="button">
+            {t(actionLabel)}
+          </button>
+        ) : null}
+        <IconButton aria-label={t('Dismiss notification')} onClick={onDismiss}>
+          <X aria-hidden="true" size={16} />
+        </IconButton>
+      </div>
+    </div>
   )
 }
 
@@ -475,7 +1090,7 @@ function useDialogFocusManagement({
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
       if (previouslyFocused?.isConnected) {
-        previouslyFocused.focus()
+        previouslyFocused.focus({ preventScroll: true })
       }
     }
   }, [containerRef, isOpen])

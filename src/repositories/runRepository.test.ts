@@ -88,6 +88,61 @@ describe('runRepository', () => {
     expect(structure.run.distanceMeters).toBe(0)
   })
 
+  it('uses the newest GPS anchor without compounding distance or moving time', async () => {
+    const repository = createRunRepository(database)
+    const run = await repository.startRun(new Date('2026-06-19T12:00:00.000Z'))
+
+    await repository.addSample(run.id, {
+      latitude: 41.88,
+      longitude: -87.63,
+      timestamp: '2026-06-19T12:00:00.000Z',
+      accuracyMeters: 3,
+    })
+    await repository.addSample(run.id, {
+      latitude: 41.8801,
+      longitude: -87.63,
+      timestamp: '2026-06-19T12:00:05.000Z',
+      accuracyMeters: 3,
+    })
+    await repository.addSample(run.id, {
+      latitude: 41.8802,
+      longitude: -87.63,
+      timestamp: '2026-06-19T12:00:10.000Z',
+      accuracyMeters: 3,
+    })
+
+    const { run: updated } = await repository.getRunStructure(run.id)
+    expect(updated.distanceMeters).toBeGreaterThan(20)
+    expect(updated.distanceMeters).toBeLessThan(25)
+    expect(updated.movingSeconds).toBe(10)
+    expect(updated.currentPaceSecondsPerMile).toBe(
+      updated.averageMovingPaceSecondsPerMile,
+    )
+  })
+
+  it('stores but does not use a cached pre-run GPS fix', async () => {
+    const repository = createRunRepository(database)
+    const run = await repository.startRun(new Date('2026-06-19T12:00:10.000Z'))
+
+    await repository.addSample(run.id, {
+      latitude: 41.88,
+      longitude: -87.63,
+      timestamp: '2026-06-19T12:00:00.000Z',
+      accuracyMeters: 3,
+    })
+
+    const structure = await repository.getRunStructure(run.id)
+    expect(structure.samples[0]).toMatchObject({
+      decision: 'rejected',
+      rejectionReason: 'stale',
+      segmentDistanceMeters: 0,
+    })
+    expect(structure.run).toMatchObject({
+      distanceMeters: 0,
+      movingSeconds: 0,
+    })
+  })
+
   it('records low-pace classifications separately from samples', async () => {
     const repository = createRunRepository(database)
     const run = await repository.startRun(new Date('2026-06-19T12:00:00.000Z'))
@@ -102,5 +157,80 @@ describe('runRepository', () => {
       type: 'walking',
       response: 'walking',
     })
+  })
+
+  it('logs a completed manual run with derived pace', async () => {
+    const repository = createRunRepository(database)
+    const run = await repository.logManualRun(
+      {
+        localDate: '2026-06-18',
+        distanceMeters: 5000,
+        elapsedSeconds: 1500,
+        trackingMode: 'manual',
+        notes: 'Evening run',
+      },
+      new Date('2026-06-19T12:00:00.000Z'),
+    )
+
+    expect(run).toMatchObject({
+      status: 'completed',
+      trackingMode: 'manual',
+      distanceMeters: 5000,
+      elapsedSeconds: 1500,
+      movingSeconds: 1500,
+      notes: 'Evening run',
+    })
+    expect(run.averageMovingPaceSecondsPerMile).toBe(483)
+    await expect(repository.getActiveRun()).resolves.toBeUndefined()
+  })
+
+  it('updates treadmill distance from sensed steps and excludes pauses from moving time', async () => {
+    const repository = createRunRepository(database)
+    const run = await repository.startRun(
+      new Date('2026-06-19T12:00:00.000Z'),
+      'treadmill',
+      0.75,
+    )
+    await repository.recordTreadmillSteps(
+      run.id,
+      100,
+      new Date('2026-06-19T12:01:00.000Z'),
+    )
+    await repository.pauseRun(run.id, new Date('2026-06-19T12:02:00.000Z'))
+    await repository.resumeRun(run.id, new Date('2026-06-19T12:03:00.000Z'))
+    await repository.finishRun(run.id, new Date('2026-06-19T12:05:00.000Z'))
+
+    const completed = (await repository.getRunStructure(run.id)).run
+    expect(completed).toMatchObject({
+      trackingMode: 'treadmill',
+      treadmillStepCount: 100,
+      distanceMeters: 75,
+      elapsedSeconds: 300,
+      movingSeconds: 240,
+    })
+  })
+
+  it('creates treadmill mile splits from sensed distance', async () => {
+    const repository = createRunRepository(database)
+    const run = await repository.startRun(
+      new Date('2026-06-19T12:00:00.000Z'),
+      'treadmill',
+      0.75,
+    )
+
+    await repository.recordTreadmillSteps(
+      run.id,
+      2200,
+      new Date('2026-06-19T12:10:00.000Z'),
+    )
+
+    const structure = await repository.getRunStructure(run.id)
+    expect(structure.run.distanceMeters).toBe(1650)
+    expect(structure.splits).toEqual([
+      expect.objectContaining({
+        mileNumber: 1,
+        distanceMeters: 1609.344,
+      }),
+    ])
   })
 })

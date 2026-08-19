@@ -24,11 +24,23 @@ describe('exerciseRepository', () => {
     const repository = createExerciseRepository(database)
 
     await repository.seedBuiltInExercises()
+    const bench = await repository.getExercise('builtin:barbell-bench-press')
+    if (!bench) {
+      throw new Error('Built-in bench press was not seeded.')
+    }
+    await database.exercises.add({
+      ...bench,
+      id: 'builtin:one-and-a-half-rep-barbell-bench-press',
+      name: '1.5-Rep Barbell Bench Press',
+    })
     await repository.seedBuiltInExercises()
 
     await expect(database.exercises.count()).resolves.toBe(
       BUILT_IN_EXERCISES.length,
     )
+    await expect(
+      repository.getExercise('builtin:one-and-a-half-rep-barbell-bench-press'),
+    ).resolves.toBeUndefined()
     await expect(
       repository.getExercise('builtin:barbell-bench-press'),
     ).resolves.toMatchObject({
@@ -40,6 +52,27 @@ describe('exerciseRepository', () => {
       defaultRestSeconds: 180,
       defaultWeightIncrement: 5,
     })
+    await expect(
+      repository.getExercise('builtin:tempo-barbell-bench-press'),
+    ).resolves.toMatchObject({
+      name: 'Tempo Barbell Bench Press',
+      origin: 'built_in',
+      equipmentType: 'barbell',
+      primaryMuscleGroups: ['chest'],
+    })
+    await expect(
+      repository.getExercise('builtin:bodyweight-squat'),
+    ).resolves.toMatchObject({
+      trackingMethodId: 'added_weight_reps',
+      defaultWeightIncrement: 5,
+    })
+
+    const custom = await repository.createExercise({
+      name: 'Visible custom exercise',
+      defaultRestSeconds: 90,
+      trackingMethodId: 'weight_reps',
+    })
+    await expect(repository.searchExercises()).resolves.toContainEqual(custom)
   })
 
   it('creates every configured tracking preset with its supported metrics', async () => {

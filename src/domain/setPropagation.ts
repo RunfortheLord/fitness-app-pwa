@@ -56,7 +56,10 @@ export function buildSetMetricPropagationUpdates({
 
     updates.push({
       setId: candidate.id,
-      metricValues: { ...candidate.metricValues, [metricKey]: value },
+      metricValues: {
+        ...candidate.metricValues,
+        [metricKey]: value,
+      },
       metricValueSources: { ...candidateSources, [metricKey]: 'auto' },
     })
   }
