@@ -11,7 +11,7 @@ describe('integration health', () => {
       QSTASH_CURRENT_SIGNING_KEY: 'current-secret',
       QSTASH_NEXT_SIGNING_KEY: 'next-secret',
       QSTASH_TOKEN: 'qstash-secret',
-      SUPABASE_SERVICE_ROLE_KEY: 'service-role-secret',
+      SUPABASE_SECRET_KEY: 'supabase-secret-key',
       SUPABASE_URL: 'https://project.example',
       UPSTASH_REDIS_REST_TOKEN: 'redis-secret',
       UPSTASH_REDIS_REST_URL: 'https://redis.example',
@@ -63,5 +63,17 @@ describe('integration health', () => {
         KV_REST_API_URL: 'https://redis.example',
       }),
     ).toMatchObject({ authRelay: false, cloudBackup: false })
+  })
+
+  it('continues to accept the legacy Supabase service-role key', () => {
+    expect(
+      readIntegrationHealth({
+        AI_RATE_LIMIT_HASH_SECRET: 'test-only-hash-secret-32-characters',
+        KV_REST_API_TOKEN: 'redis-token',
+        KV_REST_API_URL: 'https://redis.example',
+        SUPABASE_SERVICE_ROLE_KEY: 'legacy-service-role-key',
+        SUPABASE_URL: 'https://project.example',
+      }),
+    ).toMatchObject({ accountDeletion: true })
   })
 })

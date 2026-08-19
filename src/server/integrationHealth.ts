@@ -10,7 +10,8 @@ export function readIntegrationHealth(environment: IntegrationEnvironment) {
   return {
     accountDeletion: Boolean(
       environment.SUPABASE_URL &&
-      environment.SUPABASE_SERVICE_ROLE_KEY &&
+      (environment.SUPABASE_SECRET_KEY ||
+        environment.SUPABASE_SERVICE_ROLE_KEY) &&
       readRedisRateLimiterConfig(environment),
     ),
     authRelay: cloudBackup && Boolean(readRedisAuthRelayConfig(environment)),

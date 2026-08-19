@@ -25,10 +25,12 @@ type VercelResponse = {
 }
 
 const supabaseUrl = process.env.SUPABASE_URL?.trim()
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+const supabaseAdminKey =
+  process.env.SUPABASE_SECRET_KEY?.trim() ||
+  process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
 const authClient =
-  supabaseUrl && serviceRoleKey
-    ? createClient(supabaseUrl, serviceRoleKey, {
+  supabaseUrl && supabaseAdminKey
+    ? createClient(supabaseUrl, supabaseAdminKey, {
         auth: { autoRefreshToken: false, persistSession: false },
       })
     : undefined

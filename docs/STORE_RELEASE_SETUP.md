@@ -39,10 +39,13 @@ nutrition rows. Local IndexedDB is not touched.
 Set these server-only Vercel variables:
 
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_SECRET_KEY` (preferred) or the legacy
+  `SUPABASE_SERVICE_ROLE_KEY`
 - the existing Redis variables and `AI_RATE_LIMIT_HASH_SECRET`
 
-Never prefix the service-role key with `VITE_`. Verify `/api/health` reports
+Create a dedicated Supabase secret key for this backend when the project offers
+the newer `sb_secret_...` keys. Never prefix either admin key with `VITE_`.
+Verify `/api/health` reports
 `accountDeletion: true` before testing deletion. Use a disposable account for
 the first test and confirm its Auth user, backup row, and daily nutrition rows
 are gone while the device's local records remain.

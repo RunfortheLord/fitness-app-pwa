@@ -23,11 +23,15 @@ Run the production-origin preflight with:
 npm run store:verify-web -- https://your-production-origin.example
 ```
 
-The developer-stable origin currently has exactly three configuration blockers:
+The developer-stable origin currently has exactly two configuration blockers:
 
-- `accountDeletion`: add the server-only `SUPABASE_SERVICE_ROLE_KEY`.
-- `foodSearch`: add `USDA_FDC_API_KEY`.
+- `accountDeletion`: add the server-only `SUPABASE_SECRET_KEY` (preferred) or
+  legacy `SUPABASE_SERVICE_ROLE_KEY`.
 - `supportContact`: add an actively monitored `VITE_SUPPORT_EMAIL`.
+
+`foodSearch` is configured with a server-only `USDA_FDC_API_KEY`. A live search
+without a client-supplied key passed on 2026-08-18, confirming installed users
+are not asked to provide a USDA credential.
 
 Apple Developer configuration, Xcode archive validation, the combined privacy
 report, physical-iPhone/TestFlight testing, and owner declarations in App Store
