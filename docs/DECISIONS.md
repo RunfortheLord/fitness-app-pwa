@@ -1105,3 +1105,45 @@
   local, cloud, AI, food-provider, feedback, retention, and deletion behavior.
 - The public name becomes Vigorune while the bundle ID, IndexedDB name, storage
   keys, persisted IDs, and backup-format identifiers remain unchanged.
+
+## 2026-08-19: Worldwide distribution, platform-only billing, 18+ launch (publication track)
+
+Owner decisions for the app-store/legal publication workstream (Adam Shugart,
+individual — no LLC — Texas). These supersede the earlier "US-only first" and
+"13+" working assumptions used by Publication tasks #1–#11. See
+`docs/PUBLICATION_READINESS_MASTER_AUDIT.md`.
+
+- **Territories: WORLDWIDE.** The app is to be available to anyone on iPhone or
+  Android regardless of location. This pulls in GDPR/UK GDPR (fitness = special-
+  category health data → Art. 9 explicit consent; a US individual offering to the
+  EU needs an Art. 27 EU representative), EU/UK consumer law (14-day withdrawal
+  right, auto-renewal / easy-cancellation duties), and non-US privacy/consumer
+  regimes. Legal drafts (#9/#10) and the age/deletion docs (#6/#8) must be
+  re-generalised from US-only to worldwide.
+- **Billing channels: Apple In-App Purchase + Google Play Billing ONLY at
+  launch. Stripe / web billing is DEFERRED.** Rationale: Apple and Google act as
+  merchant of record in most territories and collect/remit VAT/GST/sales tax
+  worldwide, which is what makes global distribution viable for a solo
+  individual. Do NOT build or describe web/Stripe billing as a launch channel.
+  The entitlement engine stays provider-neutral, but only the `apple` and
+  `google_play` providers are wired for launch.
+- **Minimum age: 18+ at launch (supersedes 13+).** Chosen to remove the
+  worldwide-minor compliance surface in one move — COPPA, GDPR Art. 8
+  (13–16 varies by country), Texas TASAA/SCOPE, and the UK Age Appropriate
+  Design Code. Teen (13–17) support may be revisited post-revenue. Terms/Privacy/
+  age docs should state an 18+ eligibility floor; keep the neutral age-assurance
+  design notes for a possible future teen tier but do not implement minor flows.
+- Unchanged from prior: mandatory Apple/Google auth via Supabase; records local
+  unless cloud backup separately enabled; one server-recorded 14-day no-card
+  trial that never auto-charges; one monthly auto-renewing full-access
+  subscription targeted ~USD $2 (localized price from the provider); service-role
+  complimentary grants; ≤72h server-verified offline lease; locked users keep
+  legal/auth/billing/account/export/sign-out routes; cancellation/expiration
+  never deletes local records.
+- Still open (owner/counsel): published postal address + trader identity (no home
+  address — required now under EU/consumer trader-identification rules),
+  dispute forum (court vs arbitration), EULA choice (Apple Standard EDLA vs
+  custom — custom requires a published phone+address), ongoing-subscription-value
+  statement, trial-start event, cross-platform entitlement, existing-user trial,
+  complimentary-grant revocation. LLC + insurance strongly worth revisiting given
+  worldwide health-data processing as an individual.
