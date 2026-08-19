@@ -1,5 +1,40 @@
 # Decisions
 
+## 2026-08-19: Privacy-First Launch Analytics (Launch Plan Step 2)
+
+- Added an anonymous, off-by-default usage-metrics capability to measure the
+  launch-plan metrics (installs, activation, D1/D7/D30 retention) without
+  compromising the local-first, no-account, "does not sell your data"
+  positioning. Full detail in `docs/ANALYTICS.md`.
+- **Approach: a minimal first-party endpoint (`/api/analytics`) that appends
+  anonymous event records to the Upstash/Vercel-KV Redis already in the stack.**
+  Chosen over hosted analytics (Plausible/Umami cannot produce per-install cohort
+  retention and add a vendor/CSP origin) and over Google Analytics / ad SDKs
+  (rejected outright — contradicts the product and needs CSP exceptions). The
+  first-party route is same-origin (no CSP change), reuses existing infra (no new
+  vendor/cost), and keeps the payload to an event name + coarse day.
+- **Only four events** are tracked — `app_opened`, `workout_logged`,
+  `meal_logged`, `run_tracked` — each carrying only the event name and a
+  `YYYY-MM-DD` day (no time of day, location, account link, or health value).
+- **Retention uses a stable anonymous install id:** a random `crypto.randomUUID()`
+  in `localStorage` (`vigorune.analytics.installId`), never derived from or joined
+  to any account/identity. It resets when local storage is cleared or on opt-out.
+  This is the minimum needed to compute retention; no server-side IP/UA identity
+  fingerprint is stored as an event field (the rate limiter's IP+UA hash is for
+  abuse control only and is never persisted as data).
+- **Double-gated and OFF by default:** nothing is collected unless the build sets
+  `VITE_ANALYTICS_ENABLED=true` AND the server has Redis configured. Do-Not-Track /
+  Global Privacy Control and a local opt-out each independently suppress
+  everything. Events are queued in `localStorage` and flushed best-effort;
+  offline, endpoint-unavailable, and error paths are all swallowed so analytics
+  never blocks the app or weakens the local-first guarantee.
+- **No schema migration:** the install id and offline queue live in `localStorage`
+  (like existing UI preferences), so the IndexedDB schema is unchanged.
+- The in-app privacy copy discloses this accurately (stating no analytics is
+  collected while shipped OFF), and `docs/legal/PRIVACY_POLICY_DRAFT.md` carries a
+  change note that must be reconciled before analytics is ever turned on for real
+  users.
+
 ## 2026-08-18: Version 1 Scope Freeze And Working Name
 
 - Version 1 is frozen to the feature boundary in `docs/V1_SCOPE_FREEZE.md`.

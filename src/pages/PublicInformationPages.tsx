@@ -1,7 +1,10 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
-const EFFECTIVE_DATE = 'August 18, 2026'
+const EFFECTIVE_DATE = 'August 19, 2026'
+
+const ANALYTICS_ENABLED =
+  import.meta.env.VITE_ANALYTICS_ENABLED?.trim().toLowerCase() === 'true'
 
 function PublicPage({
   children,
@@ -73,6 +76,34 @@ export function PrivacyPolicyPage() {
         context to the developer's configured feedback service. Vigorune does
         not sell personal information or use fitness records for advertising.
       </p>
+
+      <h2>Anonymous usage metrics</h2>
+      {ANALYTICS_ENABLED ? (
+        <p>
+          To understand how many people install and keep using Vigorune, the app
+          records a small set of anonymous usage events: opening the app, logging
+          a workout, logging a meal, and tracking a run. Each event contains only
+          the event name and the calendar day it happened, tagged with a random
+          install identifier stored on this device. That identifier is not linked
+          to any account, email, precise location, or your fitness data, and no
+          workout, nutrition, bodyweight, or run values are ever included. Vigorune
+          honors your browser or operating system's Do Not Track (and Global
+          Privacy Control) signal and can be set to collect nothing. This data is
+          used only in aggregate to measure installs and retention; it is never
+          sold or used for advertising.
+        </p>
+      ) : (
+        <p>
+          Vigorune does not collect usage analytics in this release. The app has a
+          privacy-first metrics capability that is turned off by default; if a
+          future build turns it on, it would record only anonymous events (opening
+          the app, logging a workout, logging a meal, tracking a run) as an event
+          name plus the calendar day, tagged with a random install identifier that
+          is not tied to any account, email, precise location, or your fitness
+          data. It would honor Do Not Track and could be turned off, and would
+          never be sold or used for advertising.
+        </p>
+      )}
 
       <h2>Retention and deletion</h2>
       <p>

@@ -77,6 +77,7 @@ import { useRirTracking } from '@hooks/useRirTracking'
 import { useWeightUnit } from '@hooks/useWeightUnit'
 import { exerciseRepository } from '@repositories/exerciseRepository'
 import { settingsRepository } from '@repositories/settingsRepository'
+import { trackAnalyticsEvent } from '@services/analyticsService'
 import { nativeRestTimerNotificationService } from '@services/nativeRestTimerNotificationService'
 import { webPushRestTimerNotificationService } from '@services/webPushRestTimerNotificationService'
 import {
@@ -486,6 +487,7 @@ export function LiveWorkoutPage() {
       const completed = await workoutRepository.completeWorkout({
         workoutId: workout.id,
       })
+      trackAnalyticsEvent('workout_logged')
       let changeSaveFailed = false
       if (completed.detectedChanges.length > 0) {
         const destination = saveAllChanges

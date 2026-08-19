@@ -20,6 +20,11 @@ describe('public store information pages', () => {
     ).toBeVisible()
     expect(screen.getByText(/Supabase processes your identity/i)).toBeVisible()
     expect(screen.getByText(/currently OpenAI/i)).toBeVisible()
+    // Analytics ships OFF, so the default disclosure states no analytics is
+    // collected in this release while describing what the capability would do.
+    expect(
+      screen.getByText(/does not collect usage analytics in this release/i),
+    ).toBeVisible()
   })
 
   it('provides a direct account deletion pathway and local-data warning', () => {

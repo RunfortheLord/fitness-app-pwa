@@ -12,6 +12,10 @@ import {
   initializeAppDataOnce,
   initializeNonCriticalAppDataOnce,
 } from '@services/appStartupService'
+import {
+  registerAnalyticsAutoFlush,
+  trackAnalyticsEvent,
+} from '@services/analyticsService'
 import '@styles/global.css'
 
 const rootElement = document.getElementById('root')
@@ -32,6 +36,10 @@ if (authRelayCallback) {
 } else {
   void initializeAppDataOnce()
   void initializeNonCriticalAppDataOnce()
+  // Anonymous, opt-out, off-by-default launch metric: one app-open signal plus a
+  // reconnect flush for anything queued while offline. See docs/ANALYTICS.md.
+  registerAnalyticsAutoFlush()
+  trackAnalyticsEvent('app_opened')
   createRoot(rootElement).render(
     <StrictMode>
       <RouterProvider router={router} />

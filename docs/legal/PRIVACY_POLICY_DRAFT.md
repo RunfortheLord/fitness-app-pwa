@@ -116,6 +116,33 @@ are recorded here so a reviewer can see what changed from the prior draft.
   supervisory authority) must be implemented, staffed, and tested before the EU/UK
   copy below can be published.
 
+### Change note (2026-08-19): privacy-first launch analytics added (shipped OFF)
+
+Step 2 of `docs/LAUNCH_PLAN.md` added an anonymous, first-party usage-metrics
+capability (full detail in `docs/ANALYTICS.md`). It is **shipped disabled** —
+double-gated behind the `VITE_ANALYTICS_ENABLED` build flag **and** server Redis
+configuration — and collects nothing until deliberately enabled. This draft
+therefore still does **not** describe analytics as live. When enabled it records
+only four anonymous events (app opened, workout logged, meal logged, run tracked)
+as an event name plus a coarse day (`YYYY-MM-DD`), tagged with a random
+`localStorage` install id that is not linked to any account, email, precise
+location, or fitness data; no health values are ever in the payload. It respects
+Do-Not-Track / GPC and a local opt-out. Before enabling it for real users,
+reconcile the copy below that currently asserts "no analytics":
+
+- **"Cookies and local storage" (EEA/UK):** currently says Vigorune "does not use
+  advertising, analytics, or cross-site tracking cookies." The install id is a
+  first-party, non-cross-site local-storage identifier, but update this to
+  disclose first-party usage analytics if enabled, and confirm the ePrivacy
+  analysis (strictly-necessary vs. consent-required) for that identifier (PB-23).
+- **"U.S. state disclosures":** says the app "does not track users over time
+  across third-party services." Keep accurate — the metric is anonymous,
+  first-party, and not cross-context behavioral advertising — but confirm wording
+  against the Washington/Nevada consumer-health-data definitions (PB-13).
+- Add the `/api/analytics` endpoint and the Redis/Upstash processor to the
+  processor inventory (PB-20) and the retention schedule (the stored event list is
+  capped to the newest 100,000 entries).
+
 ---
 
 ## Release/target boundary (internal — remove before publication)

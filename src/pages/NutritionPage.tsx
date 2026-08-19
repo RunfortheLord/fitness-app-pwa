@@ -75,6 +75,7 @@ import {
   FoodProviderClientError,
   searchProviderFoods,
 } from '@services/foodProviderClient'
+import { trackAnalyticsEvent } from '@services/analyticsService'
 import { nutritionSummaryService } from '@services/nutritionSummaryService'
 import {
   getCachedNutritionPageData,
@@ -656,6 +657,10 @@ export function NutritionPage() {
   }
 
   const reloadAfterFoodLog = () => {
+    // Single choke point for every food-log UI path on this page (quick log,
+    // quick-add, saved meal, and the selected-food sheet), so the anonymous
+    // meal_logged metric fires once per user log action. See docs/ANALYTICS.md.
+    trackAnalyticsEvent('meal_logged')
     reload({ refreshLibrary: !searchOpen })
   }
 

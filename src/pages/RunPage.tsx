@@ -30,6 +30,7 @@ import {
 } from '@domain/treadmillTracking'
 import { runRepository, type RunStructure } from '@repositories/runRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
+import { trackAnalyticsEvent } from '@services/analyticsService'
 import type { Run, RunAlertResponse, RunTrackingMode } from '@shared-types/app'
 import {
   getCachedRunPageData,
@@ -304,6 +305,7 @@ export function RunPage() {
         notes: manualNotes,
         trackingMode: manualMode,
       })
+      trackAnalyticsEvent('run_tracked')
       setManualDistanceMiles('')
       setManualDurationMinutes('')
       setManualNotes('')
@@ -368,6 +370,7 @@ export function RunPage() {
 
   async function finishRun(run: Run) {
     await runRepository.finishRun(run.id)
+    trackAnalyticsEvent('run_tracked')
     stopGpsTracking(gpsTracker.current)
     gpsTracker.current = null
     setFinishRequested(false)
