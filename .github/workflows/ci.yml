@@ -47,7 +47,7 @@ jobs:
         run: npm run security:audit
 
       - name: Run unit tests
-        run: npm run test
+        run: npm run test:ci
 
       - name: Build production app
         run: npm run build
