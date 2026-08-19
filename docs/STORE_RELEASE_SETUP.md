@@ -13,11 +13,26 @@ release-blocking security checks, monitoring, rotation, and incident response.
 
 Before producing a signed native build:
 
-1. Choose the canonical HTTPS app origin and set `VITE_PUBLIC_APP_ORIGIN` in the
-   native build environment. The origin must serve `/privacy`,
+1. Choose the canonical HTTPS app origin. The origin must serve `/privacy`,
    `/account-deletion`, `/support`, and `/auth/callback/*`.
-2. Set `PUBLIC_APP_ORIGIN` to the same origin in Vercel.
-3. Set `VITE_SUPPORT_EMAIL` to an actively monitored public support address.
+2. Set `PUBLIC_APP_ORIGIN` to the same origin in Vercel. Before `npm run
+ios:sync`, create a git-ignored `.env.local` on the Mac containing only the
+   native client's public build values:
+
+   ```text
+   VITE_PUBLIC_APP_ORIGIN=https://your-production-origin.example
+   VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+   VITE_SUPABASE_ANON_KEY=your-public-anon-key
+   VITE_SUPPORT_EMAIL=your-public-support-address
+   ```
+
+   The Supabase anon key is public client configuration, but it must still be
+   paired with Row Level Security. Never copy `SUPABASE_SECRET_KEY`,
+   `SUPABASE_SERVICE_ROLE_KEY`, `USDA_FDC_API_KEY`, Redis credentials, or any
+   other server credential into the Mac's client build environment.
+
+3. Set `VITE_SUPPORT_EMAIL` in Vercel to the same actively monitored public
+   support address.
 4. Verify the three public pages without signing in and enter their URLs in App
    Store Connect and Play Console.
    Run `npm run store:verify-web -- https://your-production-origin.example` to
@@ -91,7 +106,8 @@ are securely retained server-side.
 
 On a Mac with current Xcode:
 
-1. Run `npm install`, `npm run ios:sync`, and `npm run ios:verify`.
+1. Create the public-only `.env.local` described above, then run `npm install`,
+   `npm run ios:sync`, and `npm run ios:verify`.
 2. Open the project with `npm run ios:open`.
 3. Select the correct development team without changing the bundle ID.
 4. Confirm the Sign in with Apple and Time Sensitive Notifications capabilities.
