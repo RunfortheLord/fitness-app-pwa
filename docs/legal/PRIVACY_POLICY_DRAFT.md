@@ -1,4 +1,9 @@
-# Vigorune Privacy Policy — Working Draft
+# Vigorune Worldwide Subscription Privacy Research — Superseded Working Draft
+
+> **Not the Version 1 launch Privacy Policy.** The canonical publication-form
+> policy for the approved free, U.S.-only Version 1 release is in
+> `docs/legal/PRIVACY_POLICY.md`. This file is retained only as internal research
+> for a possible future worldwide paid release and must not be published.
 
 > **Status: DO NOT PUBLISH.** Working draft for the owner-approved subscription
 > target, prepared August 19, 2026 and revised the same day for a **worldwide**
@@ -42,12 +47,12 @@ This file has three kinds of content, kept deliberately separate:
 The following were confirmed by the owner and are now filled into the copy. They
 are recorded here so a reviewer can see what changed from the prior draft.
 
-| Field                        | Prior placeholder        | Applied value                                                                                                                                 |
-| ---------------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Provider identity            | `[LEGAL NAME]`           | **Adam Shugart, an individual (sole proprietor), Texas, USA — no LLC or other entity**                                                        |
-| Public privacy/contact email | `[PUBLIC PRIVACY EMAIL]` | **adamshugart31@gmail.com**                                                                                                                   |
-| Minimum age                  | ~~13~~ (superseded)      | **18+ at launch** — under-18 handling deferred to future work                                                                                 |
-| Launch territories           | ~~United States only~~   | **Worldwide** (owner decision, 2026-08-19) — triggers the EU/UK GDPR layer below; counsel to confirm any excluded countries/App Store regions |
+| Field                        | Prior placeholder        | Applied value                                                                                                                                                      |
+| ---------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Provider identity            | `[LEGAL NAME]`           | **Adam Shugart, an individual (sole proprietor), Texas, USA — no LLC or other entity**                                                                             |
+| Public privacy/contact email | `[PUBLIC PRIVACY EMAIL]` | **adamshugart31@gmail.com**                                                                                                                                        |
+| Minimum age                  | ~~13~~ (superseded)      | **18+ at launch** — under-18 handling deferred to future work                                                                                                      |
+| Launch territories           | ~~United States only~~   | **Worldwide** (owner decision, 2026-08-19) — triggers the EU/UK GDPR layer below; counsel to confirm any excluded countries/App Store regions                      |
 | Launch billing               | (open)                   | **Apple In-App Purchase + Google Play Billing only**; the platform is merchant of record and Vigorune generally does not receive card details; web/Stripe deferred |
 
 ### Blockers resolved by owner input
@@ -634,13 +639,13 @@ but does not affect processing already carried out.
 For personal data that is not itself special-category health data, we rely on the
 following Article 6(1) lawful bases:
 
-| Processing                                                                                       | Legal basis                                                                                                      |
-| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| Creating and operating your account, authenticating you, and providing the subscription service  | **Contract** (Art. 6(1)(b)) — necessary to provide the service you sign up for                                   |
-| Trial, entitlement, subscription, purchase-verification, and access-control records              | **Contract** (Art. 6(1)(b)) for providing paid access; **legitimate interests** (Art. 6(1)(f)) for preventing repeated free trials and fraud |
-| Security, rate limiting, fraud prevention, and operational logging                               | **Legitimate interests** (Art. 6(1)(f)) — securing the service and its users                                     |
-| Keeping billing, tax, accounting, and dispute records                                            | **Legal obligation** (Art. 6(1)(c)) where a specific law requires retention                                      |
-| Optional cloud backup, AI meal analysis, remote food/barcode lookup, feedback, push notifications | **Consent** (Art. 6(1)(a)), plus **explicit consent** under Art. 9(2)(a) where health data is involved           |
+| Processing                                                                                        | Legal basis                                                                                                                                  |
+| ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Creating and operating your account, authenticating you, and providing the subscription service   | **Contract** (Art. 6(1)(b)) — necessary to provide the service you sign up for                                                               |
+| Trial, entitlement, subscription, purchase-verification, and access-control records               | **Contract** (Art. 6(1)(b)) for providing paid access; **legitimate interests** (Art. 6(1)(f)) for preventing repeated free trials and fraud |
+| Security, rate limiting, fraud prevention, and operational logging                                | **Legitimate interests** (Art. 6(1)(f)) — securing the service and its users                                                                 |
+| Keeping billing, tax, accounting, and dispute records                                             | **Legal obligation** (Art. 6(1)(c)) where a specific law requires retention                                                                  |
+| Optional cloud backup, AI meal analysis, remote food/barcode lookup, feedback, push notifications | **Consent** (Art. 6(1)(a)), plus **explicit consent** under Art. 9(2)(a) where health data is involved                                       |
 
 We will identify the specific basis for any processing on request. Where we rely
 on legitimate interests, you may object as described below, and we will re-balance
@@ -945,8 +950,7 @@ Sources: [Art. 9](https://gdpr-info.eu/art-9-gdpr/);
 **UK GDPR and Data Protection Act 2018.** _Verified August 19, 2026._ The UK GDPR
 retains the EU GDPR framework as amended for the UK; the ICO is the supervisory
 authority. A controller with no UK establishment that offers goods/services to, or
-monitors, people in the UK must appoint a **UK representative** under UK GDPR Art.
-27. UK international transfers require an adequacy determination or appropriate
+monitors, people in the UK must appoint a **UK representative** under UK GDPR Art. 27. UK international transfers require an adequacy determination or appropriate
 safeguards, including the UK's **International Data Transfer Agreement (IDTA)** or
 the **UK Addendum** to the EU SCCs. The UK digital-consent age under DPA 2018 s.9
 is 13.

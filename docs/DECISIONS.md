@@ -1198,3 +1198,27 @@ not conflate them. See `docs/LAUNCH_PLAN.md` (authoritative).
 - Storefront/marketing copy (`docs/STOREFRONT_LISTING.md`) is scoped to the
   soft-launch config; reusing it for the app stores must revisit age gating,
   territory, and subscription language.
+
+## 2026-08-20: Use the free U.S.-only configuration for the first App Store release
+
+- The first Apple App Store release uses the same validated Version 1 product
+  boundary as the soft launch: free, U.S.-only, optional Apple/Google sign-in,
+  automatic cloud snapshot backup only after the user chooses to sign in, no
+  subscription, no in-app purchase, no paywall, and no advertising.
+- Core fitness features remain available without an account. IndexedDB remains
+  the local source of truth. Account deletion, cloud-data deletion, and local
+  clearing remain separate actions.
+- The publication eligibility term remains 18+ and the listing must not select
+  Made for Kids. Apple's content age rating must still be answered from actual
+  app behavior and is separate from the contractual eligibility term.
+- Distribution outside the United States, mandatory authentication,
+  entitlements, trials, subscriptions, and billing remain deferred future work.
+  The earlier worldwide subscription decision applies only if the owner later
+  reopens that post-validation project.
+- Use Apple's Standard EULA for the iOS binary rather than publishing a custom
+  App Store EULA. `Vigorune` remains the current public-facing name, but a later
+  presentation-only rename must preserve all compatibility identifiers.
+- The canonical consumer-facing legal documents for this release are
+  `docs/legal/TERMS_OF_USE.md`, `docs/legal/PRIVACY_POLICY.md`, and
+  `docs/legal/CONSUMER_HEALTH_DATA_PRIVACY_POLICY.md`. The older worldwide paid
+  files remain internal, superseded research and must not be published.
