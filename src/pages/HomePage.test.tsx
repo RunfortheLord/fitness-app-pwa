@@ -20,10 +20,13 @@ import { NutritionPage } from '@pages/NutritionPage'
 import { createProgramRepository } from '@repositories/programRepository'
 import { createWorkoutRepository } from '@repositories/workoutRepository'
 import { initializeAppData } from '@services/appInitializationService'
+import { saveCurrentLegalAcceptance } from '@services/legalAcceptanceService'
 import { dashboardService } from '@services/dashboardService'
 import { seedProgram, testLocalDate } from '@test/seedFactories'
 
 beforeEach(async () => {
+  window.localStorage.clear()
+  saveCurrentLegalAcceptance('2026-08-20T18:30:00.000Z')
   dashboardService.clearCachedDashboardData()
   await db.delete()
   await db.open()

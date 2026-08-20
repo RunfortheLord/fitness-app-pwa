@@ -1,130 +1,6 @@
-import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
-const EFFECTIVE_DATE = 'August 19, 2026'
-
-const ANALYTICS_ENABLED =
-  import.meta.env.VITE_ANALYTICS_ENABLED?.trim().toLowerCase() === 'true'
-
-function PublicPage({
-  children,
-  title,
-}: {
-  children: ReactNode
-  title: string
-}) {
-  return (
-    <main className="public-info-page">
-      <article className="public-info-card">
-        <p className="eyebrow">Vigorune</p>
-        <h1>{title}</h1>
-        {children}
-        <nav className="public-info-links" aria-label="Legal and support">
-          <Link to="/privacy">Privacy</Link>
-          <Link to="/account-deletion">Account deletion</Link>
-          <Link to="/support">Support</Link>
-          <Link to="/settings?section=about">Open Vigorune</Link>
-        </nav>
-      </article>
-    </main>
-  )
-}
-
-export function PrivacyPolicyPage() {
-  return (
-    <PublicPage title="Privacy Policy">
-      <p className="muted">Effective {EFFECTIVE_DATE}</p>
-      <p>
-        Vigorune is a local-first fitness tracker. You can use its core workout,
-        nutrition, bodyweight, and running features without creating an account.
-      </p>
-
-      <h2>Information kept on your device</h2>
-      <p>
-        Workout programs and history, nutrition entries, bodyweight records,
-        running records and GPS samples, preferences, and API-key settings are
-        stored in this device's application storage. Clearing the app or browser
-        storage can remove this information. You can create a local JSON backup
-        before clearing it.
-      </p>
-
-      <h2>Optional account and cloud backup</h2>
-      <p>
-        If you choose Google or Apple sign-in, Supabase processes your identity
-        and account session. If cloud backup is enabled, Vigorune uploads a
-        replaceable fitness snapshot and daily nutrition totals associated with
-        your account. A snapshot can include workout, nutrition, bodyweight, and
-        run-summary information; detailed GPS samples remain device-local and
-        are excluded from cloud snapshots. Cloud backup is not realtime
-        synchronization and is not required to use the app.
-      </p>
-
-      <h2>Meal-photo analysis and food lookup</h2>
-      <p>
-        A meal image and optional note leave your device only when you
-        explicitly request AI analysis. They are sent through Vigorune's server
-        to its configured AI provider, currently OpenAI, to produce an estimate
-        for your review. Images are not included in local or cloud backups and
-        results are not logged until you accept them. Food searches may send
-        search terms or barcodes to USDA FoodData Central and Open Food Facts.
-      </p>
-
-      <h2>Feedback and technical information</h2>
-      <p>
-        If you submit feedback, Vigorune sends the text you enter together with
-        limited app version, build, language, online-status, and device/browser
-        context to the developer's configured feedback service. Vigorune does
-        not sell personal information or use fitness records for advertising.
-      </p>
-
-      <h2>Anonymous usage metrics</h2>
-      {ANALYTICS_ENABLED ? (
-        <p>
-          To understand how many people install and keep using Vigorune, the app
-          records a small set of anonymous usage events: opening the app, logging
-          a workout, logging a meal, and tracking a run. Each event contains only
-          the event name and the calendar day it happened, tagged with a random
-          install identifier stored on this device. That identifier is not linked
-          to any account, email, precise location, or your fitness data, and no
-          workout, nutrition, bodyweight, or run values are ever included. Vigorune
-          honors your browser or operating system's Do Not Track (and Global
-          Privacy Control) signal and can be set to collect nothing. This data is
-          used only in aggregate to measure installs and retention; it is never
-          sold or used for advertising.
-        </p>
-      ) : (
-        <p>
-          Vigorune does not collect usage analytics in this release. The app has a
-          privacy-first metrics capability that is turned off by default; if a
-          future build turns it on, it would record only anonymous events (opening
-          the app, logging a workout, logging a meal, tracking a run) as an event
-          name plus the calendar day, tagged with a random install identifier that
-          is not tied to any account, email, precise location, or your fitness
-          data. It would honor Do Not Track and could be turned off, and would
-          never be sold or used for advertising.
-        </p>
-      )}
-
-      <h2>Retention and deletion</h2>
-      <p>
-        Local information remains until you clear it, uninstall the app, or the
-        operating system removes its storage. Cloud snapshots remain until they
-        are replaced or you delete cloud data or your account. Deleting an
-        account deletes its Supabase identity and associated cloud rows; local
-        data on each device remains until separately cleared.
-      </p>
-
-      <h2>Your choices</h2>
-      <p>
-        You may remain signed out, deny optional camera, location, motion, or
-        notification permissions, export local data, delete cloud data, delete
-        your account, or clear local device data from Settings. See the{' '}
-        <Link to="/account-deletion">account deletion instructions</Link> for
-        the deletion pathway.
-      </p>
-    </PublicPage>
-  )
-}
+import { PublicPage } from '@pages/PublicPage'
 
 export function AccountDeletionPage() {
   return (
@@ -161,7 +37,8 @@ export function AccountDeletionPage() {
 }
 
 export function SupportPage() {
-  const supportEmail = import.meta.env.VITE_SUPPORT_EMAIL?.trim()
+  const supportEmail =
+    import.meta.env.VITE_SUPPORT_EMAIL?.trim() || 'adamshugart31@gmail.com'
   const feedbackEnabled =
     import.meta.env.VITE_FEEDBACK_ENABLED?.trim().toLowerCase() === 'true'
   return (
@@ -174,17 +51,9 @@ export function SupportPage() {
           private authentication codes.
         </p>
       ) : null}
-      {supportEmail ? (
-        <p>
-          For help, email <a href={`mailto:${supportEmail}`}>{supportEmail}</a>.
-        </p>
-      ) : (
-        <p>
-          A public support contact will appear here before the App Store
-          release. The troubleshooting and data-protection guidance below is
-          available now.
-        </p>
-      )}
+      <p>
+        For help, email <a href={`mailto:${supportEmail}`}>{supportEmail}</a>.
+      </p>
       <h2>Health information</h2>
       <p>
         Vigorune is a fitness logging tool, not a medical device. It does not

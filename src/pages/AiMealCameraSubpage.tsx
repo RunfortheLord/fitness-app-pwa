@@ -59,6 +59,7 @@ export function AiMealCameraSubpage({
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [analysisFailed, setAnalysisFailed] = useState(false)
+  const [openAiConsent, setOpenAiConsent] = useState(false)
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop())
@@ -112,6 +113,7 @@ export function AiMealCameraSubpage({
 
   const startOver = useCallback(() => {
     setPhotos([])
+    setOpenAiConsent(false)
     void startCamera()
   }, [startCamera])
 
@@ -135,9 +137,10 @@ export function AiMealCameraSubpage({
   }, [analysisFailed, onBack])
 
   const analyze = useCallback(async () => {
-    if (photos.length === 0) {
+    if (photos.length === 0 || !openAiConsent) {
       return
     }
+    setOpenAiConsent(false)
     setAnalyzing(true)
     setAnalysisError(null)
     setAnalysisFailed(false)
@@ -163,7 +166,7 @@ export function AiMealCameraSubpage({
         setAnalyzing(false)
       }
     }
-  }, [note, onAnalyzed, photos])
+  }, [note, onAnalyzed, openAiConsent, photos])
 
   function capturePhoto() {
     const video = videoRef.current
@@ -179,6 +182,7 @@ export function AiMealCameraSubpage({
       setCameraError('The photo could not be prepared.')
       return
     }
+    setOpenAiConsent(false)
     setPhotos((current) => [...current, photo].slice(0, MAX_MEAL_PHOTOS))
     setCapturing(false)
     stopCamera()
@@ -193,6 +197,7 @@ export function AiMealCameraSubpage({
     setAnalysisError(null)
     setAnalysisFailed(false)
     setCameraError(null)
+    setOpenAiConsent(false)
     cameraAttemptRef.current += 1
     stopCamera()
     try {
@@ -299,7 +304,10 @@ export function AiMealCameraSubpage({
             <textarea
               id="ai-meal-note"
               maxLength={MAX_MEAL_NOTE_LENGTH}
-              onChange={(event) => setNote(event.currentTarget.value)}
+              onChange={(event) => {
+                setNote(event.currentTarget.value)
+                setOpenAiConsent(false)
+              }}
               placeholder={t(
                 'e.g. 8 oz ribeye, rice cooked in butter, 12-inch plate',
               )}
@@ -354,18 +362,46 @@ export function AiMealCameraSubpage({
             </SecondaryButton>
           ) : null}
           {reviewing && !analyzing ? (
-            <>
-              <SecondaryButton onClick={startOver} type="button">
-                <RotateCcw aria-hidden="true" size={18} />
-                {t('Start over')}
-              </SecondaryButton>
-              <PrimaryButton onClick={() => void analyze()} type="button">
-                <Sparkles aria-hidden="true" size={18} />
-                {t('Analyze meal')}
-              </PrimaryButton>
-            </>
+            <SecondaryButton onClick={startOver} type="button">
+              <RotateCcw aria-hidden="true" size={18} />
+              {t('Start over')}
+            </SecondaryButton>
           ) : null}
         </div>
+        {reviewing && !analyzing ? (
+          <div className="ai-camera-consent">
+            <strong>{t('Before sending to OpenAI')}</strong>
+            <p className="muted" id="openai-meal-disclosure">
+              {t(
+                "Vigorune sends the selected meal photos and optional note through its server to OpenAI only to create an editable nutrition estimate. They are not saved to Vigorune's database. OpenAI says API data is not used to train models by default, but abuse-monitoring data may be retained for up to 30 days. Nothing is added to your nutrition log until you review and accept the estimate.",
+              )}{' '}
+              <a href="/privacy">{t('Privacy Policy')}</a>
+            </p>
+            <label className="checkbox-row ai-camera-consent-check">
+              <input
+                aria-describedby="openai-meal-disclosure"
+                checked={openAiConsent}
+                onChange={(event) =>
+                  setOpenAiConsent(event.currentTarget.checked)
+                }
+                type="checkbox"
+              />
+              <span>
+                {t(
+                  'I agree to send these photos and any note to OpenAI for this analysis.',
+                )}
+              </span>
+            </label>
+            <PrimaryButton
+              disabled={!openAiConsent}
+              onClick={analyze}
+              type="button"
+            >
+              <Sparkles aria-hidden="true" size={18} />
+              {t('Analyze meal')}
+            </PrimaryButton>
+          </div>
+        ) : null}
         <p className="muted ai-camera-disclaimer">
           {t(
             'Photo nutrition is an estimate. Review every ingredient before logging food.',

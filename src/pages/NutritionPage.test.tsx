@@ -28,6 +28,7 @@ import { clearCachedNutritionPageData } from '@pages/nutritionPageCache'
 import { createFoodRepository } from '@repositories/foodRepository'
 import { settingsRepository } from '@repositories/settingsRepository'
 import { initializeAppData } from '@services/appInitializationService'
+import { saveCurrentLegalAcceptance } from '@services/legalAcceptanceService'
 import { nutritionSummaryService } from '@services/nutritionSummaryService'
 import {
   FoodProviderClientError,
@@ -65,6 +66,8 @@ const mockSearchProviderFoods = vi.mocked(searchProviderFoods)
 const mockAnalyzeMealPhoto = vi.mocked(analyzeMealPhoto)
 
 beforeEach(async () => {
+  window.localStorage.clear()
+  saveCurrentLegalAcceptance('2026-08-20T18:30:00.000Z')
   clearCachedNutritionPageData()
   mockSearchProviderFoods.mockReset()
   mockSearchProviderFoods.mockResolvedValue({

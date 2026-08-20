@@ -1,3 +1,17 @@
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const root = dirname(dirname(fileURLToPath(import.meta.url)))
+const legalDocumentPaths = {
+  consumerHealthDataPrivacy: {
+    file: 'docs/legal/CONSUMER_HEALTH_DATA_PRIVACY_POLICY.md',
+    route: '/consumer-health-data-privacy',
+  },
+  privacy: { file: 'docs/legal/PRIVACY_POLICY.md', route: '/privacy' },
+  terms: { file: 'docs/legal/TERMS_OF_USE.md', route: '/terms' },
+}
 const rawOrigin = process.argv[2] ?? process.env.STORE_PUBLIC_ORIGIN
 
 if (!rawOrigin || rawOrigin === '--help') {
@@ -38,13 +52,45 @@ async function request(path, init) {
   }
 }
 
-for (const path of ['/privacy', '/account-deletion', '/support']) {
+for (const path of [
+  '/terms',
+  '/privacy',
+  '/consumer-health-data-privacy',
+  '/account-deletion',
+  '/support',
+]) {
   const response = await request(path)
   if (!response) continue
   const contentType = response.headers.get('content-type') ?? ''
   results.push(`${path}: ${response.status}`)
   if (!response.ok || !contentType.includes('text/html')) {
     failures.push(`${path}: expected a successful HTML response`)
+  }
+}
+
+const buildInfoResponse = await request('/build-info.json')
+if (buildInfoResponse) {
+  if (!buildInfoResponse.ok) {
+    failures.push(
+      `/build-info.json: expected 200, received ${buildInfoResponse.status}`,
+    )
+  } else {
+    const buildInfo = await buildInfoResponse.json()
+    for (const [name, document] of Object.entries(legalDocumentPaths)) {
+      const expectedHash = createHash('sha256')
+        .update(readFileSync(join(root, document.file)))
+        .digest('hex')
+      const deployed = buildInfo.legalDocuments?.[name]
+      if (
+        deployed?.route !== document.route ||
+        deployed?.sha256 !== expectedHash
+      ) {
+        failures.push(
+          `/build-info.json: ${name} does not match the current canonical document`,
+        )
+      }
+    }
+    results.push('/build-info.json: canonical legal-document hashes checked')
   }
 }
 

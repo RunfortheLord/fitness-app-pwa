@@ -34,7 +34,7 @@ capability is implemented, validated, or store-ready.
 - Outdoor, treadmill, and manual run tracking within documented platform
   limitations.
 - User-initiated provider-backed barcode lookup.
-- User-initiated AI meal-photo analysis whose estimates are reviewed and
+- User-initiated OpenAI meal-photo analysis whose estimates are reviewed and
   explicitly logged by the user.
 - User-invoked or opt-in deterministic local calorie, load, or repetition
   estimates that remain explainable, editable, and unapplied until explicit

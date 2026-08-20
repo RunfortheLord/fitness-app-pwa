@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import {
   Card,
@@ -62,6 +62,7 @@ import {
 import { automaticCloudBackupService } from '@services/automaticCloudBackupService'
 import { FeedbackClientError, sendFeedback } from '@services/feedbackClient'
 import { accountService } from '@services/accountService'
+import { clearLegalAcceptance } from '@services/legalAcceptanceService'
 
 type BuildInfo = {
   builtAt: string
@@ -106,6 +107,8 @@ export function SettingsPage() {
   const [cloudBusy, setCloudBusy] = useState(false)
   const [cloudMessage, setCloudMessage] = useState<string | null>(null)
   const [cloudError, setCloudError] = useState<string | null>(null)
+  const [showAppleRevocationSteps, setShowAppleRevocationSteps] =
+    useState(false)
   const [isOnline, setIsOnline] = useState(() =>
     typeof navigator === 'undefined' ? true : navigator.onLine,
   )
@@ -594,12 +597,14 @@ export function SettingsPage() {
     setCloudBusy(true)
     setCloudError(null)
     setCloudMessage(null)
+    setShowAppleRevocationSteps(false)
     try {
       const result = await accountService.deleteAccount()
       setCloudBackupInfo(null)
+      setShowAppleRevocationSteps(result.providerRevocation === 'manual_apple')
       setCloudMessage(
         result.providerRevocation === 'manual_apple'
-          ? 'Account and cloud data deleted. Local data remains. You can also revoke Vigorune in your Apple Account settings.'
+          ? 'Account and cloud data deleted. Local data remains. Finish by revoking Vigorune in your Apple Account settings.'
           : 'Account and cloud data deleted. Local data remains on this device.',
       )
     } catch (caught) {
@@ -662,6 +667,7 @@ export function SettingsPage() {
     setOperationError(null)
     try {
       await backupService.clearAllData()
+      clearLegalAcceptance()
       setOperationMessage('All local data was cleared. Reloading empty state.')
       refreshDashboard()
       window.location.reload()
@@ -1096,6 +1102,17 @@ export function SettingsPage() {
             {cloudMessage ? (
               <StatusMessage tone="success">{cloudMessage}</StatusMessage>
             ) : null}
+            {showAppleRevocationSteps ? (
+              <p>
+                <a
+                  href="https://support.apple.com/102571"
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Open Apple's Sign in with Apple removal steps
+                </a>
+              </p>
+            ) : null}
             {cloudError ? (
               <StatusMessage tone="warning">{cloudError}</StatusMessage>
             ) : null}
@@ -1251,9 +1268,13 @@ export function SettingsPage() {
               className="settings-policy-links"
               aria-label="Policies and support"
             >
-              <a href="/privacy">Privacy Policy</a>
-              <a href="/account-deletion">Account deletion</a>
-              <a href="/support">Support</a>
+              <Link to="/terms">Terms of Use</Link>
+              <Link to="/privacy">Privacy Policy</Link>
+              <Link to="/consumer-health-data-privacy">
+                Consumer Health Data Privacy Policy
+              </Link>
+              <Link to="/account-deletion">Account deletion</Link>
+              <Link to="/support">Support</Link>
             </nav>
             <dl className="settings-list">
               <div>
@@ -1389,8 +1410,9 @@ export function SettingsPage() {
         <p>
           This permanently deletes the signed-in Vigorune account, cloud backup,
           and daily nutrition cloud rows, then signs out. Local fitness data on
-          this device remains until you separately clear it. Type DELETE ACCOUNT
-          to continue.
+          this device remains until you separately clear it. If you used Sign in
+          with Apple, Vigorune will provide Apple's manual authorization-removal
+          steps after deletion. Type DELETE ACCOUNT to continue.
         </p>
         <FormField id="account-delete-confirmation" label="Confirmation">
           <input

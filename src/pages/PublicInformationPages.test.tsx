@@ -2,31 +2,9 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 
-import {
-  AccountDeletionPage,
-  PrivacyPolicyPage,
-  SupportPage,
-} from '@pages/PublicInformationPages'
+import { AccountDeletionPage, SupportPage } from '@pages/PublicInformationPages'
 
 describe('public store information pages', () => {
-  it('publishes the privacy disclosures without requiring an account', () => {
-    render(
-      <MemoryRouter>
-        <PrivacyPolicyPage />
-      </MemoryRouter>,
-    )
-    expect(
-      screen.getByRole('heading', { name: 'Privacy Policy' }),
-    ).toBeVisible()
-    expect(screen.getByText(/Supabase processes your identity/i)).toBeVisible()
-    expect(screen.getByText(/currently OpenAI/i)).toBeVisible()
-    // Analytics ships OFF, so the default disclosure states no analytics is
-    // collected in this release while describing what the capability would do.
-    expect(
-      screen.getByText(/does not collect usage analytics in this release/i),
-    ).toBeVisible()
-  })
-
   it('provides a direct account deletion pathway and local-data warning', () => {
     render(
       <MemoryRouter>
@@ -48,6 +26,8 @@ describe('public store information pages', () => {
     expect(screen.getByText(/not a medical device/i)).toBeVisible()
     expect(screen.getByText(/qualified healthcare professional/i)).toBeVisible()
     expect(screen.queryByText(/Settings → About → Send feedback/i)).toBeNull()
-    expect(screen.getByText(/support contact will appear here/i)).toBeVisible()
+    expect(
+      screen.getByRole('link', { name: 'adamshugart31@gmail.com' }),
+    ).toHaveAttribute('href', 'mailto:adamshugart31@gmail.com')
   })
 })

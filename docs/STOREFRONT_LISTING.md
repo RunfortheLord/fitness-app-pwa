@@ -12,7 +12,7 @@
 >
 > **Companion doc.** `docs/APP_STORE_METADATA.md` holds the App Store Connect
 > field table, privacy working-map, and review notes. This file is the
-> customer-facing *marketing* copy; do not duplicate the metadata field table
+> customer-facing _marketing_ copy; do not duplicate the metadata field table
 > here. Keep the two consistent (same name, same feature claims, same honesty
 > caveats).
 >
@@ -30,7 +30,7 @@
 > stays on your device — and is never sold.**
 
 Everything else (workouts, nutrition, runs, bodyweight, AI meal photos) is a
-feature *under* that promise. Lead with privacy + local-first + offline; let the
+feature _under_ that promise. Lead with privacy + local-first + offline; let the
 implicit contrast do the work against bloated, sign-in-walled, data-harvesting
 mainstream fitness apps. Never name or disparage a competitor by name.
 
@@ -45,14 +45,14 @@ mainstream fitness apps. Never name or disparage a competitor by name.
   those use the network and, for AI/barcode, third-party providers.
 - "Your data stays on your device" is true by default (IndexedDB, on-device).
   Optional cloud backup and optional AI meal analysis send data off-device only
-  when the user explicitly turns them on / taps them. Never imply *nothing* ever
+  when the user explicitly turns them on / taps them. Never imply _nothing_ ever
   leaves the device.
 
 ---
 
 ## 2. Candidate taglines (pick one)
 
-1. **Track your training. Keep your data.** *(privacy-first, shortest)*
+1. **Track your training. Keep your data.** _(privacy-first, shortest)_
 2. **A full fitness tracker that lives on your phone — no account, works offline.**
 3. **Workouts, nutrition, and runs. Private by default, yours to keep.**
 
@@ -73,8 +73,8 @@ Backups / alternates if a shorter or punchier line is wanted:
 > backup and AI meal-photo estimates are there when you want them, off until you
 > ask.
 
-*(Trim to ~2 sentences for a subtitle/promo slot; the App Store subtitle
-"Local-first fitness tracking" already lives in `APP_STORE_METADATA.md`.)*
+_(Trim to ~2 sentences for a subtitle/promo slot; the App Store subtitle
+"Local-first fitness tracking" already lives in `APP_STORE_METADATA.md`.)_
 
 ---
 
@@ -99,7 +99,8 @@ Backups / alternates if a shorter or punchier line is wanted:
 > foods, save reusable meals and recipes, and search a food database or scan a
 > barcode when you want a quick lookup. Prefer snapping a photo? Optional AI
 > meal-photo analysis gives you an editable calorie and macro estimate — you
-> review and adjust it, and nothing is logged until you say so.
+> review and adjust it, and nothing is added to your nutrition log until you
+> say so.
 >
 > **Run**
 > Track outdoor runs with GPS or treadmill runs by motion, with pace, splits, and
@@ -137,7 +138,7 @@ Backups / alternates if a shorter or punchier line is wanted:
 ## 5. Keyword / ASO suggestions
 
 **Guiding ASO principle:** the name is undifferentiated and unsearched, so lead
-with the *category + differentiator* ("private", "offline", "local", "no
+with the _category + differentiator_ ("private", "offline", "local", "no
 account") plus the four concrete verticals (workout, nutrition, running,
 bodyweight). Don't waste keyword characters on words already in the app title or
 subtitle — Apple indexes those separately.
@@ -152,6 +153,7 @@ workout,gym,nutrition,macro,calorie,bodyweight,running,run,offline,private,track
 ```
 
 Rationale:
+
 - **workout / gym / lifting / strength** — highest-volume fitness intent; the
   core use case (programs + live set logging).
 - **nutrition / macro / calorie** — the nutrition vertical; "macro" and
@@ -172,10 +174,10 @@ Play ranks the long description and title, so weave terms in as real sentences
 (already done in §4). Prioritize these phrases naturally, 2–3 mentions max each,
 never stuffed:
 
-- primary: *fitness tracker, workout tracker, macro tracker, calorie counter,
-  run tracker, offline fitness app, private fitness app, no account*
-- secondary: *gym log, strength training, bodyweight tracker, meal tracker,
-  rest timer, workout programs*
+- primary: _fitness tracker, workout tracker, macro tracker, calorie counter,
+  run tracker, offline fitness app, private fitness app, no account_
+- secondary: _gym log, strength training, bodyweight tracker, meal tracker,
+  rest timer, workout programs_
 
 Rationale: Play penalizes keyword stuffing and rewards a readable description
 that repeats the core phrases a couple of times. The §4 long description already
@@ -190,13 +192,13 @@ near a home location, no real email, no tokens or dev URLs
 (`APP_STORE_METADATA.md` screenshot rules apply). First screenshot is the most
 important; lead with the differentiator, not a feature dump.
 
-| # | Screen to capture | Overlay caption / value line |
-|---|-------------------|------------------------------|
-| 1 | **Home dashboard** (`/`) — calories remaining, bodyweight trend, active program / start-workout card | **"Your whole day at a glance — no account, all on your phone."** |
-| 2 | **Live workout** (`/workout`) — set rows with previous-performance, rest timer running | **"Log every set with a rest timer that survives a locked screen."** |
-| 3 | **Nutrition day view** (`/nutrition`) — food log grouped by meal, calorie & macro progress | **"Track calories and macros your way — custom foods, saved meals, barcode."** |
-| 4 | **AI meal-photo estimate** (nutrition camera → analysis draft) — editable ingredient rows with total calories | **"Snap a meal for an instant estimate — you review and edit before it logs."** |
-| 5 | **Run tracking or run history** (`/run` or `/history`) — pace, splits, moving time (synthetic route) | **"Outdoor GPS and treadmill runs — your location never leaves your device."** |
+| #   | Screen to capture                                                                                             | Overlay caption / value line                                                    |
+| --- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| 1   | **Home dashboard** (`/`) — calories remaining, bodyweight trend, active program / start-workout card          | **"Your whole day at a glance — no account, all on your phone."**               |
+| 2   | **Live workout** (`/workout`) — set rows with previous-performance, rest timer running                        | **"Log every set with a rest timer that survives a locked screen."**            |
+| 3   | **Nutrition day view** (`/nutrition`) — food log grouped by meal, calorie & macro progress                    | **"Track calories and macros your way — custom foods, saved meals, barcode."**  |
+| 4   | **AI meal-photo estimate** (nutrition camera → analysis draft) — editable ingredient rows with total calories | **"Snap a meal for an instant estimate — you review and edit before it logs."** |
+| 5   | **Run tracking or run history** (`/run` or `/history`) — pace, splits, moving time (synthetic route)          | **"Outdoor GPS and treadmill runs — your location never leaves your device."**  |
 
 Optional 6th (if the store slot allows and privacy is the hook to reinforce):
 
@@ -214,22 +216,22 @@ claim of medical benefit, diagnosis, or guaranteed results.
 **Primary category:** Health & Fitness (both Apple and Google Play). This is the
 expected choice in `APP_STORE_METADATA.md` and matches every core feature.
 
-**Secondary category (Apple, optional):** leave blank, or *Lifestyle* only if a
+**Secondary category (Apple, optional):** leave blank, or _Lifestyle_ only if a
 secondary is required. No defensible second category beyond Health & Fitness.
 
 **Content rating:**
 
 - Content itself is mild — a fitness/nutrition logger with no user-generated
   public content, no ads, no social feed. On Apple's questionnaire this maps to
-  a low age rating on *content* grounds; on Google's IARC questionnaire it maps
-  to *Everyone*.
+  a low age rating on _content_ grounds; on Google's IARC questionnaire it maps
+  to _Everyone_.
 - **Do NOT select "Made for Kids" / a child-directed rating.** Answer each
   questionnaire from actual app behavior (`APP_STORE_METADATA.md`).
 - **18+ eligibility floor is a DEFERRED, store-publication decision, not part of
   this PWA soft-launch.** `docs/DECISIONS.md` (2026-08-19) sets an 18+ minimum
-  for the *worldwide app-store* track (Step 8) to avoid the minor-compliance
+  for the _worldwide app-store_ track (Step 8) to avoid the minor-compliance
   surface. That is a legal/eligibility floor set in the Terms and age docs at
-  store-submission time — it is separate from the IARC/Apple *content* rating,
+  store-submission time — it is separate from the IARC/Apple _content_ rating,
   and it does **not** apply to the free, US-only, no-login PWA soft-launch this
   copy is for. When this copy is reused for the App Store / Play, revisit the age
   gating and Terms with the then-current publication decision.
@@ -285,8 +287,8 @@ is a draft for the owner to post; **posting is an owner action.**
 > straight from the browser (PWA), no app store needed. Link in a comment. Happy
 > to answer anything or hear what's missing.
 
-*(Read each subreddit's self-promo rules first; some require the link in a
-comment, not the post. Disclose that you're the developer.)*
+_(Read each subreddit's self-promo rules first; some require the link in a
+comment, not the post. Disclose that you're the developer.)_
 
 ### B. TikTok / Instagram Reels (spoken/caption over a screen recording)
 
@@ -297,8 +299,8 @@ comment, not the post. Disclose that you're the developer.)*
 > — all private by default. It's free and installs right from your browser. I'm
 > a solo dev, link's in my bio, tell me what to build next.
 
-*(Show the real app: home → live workout set logging → meal photo estimate.
-Keep on-screen text honest: "estimate", "optional".)*
+_(Show the real app: home → live workout set logging → meal photo estimate.
+Keep on-screen text honest: "estimate", "optional".)_
 
 ### C. Short X / IG caption (text-first)
 

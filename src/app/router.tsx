@@ -12,14 +12,32 @@ import {
   TrainingPage,
 } from '@app/lazyPages'
 import { HomePage } from '@pages/HomePage'
-import {
-  AccountDeletionPage,
-  PrivacyPolicyPage,
-  SupportPage,
-} from '@pages/PublicInformationPages'
+import { AccountDeletionPage, SupportPage } from '@pages/PublicInformationPages'
+
+async function loadLegalDocumentPages() {
+  return import('@pages/LegalDocumentPages')
+}
 
 export const router = createBrowserRouter([
-  { path: '/privacy', element: <PrivacyPolicyPage /> },
+  {
+    path: '/terms',
+    lazy: async () => ({
+      Component: (await loadLegalDocumentPages()).TermsOfUsePage,
+    }),
+  },
+  {
+    path: '/privacy',
+    lazy: async () => ({
+      Component: (await loadLegalDocumentPages()).PrivacyPolicyPage,
+    }),
+  },
+  {
+    path: '/consumer-health-data-privacy',
+    lazy: async () => ({
+      Component: (await loadLegalDocumentPages())
+        .ConsumerHealthDataPrivacyPolicyPage,
+    }),
+  },
   { path: '/account-deletion', element: <AccountDeletionPage /> },
   { path: '/support', element: <SupportPage /> },
   {

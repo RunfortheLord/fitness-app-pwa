@@ -1,10 +1,33 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const outputPath = join(root, 'public', 'build-info.json')
+const legalDocumentPaths = {
+  consumerHealthDataPrivacy: {
+    file: 'docs/legal/CONSUMER_HEALTH_DATA_PRIVACY_POLICY.md',
+    route: '/consumer-health-data-privacy',
+  },
+  privacy: { file: 'docs/legal/PRIVACY_POLICY.md', route: '/privacy' },
+  terms: { file: 'docs/legal/TERMS_OF_USE.md', route: '/terms' },
+}
+
+function legalDocuments() {
+  return Object.fromEntries(
+    Object.entries(legalDocumentPaths).map(([name, document]) => [
+      name,
+      {
+        route: document.route,
+        sha256: createHash('sha256')
+          .update(readFileSync(join(root, document.file)))
+          .digest('hex'),
+      },
+    ]),
+  )
+}
 
 function gitShortHash() {
   const vercelSha = process.env.VERCEL_GIT_COMMIT_SHA
@@ -44,6 +67,7 @@ writeFileSync(
       gitHash: gitShortHash(),
       environment: deploymentEnvironment(),
       builtAt: new Date().toISOString(),
+      legalDocuments: legalDocuments(),
     },
     null,
     2,

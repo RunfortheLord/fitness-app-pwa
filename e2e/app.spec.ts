@@ -1,4 +1,6 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
+
+import { expect, test } from './fixtures'
 
 const routes = [
   { path: '/', title: 'Home', nav: 'Home' },
@@ -9,6 +11,62 @@ const routes = [
   { path: '/history', title: 'History' },
   { path: '/settings', title: 'Settings' },
 ]
+
+test(
+  'requires first-run adult eligibility and legal acknowledgement',
+  { tag: '@smoke' },
+  async ({ browser }) => {
+    const context = await browser.newContext({
+      hasTouch: true,
+      isMobile: true,
+      viewport: { height: 844, width: 390 },
+    })
+    const page = await context.newPage()
+
+    try {
+      await page.goto('/')
+
+      await expect(
+        page.getByRole('heading', { name: 'Before you begin' }),
+      ).toBeVisible({ timeout: 30_000 })
+      await expect(
+        page.getByRole('navigation', { name: 'Primary' }),
+      ).toHaveCount(0)
+      const continueButton = page.getByRole('button', {
+        name: 'Continue to Vigorune',
+      })
+      await expect(continueButton).toBeDisabled()
+
+      await page
+        .getByRole('checkbox', {
+          name: 'I confirm that I am at least 18 and live in the U.S.',
+        })
+        .check()
+      await page
+        .getByRole('checkbox', { name: /I agree to the Terms of Use/ })
+        .check()
+      await page
+        .getByRole('checkbox', {
+          name: /I acknowledge the Privacy Policy/,
+        })
+        .check()
+      await continueButton.click()
+
+      await expect(
+        page.getByRole('heading', { level: 1, name: 'Home' }),
+      ).toBeVisible()
+      await expect
+        .poll(() =>
+          page.evaluate(() =>
+            window.localStorage.getItem('fitness-log.legal-acceptance.v1'),
+          ),
+        )
+        .not.toBeNull()
+    } finally {
+      await context.close()
+    }
+  },
+)
 
 for (const viewport of [
   { width: 375, height: 667 },

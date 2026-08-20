@@ -1,12 +1,14 @@
-# App Store Metadata and Privacy Draft
+# App Store Metadata Release Candidate
 
-This is a preparation artifact for App Store Connect. Fields marked **OWNER**
-require the account holder's decision or confirmation. Validate all statements
-against the exact signed build and Xcode privacy report before publishing.
+This is the reconciled Version 1 preparation artifact for a **free, U.S.-only,
+18+** App Store release with no subscription, in-app purchase, paywall,
+advertising, or tracking. Fields marked **OWNER** require the account holder's
+decision or confirmation. Validate all statements against the exact signed
+build and Xcode privacy report before publishing.
 
 ## App Information
 
-| Field                    | Draft or required action                                                                                        |
+| Field                    | Release value or required action                                                                                |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------- |
 | Name                     | **OWNER:** Confirm the final public name. `Vigorune` remains temporary until name/trademark review is complete. |
 | Bundle ID                | `com.adamshugart.fitnesslog` — do not change.                                                                   |
@@ -21,7 +23,7 @@ against the exact signed build and Xcode privacy report before publishing.
 | DSA/trader status        | **OWNER:** Complete according to actual legal/distribution status.                                              |
 | Regulated medical device | Declare that Vigorune is not a regulated medical device, subject to owner/legal confirmation.                   |
 
-## Product Page Draft
+## Product Page Copy
 
 **Subtitle:** Local-first fitness tracking
 
@@ -36,14 +38,16 @@ offline.
 
 Build and follow workout programs, keep completed workout history, run rest
 timers, log meals and macro targets, track bodyweight trends, and record outdoor
-or treadmill runs. Optional cloud backup uses Google or Apple sign-in. Optional
-meal-photo analysis provides an editable estimate only when requested; nothing
-is logged until you review and accept it.
+or treadmill runs. Optional Google or Apple sign-in starts automatic
+replaceable cloud backup; local records remain the source of truth. Optional
+OpenAI meal-photo analysis runs only after a provider-specific disclosure and
+your affirmative permission, and nothing is added to the nutrition log until
+you review and accept the editable estimate.
 
 Vigorune is a fitness logging tool, not a medical device or medical-advice
 service.
 
-**Keywords draft:** fitness,workout,training,nutrition,bodyweight,running,gym,log
+**Keywords:** fitness,workout,training,nutrition,bodyweight,running,gym,log
 
 **Support URL:** `https://<production-origin>/support`
 
@@ -51,8 +55,8 @@ service.
 
 **Account deletion URL:** `https://<production-origin>/account-deletion`
 
-**OWNER:** Set an actively monitored support email before using these URLs in
-App Store Connect.
+**Support contact:** `adamshugart31@gmail.com`. Confirm it remains actively
+monitored before using these URLs in App Store Connect.
 
 ## Screenshot Plan
 
@@ -70,11 +74,13 @@ Use Apple's current required iPhone dimensions. Do not show private emails,
 real GPS routes, API keys, access tokens, developer URLs, or claims that imply
 medical diagnosis, guaranteed outcomes, or automated coaching.
 
-## App Review Notes Draft
+## App Review Notes
 
-Vigorune is fully usable without an account. At first launch, choose **Continue
-offline** to review core features. Google and Apple sign-in are optional and are
-used only for cloud snapshot backup.
+Vigorune is offered only to U.S. adults age 18 or older and is fully usable
+without an account. On first launch, confirm eligibility, accept the Terms, and
+acknowledge the Privacy Policy. Then choose **Continue offline** to review core
+features. Google and Apple sign-in are optional; signing in starts automatic
+replaceable cloud snapshot backup.
 
 Suggested review path:
 
@@ -87,8 +93,9 @@ Suggested review path:
    non-expiring review account or reviewer-created identity.
 6. Delete cloud data separately, then test **Delete account**. Account deletion
    retains local records by design; **Clear all data** removes local records.
-7. Meal-photo analysis runs only after the reviewer selects a photo and presses
-   Analyze. The estimate is editable and is not logged until accepted.
+7. Meal-photo analysis names OpenAI and requires an unchecked affirmative
+   permission after the reviewer selects a photo and before Analyze is enabled.
+   The estimate is editable and is not logged until accepted.
 
 **OWNER:** Provide a monitored review contact, any required non-expiring test
 credentials, and concise instructions for features that require physical
@@ -124,7 +131,9 @@ and other user content for app functionality, with no tracking.
 ## Submission Gates
 
 - Final public name and ownership checks complete.
-- Production origin deployed and all three public URLs verified signed out.
+- Production origin deployed and all five public routes (`/terms`, `/privacy`,
+  `/consumer-health-data-privacy`, `/account-deletion`, and `/support`) verified
+  signed out.
 - Support email works and is monitored.
 - Apple/Google authentication and account deletion pass physical-device tests.
 - App Privacy answers, age rating, export compliance, content rights, and DSA

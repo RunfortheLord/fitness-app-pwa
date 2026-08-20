@@ -3290,6 +3290,40 @@ body.live-workout-open .route-transition,
   font-size: 13px;
 }
 
+.ai-camera-consent {
+  display: grid;
+  width: min(100%, 460px);
+  justify-items: stretch;
+  gap: var(--space-3);
+  margin: 0 auto;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.ai-camera-consent p,
+.ai-camera-consent-check {
+  margin: 0;
+}
+
+.ai-camera-consent p {
+  font-size: 13px;
+}
+
+.ai-camera-consent-check {
+  align-items: flex-start;
+}
+
+.ai-camera-consent-check input {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.ai-camera-consent .button {
+  width: 100%;
+}
+
 .ai-camera-disclaimer,
 .recipe-build-notes {
   margin: 0;
@@ -5935,6 +5969,56 @@ body.food-search-open .bottom-nav {
   color: var(--color-text);
 }
 
+.legal-gate-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: calc(env(safe-area-inset-top) + var(--space-5)) var(--space-4)
+    calc(env(safe-area-inset-bottom) + var(--space-5));
+  background: var(--color-bg);
+}
+
+.legal-gate-card {
+  width: min(100%, 560px);
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.legal-gate-card h1 {
+  margin-top: 0;
+}
+
+.legal-gate-checks {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-5) 0;
+}
+
+.legal-gate-checks .checkbox-row {
+  align-items: start;
+  min-height: 44px;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-strong);
+}
+
+.legal-gate-checks .checkbox-row input {
+  margin-top: 3px;
+}
+
+.legal-gate-note {
+  margin-bottom: var(--space-4);
+}
+
+.legal-gate-continue {
+  width: 100%;
+  min-height: 48px;
+}
+
 .public-info-card {
   width: min(100%, 720px);
   padding: clamp(22px, 5vw, 42px);
@@ -5956,6 +6040,69 @@ body.food-search-open .bottom-nav {
 
 .public-info-card p {
   line-height: 1.6;
+}
+
+.legal-document-card {
+  width: min(100%, 960px);
+}
+
+.legal-document h1 {
+  text-wrap: balance;
+}
+
+.legal-document h3,
+.legal-document h4 {
+  margin: var(--space-5) 0 var(--space-2);
+}
+
+.legal-document p,
+.legal-document li {
+  line-height: 1.65;
+}
+
+.legal-document ol,
+.legal-document ul {
+  display: grid;
+  gap: var(--space-2);
+  padding-left: 1.4rem;
+}
+
+.legal-document-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-md);
+  margin: var(--space-4) 0;
+}
+
+.legal-document-table-wrap:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.legal-document table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.legal-document th,
+.legal-document td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-border-soft);
+  text-align: left;
+  vertical-align: top;
+  line-height: 1.5;
+}
+
+.legal-document th {
+  background: var(--color-surface-strong);
+  color: var(--color-text);
+}
+
+.legal-document tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 .public-info-card a,

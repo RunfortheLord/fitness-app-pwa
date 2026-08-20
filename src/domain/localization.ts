@@ -345,6 +345,12 @@ const spanishTranslations: Record<string, string> = {
     'p. ej., bistec de 8 oz, arroz cocinado con mantequilla, plato de 30 cm',
   'Portion sizes, hidden ingredients, and cooking fats make the estimate more accurate.':
     'Los tamaños de las porciones, los ingredientes ocultos y las grasas de cocción hacen la estimación más precisa.',
+  'Before sending to OpenAI': 'Antes de enviar a OpenAI',
+  "Vigorune sends the selected meal photos and optional note through its server to OpenAI only to create an editable nutrition estimate. They are not saved to Vigorune's database. OpenAI says API data is not used to train models by default, but abuse-monitoring data may be retained for up to 30 days. Nothing is added to your nutrition log until you review and accept the estimate.":
+    'Vigorune envía las fotos de comida seleccionadas y la nota opcional mediante su servidor a OpenAI únicamente para crear una estimación nutricional editable. No se guardan en la base de datos de Vigorune. OpenAI indica que los datos de la API no se usan para entrenar modelos de forma predeterminada, pero los datos de supervisión de abusos pueden conservarse hasta 30 días. No se añade nada a tu registro de nutrición hasta que revises y aceptes la estimación.',
+  'I agree to send these photos and any note to OpenAI for this analysis.':
+    'Acepto enviar estas fotos y cualquier nota a OpenAI para este análisis.',
+  'Privacy Policy': 'Política de privacidad',
   'Photo nutrition is an estimate. Review every ingredient before saving the recipe.':
     'La nutrición de la foto es una estimación. Revisa cada ingrediente antes de guardar la receta.',
   'Photo nutrition is an estimate. Review every ingredient before logging food.':

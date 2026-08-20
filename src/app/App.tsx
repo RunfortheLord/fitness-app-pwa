@@ -2,6 +2,7 @@ import { Suspense, useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 
 import { AppLaunchScreen } from '@app/AppLaunchScreen'
+import { LegalAcceptanceGate } from '@app/LegalAcceptanceGate'
 import { preloadInitialPageData } from '@app/preloadInitialPageData'
 import { preloadRoutePages } from '@app/preloadRoutePages'
 import { AppShell } from '@components/AppShell'
@@ -57,13 +58,15 @@ export function App() {
 
   return (
     <LanguageProvider>
-      <AppShell>
-        <Suspense
-          fallback={<LoadingState label="Loading page" variant="cards" />}
-        >
-          <Outlet />
-        </Suspense>
-      </AppShell>
+      <LegalAcceptanceGate>
+        <AppShell>
+          <Suspense
+            fallback={<LoadingState label="Loading page" variant="cards" />}
+          >
+            <Outlet />
+          </Suspense>
+        </AppShell>
+      </LegalAcceptanceGate>
     </LanguageProvider>
   )
 }

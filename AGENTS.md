@@ -12,7 +12,7 @@
   Google and Apple authentication; optional cloud snapshot backup; in-app
   account and cloud-data deletion; nutrition and bodyweight tracking; workout
   programs and live workouts; run tracking; provider-backed barcode scanning;
-  user-initiated Gemini meal-photo analysis; and public Apple App Store and
+  user-initiated OpenAI meal-photo analysis; and public Apple App Store and
   Google Play distribution.
 - Accounts must never be required for core features. IndexedDB remains the
   local source of truth, and cloud backup must not become realtime multi-device

@@ -18,6 +18,10 @@ import { initializeAppData } from '@services/appInitializationService'
 import { backupService } from '@services/backupService'
 import { accountService } from '@services/accountService'
 import { cloudSyncService } from '@services/cloudSyncService'
+import {
+  readCurrentLegalAcceptance,
+  saveCurrentLegalAcceptance,
+} from '@services/legalAcceptanceService'
 import * as nativeTimerNotifications from '@services/nativeRestTimerNotificationService'
 import * as webPushTimerNotifications from '@services/webPushRestTimerNotificationService'
 import { seedFood } from '@test/seedFactories'
@@ -54,6 +58,8 @@ const mockCloudSyncService = vi.mocked(cloudSyncService)
 const mockAccountService = vi.mocked(accountService)
 
 beforeEach(async () => {
+  window.localStorage.clear()
+  saveCurrentLegalAcceptance('2026-08-20T18:30:00.000Z')
   authHookMocks.signIn.mockReset()
   authHookMocks.signInWithApple.mockReset()
   authHookMocks.signOut.mockReset()
@@ -696,6 +702,43 @@ describe('SettingsPage', () => {
     ).toBeVisible()
   })
 
+  it('shows the Apple authorization-removal step after Apple account deletion', async () => {
+    const user = userEvent.setup()
+    mockAccountService.deleteAccount.mockResolvedValueOnce({
+      providerRevocation: 'manual_apple',
+    })
+    authHookMocks.useAuth.mockReturnValue({
+      signIn: authHookMocks.signIn,
+      signInWithApple: authHookMocks.signInWithApple,
+      signOut: authHookMocks.signOut,
+      status: 'signedIn',
+      user: { email: 'person@example.com', id: 'user-1' },
+    })
+    renderSettings()
+
+    await user.click(await screen.findByRole('button', { name: 'Data' }))
+    await user.click(screen.getByRole('button', { name: 'Delete account' }))
+    const dialog = screen.getByRole('dialog', {
+      name: 'Permanently delete account?',
+    })
+    expect(dialog).toHaveTextContent(
+      "Vigorune will provide Apple's manual authorization-removal steps",
+    )
+    await user.type(
+      within(dialog).getByLabelText('Confirmation'),
+      'DELETE ACCOUNT',
+    )
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Delete account' }),
+    )
+
+    expect(
+      await screen.findByRole('link', {
+        name: "Open Apple's Sign in with Apple removal steps",
+      }),
+    ).toHaveAttribute('href', 'https://support.apple.com/102571')
+  })
+
   it('previews validation errors for malformed restore files without changing data', async () => {
     const user = userEvent.setup()
     const food = await seedFood(db)
@@ -748,6 +791,7 @@ describe('SettingsPage', () => {
     await expect(
       settingsRepository.getGeminiApiKeySettings(),
     ).resolves.toBeUndefined()
+    expect(readCurrentLegalAcceptance()).toBeNull()
   })
 
   it('excludes integration API keys from JSON backups and CSV exports', async () => {

@@ -25,6 +25,7 @@ import {
 } from '@repositories/exerciseRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
 import { initializeAppData } from '@services/appInitializationService'
+import { saveCurrentLegalAcceptance } from '@services/legalAcceptanceService'
 import { nativeRestTimerNotificationService } from '@services/nativeRestTimerNotificationService'
 import { seedExercise, seedProgram, testLocalDate } from '@test/seedFactories'
 
@@ -32,6 +33,8 @@ const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
 const scrollIntoViewMock = vi.fn()
 
 beforeEach(async () => {
+  window.localStorage.clear()
+  saveCurrentLegalAcceptance('2026-08-20T18:30:00.000Z')
   scrollIntoViewMock.mockClear()
   Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
     configurable: true,

@@ -1,15 +1,27 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 
-test('publishes privacy, deletion, and support information without sign-in', async ({
+test('publishes legal, deletion, and support information without sign-in', async ({
   page,
 }) => {
+  await page.goto('/terms')
+  await expect(
+    page.getByRole('heading', { name: 'Vigorune Terms of Use' }),
+  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: '22. Contact' })).toBeVisible()
+
   await page.goto('/privacy')
   await expect(
-    page.getByRole('heading', { name: 'Privacy Policy' }),
+    page.getByRole('heading', { name: 'Vigorune Privacy Policy' }),
   ).toBeVisible()
+  await expect(page.getByRole('heading', { name: '14. Contact' })).toBeVisible()
+
+  await page.goto('/consumer-health-data-privacy')
   await expect(
-    page.getByText(/Supabase processes your identity/i),
+    page.getByRole('heading', {
+      name: 'Vigorune Consumer Health Data Privacy Policy',
+    }),
   ).toBeVisible()
+  await expect(page.getByRole('heading', { name: '11. Contact' })).toBeVisible()
 
   await page.goto('/account-deletion')
   await expect(

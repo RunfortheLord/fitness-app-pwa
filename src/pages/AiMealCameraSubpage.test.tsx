@@ -18,6 +18,8 @@ vi.mock('@services/mealAnalysisClient', async (importOriginal) => {
 })
 
 const mockAnalyzeMealPhoto = vi.mocked(analyzeMealPhoto)
+const openAiConsentLabel =
+  'I agree to send these photos and any note to OpenAI for this analysis.'
 let originalMediaDevices: MediaDevices
 let play: ReturnType<typeof vi.spyOn>
 let videoWidth: ReturnType<typeof vi.spyOn>
@@ -105,9 +107,26 @@ describe('AiMealCameraSubpage', () => {
       new File(['photo'], 'meal.png', { type: 'image/png' }),
     )
 
-    await user.click(
-      await screen.findByRole('button', { name: 'Analyze meal' }),
-    )
+    const analyzeButton = await screen.findByRole('button', {
+      name: 'Analyze meal',
+    })
+    expect(
+      screen.getByText(
+        /sends the selected meal photos and optional note.*to OpenAI/i,
+      ),
+    ).toBeVisible()
+    expect(
+      screen.getByText(
+        /abuse-monitoring data may be retained for up to 30 days/i,
+      ),
+    ).toBeVisible()
+    expect(analyzeButton).toBeDisabled()
+    await user.click(analyzeButton)
+    expect(mockAnalyzeMealPhoto).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('checkbox', { name: openAiConsentLabel }))
+    expect(analyzeButton).toBeEnabled()
+    await user.click(analyzeButton)
 
     await waitFor(() =>
       expect(mockAnalyzeMealPhoto).toHaveBeenCalledWith({
@@ -164,6 +183,7 @@ describe('AiMealCameraSubpage', () => {
       screen.getByLabelText('Details for the AI (optional)'),
       '8 oz ribeye cooked in butter',
     )
+    await user.click(screen.getByRole('checkbox', { name: openAiConsentLabel }))
     await user.click(screen.getByRole('button', { name: 'Analyze meal' }))
 
     await waitFor(() =>
@@ -187,6 +207,7 @@ describe('AiMealCameraSubpage', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Take meal photo' }),
     )
+    await user.click(screen.getByRole('checkbox', { name: openAiConsentLabel }))
     await user.click(
       await screen.findByRole('button', { name: 'Analyze meal' }),
     )
@@ -212,6 +233,7 @@ describe('AiMealCameraSubpage', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Take meal photo' }),
     )
+    await user.click(screen.getByRole('checkbox', { name: openAiConsentLabel }))
     await user.click(
       await screen.findByRole('button', { name: 'Analyze meal' }),
     )
@@ -221,5 +243,32 @@ describe('AiMealCameraSubpage', () => {
     await waitFor(() => expect(onBack).toHaveBeenCalledTimes(1), {
       timeout: 3_500,
     })
+  })
+
+  it('requires fresh consent after the note changes', async () => {
+    const user = userEvent.setup()
+
+    render(<AiMealCameraSubpage onAnalyzed={vi.fn()} onBack={vi.fn()} />)
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Take meal photo' }),
+    )
+    const consent = screen.getByRole('checkbox', {
+      name: openAiConsentLabel,
+    })
+    const analyzeButton = screen.getByRole('button', { name: 'Analyze meal' })
+
+    await user.click(consent)
+    expect(consent).toBeChecked()
+    expect(analyzeButton).toBeEnabled()
+
+    await user.type(
+      screen.getByLabelText('Details for the AI (optional)'),
+      'Cooked in butter',
+    )
+
+    expect(consent).not.toBeChecked()
+    expect(analyzeButton).toBeDisabled()
+    expect(mockAnalyzeMealPhoto).not.toHaveBeenCalled()
   })
 })

@@ -7,6 +7,7 @@ import { App } from '@app/App'
 import { AppLaunchScreen } from '@app/AppLaunchScreen'
 import { HomePage } from '@pages/HomePage'
 import { workoutRepository } from '@repositories/workoutRepository'
+import { saveCurrentLegalAcceptance } from '@services/legalAcceptanceService'
 import type { Workout } from '@shared-types/app'
 
 const appShellMocks = vi.hoisted(() => ({
@@ -38,6 +39,7 @@ vi.mock('@services/automaticCloudBackupService', () => ({
 
 beforeEach(() => {
   window.localStorage.clear()
+  saveCurrentLegalAcceptance('2026-08-20T18:30:00.000Z')
   appShellMocks.automaticBackupStart.mockReset()
   appShellMocks.automaticBackupStart.mockReturnValue(() => undefined)
   appShellMocks.preloadRoutePages.mockReset()
