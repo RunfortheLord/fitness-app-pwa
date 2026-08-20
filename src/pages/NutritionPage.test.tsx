@@ -279,6 +279,11 @@ describe('NutritionPage', () => {
         await screen.findByRole('button', { name: 'Take meal photo' }),
       )
       await user.click(
+        screen.getByRole('checkbox', {
+          name: 'I agree to send these photos and any note to OpenAI for this analysis.',
+        }),
+      )
+      await user.click(
         await screen.findByRole('button', { name: 'Analyze meal' }),
       )
 
@@ -347,6 +352,11 @@ describe('NutritionPage', () => {
       )
       await user.click(
         await screen.findByRole('button', { name: 'Take meal photo' }),
+      )
+      await user.click(
+        screen.getByRole('checkbox', {
+          name: 'I agree to send these photos and any note to OpenAI for this analysis.',
+        }),
       )
       await user.click(
         await screen.findByRole('button', { name: 'Analyze meal' }),
