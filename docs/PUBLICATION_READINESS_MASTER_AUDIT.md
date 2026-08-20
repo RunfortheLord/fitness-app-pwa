@@ -26,49 +26,49 @@ detached `6fc03e6`; **no task reached its "commit only after checks pass" step**
 so **no checks were run and nothing is committed**. `codex/cloud-backup-opt-in`
 is a branch label but it also points at `6fc03e6` with the work uncommitted.
 
-| WT | Task | Deliverable | Repo change | Checks |
-|----|------|-------------|-------------|--------|
-| `26ac` | **#2 Entitlements & Trial Engine** | `domain/entitlements.ts` (+369) & tests (+273), `server/entitlementSession*` (+ route), `api/entitlements/session.ts`, Supabase migration `202608190001_subscription_entitlement_foundation.sql` (+344) | New files, +343 to schema | Not run |
-| `e8a4` | **#3 Auth vs Optional Backup** | Decouples auto-backup from sign-in: `cloudBackupPreferenceRepository`, `useCloudBackupEnabled`, edits across backup/cloud/nutrition services + 8 docs | 30 files, +530/−86 | Not run |
-| `97e5` | **#5 Mandatory Login & Locked Mode** | `AccessBoundary.tsx` (+475), `accessEligibilityService.ts` (+232), `RestrictedAccessPages.tsx` (+268), `accessControlConfig.ts`, router/AppShell/Settings/backup gating | 14 files, +1,237/−76 | Not run |
-| `8b16` | **#6 Age 13+ Compliance** | `AGE_ELIGIBILITY_AND_MINOR_PRIVACY.md` (+814) + APP_STORE_METADATA/RELEASE_AUDIT edits | 3 files, +836 | Not run (docs) |
-| `6c05` | **#8 Deletion vs Subscription** | `ACCOUNT_DELETION_AND_SUBSCRIPTION_AUDIT.md` (+585) + PublicInformationPages copy/tests, metadata/audit edits | 5 files, +667/−29 | Not run |
-| `50ee` | **#9 Privacy & Health Data** | `docs/legal/PRIVACY_POLICY_DRAFT.md` (+512), `docs/legal/CONSUMER_HEALTH_DATA_PRIVACY_POLICY_DRAFT.md` (+312) | 2 new docs | N/A (docs) |
-| `30d9` | **#10 Terms, EULA & Counsel** | `docs/TERMS_OF_USE_WORKING_DRAFT.md` (+1,142) | 1 new doc | N/A (docs) |
-| `0100`,`5614`,`8a35`,`8cb0` | **#1 Entity/LLC · #4 Subscription Value · #7 Territories/Auto-Renewal · #11 Auditor** | Research memos delivered **in-chat only** — no repo edits | Clean worktrees | N/A |
+| WT                          | Task                                                                                  | Deliverable                                                                                                                                                                                             | Repo change               | Checks         |
+| --------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | -------------- |
+| `26ac`                      | **#2 Entitlements & Trial Engine**                                                    | `domain/entitlements.ts` (+369) & tests (+273), `server/entitlementSession*` (+ route), `api/entitlements/session.ts`, Supabase migration `202608190001_subscription_entitlement_foundation.sql` (+344) | New files, +343 to schema | Not run        |
+| `e8a4`                      | **#3 Auth vs Optional Backup**                                                        | Decouples auto-backup from sign-in: `cloudBackupPreferenceRepository`, `useCloudBackupEnabled`, edits across backup/cloud/nutrition services + 8 docs                                                   | 30 files, +530/−86        | Not run        |
+| `97e5`                      | **#5 Mandatory Login & Locked Mode**                                                  | `AccessBoundary.tsx` (+475), `accessEligibilityService.ts` (+232), `RestrictedAccessPages.tsx` (+268), `accessControlConfig.ts`, router/AppShell/Settings/backup gating                                 | 14 files, +1,237/−76      | Not run        |
+| `8b16`                      | **#6 Age 13+ Compliance**                                                             | `AGE_ELIGIBILITY_AND_MINOR_PRIVACY.md` (+814) + APP_STORE_METADATA/RELEASE_AUDIT edits                                                                                                                  | 3 files, +836             | Not run (docs) |
+| `6c05`                      | **#8 Deletion vs Subscription**                                                       | `ACCOUNT_DELETION_AND_SUBSCRIPTION_AUDIT.md` (+585) + PublicInformationPages copy/tests, metadata/audit edits                                                                                           | 5 files, +667/−29         | Not run        |
+| `50ee`                      | **#9 Privacy & Health Data**                                                          | `docs/legal/PRIVACY_POLICY_DRAFT.md` (+512), `docs/legal/CONSUMER_HEALTH_DATA_PRIVACY_POLICY_DRAFT.md` (+312)                                                                                           | 2 new docs                | N/A (docs)     |
+| `30d9`                      | **#10 Terms, EULA & Counsel**                                                         | `docs/TERMS_OF_USE_WORKING_DRAFT.md` (+1,142)                                                                                                                                                           | 1 new doc                 | N/A (docs)     |
+| `0100`,`5614`,`8a35`,`8cb0` | **#1 Entity/LLC · #4 Subscription Value · #7 Territories/Auto-Renewal · #11 Auditor** | Research memos delivered **in-chat only** — no repo edits                                                                                                                                               | Clean worktrees           | N/A            |
 
 ## 2. Master matrix
 
-| Task | Outcome | Files / location | Merge dependency | Unresolved blocker | Next action |
-|------|---------|------------------|------------------|--------------------|-------------|
-| #1 Entity/LLC | Memo: form single-member LLC before paid launch; TX specifics ($300, registered agent, franchise report, EIN) | in-chat | none (owner action) | **Owner state of residence/operation**; LLC vs personal | Owner decides entity; blocks contact fields in #9/#10 |
-| #2 Entitlements | **Strong.** Provider-neutral engine: providers `apple/google_play/web`; statuses `pending/active_paid/grace/on_hold/expired/refunded/revoked`; trial/complimentary/offline-lease; capability gates `legal/auth/billing/account/export/fitness`; Supabase migration + tests | `26ac` | **Foundation — merge first** | Checks unrun; no provider adapters wired (by design) | Run checks in worktree; land as base for #5 |
-| #3 Cloud opt-in | Decouples automatic cloud backup from sign-in (backup only after separate opt-in) | `e8a4` | **Prerequisite for #5 & Privacy claims** | Checks unrun; existing-user migration rule | Verify, then land before #5 |
-| #4 Subscription value | Memo: model defensible **only if** build delivers operated online services + maintained full-app access (Apple §3.1.2 ongoing-value risk) | in-chat | none | Owner must define ongoing value | Owner articulates monthly value |
-| #5 Locked mode | Route/state boundary; signed-out/locked users limited to auth/paywall/legal/support/account/export; fail-closed; default-OFF flag; pauses (never deletes) active workout | `97e5` | **Consumes #2; overlaps #3 heavily** | Checks unrun; depends on #2 interface + #3 backup decoupling | Rebase onto #2+#3, resolve overlaps, test |
-| #6 Age 13+ | Spec: platform age signals + neutral DOB fallback (retain only band) + guardian path 13–17 + 18+ fallback; flags "checkbox+Terms ≠ compliance" | `8b16` | doc-merge only | Owner age-flow choice; PB-18 | Owner picks age model; feed into #9/#10 |
-| #7 Territories | Memo: CA BPC §17602, IL 815 ILCS 601 auto-renewal disclosure/cancel duties; scope depends on launch territories | in-chat | none | **Launch territories** | Owner picks territories (rec: US-only first) |
-| #8 Deletion | State machine: account deletion ≠ store cancellation (Apple/Google); immediate-delete option required; web-billing period-end cancel recommendation; record retention | `6c05` | doc + small copy edits | Web-deletion→cancel policy owner choice | Reconcile copy with #5 restricted routes |
-| #9 Privacy & Health | Two drafts (general + WA/NV consumer-health); marked DO NOT PUBLISH; PB-01 contact, PB-02/18 age, PB-03 implement-first, PB-13 WA/NV applicability | `50ee` | doc; depends on #3 truth ("stays local") | Same owner inputs; counsel WA/NV | Fill placeholders after entity/territory |
-| #10 Terms/EULA | Working draft w/ explicit current-vs-target boundary; all `[[PUBLICATION BLOCKER]]` markers intact; not for `/terms` yet | `30d9` | doc; consumes all owner decisions | Every open owner input + counsel | Finalize after decisions + counsel |
-| #11 Auditor | **This document** | `docs/PUBLICATION_READINESS_MASTER_AUDIT.md` | — | — | Owner reviews & directs integration |
+| Task                  | Outcome                                                                                                                                                                                                                                                                    | Files / location                             | Merge dependency                         | Unresolved blocker                                           | Next action                                           |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------- |
+| #1 Entity/LLC         | Memo: form single-member LLC before paid launch; TX specifics ($300, registered agent, franchise report, EIN)                                                                                                                                                              | in-chat                                      | none (owner action)                      | **Owner state of residence/operation**; LLC vs personal      | Owner decides entity; blocks contact fields in #9/#10 |
+| #2 Entitlements       | **Strong.** Provider-neutral engine: providers `apple/google_play/web`; statuses `pending/active_paid/grace/on_hold/expired/refunded/revoked`; trial/complimentary/offline-lease; capability gates `legal/auth/billing/account/export/fitness`; Supabase migration + tests | `26ac`                                       | **Foundation — merge first**             | Checks unrun; no provider adapters wired (by design)         | Run checks in worktree; land as base for #5           |
+| #3 Cloud opt-in       | Decouples automatic cloud backup from sign-in (backup only after separate opt-in)                                                                                                                                                                                          | `e8a4`                                       | **Prerequisite for #5 & Privacy claims** | Checks unrun; existing-user migration rule                   | Verify, then land before #5                           |
+| #4 Subscription value | Memo: model defensible **only if** build delivers operated online services + maintained full-app access (Apple §3.1.2 ongoing-value risk)                                                                                                                                  | in-chat                                      | none                                     | Owner must define ongoing value                              | Owner articulates monthly value                       |
+| #5 Locked mode        | Route/state boundary; signed-out/locked users limited to auth/paywall/legal/support/account/export; fail-closed; default-OFF flag; pauses (never deletes) active workout                                                                                                   | `97e5`                                       | **Consumes #2; overlaps #3 heavily**     | Checks unrun; depends on #2 interface + #3 backup decoupling | Rebase onto #2+#3, resolve overlaps, test             |
+| #6 Age 13+            | Spec: platform age signals + neutral DOB fallback (retain only band) + guardian path 13–17 + 18+ fallback; flags "checkbox+Terms ≠ compliance"                                                                                                                             | `8b16`                                       | doc-merge only                           | Owner age-flow choice; PB-18                                 | Owner picks age model; feed into #9/#10               |
+| #7 Territories        | Memo: CA BPC §17602, IL 815 ILCS 601 auto-renewal disclosure/cancel duties; scope depends on launch territories                                                                                                                                                            | in-chat                                      | none                                     | **Launch territories**                                       | Owner picks territories (rec: US-only first)          |
+| #8 Deletion           | State machine: account deletion ≠ store cancellation (Apple/Google); immediate-delete option required; web-billing period-end cancel recommendation; record retention                                                                                                      | `6c05`                                       | doc + small copy edits                   | Web-deletion→cancel policy owner choice                      | Reconcile copy with #5 restricted routes              |
+| #9 Privacy & Health   | Two drafts (general + WA/NV consumer-health); marked DO NOT PUBLISH; PB-01 contact, PB-02/18 age, PB-03 implement-first, PB-13 WA/NV applicability                                                                                                                         | `50ee`                                       | doc; depends on #3 truth ("stays local") | Same owner inputs; counsel WA/NV                             | Fill placeholders after entity/territory              |
+| #10 Terms/EULA        | Working draft w/ explicit current-vs-target boundary; all `[[PUBLICATION BLOCKER]]` markers intact; not for `/terms` yet                                                                                                                                                   | `30d9`                                       | doc; consumes all owner decisions        | Every open owner input + counsel                             | Finalize after decisions + counsel                    |
+| #11 Auditor           | **This document**                                                                                                                                                                                                                                                          | `docs/PUBLICATION_READINESS_MASTER_AUDIT.md` | —                                        | —                                                            | Owner reviews & directs integration                   |
 
 ## 3. Conflicts & overlapping changes
 
 Same file touched by multiple worktrees — must be reconciled, not blind-merged:
 
-| File | Tasks | Nature |
-|------|-------|--------|
-| `src/pages/PublicInformationPages.tsx` | #3, #5, #8 | 3-way: restricted-route copy (#5), backup wording (#3), deletion warning (#8) |
-| `docs/APP_STORE_METADATA.md` | #3, #6, #8 | 3-way doc: backup, age rating, deletion metadata |
-| `src/components/AppShell.tsx` | #3, #5 | Sign-in→backup default (#3) vs access gate (#5) |
-| `src/services/backupService.ts` | #3, #5 | Backup opt-in (#3) vs export-without-mutation gate (#5) |
-| `src/services/dailyNutritionCloudService.ts` | #3, #5 | Same seam |
-| `src/pages/SettingsPage.tsx` | #3, #5 | Backup toggle (#3) vs locked settings (#5) |
-| `src/pages/PublicInformationPages.test.tsx` | #3, #8 | Test edits collide |
-| `docs/RELEASE_AUDIT.md` | #6, #8 | Doc append collide |
+| File                                         | Tasks      | Nature                                                                        |
+| -------------------------------------------- | ---------- | ----------------------------------------------------------------------------- |
+| `src/pages/PublicInformationPages.tsx`       | #3, #5, #8 | 3-way: restricted-route copy (#5), backup wording (#3), deletion warning (#8) |
+| `docs/APP_STORE_METADATA.md`                 | #3, #6, #8 | 3-way doc: backup, age rating, deletion metadata                              |
+| `src/components/AppShell.tsx`                | #3, #5     | Sign-in→backup default (#3) vs access gate (#5)                               |
+| `src/services/backupService.ts`              | #3, #5     | Backup opt-in (#3) vs export-without-mutation gate (#5)                       |
+| `src/services/dailyNutritionCloudService.ts` | #3, #5     | Same seam                                                                     |
+| `src/pages/SettingsPage.tsx`                 | #3, #5     | Backup toggle (#3) vs locked settings (#5)                                    |
+| `src/pages/PublicInformationPages.test.tsx`  | #3, #8     | Test edits collide                                                            |
+| `docs/RELEASE_AUDIT.md`                      | #6, #8     | Doc append collide                                                            |
 
-**Conceptual conflict (most important):** #3 and #5 both assume the *other's*
+**Conceptual conflict (most important):** #3 and #5 both assume the _other's_
 change. #5's Privacy/UX story ("sign-in doesn't upload data") is only true once
 #3 lands; #3's backup toggle must live behind #5's locked-settings rule. They
 must integrate together, on top of #2's entitlement types.
@@ -133,7 +133,7 @@ store config, and counsel are done.
 
 **Current release (local-first, free, optional auth):** **CONDITIONALLY READY —
 pending counsel.** The app itself is largely intact and all subscription work is
-quarantined. The gating items to publish *with Terms* are: (a) no `/terms` route
+quarantined. The gating items to publish _with Terms_ are: (a) no `/terms` route
 or affirmative clickwrap assent exists, (b) public support contact is a
 placeholder, (c) Privacy disclosure gaps (feedback destination, push/QStash,
 consumer-health rights), (d) entity/contact fields, and (e) counsel review. It is
@@ -149,7 +149,7 @@ are explicitly `DO NOT PUBLISH`. This track becomes **READY FOR COUNSEL/STORE
 REVIEW** only after Section 5 integration passes checks, the Section 6 decisions
 are made, provider/store configuration is real, and qualified counsel signs off.
 
-*Never represented as legally risk-free or publishable without qualified counsel.*
+_Never represented as legally risk-free or publishable without qualified counsel._
 
 ---
 
@@ -162,6 +162,7 @@ and reconciled via six follow-up worktrees; then the legal docs were re-generali
 from the initial US-only/13+ assumption to worldwide/18+.
 
 ### Deliverables now in this repo (docs-only, all marked DO NOT PUBLISH / draft)
+
 - `docs/TERMS_OF_USE_WORKING_DRAFT.md` — worldwide, 18+, store-only billing; Part A current-release / Part B subscription rider / Apple-Google compliance maps.
 - `docs/legal/PRIVACY_POLICY_DRAFT.md` — + full EEA/UK GDPR layer (Art. 9 explicit consent, Art. 6 basis table, DSR, transfers) over the US layer (FTC HBNR, WA/NV).
 - `docs/legal/CONSUMER_HEALTH_DATA_PRIVACY_POLICY_DRAFT.md` — WA MHMD / NV SB370.
@@ -169,16 +170,19 @@ from the initial US-only/13+ assumption to worldwide/18+.
 - `docs/AGE_ELIGIBILITY_AND_MINOR_PRIVACY.md` — 18+ launch; full 13+/guardian design kept as a labeled FUTURE appendix.
 
 ### Not yet integrated (held for owner approval)
+
 - **Code branch `worktree-agent-a57a4c255a4a2c770` (head `def47d7`)** — entitlement engine (#2) + sign-in/backup decoupling (#3) + locked-mode (#5), behind a **default-OFF** `VITE_ACCESS_CONTROL_ENABLED` flag. **Checks green: typecheck/lint/build pass, tests 973/973.** Merging needs a small `PublicInformationPages.tsx` + `docs/APP_STORE_METADATA.md` reconciliation. Awaiting owner go.
 - Globalized `APP_STORE_METADATA.md` / `RELEASE_AUDIT.md` edits (in branch `a04a0f51`) deferred to that same merge step to avoid a double conflict.
 
 ### Blocker register (net, after globalization)
+
 - **Closed by decision:** territories (worldwide), age floor (18+ → COPPA/GDPR-Art.8/TASAA-SCOPE/UK-AADC off the launch surface), EULA path (Apple Standard EULA + service Terms), billing model (store-only).
 - **Newly opened by worldwide:** **published geographic trader address** (now required by EU/UK distance-selling law, not just Apple) — most load-bearing; **EU + UK Art. 27 representatives** (paid appointments, or geofence out EEA/UK); **processor DPAs + SCC/IDTA transfer mechanism**; confirmation that store purchase flows capture EU/UK withdrawal-right consent + easy-cancellation.
 - **Still open:** dispute forum (TX court vs arbitration), venue county, ongoing-subscription-value statement (Apple §3.1.2). **Deferred (not launch):** all Stripe/web-billing + 13–17 minor items.
 
 ### Verdict (updated)
+
 - **Current free release:** CONDITIONALLY READY pending counsel — plus a `/terms` route + clickwrap (the code branch adds this) and the address/contact items.
 - **Subscription target (worldwide, 18+, store-only):** NOT READY — becomes READY FOR COUNSEL/STORE REVIEW only after: code branch merged + billing adapters implemented + Apple/Google products configured; trader address + EU/UK representatives secured; DPAs signed; counsel review. The engineering foundation is done and green; the gating work is now legal-entity/representative/store-config, not core code.
 
-*Never represented as legally risk-free or publishable without qualified counsel.*
+_Never represented as legally risk-free or publishable without qualified counsel._

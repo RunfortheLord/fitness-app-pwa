@@ -59,13 +59,13 @@ These are the owner's current working decisions as of 2026-08-19. They resolve
 some prior placeholders but do not close the legal blockers, which still require
 counsel.
 
-| Fact                      | Decision                                                | Effect on this spec                                                                                                                                                                                                                       |
-| ------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Operating entity          | Individual / sole proprietor (no LLC formed)            | The operator in Terms/Privacy is a natural person, not a company. `[LEGAL_ENTITY_NAME_AND_ADDRESS]` resolves to the individual's legal name; the published business address remains `[[PUBLICATION BLOCKER: published contact address]]`. |
-| Jurisdiction of operation | Texas, USA                                              | Governing-law placeholder trends toward Texas, subject to mandatory consumer/data-protection rules where users live. The Texas minor statutes below are **not triggered by the 18+ launch** and apply only to the deferred teen tier.        |
-| Launch territories        | **WORLDWIDE** (supersedes US-only)                      | `[[PUBLICATION BLOCKER: counsel confirms worldwide storefront set + exclusions]]`. Worldwide reach would multiply minor-law regimes for a teen tier (GDPR Art. 8, UK AADC, US state laws) — another reason the launch is 18+ adults-only. The **adult** age-assurance obligation still applies worldwide. |
-| Age policy (launch)       | **18+ adults-only** (supersedes 13+)                    | Launch excludes all minors; no COPPA / GDPR Art. 8 / TASAA-SCOPE / UK AADC minor lane is built. The 13+ model in this document is retained as **future, not-launch** design.                                                                 |
-| Public contact            | `adamshugart31@gmail.com`                               | Resolves `[SUPPORT_EMAIL]` / `[PRIVACY_CONTACT]` for published legal copy. No home address or personal phone is published.                                                                                                                |
+| Fact                      | Decision                                     | Effect on this spec                                                                                                                                                                                                                                                                                       |
+| ------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Operating entity          | Individual / sole proprietor (no LLC formed) | The operator in Terms/Privacy is a natural person, not a company. `[LEGAL_ENTITY_NAME_AND_ADDRESS]` resolves to the individual's legal name; the published business address remains `[[PUBLICATION BLOCKER: published contact address]]`.                                                                 |
+| Jurisdiction of operation | Texas, USA                                   | Governing-law placeholder trends toward Texas, subject to mandatory consumer/data-protection rules where users live. The Texas minor statutes below are **not triggered by the 18+ launch** and apply only to the deferred teen tier.                                                                     |
+| Launch territories        | **WORLDWIDE** (supersedes US-only)           | `[[PUBLICATION BLOCKER: counsel confirms worldwide storefront set + exclusions]]`. Worldwide reach would multiply minor-law regimes for a teen tier (GDPR Art. 8, UK AADC, US state laws) — another reason the launch is 18+ adults-only. The **adult** age-assurance obligation still applies worldwide. |
+| Age policy (launch)       | **18+ adults-only** (supersedes 13+)         | Launch excludes all minors; no COPPA / GDPR Art. 8 / TASAA-SCOPE / UK AADC minor lane is built. The 13+ model in this document is retained as **future, not-launch** design.                                                                                                                              |
+| Public contact            | `adamshugart31@gmail.com`                    | Resolves `[SUPPORT_EMAIL]` / `[PRIVACY_CONTACT]` for published legal copy. No home address or personal phone is published.                                                                                                                                                                                |
 
 The owner must not publish a home address or personal phone number. Where a
 physical contact address is legally required (for example, some store-console
@@ -687,7 +687,7 @@ target and must not be published against the current release.
 
 > The Service is provided by Adam Shugart, an individual (sole proprietor)
 > operating from Texas, USA `[[PUBLICATION BLOCKER: published geographic trader
-> address — required for EU/UK worldwide distance selling; no home address]]`.
+address — required for EU/UK worldwide distance selling; no home address]]`.
 > Questions may be sent to adamshugart31@gmail.com. These Terms take effect
 > `[EFFECTIVE_DATE]` and are governed by the laws of the State of Texas and the
 > United States `[GOVERNING_LAW_AND_FORUM — confirm venue]`, subject to the
