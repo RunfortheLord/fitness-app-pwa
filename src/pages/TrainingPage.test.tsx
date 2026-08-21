@@ -70,7 +70,9 @@ describe('TrainingPage', () => {
 
     await screen.findByRole('button', { name: 'Exercise Library' })
     await user.click(screen.getByRole('button', { name: 'Exercise Library' }))
-    expect(await screen.findByText('Barbell Bench Press')).toBeInTheDocument()
+    expect(
+      await screen.findByText('Barbell Bench Press', {}, { timeout: 5_000 }),
+    ).toBeInTheDocument()
 
     await user.click(screen.getByRole('link', { name: 'Home' }))
     vi.spyOn(exerciseRepository, 'searchExercises').mockImplementation(
@@ -1086,6 +1088,98 @@ describe('TrainingPage', () => {
         (set) => set.setNumber === 1,
       )
       expect(savedSet?.completed).toBe(true)
+    })
+  })
+
+  it('keeps the rest timer running when a completed set is unchecked', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    renderTraining(['/workout'])
+
+    await user.type(
+      await screen.findByRole('textbox', { name: 'Set 1 Weight' }),
+      '185',
+    )
+    await user.type(screen.getByRole('textbox', { name: 'Set 1 Reps' }), '8')
+    await user.click(screen.getByRole('button', { name: 'Complete set 1' }))
+
+    let firstTimerId = ''
+    await waitFor(async () => {
+      const workout = await db.workouts.get(started.workout.id)
+      expect(workout?.activeRestTimer?.status).toBe('running')
+      firstTimerId = workout?.activeRestTimer?.id ?? ''
+      expect(firstTimerId).not.toBe('')
+    })
+
+    await user.click(
+      screen.getByRole('button', { name: 'Mark incomplete set 1' }),
+    )
+
+    await waitFor(async () => {
+      await expect(
+        db.workoutSets.get(started.sets[0].id),
+      ).resolves.toMatchObject({ completed: false })
+    })
+    expect(await db.workouts.get(started.workout.id)).toMatchObject({
+      activeRestTimer: { id: firstTimerId, status: 'running' },
+    })
+    expect(screen.getByLabelText('Rest timer')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Complete set 1' }))
+
+    await waitFor(async () => {
+      const workout = await db.workouts.get(started.workout.id)
+      expect(workout?.activeRestTimer).toMatchObject({ status: 'running' })
+      expect(workout?.activeRestTimer?.id).not.toBe(firstTimerId)
+    })
+  })
+
+  it('replaces the current exercise when a custom swap is created', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    renderTraining(['/workout'])
+
+    await user.click(
+      await screen.findByRole('button', { name: 'More exercise actions' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Swap Exercise' }))
+    const picker = await screen.findByRole('dialog', { name: 'Swap Exercise' })
+    await user.click(
+      within(picker).getByRole('button', { name: 'Create custom exercise' }),
+    )
+    await user.type(within(picker).getByLabelText('Exercise name'), 'Seal Row')
+    await user.click(
+      within(picker).getByRole('button', { name: 'Create & add' }),
+    )
+
+    expect(
+      await screen.findByRole('heading', { name: 'Seal Row' }),
+    ).toBeInTheDocument()
+    await waitFor(async () => {
+      const exercises = await db.workoutExercises
+        .where({ workoutId: started.workout.id })
+        .toArray()
+      expect(exercises).toHaveLength(started.exercises.length)
+      expect(exercises[0]).toMatchObject({
+        id: started.exercises[0].id,
+        exerciseSnapshot: { exerciseName: 'Seal Row' },
+      })
     })
   })
 

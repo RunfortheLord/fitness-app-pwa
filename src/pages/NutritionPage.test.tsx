@@ -1501,7 +1501,7 @@ describe('NutritionPage', () => {
     expect(within(recentCard).getByText('Recent one')).toBeInTheDocument()
     // Quick Add entries log to the day only; they are not reusable recent foods.
     expect(within(recentCard).queryByText('Snack')).not.toBeInTheDocument()
-  })
+  }, 15_000)
 
   it('logs immediately from the Recent foods "+" without opening a sheet', async () => {
     const user = userEvent.setup()

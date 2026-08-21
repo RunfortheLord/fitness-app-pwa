@@ -10,6 +10,18 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-08-21-live-workout-exercise-and-timer-fixes',
+    date: '2026-08-21',
+    title: 'Live workout swaps and timers are more reliable',
+    items: [
+      'Changing a running rest duration now keeps the time already elapsed instead of restarting the countdown.',
+      'Unchecking a completed set now leaves the current rest timer running until another set is completed.',
+      'Exercises added during a live workout now open with a usable set immediately.',
+      'Swapping to an exercise you have completed before restores its prior set count and recorded values for editing.',
+      'History returns to all programs after you exit a workout detail, and navigation labels no longer become selected during taps.',
+    ],
+  },
+  {
     id: '2026-08-17-maintenance-and-powerbuilding-program',
     date: '2026-08-17',
     title: 'Targets and programs are clearer',

@@ -61,7 +61,8 @@ foreign-key ID fields and sort indexes.
   `smart_progression`; controls how completed exercise history prefills new
   workout sets
 - `historySortMode`: `recent` by default, or `program`
-- `historyProgramId`: nullable persisted program drilldown identifier
+- `historyProgramId`: nullable persisted program drilldown identifier; cleared
+  when the user exits a workout detail back to By program
 - `createdAt`
 - `updatedAt`
 

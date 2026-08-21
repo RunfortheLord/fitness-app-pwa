@@ -48,7 +48,7 @@ import { RestWheelPicker } from '@components/WheelPicker'
 import { useLanguage } from '@components/languageContextValue'
 import {
   getRestTimerRemainingSeconds,
-  restartRestTimerWithDuration,
+  updateRestTimerDuration,
 } from '@domain/restTimer'
 import { DEFAULT_TIMER_SOUND_ID, preloadTimerSound } from '@domain/timerSounds'
 import { buildSetMetricPropagationUpdates } from '@domain/setPropagation'
@@ -619,7 +619,7 @@ export function LiveWorkoutPage() {
     const exerciseId = activeExercise.exerciseId
     const workoutExerciseId = activeExercise.id
     const workoutId = readyState.workout.id
-    const shouldRestartTimer = Boolean(
+    const shouldUpdateTimer = Boolean(
       readyState.workout.activeRestTimer &&
       readyState.workout.activeRestTimer.status !== 'dismissed',
     )
@@ -633,8 +633,8 @@ export function LiveWorkoutPage() {
         workout: {
           ...current.workout,
           activeRestTimer:
-            shouldRestartTimer && current.workout.activeRestTimer
-              ? restartRestTimerWithDuration(
+            shouldUpdateTimer && current.workout.activeRestTimer
+              ? updateRestTimerDuration(
                   current.workout.activeRestTimer,
                   normalizedSeconds,
                   changedAt,
@@ -666,7 +666,7 @@ export function LiveWorkoutPage() {
           normalizedSeconds,
         ),
       ])
-      if (shouldRestartTimer) {
+      if (shouldUpdateTimer) {
         const timer = await workoutRepository.setRestTimerDuration(
           workoutId,
           normalizedSeconds,
@@ -1074,8 +1074,9 @@ export function LiveWorkoutPage() {
             )
             const nextExercise = state.exercises[activeIndex + 1]
             const changedAt = new Date().toISOString()
-            const optimisticTimer =
-              completed && hasMoreSetsInExercise && restSeconds > 0
+            const optimisticTimer = !completed
+              ? state.workout.activeRestTimer
+              : hasMoreSetsInExercise && restSeconds > 0
                 ? {
                     id: crypto.randomUUID(),
                     startedAt: changedAt,
@@ -1128,7 +1129,6 @@ export function LiveWorkoutPage() {
                 .updateWorkoutSet(set.id, { completed })
                 .then(async () => {
                   if (!completed) {
-                    await dismissRestTimerIfPresent(state.workout)
                     return
                   }
                   if (hasMoreSetsInExercise && restSeconds > 0) {
@@ -2322,7 +2322,10 @@ function ExercisePickerSheet({
   const [newName, setNewName] = useState('')
   const [newTrackingMethodId, setNewTrackingMethodId] =
     useState<TrackingMethodId>('weight_reps')
+  const [isChoosing, setIsChoosing] = useState(false)
+  const [isLoadingExercises, setIsLoadingExercises] = useState(false)
   const [lastPicker, setLastPicker] = useState(picker)
+  const selectionInProgressRef = useRef(false)
 
   // Reset the search field each time the picker opens or changes mode. Adjusting
   // state during render (React's recommended alternative to an effect) keeps the
@@ -2334,15 +2337,36 @@ function ExercisePickerSheet({
     setCreating(false)
     setNewName('')
     setNewTrackingMethodId('weight_reps')
+    setIsChoosing(false)
+    setIsLoadingExercises(Boolean(picker))
+    setExercises([])
   }
 
   useEffect(() => {
     if (!picker) {
       return
     }
+    let isCurrent = true
     void exerciseRepository
       .searchExercises({ includeArchived: false, query: '' })
-      .then(setExercises)
+      .then((loaded) => {
+        if (isCurrent) {
+          setExercises(loaded)
+        }
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setError('Exercise library could not be loaded. Try again.')
+        }
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setIsLoadingExercises(false)
+        }
+      })
+    return () => {
+      isCurrent = false
+    }
   }, [picker])
 
   // Only the "add" flow guards against duplicates; replacing intentionally swaps
@@ -2365,14 +2389,14 @@ function ExercisePickerSheet({
       : defaultExerciseResults(exercises)
 
   function choose(exerciseId: string) {
-    if (!picker) {
+    if (!picker || selectionInProgressRef.current) {
       return
     }
     if (blockedExerciseIds.has(exerciseId)) {
       setError('That exercise is already in this workout.')
       return
     }
-    const action =
+    runSelection(() =>
       picker.mode === 'add'
         ? workoutRepository.addExercise({
             workoutId: currentWorkoutId,
@@ -2382,35 +2406,55 @@ function ExercisePickerSheet({
             workoutExerciseId: picker.workoutExerciseId,
             exerciseId,
             keepCompatibleSetValues: false,
-          })
-
-    void action
-      .then((selected) => onSelected(selected.id))
-      .catch((caught: unknown) => {
-        setError(
-          caught instanceof Error ? caught.message : 'Exercise change failed.',
-        )
-      })
+          }),
+    )
   }
 
   function createAndChoose() {
+    if (!picker) {
+      return
+    }
     if (!newName.trim()) {
       setError('Exercise name is required.')
       return
     }
-    void exerciseRepository
-      .createExercise({
+    if (selectionInProgressRef.current) {
+      return
+    }
+    runSelection(async () => {
+      const created = await exerciseRepository.createExercise({
         name: newName,
         defaultRestSeconds: 120,
         trackingMethodId: newTrackingMethodId,
       })
-      .then((created) => choose(created.id))
+      return picker.mode === 'add'
+        ? workoutRepository.addExercise({
+            workoutId: currentWorkoutId,
+            exerciseId: created.id,
+          })
+        : workoutRepository.replaceExercise({
+            workoutExerciseId: picker.workoutExerciseId,
+            exerciseId: created.id,
+            keepCompatibleSetValues: false,
+          })
+    }, 'Custom exercise could not be created.')
+  }
+
+  function runSelection(
+    action: () => Promise<WorkoutExercise>,
+    fallbackError = 'Exercise change failed.',
+  ) {
+    selectionInProgressRef.current = true
+    setIsChoosing(true)
+    setError(null)
+    void action()
+      .then((selected) => onSelected(selected.id))
       .catch((caught: unknown) => {
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : 'Custom exercise could not be created.',
-        )
+        setError(caught instanceof Error ? caught.message : fallbackError)
+      })
+      .finally(() => {
+        selectionInProgressRef.current = false
+        setIsChoosing(false)
       })
   }
 
@@ -2463,8 +2507,13 @@ function ExercisePickerSheet({
             >
               Cancel
             </SecondaryButton>
-            <PrimaryButton type="button" onClick={createAndChoose}>
-              Create &amp; add
+            <PrimaryButton
+              aria-busy={isChoosing}
+              disabled={isChoosing}
+              type="button"
+              onClick={createAndChoose}
+            >
+              {isChoosing ? 'Adding...' : 'Create & add'}
             </PrimaryButton>
           </div>
         </>
@@ -2486,7 +2535,9 @@ function ExercisePickerSheet({
           {picker?.mode === 'replace' ? (
             <>
               <p className="muted">Recommended swaps are shown first.</p>
-              <p className="muted">Swap exercises start blank.</p>
+              <p className="muted">
+                Previous set count and values are filled when available.
+              </p>
             </>
           ) : null}
           <p className="visually-hidden" role="status">
@@ -2497,13 +2548,16 @@ function ExercisePickerSheet({
                 : 'Enter at least two characters to search exercises'}
           </p>
           {error ? <ValidationMessage message={error} /> : null}
-          <div className="exercise-result-list">
+          {isLoadingExercises ? (
+            <LoadingState label="Loading exercises" variant="inline" />
+          ) : null}
+          <div className="exercise-result-list" aria-busy={isChoosing}>
             {results.map((exercise) => {
               const alreadyAdded = blockedExerciseIds.has(exercise.id)
               return (
                 <button
                   className="exercise-result-row"
-                  disabled={alreadyAdded}
+                  disabled={alreadyAdded || isChoosing}
                   key={exercise.id}
                   onClick={() => choose(exercise.id)}
                   type="button"
@@ -2533,6 +2587,7 @@ function ExercisePickerSheet({
           ) : null}
           <SecondaryButton
             className="live-create-exercise-button"
+            disabled={isChoosing || isLoadingExercises}
             type="button"
             onClick={() => {
               setError(null)

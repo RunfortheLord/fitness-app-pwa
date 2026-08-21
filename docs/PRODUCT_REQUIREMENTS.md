@@ -374,7 +374,9 @@
   and runs, with one distinct card per history item.
 - History must offer Most recent and By program organization. By program opens
   a program drilldown that reuses the complete workout detail view. The chosen
-  organization and selected program filter must persist across History visits.
+  organization persists across History visits. Exiting a workout detail while
+  using By program must return to the all-programs list instead of retaining a
+  specific program filter.
 - Selecting a workout history row must open a detail view that includes local workout date, workout name, program and day source when applicable, start time, completion time, duration, exercises, performed sets, weight, reps, RIR, completion status, notes, skipped exercises, and applied or rejected structural changes.
 - Completed run history must include a dedicated run detail view with distance,
   elapsed time, moving time, average moving pace, mile splits, walking/rest

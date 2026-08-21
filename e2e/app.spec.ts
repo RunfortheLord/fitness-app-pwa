@@ -329,6 +329,25 @@ test('bottom navigation has exactly five controls and no History tab', async ({
   await expect(nav.getByRole('link', { name: 'Run' })).toBeVisible()
   await expect(nav.getByRole('link', { name: 'History' })).toHaveCount(0)
   await expect(nav.locator('a,button')).toHaveCount(5)
+  await expect
+    .poll(async () =>
+      Promise.all(
+        [
+          nav.getByRole('link', { name: 'Home' }),
+          nav.getByRole('link', { name: 'Nutrition' }),
+          nav.getByRole('button', { name: 'Open quick actions' }),
+        ].map((control) =>
+          control.evaluate((element) => {
+            const style = getComputedStyle(element)
+            return (
+              style.getPropertyValue('user-select') ||
+              style.getPropertyValue('-webkit-user-select')
+            )
+          }),
+        ),
+      ),
+    )
+    .toEqual(['none', 'none', 'none'])
 
   const beforeScroll = await nav.evaluate((element) => {
     const rect = element.getBoundingClientRect()
@@ -838,8 +857,20 @@ test(
       ),
     }))
     expect(layerOrder.sheet).toBeGreaterThan(layerOrder.sessionBar)
+    await addExerciseSheet.getByLabel('Search exercises').fill('Barbell Curl')
     await addExerciseSheet
-      .getByRole('button', { name: 'Back from add exercise' })
+      .getByRole('button', { name: /Barbell Curl/ })
+      .first()
+      .click()
+    await expect(addExerciseSheet).not.toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: 'Barbell Curl' }),
+    ).toBeVisible()
+    await expect(
+      page.getByRole('textbox', { name: 'Set 1 Reps' }),
+    ).toBeVisible()
+    await page
+      .getByRole('button', { name: 'E2E Live press, exercise 1 of 2' })
       .click()
     await page.getByRole('button', { name: 'Add Set' }).click()
     await expect(

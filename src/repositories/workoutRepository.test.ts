@@ -653,7 +653,7 @@ describe('workoutRepository', () => {
     expect(reloadedAdded?.metricValues.weight).toBe(210)
   })
 
-  it('prefills the first set of a live-added exercise from its history', async () => {
+  it('adds a usable set immediately and restores prior reps', async () => {
     const program = await seedProgram(database)
     const active = await createProgramRepository(database).activateTemplate(
       program.template.id,
@@ -676,9 +676,22 @@ describe('workoutRepository', () => {
       workoutId: first.workout.id,
       exerciseId: addedExercise.id,
     })
-    const historicalSet = await repository.addSet(firstAdded.id)
-    await repository.updateWorkoutSet(historicalSet.id, {
+    await expect(
+      repository.addExercise({
+        workoutId: first.workout.id,
+        exerciseId: addedExercise.id,
+      }),
+    ).rejects.toThrow('That exercise is already in this workout.')
+    let structure = await repository.getActiveWorkoutStructure()
+    const firstHistoricalSet = structure?.setsByExercise[firstAdded.id][0]
+    expect(firstHistoricalSet).toBeDefined()
+    await repository.updateWorkoutSet(firstHistoricalSet!.id, {
       metricValues: { weight: 135, reps: 8 },
+      completed: true,
+    })
+    const secondHistoricalSet = await repository.addSet(firstAdded.id)
+    await repository.updateWorkoutSet(secondHistoricalSet.id, {
+      metricValues: { weight: 130, reps: 7 },
       completed: true,
     })
     await repository.completeWorkout({ workoutId: first.workout.id })
@@ -692,13 +705,125 @@ describe('workoutRepository', () => {
       workoutId: second.workout.id,
       exerciseId: addedExercise.id,
     })
-    const estimatedSet = await repository.addSet(secondAdded.id)
+    structure = await repository.getActiveWorkoutStructure()
+    const restoredSets = structure?.setsByExercise[secondAdded.id]
 
-    expect(estimatedSet.metricValues).toMatchObject({ weight: 135, reps: 8 })
-    expect(estimatedSet.metricValueSources).toMatchObject({
+    expect(restoredSets).toHaveLength(1)
+    expect(restoredSets?.[0]).toMatchObject({
+      setNumber: 1,
+      metricValues: { weight: 135, reps: 8 },
+    })
+    expect(restoredSets?.[0].metricValueSources).toMatchObject({
       weight: 'auto',
       reps: 'auto',
     })
+  })
+
+  it('prefills a swapped exercise from its most recent completed set sequence', async () => {
+    const program = await seedProgram(database)
+    const activeCycle = await createProgramRepository(
+      database,
+    ).activateTemplate(program.template.id)
+    const replacement = await createExerciseRepository(database).createExercise(
+      {
+        name: 'History pulldown',
+        defaultRestSeconds: 75,
+        trackingMethodId: 'weight_reps',
+        notes: '',
+      },
+    )
+    const repository = createWorkoutRepository(database)
+    const historical = await repository.startWorkout({
+      activeCycleId: activeCycle.cycle.id,
+      dayId: activeCycle.days[0].id,
+      localDate: testLocalDate,
+    })
+    const historicalExercise = await repository.addExercise({
+      workoutId: historical.workout.id,
+      exerciseId: replacement.id,
+    })
+    let structure = await repository.getActiveWorkoutStructure()
+    const firstSet = structure?.setsByExercise[historicalExercise.id][0]
+    await repository.updateWorkoutSet(firstSet!.id, {
+      metricValues: { weight: 120, reps: 10 },
+      completed: true,
+    })
+    const secondSet = await repository.addSet(historicalExercise.id)
+    await repository.updateWorkoutSet(secondSet.id, {
+      metricValues: { weight: 115, reps: 9 },
+      completed: true,
+    })
+    await repository.completeWorkout({ workoutId: historical.workout.id })
+
+    const current = await repository.startWorkout({
+      activeCycleId: activeCycle.cycle.id,
+      dayId: activeCycle.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.replaceExercise({
+      workoutExerciseId: current.exercises[0].id,
+      exerciseId: replacement.id,
+      keepCompatibleSetValues: false,
+    })
+    structure = await repository.getActiveWorkoutStructure()
+    const swappedSets = structure?.setsByExercise[current.exercises[0].id]
+
+    expect(swappedSets).toHaveLength(2)
+    expect(swappedSets?.map((set) => set.setNumber)).toEqual([1, 2])
+    expect(swappedSets?.map((set) => set.metricValues)).toEqual([
+      { weight: 120, reps: 10 },
+      { weight: 115, reps: 9 },
+    ])
+    expect(swappedSets?.every((set) => !set.completed)).toBe(true)
+    const unchangedHistory = await repository.getWorkoutHistoryStructure(
+      historical.workout.id,
+    )
+    expect(
+      unchangedHistory.setsByExercise[historicalExercise.id].map(
+        (set) => set.metricValues,
+      ),
+    ).toEqual([
+      { weight: 120, reps: 10 },
+      { weight: 115, reps: 9 },
+    ])
+  })
+
+  it('keeps the current set count blank when a swap has no history', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    const replacement = await createExerciseRepository(database).createExercise(
+      {
+        name: 'Never logged fly',
+        defaultRestSeconds: 60,
+        trackingMethodId: 'weight_reps',
+        notes: '',
+      },
+    )
+    const repository = createWorkoutRepository(database)
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    const originalSetCount = started.sets.filter(
+      (set) => set.workoutExerciseId === started.exercises[0].id,
+    ).length
+
+    await repository.replaceExercise({
+      workoutExerciseId: started.exercises[0].id,
+      exerciseId: replacement.id,
+      keepCompatibleSetValues: false,
+    })
+    const structure = await repository.getActiveWorkoutStructure()
+    const swappedSets = structure?.setsByExercise[started.exercises[0].id]
+
+    expect(swappedSets).toHaveLength(originalSetCount)
+    expect(swappedSets?.every((set) => !set.completed)).toBe(true)
+    expect(
+      swappedSets?.every((set) => !Object.keys(set.metricValues).length),
+    ).toBe(true)
   })
 
   it('merges partial live metric edits with stored set values', async () => {

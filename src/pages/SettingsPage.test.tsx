@@ -528,12 +528,12 @@ describe('SettingsPage', () => {
     await user.click(await screen.findByRole('button', { name: 'About' }))
     expect(
       await screen.findByRole('heading', {
-        name: 'Targets and programs are clearer',
+        name: 'Live workout swaps and timers are more reliable',
       }),
     ).toBeInTheDocument()
     expect(
       screen.queryByRole('heading', {
-        name: 'Workout defaults are in your control',
+        name: 'Targets and programs are clearer',
       }),
     ).not.toBeInTheDocument()
 

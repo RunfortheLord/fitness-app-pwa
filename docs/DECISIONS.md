@@ -82,9 +82,11 @@
   when globally disabled. Deload completion does not produce progression changes.
 - Deload workouts remain immutable History entries named `Deload <day>`, but
   derived Estimated 1RM and Total volume graphs skip them.
-- History persists a Most recent versus By program choice and the selected
-  program drilldown in user settings. Program drilldowns reuse the existing
-  read-only workout detail rather than creating a second detail model.
+- History persists a Most recent versus By program choice and the active
+  program drilldown in user settings. Exiting a workout detail clears the
+  program drilldown so By program returns to the all-programs list. Program
+  drilldowns reuse the existing read-only workout detail rather than creating
+  a second detail model.
 
 ## 2026-08-13: Persistent Workout Tracking And Autofill Preferences
 
@@ -1012,9 +1014,11 @@
 - Total workout duration, workout pause/resume, exercise rest-duration wheels,
   and rest pause/clear actions live in Exercise Options. Wheel changes commit
   immediately without Save or Cancel buttons.
-- Changing the wheel restarts a running or completed rest timer from the newly
-  selected duration, preserves a paused timer's paused state, updates the
-  exercise default used by later sets, and resynchronizes optional alerts.
+- Changing the wheel preserves elapsed time for a running or paused rest timer,
+  so reducing a two-minute timer to one minute after twenty seconds leaves
+  forty seconds. A completed timer restarts from the newly selected duration.
+  The change also updates the exercise default used by later sets and
+  resynchronizes optional alerts.
 - Keyboard viewport compensation survives route changes while iOS closes the
   keyboard, so the bottom navigation does not jump upward during Live Workout.
   It clears when the visual viewport is restored or the close fallback expires.

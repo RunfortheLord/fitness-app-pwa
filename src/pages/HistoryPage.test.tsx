@@ -493,6 +493,28 @@ describe('HistoryPage', () => {
         screen.queryByRole('button', { name: /Upper/ }),
       ).not.toBeInTheDocument(),
     )
+
+    await user.click(screen.getByRole('button', { name: /Pull/ }))
+    expect(await screen.findByText('Date completed')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'All history' }))
+
+    expect(
+      await screen.findByRole('button', {
+        name: `View ${first.template.name} history`,
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'View Second Program history' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'All programs' }),
+    ).not.toBeInTheDocument()
+    await waitFor(async () => {
+      await expect(settingsRepository.getSettings()).resolves.toMatchObject({
+        historySortMode: 'program',
+        historyProgramId: null,
+      })
+    })
   })
 
   it('shows runs in home history and returns details to the full history list', async () => {

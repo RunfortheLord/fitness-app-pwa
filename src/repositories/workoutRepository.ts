@@ -20,7 +20,7 @@ import {
   isDeloadWeek,
   nextProgramWeekAfterCompletion,
 } from '@domain/programWeeks'
-import { restartRestTimerWithDuration } from '@domain/restTimer'
+import { updateRestTimerDuration } from '@domain/restTimer'
 import {
   buildDeloadPrefillPlan,
   buildWorkoutPrefillPlan,
@@ -1107,6 +1107,10 @@ export function createWorkoutRepository(
           database.workoutExercises,
           database.workoutSets,
           database.exercises,
+          database.userSettings,
+          database.workoutHistoryEntries,
+          database.workoutHistoryExercises,
+          database.workoutHistorySets,
         ],
         async () => {
           const workout = await database.workouts.get(input.workoutId)
@@ -1120,6 +1124,9 @@ export function createWorkoutRepository(
           const existing = await database.workoutExercises
             .where({ workoutId: workout.id })
             .toArray()
+          if (existing.some((item) => item.exerciseId === exercise.id)) {
+            throw new Error('That exercise is already in this workout.')
+          }
           const workoutExercise = createWorkoutExerciseFromExercise(
             workout.id,
             exercise,
@@ -1128,6 +1135,13 @@ export function createWorkoutRepository(
             now,
           )
           await database.workoutExercises.add(workoutExercise)
+          const set = await createInitialLiveExerciseSet({
+            database,
+            workout,
+            workoutExercise,
+            timestamp: now,
+          })
+          await database.workoutSets.add(set)
           await database.workouts.update(workout.id, { updatedAt: now })
           return workoutExercise
         },
@@ -1143,6 +1157,9 @@ export function createWorkoutRepository(
           database.workoutExercises,
           database.workoutSets,
           database.exercises,
+          database.workoutHistoryEntries,
+          database.workoutHistoryExercises,
+          database.workoutHistorySets,
         ],
         async () => {
           const current = await database.workoutExercises.get(
@@ -1156,6 +1173,12 @@ export function createWorkoutRepository(
           }
           if (!replacement) {
             throw new Error(`Exercise ${input.exerciseId} was not found.`)
+          }
+          const workout = await database.workouts.get(current.workoutId)
+          if (!workout || workout.status !== 'active') {
+            throw new Error(
+              `Active workout ${current.workoutId} was not found.`,
+            )
           }
           const previousExerciseId = current.exerciseId
           const updated: WorkoutExercise = {
@@ -1173,27 +1196,18 @@ export function createWorkoutRepository(
           if (!input.keepCompatibleSetValues) {
             const sets = await database.workoutSets
               .where({ workoutExerciseId: current.id })
-              .toArray()
-            await Promise.all(
-              sets.map((set) =>
-                database.workoutSets.update(set.id, {
-                  targetSnapshot: null,
-                  targetRecommendation: null,
-                  metricValues: Object.fromEntries(
-                    replacement.trackingMetrics.map((metric) => [
-                      metric.key,
-                      null,
-                    ]),
-                  ),
-                  metricValueSources: {},
-                  rir: null,
-                  completed: false,
-                  completedAt: null,
-                  restSecondsUsed: null,
-                  updatedAt: now,
-                }),
-              ),
-            )
+              .sortBy('setNumber')
+            const replacementSets = await createLiveExerciseSetsFromHistory({
+              database,
+              workout,
+              workoutExercise: updated,
+              fallbackSetCount: Math.max(1, sets.length),
+              timestamp: now,
+            })
+            await database.workoutSets
+              .where({ workoutExerciseId: current.id })
+              .delete()
+            await database.workoutSets.bulkAdd(replacementSets)
           }
 
           await database.workouts.update(current.workoutId, { updatedAt: now })
@@ -1322,7 +1336,7 @@ export function createWorkoutRepository(
 
     async setRestTimerDuration(workoutId: string, durationSeconds: number) {
       return updateRestTimer(database, workoutId, (timer, now) =>
-        restartRestTimerWithDuration(timer, durationSeconds, now),
+        updateRestTimerDuration(timer, durationSeconds, now),
       )
     },
 
@@ -2233,6 +2247,118 @@ function createWorkoutExerciseFromExercise(
     createdAt: timestamp,
     updatedAt: timestamp,
   }
+}
+
+async function createInitialLiveExerciseSet({
+  database,
+  timestamp,
+  workout,
+  workoutExercise,
+}: {
+  database: TrainingLogDatabase
+  timestamp: string
+  workout: Workout
+  workoutExercise: WorkoutExercise
+}) {
+  const settings = await database.userSettings.get('settings')
+  const trackingMethodId = workoutExercise.exerciseSnapshot.trackingMethodId
+  const previousSets = workoutExercise.exerciseId
+    ? await getPreviousCompletedExerciseSets({
+        database,
+        exerciseId: workoutExercise.exerciseId,
+        exerciseName: workoutExercise.exerciseSnapshot.exerciseName,
+        trackingMethodId,
+        beforeStartedAt: workout.startedAt,
+      })
+    : []
+  const metricValues =
+    initialAddedSetPrefill({
+      previousSets,
+      trackingMethodId,
+      workoutAutofillMode: settings?.workoutAutofillMode ?? 'history_copy',
+      rirTrackingEnabled: settings?.rirTrackingEnabled ?? false,
+    }) ?? {}
+
+  return {
+    id: createId(),
+    workoutId: workout.id,
+    workoutExerciseId: workoutExercise.id,
+    setNumber: 1,
+    targetSnapshot: null,
+    targetRecommendation: null,
+    metricValues,
+    metricValueSources: Object.fromEntries(
+      Object.keys(metricValues).map((key) => [key, 'auto' as const]),
+    ),
+    rir: null,
+    completed: false,
+    completedAt: null,
+    restSecondsUsed: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  } satisfies WorkoutSet
+}
+
+async function createLiveExerciseSetsFromHistory({
+  database,
+  fallbackSetCount,
+  timestamp,
+  workout,
+  workoutExercise,
+}: {
+  database: TrainingLogDatabase
+  fallbackSetCount: number
+  timestamp: string
+  workout: Workout
+  workoutExercise: WorkoutExercise
+}) {
+  const previousSets = workoutExercise.exerciseId
+    ? await getPreviousCompletedExerciseSets({
+        database,
+        exerciseId: workoutExercise.exerciseId,
+        exerciseName: workoutExercise.exerciseSnapshot.exerciseName,
+        trackingMethodId: workoutExercise.exerciseSnapshot.trackingMethodId,
+        beforeStartedAt: workout.startedAt,
+      })
+    : []
+  const historicalSets = previousSets.filter((set) =>
+    usableHistoricalSet(set, workoutExercise.exerciseSnapshot.trackingMethodId),
+  )
+  const setCount = historicalSets.length || Math.max(1, fallbackSetCount)
+
+  return Array.from({ length: setCount }, (_, index) => {
+    const historicalSet = historicalSets[index]
+    const metricValues = historicalSet
+      ? numericMetricValues(historicalSet.metricValues)
+      : {}
+    return {
+      id: createId(),
+      workoutId: workout.id,
+      workoutExerciseId: workoutExercise.id,
+      setNumber: index + 1,
+      targetSnapshot: null,
+      targetRecommendation: null,
+      metricValues,
+      metricValueSources: Object.fromEntries(
+        Object.keys(metricValues).map((key) => [key, 'auto' as const]),
+      ),
+      rir: null,
+      completed: false,
+      completedAt: null,
+      restSecondsUsed: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    } satisfies WorkoutSet
+  })
+}
+
+function numericMetricValues(values: WorkoutSet['metricValues']) {
+  return Object.fromEntries(
+    Object.entries(values).filter(
+      (entry): entry is [string, number] =>
+        typeof entry[1] === 'number' && Number.isFinite(entry[1]),
+    ),
+  )
 }
 
 function mapSetsByExercise(exercises: WorkoutExercise[], sets: WorkoutSet[]) {

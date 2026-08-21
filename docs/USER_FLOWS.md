@@ -232,12 +232,16 @@
 9. The fixed session row shows the rest countdown with 30-second subtract and
    add controls. Exercise Options provides pause/resume, clear, total workout
    time, and the rest-duration wheels.
-10. Changing the wheel immediately restarts the current countdown at the
-    selected duration and uses that duration for later sets of the exercise.
-11. If the installed Home Screen PWA has outside-app alerts enabled, each timer
+10. Changing the wheel preserves time already elapsed on a running or paused
+    countdown and uses the selected duration for later sets of the exercise. A
+    completed countdown restarts from the selected duration.
+11. Unchecking a completed set leaves the current rest countdown unchanged.
+    Checking that set again, or completing a different set, starts a fresh
+    countdown when more sets remain.
+12. If the installed Home Screen PWA has outside-app alerts enabled, each timer
     change cancels or reschedules its pending Web Push notification.
-12. User may edit completed sets.
-13. User may add or delete sets.
+13. User may edit completed sets.
+14. User may add or delete sets.
 
 ## Replacing an Exercise
 
@@ -245,9 +249,12 @@
 2. User chooses Replace Exercise.
 3. App opens exercise search.
 4. User selects a replacement exercise.
-5. App confirms whether to keep compatible set data or start fresh when tracking methods differ.
-6. App updates the active workout only.
-7. App records a structural change candidate for completion review.
+5. If the replacement has completed history, app creates an editable set row
+   for each set in its most recent usable performance and fills the recorded
+   numeric values. Otherwise, app keeps the current set count with blank rows.
+6. App updates the active workout only and leaves completed history unchanged.
+7. App records the replacement and any set-count difference as structural
+   change candidates for completion review.
 
 ## Finishing a Workout
 
@@ -272,17 +279,19 @@
 
 1. User opens History.
 2. User chooses Most recent or By program. The app restores the previous choice
-   and selected program on later visits.
+   and an active program drilldown on later visits.
 3. Most recent lists completed workouts and runs as one compact row per item.
 4. By program lists programs; opening one shows all of its completed workouts.
 5. User opens a workout row.
 6. App shows source program/day when applicable, start time, completion time, duration, exercise details, performed sets, skipped exercises, and change review outcomes.
 7. User reviews recorded performance values as read-only history. Deload
    workouts remain labeled and saved here.
-8. To delete a history day, user returns to the history list, chooses Select,
+8. Exiting a workout detail while using By program returns to the list of all
+   programs rather than leaving one program selected.
+9. To delete a history day, user returns to the history list, chooses Select,
    picks one history card, and chooses Delete.
-9. App asks "Delete day permanently?" before permanently removing the selected
-   history day.
+10. App asks "Delete day permanently?" before permanently removing the selected
+    history day.
 
 ## Viewing Strength Graphs
 

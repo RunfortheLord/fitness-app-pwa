@@ -73,6 +73,13 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 
+button,
+.bottom-nav-link {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 a {
   color: inherit;
   text-decoration: none;

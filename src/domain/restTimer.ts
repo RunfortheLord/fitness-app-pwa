@@ -1,18 +1,22 @@
 import type { RestTimerState } from '@shared-types/app'
 
-export function restartRestTimerWithDuration(
+export function updateRestTimerDuration(
   timer: RestTimerState,
   durationSeconds: number,
   nowIso = new Date().toISOString(),
 ): RestTimerState {
-  const isPaused = timer.status === 'paused'
+  const normalizedDuration = Math.max(0, Math.round(durationSeconds))
+  if (timer.status !== 'completed') {
+    return { ...timer, durationSeconds: normalizedDuration }
+  }
+
   return {
     ...timer,
     startedAt: nowIso,
-    durationSeconds: Math.max(0, Math.round(durationSeconds)),
-    pausedAt: isPaused ? nowIso : null,
+    durationSeconds: normalizedDuration,
+    pausedAt: null,
     accumulatedPausedSeconds: 0,
-    status: isPaused ? 'paused' : 'running',
+    status: 'running',
   }
 }
 

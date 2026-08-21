@@ -145,6 +145,9 @@ export function HistoryPage() {
     useState<HistorySortMode>('recent')
   const [historyProgramId, setHistoryProgramId] = useState<string | null>(null)
   const historyScrollPositionRef = useRef<number | null>(null)
+  const historyDetailOpen =
+    searchParams.has('workout') || searchParams.has('run')
+  const wasHistoryDetailOpenRef = useRef(historyDetailOpen)
 
   useEffect(() => {
     let isCurrent = true
@@ -248,6 +251,25 @@ export function HistoryPage() {
     historyScrollPositionRef.current = null
     window.scrollTo({ top: scrollTop, left: 0, behavior: 'auto' })
   }, [searchParams, state])
+
+  useEffect(() => {
+    const exitedHistoryDetail =
+      wasHistoryDetailOpenRef.current && !historyDetailOpen
+    wasHistoryDetailOpenRef.current = historyDetailOpen
+
+    if (
+      exitedHistoryDetail &&
+      searchParams.get('source') !== 'home' &&
+      historySortMode === 'program' &&
+      historyProgramId
+    ) {
+      setHistoryProgramId(null)
+      void settingsRepository.saveHistoryPreference({
+        sortMode: 'program',
+        programId: null,
+      })
+    }
+  }, [historyDetailOpen, historyProgramId, historySortMode, searchParams])
 
   const summary = useMemo(() => {
     if (state.status !== 'ready' || !state.selected) {
