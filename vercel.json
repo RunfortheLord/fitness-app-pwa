@@ -82,5 +82,11 @@
       ]
     }
   ],
-  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "source": "/api/analytics",
+      "destination": "/api/feedback?route=analytics"
+    },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
 }

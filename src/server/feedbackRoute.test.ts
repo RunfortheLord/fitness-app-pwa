@@ -8,6 +8,30 @@ afterEach(() => {
 })
 
 describe('/api/feedback', () => {
+  it('preserves the rewritten analytics route without enabling collection', async () => {
+    const { default: handler } = await import('../../api/feedback')
+    const response = createResponse()
+
+    await handler(
+      {
+        body: {
+          events: [{ day: '2026-08-20', name: 'app_opened' }],
+          installId: '55555555-5555-4555-8555-555555555555',
+        },
+        headers: { host: 'app.example.com' },
+        method: 'POST',
+        query: { route: 'analytics' },
+      },
+      response,
+    )
+
+    expect(response.statusCode).toBe(503)
+    expect(response.body).toMatchObject({
+      error: { code: 'not_configured' },
+      ok: false,
+    })
+  })
+
   it('permits the fixed Capacitor origin to preflight feedback', async () => {
     const { default: handler } = await import('../../api/feedback')
     const response = createResponse()
