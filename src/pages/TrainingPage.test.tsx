@@ -577,7 +577,7 @@ describe('TrainingPage', () => {
     expect(document.documentElement).toHaveClass('live-workout-open')
     expect(
       document.documentElement.style.getPropertyValue('--live-workout-height'),
-    ).toBe(`${window.innerHeight}px`)
+    ).toBe('')
     expect(
       screen.getByRole('heading', { level: 1, name: 'Upper' }),
     ).toBeInTheDocument()

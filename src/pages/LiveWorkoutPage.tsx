@@ -19,7 +19,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type FocusEvent,
   type PointerEvent,
 } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -32,7 +31,6 @@ import {
   IconButton,
   LoadingState,
   ModalConfirmationDialog,
-  NumericInput,
   PageContainer,
   PrimaryButton,
   SecondaryButton,
@@ -44,8 +42,13 @@ import {
   SortableList,
   SortableListItem,
 } from '@components/SortableList'
+import {
+  LiveWorkoutNumericInput,
+  LiveWorkoutNumericKeypadProvider,
+} from '@components/LiveWorkoutNumericInput'
 import { RestWheelPicker } from '@components/WheelPicker'
 import { useLanguage } from '@components/languageContextValue'
+import type { LiveWorkoutNumericKeypadMode } from '@domain/liveWorkoutKeypad'
 import {
   getRestTimerRemainingSeconds,
   updateRestTimerDuration,
@@ -136,6 +139,14 @@ declare global {
 }
 
 export function LiveWorkoutPage() {
+  return (
+    <LiveWorkoutNumericKeypadProvider>
+      <LiveWorkoutPageContent />
+    </LiveWorkoutNumericKeypadProvider>
+  )
+}
+
+function LiveWorkoutPageContent() {
   const { t } = useLanguage()
   const navigate = useNavigate()
   const [state, setState] = useState<LiveWorkoutState>({ status: 'loading' })
@@ -174,38 +185,9 @@ export function LiveWorkoutPage() {
 
   useEffect(() => {
     const isReady = state.status === 'ready'
-    const root = document.documentElement
-    let orientationUpdate: number | null = null
-
-    const lockWorkoutHeight = () => {
-      root.style.setProperty(
-        '--live-workout-height',
-        `${Math.round(window.innerHeight)}px`,
-      )
-    }
-
-    if (isReady) {
-      lockWorkoutHeight()
-    }
-    const handleOrientationChange = () => {
-      if (!isReady) {
-        return
-      }
-      if (orientationUpdate !== null) {
-        window.clearTimeout(orientationUpdate)
-      }
-      orientationUpdate = window.setTimeout(lockWorkoutHeight, 250)
-    }
-
-    window.addEventListener('orientationchange', handleOrientationChange)
     document.documentElement.classList.toggle('live-workout-open', isReady)
     document.body.classList.toggle('live-workout-open', isReady)
     return () => {
-      if (orientationUpdate !== null) {
-        window.clearTimeout(orientationUpdate)
-      }
-      window.removeEventListener('orientationchange', handleOrientationChange)
-      root.style.removeProperty('--live-workout-height')
       document.documentElement.classList.remove('live-workout-open')
       document.body.classList.remove('live-workout-open')
     }
@@ -1723,12 +1705,13 @@ function ExerciseWorkspace({
         {isEditingPrescription ? (
           <div className="live-prescription-form">
             <FormField id="live-target-set-count" label="Sets">
-              <NumericInput
+              <LiveWorkoutNumericInput
                 id="live-target-set-count"
                 max={99}
                 min={1}
-                onChange={(event) =>
-                  setSetCountDraft(event.currentTarget.value)
+                mode="integer"
+                onValueChange={(value) =>
+                  setSetCountDraft(value.replace(/\D+/g, ''))
                 }
                 value={setCountDraft}
               />
@@ -1736,23 +1719,25 @@ function ExerciseWorkspace({
             {metrics.some((metric) => metric.key === 'reps') ? (
               <div className="live-prescription-rep-fields">
                 <FormField id="live-target-reps-min" label="Minimum reps">
-                  <NumericInput
+                  <LiveWorkoutNumericInput
                     id="live-target-reps-min"
                     max={999}
                     min={1}
-                    onChange={(event) =>
-                      setRepsMinDraft(event.currentTarget.value)
+                    mode="integer"
+                    onValueChange={(value) =>
+                      setRepsMinDraft(value.replace(/\D+/g, ''))
                     }
                     value={repsMinDraft}
                   />
                 </FormField>
                 <FormField id="live-target-reps-max" label="Maximum reps">
-                  <NumericInput
+                  <LiveWorkoutNumericInput
                     id="live-target-reps-max"
                     max={999}
                     min={1}
-                    onChange={(event) =>
-                      setRepsMaxDraft(event.currentTarget.value)
+                    mode="integer"
+                    onValueChange={(value) =>
+                      setRepsMaxDraft(value.replace(/\D+/g, ''))
                     }
                     value={repsMaxDraft}
                   />
@@ -1906,6 +1891,9 @@ function SetRow({
   const { t } = useLanguage()
   const [validationRequested, setValidationRequested] = useState(false)
   const [rirTouched, setRirTouched] = useState(false)
+  const [rirDraft, setRirDraft] = useState(set.rir?.toString() ?? '')
+  const rirEditingRef = useRef(false)
+  const lastRirPropRef = useRef(set.rir)
   const [locallyValidMetricKeys, setLocallyValidMetricKeys] = useState(
     () => new Set<string>(),
   )
@@ -1926,6 +1914,17 @@ function SetRow({
   )
   const isRirInvalid = showRir && !rirDraftValid
   const weightUnit = useWeightUnit()
+
+  useEffect(() => {
+    if (set.rir === lastRirPropRef.current) {
+      return
+    }
+    lastRirPropRef.current = set.rir
+    if (!rirEditingRef.current) {
+      setRirDraft(set.rir?.toString() ?? '')
+    }
+  }, [set.rir])
+
   return (
     <div className={set.completed ? 'set-row completed' : 'set-row'}>
       <div className="set-number">
@@ -1995,7 +1994,7 @@ function SetRow({
       {showRir ? (
         <label>
           <span>{isFinalProgrammedSet ? t('Final RIR') : t('RIR')}</span>
-          <NumericInput
+          <LiveWorkoutNumericInput
             aria-label={
               isFinalProgrammedSet
                 ? `Set ${set.setNumber} final RIR`
@@ -2008,9 +2007,11 @@ function SetRow({
                 ? String(prescription.targetRir)
                 : undefined
             }
-            onBlur={(event) => {
+            mode="decimal"
+            onCommit={() => {
+              rirEditingRef.current = false
               setRirTouched(true)
-              const draft = event.currentTarget.value.trim()
+              const draft = rirDraft.trim()
               const rir = parseNullableNumber(draft)
               setRirDraftValid(
                 draft === '' ||
@@ -2018,10 +2019,8 @@ function SetRow({
               )
               onRirChange(rir)
             }}
-            onFocus={(event) => {
-              if (event.currentTarget.value) {
-                event.currentTarget.select()
-              }
+            onEditStart={() => {
+              rirEditingRef.current = true
             }}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
@@ -2029,7 +2028,16 @@ function SetRow({
                 event.currentTarget.blur()
               }
             }}
-            defaultValue={set.rir?.toString() ?? ''}
+            onValueChange={(value) => {
+              const next = value.replace(/[^\d.]/g, '')
+              const rir = parseNullableNumber(next.trim())
+              setRirDraft(next)
+              setRirDraftValid(
+                next.trim() === '' ||
+                  (typeof rir === 'number' && Number.isFinite(rir) && rir >= 0),
+              )
+            }}
+            value={rirDraft}
           />
         </label>
       ) : null}
@@ -2085,8 +2093,13 @@ function MetricNumericInput({
   valueType,
   ...props
 }: Omit<
-  React.ComponentProps<typeof NumericInput>,
-  'aria-invalid' | 'onChange' | 'value'
+  React.ComponentProps<typeof LiveWorkoutNumericInput>,
+  | 'aria-invalid'
+  | 'mode'
+  | 'onCommit'
+  | 'onEditStart'
+  | 'onValueChange'
+  | 'value'
 > & {
   invalid: boolean
   metricKey: string
@@ -2111,29 +2124,34 @@ function MetricNumericInput({
     }
   }, [value])
 
-  function selectCurrentValue(event: FocusEvent<HTMLInputElement>) {
-    if (event.currentTarget.value) {
-      event.currentTarget.select()
-    }
-  }
+  const keypadMode: LiveWorkoutNumericKeypadMode =
+    metricKey === 'durationSeconds'
+      ? 'duration'
+      : valueType === 'integer'
+        ? 'integer'
+        : 'decimal'
 
   return (
-    <NumericInput
+    <LiveWorkoutNumericInput
       {...props}
       aria-invalid={invalid && (touched || validationRequested)}
       disabled={disabled}
-      onBlur={() => {
+      mode={keypadMode}
+      onCommit={() => {
         isEditingRef.current = false
         lastPropValueRef.current = value
         setTouched(true)
       }}
-      onChange={(event) => {
+      onEditStart={() => {
+        isEditingRef.current = true
+      }}
+      onValueChange={(value) => {
         const next =
           metricKey === 'durationSeconds'
-            ? event.currentTarget.value.replace(/[^\d:]/g, '')
+            ? value.replace(/[^\d:]/g, '')
             : valueType === 'integer'
-              ? event.currentTarget.value.replace(/\D+/g, '')
-              : event.currentTarget.value
+              ? value.replace(/\D+/g, '')
+              : value
         const parsedValue = parseMetricValue(next, valueType, metricKey)
         isEditingRef.current = true
         setDraft(next)
@@ -2143,10 +2161,6 @@ function MetricNumericInput({
             parsedValue >= 0,
         )
         onValueChange(parsedValue)
-      }}
-      onFocus={(event) => {
-        isEditingRef.current = true
-        selectCurrentValue(event)
       }}
       onKeyDown={onKeyDown}
       placeholder={placeholder}

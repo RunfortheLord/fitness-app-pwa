@@ -16,12 +16,10 @@
 - Use `env(safe-area-inset-top)` and `env(safe-area-inset-bottom)` for iPhone chrome, Dynamic Island, and home indicator.
 - Fixed bottom navigation contains Home, Nutrition, Add, Training, and Run.
 - In its normal state the fixed navigation has no CSS transform and stays
-  pinned to the visual viewport while content scrolls. When a focused text-entry
-  control produces a software-keyboard-sized viewport reduction, navigation is
-  removed from rendering instead of moved or resized. After viewport recovery,
-  it is mounted as a new fixed element so WebKit cannot reuse stale keyboard
-  geometry. A short poll handles iOS versions that omit the final
-  VisualViewport resize event.
+  pinned to the visual viewport while content scrolls. It is always rendered
+  and has no JavaScript behavior tied to VisualViewport resize, scroll, focus,
+  blur, or keyboard recovery events. Full-screen modes may hide it only from
+  explicit React-owned application state.
 - The center Add button is visually prominent, circular, and raised above the tab bar.
 - Main content scrolls behind fixed header and nav only when padding prevents occlusion.
 - Header contains current screen title plus contextual secondary actions.
@@ -343,10 +341,9 @@
 - A compact notepad button sits on the same row as the current exercise name.
   Tapping it opens session exercise notes in a sheet; saving never changes the
   source program prescription.
-- The live workout captures and locks its outer height when the workout opens,
-  before a keyboard can resize WebKit's visual viewport. This height is owned by
-  the workout and is independent of bottom-navigation state. When all sets
-  cannot fit on a small phone, only the set list scrolls internally so the
+- The live workout uses the locked document/root height without capturing or
+  writing JavaScript viewport measurements. When all sets cannot fit on a small
+  phone, only the set list scrolls internally so the
   exercise header, add-set control, exercise actions, navigator, and session
   controls remain stable.
 - Horizontal exercise swipes transform only the exercise header and set list.
@@ -359,12 +356,13 @@
 - The fixed session row shows the active rest countdown followed immediately by
   30-second subtract and add controls, then Discard and Finish. It does not show
   the total workout duration or open a separate rest-timer settings sheet.
-- The bottom navigation is absent while a live-workout numeric keypad is open
-  and is newly mounted after viewport recovery. It never translates the workout
-  or supplies offsets to it.
-- Closing a live-workout numeric keypad leaves the captured live shell height
-  unchanged. The set list, exercise actions, session bar, and navigation
-  therefore cannot retain keyboard-sized layout measurements.
+- In an installed iPhone PWA or native iOS wrapper, live-workout numeric fields
+  are read-only textboxes that open an accessible app-owned number pad. The pad
+  supports integer, decimal, and duration entry without focusing an editable
+  control, so the native keyboard and its VisualViewport transition never run.
+- Live Workout renders bottom navigation as the final in-flow row of its locked
+  shell. It is never fixed, hidden, translated, or remounted during number
+  entry, and the shell reserves no separate phantom navigation gap.
 - Exercise Options opens as a full-height subpage and shows the total workout
   duration and its pause/resume action, plus the current exercise's
   rest-duration wheels. The wheels initially show the workout prescription's

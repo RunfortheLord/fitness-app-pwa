@@ -1257,3 +1257,27 @@ their shared layout state.
 - Live Workout captures its height once when the active workout opens. The live
   shell no longer consumes keyboard or navigation offsets, and its set list,
   exercise actions, and session controls remain in a separate layout system.
+
+## 2026-08-21: Remove viewport recovery and own live numeric entry
+
+This supersedes both keyboard-recovery decisions above. Physical installed-
+iPhone evidence showed that WebKit can retain focus or contracted viewport
+geometry after its keyboard is dismissed. That left the isolation session open,
+kept bottom navigation at `display: none`, and preserved the navigation padding
+as the blank band visible in the failed workout screenshot.
+
+- The application no longer observes VisualViewport or input focus to hide,
+  translate, remount, or otherwise position bottom navigation. Navigation stays
+  rendered, so a missing WebKit recovery event cannot remove the dashboard on
+  History, Nutrition, or any other route.
+- Installed iPhone PWA and native iOS Live Workout numeric controls use an
+  app-owned keypad. Their read-only textboxes never summon the native keyboard;
+  integer, decimal, duration, clear, backspace, and physical-keyboard entry all
+  remain available and feed the existing validation and persistence paths.
+- Live Workout no longer captures `window.innerHeight`. Its outer shell uses the
+  locked root height, and its bottom navigation is a permanent in-flow final row
+  rather than a fixed layer. The session controls and navigation therefore have
+  neither a native-keyboard resize path nor independently painted fixed layers.
+- Ordinary browser tabs keep directly editable inputs. Genuine live-workout
+  text notes may still use the native keyboard, but they cannot hide the in-flow
+  live dashboard or write viewport measurements back into the workout layout.

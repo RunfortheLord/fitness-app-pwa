@@ -528,7 +528,7 @@ describe('SettingsPage', () => {
     await user.click(await screen.findByRole('button', { name: 'About' }))
     expect(
       await screen.findByRole('heading', {
-        name: 'Keyboard and navigation layout are now isolated',
+        name: 'Workout number entry can no longer move the dashboard',
       }),
     ).toBeInTheDocument()
     expect(

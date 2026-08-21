@@ -38,7 +38,6 @@ import {
 } from '@components/ui'
 import { useDashboardContext } from '@hooks/useDashboardContext'
 import { useAuth } from '@hooks/useAuth'
-import { useKeyboardNavigation } from '@hooks/useKeyboardNavigation'
 import { useTabSwipeNavigation } from '@hooks/useTabSwipeNavigation'
 import { runRepository } from '@repositories/runRepository'
 import { automaticCloudBackupService } from '@services/automaticCloudBackupService'
@@ -98,7 +97,6 @@ function AppShellContent({ children }: AppShellProps) {
     setIsQuickActionOpen(false)
   }
 
-  const { isNavigationHidden, navigationResetKey } = useKeyboardNavigation()
   useTabSwipeNavigation(mainRef, location.pathname, navigate)
 
   useEffect(() => {
@@ -500,8 +498,6 @@ function AppShellContent({ children }: AppShellProps) {
         </div>
       </main>
       <BottomNavigation
-        isKeyboardHidden={isNavigationHidden}
-        key={navigationResetKey}
         onAdd={() => setIsQuickActionOpen(true)}
         trainingTo={
           activeActivity?.type === 'workout' ? '/workout' : '/training'

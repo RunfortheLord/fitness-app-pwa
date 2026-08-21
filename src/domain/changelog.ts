@@ -10,6 +10,16 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-08-21-installed-workout-keypad-and-stable-dashboard',
+    date: '2026-08-21',
+    title: 'Workout number entry can no longer move the dashboard',
+    items: [
+      'Installed iPhone workouts now use an in-app number pad for weight, reps, duration, and RIR, so those fields never open the iPhone keyboard or resize the workout.',
+      'The live workout dashboard is now a permanent row in the workout layout and is never hidden or positioned from keyboard viewport signals.',
+      'The failed keyboard viewport recovery system has been removed, so the dashboard cannot remain missing after typing on History, Nutrition, or other screens.',
+    ],
+  },
+  {
     id: '2026-08-21-keyboard-navigation-isolation',
     date: '2026-08-21',
     title: 'Keyboard and navigation layout are now isolated',

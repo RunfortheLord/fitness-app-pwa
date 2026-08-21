@@ -372,7 +372,7 @@ test('bottom navigation has exactly five controls and no History tab', async ({
   ).toBeLessThan(1)
 })
 
-test('isolates and remounts bottom navigation across a keyboard viewport session', async ({
+test('never hides or remounts bottom navigation from viewport keyboard signals', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 })
@@ -392,7 +392,7 @@ test('isolates and remounts bottom navigation across a keyboard viewport session
   const nav = page.getByRole('navigation', { name: 'Primary' })
   await expect(nav).toBeVisible()
   await nav.evaluate((element) => {
-    element.setAttribute('data-keyboard-instance', 'before')
+    element.setAttribute('data-navigation-instance', 'stable')
   })
 
   await page.evaluate(() => {
@@ -408,7 +408,8 @@ test('isolates and remounts bottom navigation across a keyboard viewport session
     viewport.dispatchEvent(new Event('resize'))
   })
 
-  await expect(nav).not.toBeVisible()
+  await expect(nav).toBeVisible()
+  await expect(nav).toHaveAttribute('data-navigation-instance', 'stable')
   await page.evaluate(() => {
     const input = document.querySelector<HTMLInputElement>(
       '[aria-label="Keyboard viewport test"]',
@@ -416,7 +417,7 @@ test('isolates and remounts bottom navigation across a keyboard viewport session
     input.blur()
     window.dispatchEvent(new Event('resize'))
   })
-  await expect(nav).not.toBeVisible()
+  await expect(nav).toBeVisible()
 
   await page.evaluate(() => {
     const viewport = window.visualViewport as VisualViewport & {
@@ -425,7 +426,7 @@ test('isolates and remounts bottom navigation across a keyboard viewport session
     viewport.height = 844
   })
   await expect(nav).toBeVisible()
-  await expect(nav).not.toHaveAttribute('data-keyboard-instance')
+  await expect(nav).toHaveAttribute('data-navigation-instance', 'stable')
 })
 
 test('sets a weight goal through the recommended-rate step', async ({
@@ -763,6 +764,8 @@ test(
           : window.innerHeight) -
         document.querySelector('.bottom-nav')!.getBoundingClientRect().bottom,
       rootOverflow: getComputedStyle(document.querySelector('#root')!).overflow,
+      navPosition: getComputedStyle(document.querySelector('.bottom-nav')!)
+        .position,
       shellPosition: getComputedStyle(document.querySelector('.app-shell')!)
         .position,
       shellHeight: document.querySelector('.app-shell')!.getBoundingClientRect()
@@ -785,11 +788,10 @@ test(
     expect(lockedLayout.bodyOverflow).toBe('hidden')
     expect(lockedLayout.htmlOverflow).toBe('hidden')
     expect(lockedLayout.rootOverflow).toBe('hidden')
-    expect(lockedLayout.shellPosition).toBe('fixed')
+    expect(lockedLayout.navPosition).toBe('relative')
+    expect(lockedLayout.shellPosition).toBe('relative')
     expect(lockedLayout.shellHeight).toBe(lockedLayout.viewportHeight)
-    expect(lockedLayout.lockedWorkoutHeight).toBe(
-      `${lockedLayout.viewportHeight}px`,
-    )
+    expect(lockedLayout.lockedWorkoutHeight).toBe('')
     expect(lockedLayout.pageScrollHeight).toBeLessThanOrEqual(
       lockedLayout.viewportHeight + 1,
     )
@@ -1014,6 +1016,147 @@ test(
       .click()
     await page.keyboard.press('Escape')
     await expect(resumedExerciseOptions).not.toBeVisible()
+
+    await page.getByRole('button', { name: 'Discard' }).click()
+    await page
+      .getByRole('dialog', { name: 'Discard workout?' })
+      .getByRole('button', { name: 'Discard Workout' })
+      .click()
+    await expect(page).toHaveURL(/\/training/)
+  },
+)
+
+test(
+  'uses the installed-iPhone workout keypad without moving or removing the dashboard',
+  { tag: '@smoke' },
+  async ({ page }, testInfo) => {
+    test.skip(
+      testInfo.project.name === 'mobile-webkit',
+      'The installed-keypad interaction is covered in the iPhone-sized browser profile; parallel WebKit can stall while its expanded exercise seed is installing.',
+    )
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.addInitScript(() => {
+      Object.defineProperty(window.navigator, 'standalone', {
+        configurable: true,
+        value: true,
+      })
+      Object.defineProperty(window.navigator, 'userAgent', {
+        configurable: true,
+        value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)',
+      })
+    })
+    await page.goto('/training')
+    await waitForExerciseLibrary(page)
+
+    await page
+      .getByLabel('Current Program')
+      .getByRole('button', { name: 'Create program' })
+      .click()
+    await page
+      .getByRole('textbox', { name: 'Name' })
+      .fill('Installed keypad program')
+    await page.getByRole('button', { name: 'Save program' }).click()
+    const builder = page.getByRole('dialog', { name: 'Edit template' })
+    await addWorkoutDay(builder, 'Keypad day')
+    await builder.getByRole('button', { name: 'Add exercise' }).click()
+    await addPrescription(builder, 'Barbell Bench Press', '1')
+    await closeBuilder(builder)
+
+    await page
+      .getByRole('button', { name: 'Activate Installed keypad program' })
+      .click()
+    await page
+      .getByRole('dialog', { name: 'Activate program?' })
+      .getByRole('button', { name: 'Activate' })
+      .click()
+    await page.getByRole('button', { name: /^Keypad day/ }).click()
+    await page
+      .getByRole('dialog', { name: 'Keypad day' })
+      .getByRole('button', { name: 'Start Workout' })
+      .click()
+
+    const nav = page.getByRole('navigation', { name: 'Primary' })
+    const weight = page.getByRole('textbox', { name: 'Set 1 Weight' })
+    await expect(nav).toBeVisible()
+    await nav.evaluate((element) => {
+      element.setAttribute('data-installed-keypad-nav', 'same')
+    })
+    await expect(weight).toHaveAttribute('readonly', '')
+    await expect(weight).toHaveAttribute('inputmode', 'none')
+    const before = await page.evaluate(() => {
+      const shell = document
+        .querySelector('.app-shell')!
+        .getBoundingClientRect()
+      const nav = document.querySelector('.bottom-nav')!.getBoundingClientRect()
+      return {
+        navBottom: nav.bottom,
+        shellHeight: shell.height,
+        shellTop: shell.top,
+      }
+    })
+
+    await weight.click()
+    await expect
+      .poll(() =>
+        page.evaluate(() => ({
+          bodyOpen: document.body.classList.contains(
+            'live-workout-keypad-open',
+          ),
+          panelPresent: Boolean(document.querySelector('.live-workout-keypad')),
+          rootInert: document.querySelector<HTMLElement>('#root')?.inert,
+        })),
+      )
+      .toEqual({ bodyOpen: true, panelPresent: true, rootInert: true })
+    const weightPad = page.getByRole('dialog', {
+      name: 'Set 1 Weight number pad',
+    })
+    await expect(weightPad).toBeVisible()
+    await expect(nav).toBeVisible()
+    await expect(nav).toHaveAttribute('data-installed-keypad-nav', 'same')
+    for (const digit of ['1', '8', '5']) {
+      await weightPad.getByRole('button', { name: digit, exact: true }).click()
+    }
+    await expect(weight).toHaveValue('185')
+    await weightPad.getByRole('button', { name: 'Done' }).click()
+
+    const reps = page.getByRole('textbox', { name: 'Set 1 Reps' })
+    await expect(reps).toHaveAttribute('readonly', '')
+    await reps.click()
+    const repsPad = page.getByRole('dialog', {
+      name: 'Set 1 Reps number pad',
+    })
+    await repsPad.getByRole('button', { name: '8', exact: true }).click()
+    await repsPad.getByRole('button', { name: 'Done' }).click()
+    await expect(reps).toHaveValue('8')
+
+    const after = await page.evaluate(() => {
+      const shell = document
+        .querySelector('.app-shell')!
+        .getBoundingClientRect()
+      const nav = document.querySelector('.bottom-nav')!.getBoundingClientRect()
+      return {
+        navBottom: nav.bottom,
+        shellHeight: shell.height,
+        shellTop: shell.top,
+      }
+    })
+    expect(after).toEqual(before)
+    await expect(nav).toHaveCSS('position', 'relative')
+    await expect(nav).toHaveAttribute('data-installed-keypad-nav', 'same')
+
+    await page.getByRole('button', { name: 'Complete set 1' }).click()
+    await expect(
+      page.getByRole('button', { name: 'Mark incomplete set 1' }),
+    ).toBeVisible()
+    if (testInfo.project.name !== 'mobile-webkit') {
+      await page.reload()
+      await expect(
+        page.getByRole('textbox', { name: 'Set 1 Weight' }),
+      ).toHaveValue('185')
+      await expect(
+        page.getByRole('textbox', { name: 'Set 1 Reps' }),
+      ).toHaveValue('8')
+    }
 
     await page.getByRole('button', { name: 'Discard' }).click()
     await page
@@ -1809,7 +1952,10 @@ async function addPrescription(
   await builder
     .getByRole('searchbox', { name: 'Search exercises' })
     .fill(exerciseName)
-  await builder.getByRole('button', { name: new RegExp(exerciseName) }).click()
+  await builder
+    .getByRole('button', { name: new RegExp(exerciseName) })
+    .first()
+    .click()
   await builder.getByRole('textbox', { name: 'Sets' }).fill(sets)
   const minReps = builder.getByRole('textbox', { name: 'Min reps' })
   if (await minReps.isVisible()) {
