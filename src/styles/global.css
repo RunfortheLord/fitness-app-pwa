@@ -2038,8 +2038,14 @@ body.live-workout-open #root {
   overflow: hidden;
 }
 
+/* Pin the live-workout shell to the layout viewport with position: fixed so a
+   stray document-scroll offset (iOS focus scroll-into-view, rubber-banding)
+   can never slide the in-flow bottom navigation off screen. There is no native
+   keyboard here — numeric entry uses the in-app keypad overlay — so fixed
+   positioning is not affected by a software-keyboard visual-viewport shift. */
 body.live-workout-open .app-shell {
-  position: relative;
+  position: fixed;
+  inset: 0;
   display: flex;
   width: 100%;
   height: 100%;

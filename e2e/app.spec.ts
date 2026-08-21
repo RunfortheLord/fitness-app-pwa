@@ -789,7 +789,9 @@ test(
     expect(lockedLayout.htmlOverflow).toBe('hidden')
     expect(lockedLayout.rootOverflow).toBe('hidden')
     expect(lockedLayout.navPosition).toBe('relative')
-    expect(lockedLayout.shellPosition).toBe('relative')
+    // The shell is pinned to the layout viewport so a stray scroll offset can
+    // never slide the in-flow bottom dashboard off screen.
+    expect(lockedLayout.shellPosition).toBe('fixed')
     expect(lockedLayout.shellHeight).toBe(lockedLayout.viewportHeight)
     expect(lockedLayout.lockedWorkoutHeight).toBe('')
     expect(lockedLayout.pageScrollHeight).toBeLessThanOrEqual(
@@ -1143,6 +1145,25 @@ test(
     expect(after).toEqual(before)
     await expect(nav).toHaveCSS('position', 'relative')
     await expect(nav).toHaveAttribute('data-installed-keypad-nav', 'same')
+
+    // Even a stray document scroll offset (what an iOS focus scroll-into-view
+    // would produce) must not pull the pinned dashboard off screen.
+    const navBottomAfterForcedScroll = await page.evaluate(() => {
+      document.documentElement.style.minHeight = '3000px'
+      window.scrollTo(0, 400)
+      const navBottom = document
+        .querySelector('.bottom-nav')!
+        .getBoundingClientRect().bottom
+      document.documentElement.style.minHeight = ''
+      window.scrollTo(0, 0)
+      return { navBottom, viewportHeight: window.innerHeight }
+    })
+    expect(
+      Math.abs(
+        navBottomAfterForcedScroll.navBottom -
+          navBottomAfterForcedScroll.viewportHeight,
+      ),
+    ).toBeLessThanOrEqual(1)
 
     await page.getByRole('button', { name: 'Complete set 1' }).click()
     await expect(

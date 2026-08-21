@@ -15,6 +15,7 @@ import {
 import { createPortal } from 'react-dom'
 
 import { useLanguage } from '@components/languageContextValue'
+import { focusWithoutViewportShift } from '@components/liveWorkoutFocus'
 import { NumericInput } from '@components/ui'
 import {
   applyNumericKeypadCommand,
@@ -70,7 +71,7 @@ export function LiveWorkoutNumericKeypadProvider({
 
     if (restoreFocus && editor.trigger.isConnected) {
       window.requestAnimationFrame(() => {
-        editor.trigger.focus({ preventScroll: true })
+        focusWithoutViewportShift(editor.trigger)
       })
     }
   }, [])

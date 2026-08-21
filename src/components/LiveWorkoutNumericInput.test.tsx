@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { LanguageProvider } from '@components/LanguageContext'
+import { focusWithoutViewportShift } from '@components/liveWorkoutFocus'
 import {
   LiveWorkoutNumericInput,
   LiveWorkoutNumericKeypadProvider,
@@ -122,6 +123,44 @@ describe('LiveWorkoutNumericInput', () => {
     expect(
       screen.queryByRole('button', { name: 'Colon' }),
     ).not.toBeInTheDocument()
+  })
+})
+
+describe('focusWithoutViewportShift', () => {
+  it('undoes an iOS-style scroll-into-view that focus triggers on the set list', () => {
+    const scroller = document.createElement('div')
+    Object.defineProperty(scroller, 'clientHeight', { value: 200 })
+    Object.defineProperty(scroller, 'scrollHeight', { value: 1000 })
+    vi.spyOn(window, 'getComputedStyle').mockReturnValue({
+      overflowX: 'hidden',
+      overflowY: 'auto',
+    } as CSSStyleDeclaration)
+
+    let scrollTop = 120
+    Object.defineProperty(scroller, 'scrollTop', {
+      configurable: true,
+      get: () => scrollTop,
+      set: (next: number) => {
+        scrollTop = next
+      },
+    })
+
+    const input = document.createElement('input')
+    scroller.append(input)
+    document.body.append(scroller)
+
+    // Simulate WebKit ignoring preventScroll and yanking the focused control
+    // to the top of its scroll container.
+    input.focus = () => {
+      scrollTop = 0
+    }
+
+    focusWithoutViewportShift(input)
+
+    expect(scroller.scrollTop).toBe(120)
+
+    scroller.remove()
+    vi.restoreAllMocks()
   })
 })
 

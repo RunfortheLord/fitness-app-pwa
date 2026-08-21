@@ -10,6 +10,15 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-08-21-workout-dashboard-pinned',
+    date: '2026-08-21',
+    title: 'Workout dashboard can no longer be pushed off screen',
+    items: [
+      'The live workout screen is now pinned to the device, so entering and closing a number can never pull the screen up or hide the bottom dashboard.',
+      'Returning to a number field after using the keypad no longer lets iPhone scroll the workout, keeping your place in the set list.',
+    ],
+  },
+  {
     id: '2026-08-21-installed-workout-keypad-and-stable-dashboard',
     date: '2026-08-21',
     title: 'Workout number entry can no longer move the dashboard',
