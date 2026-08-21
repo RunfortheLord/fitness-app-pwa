@@ -576,6 +576,9 @@ describe('TrainingPage', () => {
     await waitFor(() => expect(document.body).toHaveClass('live-workout-open'))
     expect(document.documentElement).toHaveClass('live-workout-open')
     expect(
+      document.documentElement.style.getPropertyValue('--live-workout-height'),
+    ).toBe(`${window.innerHeight}px`)
+    expect(
       screen.getByRole('heading', { level: 1, name: 'Upper' }),
     ).toBeInTheDocument()
     expect(firstRender.container.querySelector('.live-workout-hero')).toBeNull()
@@ -792,6 +795,9 @@ describe('TrainingPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Current Program' }),
     ).toBeInTheDocument()
+    expect(
+      document.documentElement.style.getPropertyValue('--live-workout-height'),
+    ).toBe('')
     await expect(db.workouts.get(started.workout.id)).resolves.toBeUndefined()
   })
 

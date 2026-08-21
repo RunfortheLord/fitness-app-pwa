@@ -2042,19 +2042,16 @@ body.live-workout-open .app-shell {
   position: fixed;
   inset: 0;
   display: flex;
-  /* Percentage height follows the locked document. Unlike `dvh`, it does not
-     leave the workout compressed around a recently dismissed iOS keyboard. */
-  height: 100%;
+  /* Captured when the workout opens, before a keyboard can resize WebKit's
+     visual viewport. Keyboard navigation has no ownership of this height. */
+  height: var(--live-workout-height, 100lvh);
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
   padding-bottom: calc(
     env(safe-area-inset-bottom) + var(--bottom-nav-height) + var(--space-2)
   );
-  padding-top: calc(
-    env(safe-area-inset-top) + var(--space-3) +
-      var(--live-workout-viewport-offset, 0px)
-  );
+  padding-top: calc(env(safe-area-inset-top) + var(--space-3));
   padding-right: var(--space-2);
   padding-left: var(--space-2);
 }
@@ -4330,14 +4327,10 @@ input::placeholder {
   border-top: 1px solid var(--color-border-soft);
   background: rgb(18 18 20 / 96%);
   backdrop-filter: blur(18px);
-  /* When the on-screen keyboard opens, iOS floats fixed bottom: 0 elements up
-     above it. Translate the nav back down by the keyboard overlap so it stays
-     pinned to the bottom of the screen instead of jumping up. */
-  transform: var(--bottom-nav-transform, none);
 }
 
-body.live-workout-open .bottom-nav {
-  bottom: calc(0px - var(--live-workout-viewport-offset, 0px));
+.bottom-nav--keyboard-hidden {
+  display: none;
 }
 
 /* The full-screen food search hides the bottom nav so the on-screen keyboard

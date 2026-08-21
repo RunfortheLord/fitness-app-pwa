@@ -1240,3 +1240,20 @@ not conflate them. See `docs/LAUNCH_PLAN.md` (authoritative).
 - The locked Live Workout app shell uses the stable percentage document height,
   not keyboard-sensitive `dvh`, so dismissing a numeric keypad cannot leave the
   session controls and bottom navigation compressed upward.
+
+## 2026-08-21: Replace keyboard layout compensation with isolation
+
+This supersedes the keyboard translation, residual-offset, and percentage-height
+approaches above after repeated device failures showed that WebKit could retain
+their shared layout state.
+
+- Bottom navigation is removed from rendering for a measured software-keyboard
+  session. It is not translated, offset, or resized. Once the VisualViewport
+  returns to its pre-keyboard height, React mounts a new navigation element so
+  stale fixed-position geometry cannot survive.
+- Isolation persists across blur, route changes, early resize events, and app
+  background/resume. If iOS omits the closing resize event, a read-only geometry
+  poll detects recovery; it never writes viewport measurements into layout.
+- Live Workout captures its height once when the active workout opens. The live
+  shell no longer consumes keyboard or navigation offsets, and its set list,
+  exercise actions, and session controls remain in a separate layout system.

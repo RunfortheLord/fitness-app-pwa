@@ -528,7 +528,7 @@ describe('SettingsPage', () => {
     await user.click(await screen.findByRole('button', { name: 'About' }))
     expect(
       await screen.findByRole('heading', {
-        name: 'Bottom navigation stays anchored after typing',
+        name: 'Keyboard and navigation layout are now isolated',
       }),
     ).toBeInTheDocument()
     expect(

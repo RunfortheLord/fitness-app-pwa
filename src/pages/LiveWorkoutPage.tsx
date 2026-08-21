@@ -174,15 +174,38 @@ export function LiveWorkoutPage() {
 
   useEffect(() => {
     const isReady = state.status === 'ready'
-    document.documentElement.style.removeProperty(
-      '--live-workout-viewport-offset',
-    )
+    const root = document.documentElement
+    let orientationUpdate: number | null = null
+
+    const lockWorkoutHeight = () => {
+      root.style.setProperty(
+        '--live-workout-height',
+        `${Math.round(window.innerHeight)}px`,
+      )
+    }
+
+    if (isReady) {
+      lockWorkoutHeight()
+    }
+    const handleOrientationChange = () => {
+      if (!isReady) {
+        return
+      }
+      if (orientationUpdate !== null) {
+        window.clearTimeout(orientationUpdate)
+      }
+      orientationUpdate = window.setTimeout(lockWorkoutHeight, 250)
+    }
+
+    window.addEventListener('orientationchange', handleOrientationChange)
     document.documentElement.classList.toggle('live-workout-open', isReady)
     document.body.classList.toggle('live-workout-open', isReady)
     return () => {
-      document.documentElement.style.removeProperty(
-        '--live-workout-viewport-offset',
-      )
+      if (orientationUpdate !== null) {
+        window.clearTimeout(orientationUpdate)
+      }
+      window.removeEventListener('orientationchange', handleOrientationChange)
+      root.style.removeProperty('--live-workout-height')
       document.documentElement.classList.remove('live-workout-open')
       document.body.classList.remove('live-workout-open')
     }

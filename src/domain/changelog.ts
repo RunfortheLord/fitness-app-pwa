@@ -10,6 +10,15 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-08-21-keyboard-navigation-isolation',
+    date: '2026-08-21',
+    title: 'Keyboard and navigation layout are now isolated',
+    items: [
+      'The bottom dashboard now leaves the screen while an iPhone keyboard is open and is rebuilt only after the keyboard viewport has fully recovered.',
+      'Live Workout now keeps a separately captured full-screen height, so entering reps or other numbers cannot move its lower controls permanently.',
+    ],
+  },
+  {
     id: '2026-08-21-keyboard-navigation-anchor',
     date: '2026-08-21',
     title: 'Bottom navigation stays anchored after typing',

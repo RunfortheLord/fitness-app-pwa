@@ -4,17 +4,22 @@ import { NavLink } from 'react-router-dom'
 import { useLanguage } from '@components/languageContextValue'
 
 type BottomNavigationProps = {
+  isKeyboardHidden?: boolean
   onAdd: () => void
   trainingTo?: string
 }
 
 export function BottomNavigation({
+  isKeyboardHidden = false,
   onAdd,
   trainingTo = '/training',
 }: BottomNavigationProps) {
   const { t } = useLanguage()
   return (
-    <nav className="bottom-nav" aria-label={t('Primary')}>
+    <nav
+      className={`bottom-nav${isKeyboardHidden ? ' bottom-nav--keyboard-hidden' : ''}`}
+      aria-label={t('Primary')}
+    >
       <NavLink to="/" end className="bottom-nav-link">
         <Home aria-hidden="true" size={20} />
         <span>{t('Home')}</span>

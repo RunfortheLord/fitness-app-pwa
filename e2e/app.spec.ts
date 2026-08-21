@@ -372,6 +372,62 @@ test('bottom navigation has exactly five controls and no History tab', async ({
   ).toBeLessThan(1)
 })
 
+test('isolates and remounts bottom navigation across a keyboard viewport session', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.addInitScript(() => {
+    class TestVisualViewport extends EventTarget {
+      height = 844
+      offsetTop = 0
+    }
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: new TestVisualViewport(),
+    })
+  })
+  await page.goto('/')
+  await dismissSignInPrompt(page)
+
+  const nav = page.getByRole('navigation', { name: 'Primary' })
+  await expect(nav).toBeVisible()
+  await nav.evaluate((element) => {
+    element.setAttribute('data-keyboard-instance', 'before')
+  })
+
+  await page.evaluate(() => {
+    const input = document.createElement('input')
+    input.type = 'number'
+    input.setAttribute('aria-label', 'Keyboard viewport test')
+    document.body.append(input)
+    input.focus()
+    const viewport = window.visualViewport as VisualViewport & {
+      height: number
+    }
+    viewport.height = 500
+    viewport.dispatchEvent(new Event('resize'))
+  })
+
+  await expect(nav).not.toBeVisible()
+  await page.evaluate(() => {
+    const input = document.querySelector<HTMLInputElement>(
+      '[aria-label="Keyboard viewport test"]',
+    )!
+    input.blur()
+    window.dispatchEvent(new Event('resize'))
+  })
+  await expect(nav).not.toBeVisible()
+
+  await page.evaluate(() => {
+    const viewport = window.visualViewport as VisualViewport & {
+      height: number
+    }
+    viewport.height = 844
+  })
+  await expect(nav).toBeVisible()
+  await expect(nav).not.toHaveAttribute('data-keyboard-instance')
+})
+
 test('sets a weight goal through the recommended-rate step', async ({
   page,
 }) => {
@@ -709,6 +765,11 @@ test(
       rootOverflow: getComputedStyle(document.querySelector('#root')!).overflow,
       shellPosition: getComputedStyle(document.querySelector('.app-shell')!)
         .position,
+      shellHeight: document.querySelector('.app-shell')!.getBoundingClientRect()
+        .height,
+      lockedWorkoutHeight: document.documentElement.style.getPropertyValue(
+        '--live-workout-height',
+      ),
       viewportHeight: window.innerHeight,
     }))
     const workspaceOverflow = await exerciseWorkspace.evaluate(
@@ -725,6 +786,10 @@ test(
     expect(lockedLayout.htmlOverflow).toBe('hidden')
     expect(lockedLayout.rootOverflow).toBe('hidden')
     expect(lockedLayout.shellPosition).toBe('fixed')
+    expect(lockedLayout.shellHeight).toBe(lockedLayout.viewportHeight)
+    expect(lockedLayout.lockedWorkoutHeight).toBe(
+      `${lockedLayout.viewportHeight}px`,
+    )
     expect(lockedLayout.pageScrollHeight).toBeLessThanOrEqual(
       lockedLayout.viewportHeight + 1,
     )
@@ -734,26 +799,6 @@ test(
     expect(
       Math.abs(lockedLayout.navVisualBottomGap - dashboardNavBottomGaps.visual),
     ).toBeLessThanOrEqual(1)
-    const recoveryLayout = await page.evaluate(() => {
-      const root = document.documentElement
-      const shell = document.querySelector('.app-shell')!
-      const nav = document.querySelector('.bottom-nav')!
-      const baselinePaddingTop = Number.parseFloat(
-        getComputedStyle(shell).paddingTop,
-      )
-      root.style.setProperty('--live-workout-viewport-offset', '24px')
-      const recoveredPaddingTop = Number.parseFloat(
-        getComputedStyle(shell).paddingTop,
-      )
-      const recoveredNavBottom = Number.parseFloat(getComputedStyle(nav).bottom)
-      root.style.removeProperty('--live-workout-viewport-offset')
-      return {
-        navBottom: recoveredNavBottom,
-        paddingTopDelta: recoveredPaddingTop - baselinePaddingTop,
-      }
-    })
-    expect(recoveryLayout.paddingTopDelta).toBe(24)
-    expect(recoveryLayout.navBottom).toBe(-24)
     expect(workspaceOverflow).toBe('hidden')
     expect(setListOverflow).toBe('auto')
     expect(setListMomentumScrolling).not.toBe('touch')
