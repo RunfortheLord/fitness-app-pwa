@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
 
+const KEYBOARD_CLOSE_POLL_MS = 100
+
 /**
  * Keeps `position: fixed` bottom-anchored UI (the bottom nav) pinned to the true
  * bottom of the screen while the on-screen keyboard is open.
@@ -20,7 +22,7 @@ export function useKeyboardInset() {
 
     const root = document.documentElement
     let focusOutUpdate: number | null = null
-    let keyboardCloseFallback: number | null = null
+    let keyboardClosePoll: number | null = null
     let keyboardSessionActive = false
     let keyboardBaselineHeight = Math.max(
       window.innerHeight,
@@ -103,10 +105,10 @@ export function useKeyboardInset() {
       })
     }
 
-    const clearKeyboardCloseFallback = () => {
-      if (keyboardCloseFallback !== null) {
-        window.clearTimeout(keyboardCloseFallback)
-        keyboardCloseFallback = null
+    const clearKeyboardClosePoll = () => {
+      if (keyboardClosePoll !== null) {
+        window.clearTimeout(keyboardClosePoll)
+        keyboardClosePoll = null
       }
     }
 
@@ -116,6 +118,7 @@ export function useKeyboardInset() {
     }
 
     const endKeyboardSession = () => {
+      clearKeyboardClosePoll()
       keyboardSessionActive = false
       keyboardBaselineHeight = Math.max(
         window.innerHeight,
@@ -127,7 +130,7 @@ export function useKeyboardInset() {
 
     const resetKeyboardState = () => {
       clearFocusOutUpdate()
-      clearKeyboardCloseFallback()
+      clearKeyboardClosePoll()
       cancelViewportRecovery()
       keyboardSessionActive = false
       keyboardRecoveryUntil = 0
@@ -148,7 +151,7 @@ export function useKeyboardInset() {
       const roundedInset = Math.round(inset)
 
       if (textInputActive && viewportHeightReduction >= 120) {
-        clearKeyboardCloseFallback()
+        clearKeyboardClosePoll()
         keyboardSessionActive = true
         armKeyboardRecovery()
       }
@@ -182,6 +185,24 @@ export function useKeyboardInset() {
       )
     }
 
+    const pollForKeyboardClose = () => {
+      clearKeyboardClosePoll()
+      if (!keyboardSessionActive || isTextInputActive(document.activeElement)) {
+        return
+      }
+
+      keyboardClosePoll = window.setTimeout(() => {
+        keyboardClosePoll = null
+        update()
+        if (
+          keyboardSessionActive &&
+          !isTextInputActive(document.activeElement)
+        ) {
+          pollForKeyboardClose()
+        }
+      }, KEYBOARD_CLOSE_POLL_MS)
+    }
+
     const updateAfterFocusSettles = () => {
       clearFocusOutUpdate()
       focusOutUpdate = window.setTimeout(() => {
@@ -190,22 +211,16 @@ export function useKeyboardInset() {
         if (!isTextInputActive(document.activeElement)) {
           armKeyboardRecovery()
           queueLiveWorkoutViewportRecovery()
-          clearKeyboardCloseFallback()
-          // iOS occasionally omits the final VisualViewport resize after the
-          // keyboard closes or the installed PWA resumes. Keep the closing
-          // animation smooth, but never allow stale compensation to survive.
-          keyboardCloseFallback = window.setTimeout(() => {
-            keyboardCloseFallback = null
-            if (!isTextInputActive(document.activeElement)) {
-              endKeyboardSession()
-            }
-          }, 700)
+          // iOS occasionally omits the final VisualViewport resize event after
+          // the keyboard closes. Poll the actual geometry instead of clearing
+          // compensation on a timer while the viewport is still contracted.
+          pollForKeyboardClose()
         }
       }, 0)
     }
 
     const updateAfterFocusIn = () => {
-      clearKeyboardCloseFallback()
+      clearKeyboardClosePoll()
       cancelViewportRecovery()
       keyboardRecoveryUntil = 0
       clearLiveWorkoutViewportOffset()
@@ -223,6 +238,13 @@ export function useKeyboardInset() {
       }
       if (document.body.classList.contains('live-workout-open')) {
         armKeyboardRecovery()
+      }
+      if (keyboardSessionActive) {
+        update()
+        if (keyboardSessionActive) {
+          pollForKeyboardClose()
+        }
+        return
       }
       endKeyboardSession()
     }
@@ -254,7 +276,7 @@ export function useKeyboardInset() {
       viewport.removeEventListener('resize', update)
       viewport.removeEventListener('scroll', update)
       cancelViewportRecovery()
-      clearKeyboardCloseFallback()
+      clearKeyboardClosePoll()
       document.removeEventListener('focusin', updateAfterFocusIn)
       document.removeEventListener('focusout', updateAfterFocusSettles)
       document.removeEventListener('visibilitychange', resetWhenHidden)

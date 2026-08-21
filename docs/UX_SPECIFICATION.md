@@ -19,8 +19,9 @@
   pinned to the visual viewport while content scrolls. A keyboard translation
   is applied only while a focused text-entry control produces a meaningful
   visual-viewport inset. That translation survives route changes while iOS is
-  still closing the keyboard, then resets when the viewport is restored or the
-  close fallback expires.
+  still closing the keyboard, then resets only after viewport geometry confirms
+  that the keyboard-sized inset has closed. A short geometry poll handles iOS
+  versions that omit the final VisualViewport resize event.
 - The center Add button is visually prominent, circular, and raised above the tab bar.
 - Main content scrolls behind fixed header and nav only when padding prevents occlusion.
 - Header contains current screen title plus contextual secondary actions.
@@ -342,7 +343,8 @@
 - A compact notepad button sits on the same row as the current exercise name.
   Tapping it opens session exercise notes in a sheet; saving never changes the
   source program prescription.
-- The live workout locks the outer page to the visual viewport. When all sets
+- The live workout locks the outer page to the stable document viewport rather
+  than the keyboard-sensitive dynamic viewport. When all sets
   cannot fit on a small phone, only the set list scrolls internally so the
   exercise header, add-set control, exercise actions, navigator, and session
   controls remain stable.
@@ -360,8 +362,9 @@
   compensation. The bottom navigation uses the same viewport-bottom and safe-
   area baseline as Home, Nutrition, and the other dashboard routes.
 - Closing a live-workout numeric keypad re-anchors the locked document on the
-  next animation frame. If iOS leaves a residual visual-viewport top offset,
-  the live layout compensates until a later viewport event restores baseline.
+  next animation frame. The live shell remains full-height while the keypad
+  opens and closes. If iOS leaves a residual visual-viewport top offset, the
+  live layout compensates until a later viewport event restores baseline.
 - Exercise Options opens as a full-height subpage and shows the total workout
   duration and its pause/resume action, plus the current exercise's
   rest-duration wheels. The wheels initially show the workout prescription's

@@ -10,6 +10,15 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-08-21-keyboard-navigation-anchor',
+    date: '2026-08-21',
+    title: 'Bottom navigation stays anchored after typing',
+    items: [
+      'Dismissing the numeric keypad during a live workout no longer leaves the workout controls or bottom navigation shifted upward.',
+      'History, Nutrition, and other dashboard screens now wait for the iPhone keyboard viewport to fully recover before re-anchoring the bottom navigation.',
+    ],
+  },
+  {
     id: '2026-08-21-live-workout-exercise-and-timer-fixes',
     date: '2026-08-21',
     title: 'Live workout swaps and timers are more reliable',

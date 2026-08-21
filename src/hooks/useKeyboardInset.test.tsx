@@ -181,7 +181,7 @@ describe('useKeyboardInset', () => {
     vi.useRealTimers()
   })
 
-  it('clears stale keyboard compensation when iOS omits the final viewport resize', () => {
+  it('keeps compensation while a blurred keyboard viewport is still contracted', () => {
     vi.useFakeTimers()
     const viewport = installVisualViewport({ height: 500, offsetTop: 0 })
     const input = document.createElement('input')
@@ -198,7 +198,83 @@ describe('useKeyboardInset', () => {
 
     act(() => {
       input.blur()
-      vi.runAllTimers()
+      vi.advanceTimersByTime(1_000)
+    })
+
+    expect(
+      document.documentElement.style.getPropertyValue('--keyboard-inset'),
+    ).toBe('300px')
+    expect(
+      document.documentElement.style.getPropertyValue('--bottom-nav-transform'),
+    ).toBe('translate3d(0, 300px, 0)')
+
+    act(() => {
+      viewport.height = 800
+      vi.advanceTimersByTime(100)
+    })
+
+    expect(
+      document.documentElement.style.getPropertyValue('--keyboard-inset'),
+    ).toBe('0px')
+    expect(
+      document.documentElement.style.getPropertyValue('--bottom-nav-transform'),
+    ).toBe('none')
+    vi.useRealTimers()
+  })
+
+  it('does not release a blurred keyboard session on a premature window resize', () => {
+    vi.useFakeTimers()
+    const viewport = installVisualViewport({ height: 500, offsetTop: 0 })
+    const input = document.createElement('input')
+    document.body.append(input)
+
+    render(<KeyboardInsetHarness />)
+    act(() => {
+      input.focus()
+      viewport.dispatchEvent(new Event('resize'))
+      input.blur()
+      vi.advanceTimersByTime(0)
+      window.dispatchEvent(new Event('resize'))
+    })
+
+    expect(
+      document.documentElement.style.getPropertyValue('--bottom-nav-transform'),
+    ).toBe('translate3d(0, 300px, 0)')
+
+    act(() => {
+      viewport.height = 800
+      window.dispatchEvent(new Event('resize'))
+    })
+
+    expect(
+      document.documentElement.style.getPropertyValue('--keyboard-inset'),
+    ).toBe('0px')
+    expect(
+      document.documentElement.style.getPropertyValue('--bottom-nav-transform'),
+    ).toBe('none')
+    vi.useRealTimers()
+  })
+
+  it('detects keyboard closure when iOS omits the final viewport resize event', () => {
+    vi.useFakeTimers()
+    const viewport = installVisualViewport({ height: 500, offsetTop: 0 })
+    const input = document.createElement('input')
+    document.body.append(input)
+
+    render(<KeyboardInsetHarness />)
+    act(() => {
+      input.focus()
+      viewport.dispatchEvent(new Event('resize'))
+      input.blur()
+      vi.advanceTimersByTime(0)
+    })
+    expect(
+      document.documentElement.style.getPropertyValue('--keyboard-inset'),
+    ).toBe('300px')
+
+    act(() => {
+      viewport.height = 800
+      vi.advanceTimersByTime(100)
     })
 
     expect(

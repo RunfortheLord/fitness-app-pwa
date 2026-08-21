@@ -1021,7 +1021,8 @@
   resynchronizes optional alerts.
 - Keyboard viewport compensation survives route changes while iOS closes the
   keyboard, so the bottom navigation does not jump upward during Live Workout.
-  It clears when the visual viewport is restored or the close fallback expires.
+  It clears when the visual viewport is restored; a geometry poll detects that
+  recovery when iOS omits the final VisualViewport resize event.
 - After a live-workout numeric field blurs, the next animation frame resets the
   locked document scroll position. When WebKit reports a residual visual-
   viewport top offset with no remaining keyboard inset, the live shell and
@@ -1226,3 +1227,16 @@ not conflate them. See `docs/LAUNCH_PLAN.md` (authoritative).
   `docs/legal/TERMS_OF_USE.md`, `docs/legal/PRIVACY_POLICY.md`, and
   `docs/legal/CONSUMER_HEALTH_DATA_PRIVACY_POLICY.md`. The older worldwide paid
   files remain internal, superseded research and must not be published.
+
+## 2026-08-21: Anchor navigation to recovered keyboard geometry
+
+- Keyboard-close recovery no longer discards bottom-navigation compensation
+  after a fixed delay. After a text-entry control blurs, compensation remains
+  active while the VisualViewport is still contracted and a short geometry
+  poll detects recovery when iOS omits its final resize event.
+- Window resize and lifecycle events also preserve an active closing session
+  until the measured keyboard inset is gone. This shared behavior covers Live
+  Workout numeric inputs and text entry on History, Nutrition, and other routes.
+- The locked Live Workout app shell uses the stable percentage document height,
+  not keyboard-sensitive `dvh`, so dismissing a numeric keypad cannot leave the
+  session controls and bottom navigation compressed upward.
