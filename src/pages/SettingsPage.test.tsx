@@ -497,6 +497,32 @@ describe('SettingsPage', () => {
     })
   })
 
+  it('asks for a training level the first time smart progression is enabled', async () => {
+    const user = userEvent.setup()
+    renderSettings()
+
+    const autofill = await screen.findByLabelText('Workout set autofill')
+    await user.selectOptions(autofill, 'smart_progression')
+
+    // The first-enable prompt appears with the level choices.
+    expect(await screen.findByText('Your training level')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Novice/ }))
+
+    await waitFor(async () => {
+      expect(await settingsRepository.getSettings()).toMatchObject({
+        smartProgressionBaselineLevel: 'novice',
+        smartProgressionExperiencePrompted: true,
+      })
+    })
+
+    // Re-toggling never nags again.
+    await user.selectOptions(autofill, 'history_copy')
+    await user.selectOptions(autofill, 'smart_progression')
+    expect(
+      screen.queryByRole('button', { name: /Intermediate/ }),
+    ).not.toBeInTheDocument()
+  })
+
   it('switches the interface to Spanish and persists the preference', async () => {
     const user = userEvent.setup()
     renderSettings()

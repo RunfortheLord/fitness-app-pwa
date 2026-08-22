@@ -117,6 +117,44 @@ describe('workoutRepository', () => {
     await expect(database.detectedWorkoutChanges.toArray()).resolves.toEqual([])
   })
 
+  it('dedupes concurrent finish requests for the same workout', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    await database.activeCycleWorkoutExercises.update(active.exercises[0].id, {
+      exerciseId: 'builtin:bench-press',
+    })
+    const repository = createWorkoutRepository(database)
+
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(started.sets[0].id, { completed: true })
+
+    // Two finishes race (for example the screen unmounts and the user presses
+    // Finish again). Both resolve with the same history and only one is written.
+    const [first, second] = await Promise.all([
+      repository.completeWorkout({ workoutId: started.workout.id }),
+      repository.completeWorkout({ workoutId: started.workout.id }),
+    ])
+
+    expect(first.history.id).toBe(started.workout.id)
+    expect(second.history.id).toBe(first.history.id)
+    await expect(
+      database.workoutHistoryEntries.toArray(),
+    ).resolves.toHaveLength(1)
+    await expect(database.workouts.toArray()).resolves.toEqual([])
+
+    // The in-flight guard clears after completion, so a later finish of the
+    // same (now missing) workout still surfaces the not-found error.
+    await expect(
+      repository.completeWorkout({ workoutId: started.workout.id }),
+    ).rejects.toThrow('was not found')
+  })
+
   it('finishes a workout when a set has recorded values but is not checked complete', async () => {
     const program = await seedProgram(database)
     const active = await createProgramRepository(database).activateTemplate(
@@ -1745,6 +1783,87 @@ describe('workoutRepository', () => {
     await expect(
       database.templateWorkoutExercises.get(program.exercises[0].id),
     ).resolves.toMatchObject({ targetWeight: 190 })
+  })
+
+  it('novice level recommends a load increase after one top-range session and tunes exercise state', async () => {
+    const programRepository = createProgramRepository(database)
+    const program = await seedProgram(database)
+    const active = await programRepository.activateTemplate(program.template.id)
+    await database.activeCycleWorkoutExercises.update(active.exercises[0].id, {
+      targetWeight: 185,
+    })
+    await createSettingsRepository(
+      database,
+    ).saveSmartProgressionExperienceLevel('novice')
+    const repository = createWorkoutRepository(database)
+
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(started.sets[0].id, {
+      metricValues: { weight: 185, reps: 10 },
+      completed: true,
+    })
+    await repository.updateWorkoutSet(started.sets[1].id, {
+      metricValues: { weight: 185, reps: 10 },
+      rir: 3,
+      completed: true,
+    })
+    const completed = await repository.completeWorkout({
+      workoutId: started.workout.id,
+    })
+
+    // A single qualifying session is enough at the novice cadence.
+    expect(completed.detectedChanges).toMatchObject([
+      {
+        type: 'progression_recommendation',
+        recommendationReason: 'repeated_top_range_increase',
+      },
+    ])
+
+    // Novice is the fastest end of the spectrum; a clean increase keeps it
+    // pinned there (score 0) but still writes the per-exercise state.
+    const state = await database.exerciseProgressionStates.get(
+      active.exercises[0].exerciseId,
+    )
+    expect(state).toMatchObject({ score: 0 })
+  })
+
+  it('intermediate default holds after one top-range session for the same setup', async () => {
+    const programRepository = createProgramRepository(database)
+    const program = await seedProgram(database)
+    const active = await programRepository.activateTemplate(program.template.id)
+    await database.activeCycleWorkoutExercises.update(active.exercises[0].id, {
+      targetWeight: 185,
+    })
+    // No baseline chosen: keeps the existing two-session behavior and writes no
+    // per-exercise progression state.
+    const repository = createWorkoutRepository(database)
+
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(started.sets[0].id, {
+      metricValues: { weight: 185, reps: 10 },
+      completed: true,
+    })
+    await repository.updateWorkoutSet(started.sets[1].id, {
+      metricValues: { weight: 185, reps: 10 },
+      rir: 3,
+      completed: true,
+    })
+    const completed = await repository.completeWorkout({
+      workoutId: started.workout.id,
+    })
+
+    expect(completed.detectedChanges).toEqual([])
+    await expect(database.exerciseProgressionStates.toArray()).resolves.toEqual(
+      [],
+    )
   })
 
   it('records neither as an explicit rejected review result', async () => {

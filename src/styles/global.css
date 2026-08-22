@@ -6236,3 +6236,47 @@ body.food-search-open .bottom-nav {
   display: inline-flex;
   align-items: center;
 }
+
+.experience-level-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.experience-level-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.experience-level-option {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-4);
+  text-align: left;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.experience-level-option.selected {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.experience-level-option-label {
+  font-weight: 600;
+}
+
+.experience-level-option-description {
+  color: var(--color-muted);
+  font-size: 0.875rem;
+}

@@ -1,5 +1,57 @@
 # Decisions
 
+## 2026-08-21: Smart Progression by Experience Level (per exercise)
+
+- Smart progression now tailors its cadence per exercise. The user picks one of
+  four presets (novice / intermediate / advanced / expert) on first enable; that
+  preset seeds each exercise's position on a **continuous spectrum** (0 novice →
+  3 expert) which then drifts independently as the exercise is trained, so a
+  lifter can progress fast on one lift and slowly on another. Requested by the
+  product owner ("a spectrum for each exercise, but the preset is 4 choices").
+  Full behavior in `docs/PROGRESSION_RECOMMENDATIONS.md`.
+- **The level tunes cadence only, not the mechanics.** The engine keeps
+  deterministic double progression (reps climb to the top of the range, then
+  load increases; fixed rep schemes progress load directly; missed minimums
+  reduce load and raise reps). Level changes how many qualifying sessions a load
+  increase/reduction needs and how fast prefill reps climb. The load step stays
+  each exercise's `defaultWeightIncrement`. This keeps AGENTS.md's
+  deterministic/explainable/opt-in and review-before-apply guarantees.
+- **RIR gate follows the program, not a per-level constant:** the required
+  final-set reserve is the prescription's target RIR, then the last recorded RIR
+  for that exercise, then a default of 2 (was a hardcoded 2). Per the owner's
+  spec.
+- **Backward compatible:** with no level chosen, the engine keeps its existing
+  two-session / RIR-2 behavior and writes no per-exercise state, so current
+  installs are unchanged unless the user opts in and picks a level.
+- **First-enable prompt:** choosing Smart progression in Settings the first time
+  opens a one-time sub-page (BottomSheet, page variant) asking the level; it
+  never nags again and is changeable later. Adds `smartProgressionBaselineLevel`
+  and `smartProgressionExperiencePrompted` to `UserSettings`.
+- **Per-exercise tailoring** deterministically nudges each exercise's spectrum
+  score after every workout (clean increase −1/3, reduction +1/2, hold no
+  change; clamped to bounds), so cadence eases or tightens smoothly rather than
+  snapping between the four presets. It only adjusts cadence and never applies a
+  target without the normal detected-change review.
+- **Persistence:** new Dexie store `exerciseProgressionStates` (keyed by
+  `exerciseId`, holding the continuous `score`), schema v22. Because it is keyed
+  by `exerciseId` (not `id`) and is derived state, it is intentionally excluded
+  from the `id`-keyed backup machinery; the preset on `UserSettings` is backed
+  up, and per-exercise state is wiped on reset/restore (like
+  `activeCycleDayChecks`) and rebuilds from the preset.
+
+## 2026-08-21: Finish-Workout Performance & Idempotency
+
+- Fixed the long-standing "Finish takes forever / only completes after
+  navigating away" bug. Root cause: `completeWorkout` ran the progression scan
+  inside its 13-store write transaction and `findPreviousComparablePerformance`
+  hydrated every historical candidate before discarding all but one, so finish
+  time grew with history while holding write locks.
+- **Fix:** the finder now batch-loads candidate workouts once and hydrates sets
+  - prescription only for the winner(s); `completeWorkout` de-duplicates
+    concurrent finishes of the same workout (a component-scoped guard was dropped
+    on unmount); and navigation no longer blocks on the best-effort native
+    rest-timer cancel.
+
 ## 2026-08-19: Privacy-First Launch Analytics (Launch Plan Step 2)
 
 - Added an anonymous, off-by-default usage-metrics capability to measure the

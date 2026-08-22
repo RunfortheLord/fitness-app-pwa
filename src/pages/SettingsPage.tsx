@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import {
+  BottomSheet,
   Card,
   FormField,
   IconButton,
@@ -27,6 +28,7 @@ import { APP_LANGUAGE_OPTIONS } from '@domain/localization'
 import { WEIGHT_UNIT_OPTIONS } from '@domain/weightUnits'
 import type {
   AppLanguage,
+  ProgressionExperienceLevel,
   WeightUnit,
   WorkoutAutofillMode,
 } from '@shared-types/app'
@@ -79,6 +81,36 @@ type SettingsSection =
 
 const FEEDBACK_ENABLED =
   import.meta.env.VITE_FEEDBACK_ENABLED?.trim().toLowerCase() === 'true'
+
+const EXPERIENCE_LEVEL_OPTIONS: Array<{
+  value: ProgressionExperienceLevel
+  label: string
+  description: string
+}> = [
+  {
+    value: 'novice',
+    label: 'Novice',
+    description:
+      'New to lifting. Weight climbs quickly, often session to session.',
+  },
+  {
+    value: 'intermediate',
+    label: 'Intermediate',
+    description:
+      'Around a year of steady training. Balanced, gradual progression.',
+  },
+  {
+    value: 'advanced',
+    label: 'Advanced',
+    description: 'Several years in. Progress is earned more slowly.',
+  },
+  {
+    value: 'expert',
+    label: 'Expert',
+    description:
+      'Highly experienced. The most patient, conservative progression.',
+  },
+]
 
 export function SettingsPage() {
   const { language, setLanguage, t } = useLanguage()
@@ -141,6 +173,10 @@ export function SettingsPage() {
   const [workoutAutofillMessage, setWorkoutAutofillMessage] = useState<
     string | null
   >(null)
+  const [experiencePrompted, setExperiencePrompted] = useState(false)
+  const [experienceLevel, setExperienceLevel] =
+    useState<ProgressionExperienceLevel | null>(null)
+  const [isExperienceSheetOpen, setIsExperienceSheetOpen] = useState(false)
   const [languageMessage, setLanguageMessage] = useState<string | null>(null)
   const [storagePersistenceStatus, setStoragePersistenceStatus] =
     useState<StoragePersistenceStatus | null>(null)
@@ -211,6 +247,10 @@ export function SettingsPage() {
       setWeightUnit(settings.weightUnit ?? 'lb')
       setRirTrackingEnabled(settings.rirTrackingEnabled ?? false)
       setWorkoutAutofillMode(settings.workoutAutofillMode ?? 'history_copy')
+      setExperiencePrompted(
+        settings.smartProgressionExperiencePrompted ?? false,
+      )
+      setExperienceLevel(settings.smartProgressionBaselineLevel ?? null)
     })
 
     return () => {
@@ -367,6 +407,24 @@ export function SettingsPage() {
           : 'New workouts will copy matching completed sets from recent history.',
       )
     })
+    // The first time smart progression is enabled, ask for the training level
+    // that seeds progression speed. Never nags on later toggles.
+    if (mode === 'smart_progression' && !experiencePrompted) {
+      setIsExperienceSheetOpen(true)
+    }
+  }
+
+  function chooseExperienceLevel(level: ProgressionExperienceLevel) {
+    setExperienceLevel(level)
+    setExperiencePrompted(true)
+    setIsExperienceSheetOpen(false)
+    void settingsRepository
+      .saveSmartProgressionExperienceLevel(level)
+      .then(() => {
+        setWorkoutAutofillMessage(
+          'Smart progression will pace each exercise to your training level.',
+        )
+      })
   }
 
   async function saveAppLanguage(nextLanguage: AppLanguage) {
@@ -834,6 +892,59 @@ export function SettingsPage() {
                 {workoutAutofillMessage}
               </StatusMessage>
             ) : null}
+            {workoutAutofillMode === 'smart_progression' &&
+            experiencePrompted ? (
+              <div className="experience-level-summary">
+                <span className="muted">
+                  {t('Training level')}:{' '}
+                  {t(
+                    EXPERIENCE_LEVEL_OPTIONS.find(
+                      (option) => option.value === experienceLevel,
+                    )?.label ?? 'Intermediate',
+                  )}
+                </span>
+                <SecondaryButton
+                  type="button"
+                  onClick={() => setIsExperienceSheetOpen(true)}
+                >
+                  {t('Change')}
+                </SecondaryButton>
+              </div>
+            ) : null}
+            <BottomSheet
+              isOpen={isExperienceSheetOpen}
+              onClose={() => setIsExperienceSheetOpen(false)}
+              title="Your training level"
+              variant="page"
+            >
+              <p className="muted">
+                {t(
+                  'Smart progression adds weight and reps at a pace that fits your experience, and tailors to each exercise as you train. You can change this any time.',
+                )}
+              </p>
+              <div className="experience-level-options">
+                {EXPERIENCE_LEVEL_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={
+                      experienceLevel === option.value
+                        ? 'experience-level-option selected'
+                        : 'experience-level-option'
+                    }
+                    aria-pressed={experienceLevel === option.value}
+                    onClick={() => chooseExperienceLevel(option.value)}
+                  >
+                    <span className="experience-level-option-label">
+                      {t(option.label)}
+                    </span>
+                    <span className="experience-level-option-description">
+                      {t(option.description)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </BottomSheet>
             <label className="checkbox-row">
               <input
                 checked={rirTrackingEnabled}

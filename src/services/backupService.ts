@@ -280,6 +280,10 @@ const userSettingsSchema = z.object({
     .enum(['history_copy', 'smart_progression'])
     .optional()
     .default('history_copy'),
+  smartProgressionBaselineLevel: z
+    .enum(['novice', 'intermediate', 'advanced', 'expert'])
+    .optional(),
+  smartProgressionExperiencePrompted: z.boolean().optional(),
   historySortMode: z.enum(['recent', 'program']).optional().default('recent'),
   historyProgramId: nullableId.optional().default(null),
   createdAt: isoTimestampSchema,
@@ -1373,6 +1377,11 @@ function clearableDataTables(database: TrainingLogDatabase) {
     // payload), but must still be wiped on reset/restore so a fresh import
     // does not inherit stale checkmarks.
     database.activeCycleDayChecks,
+    // Per-exercise smart-progression scores are derived from the preset (stored
+    // on userSettings and backed up) plus workout history, so they are not
+    // exported. Wipe them on reset/restore so an import cannot inherit another
+    // dataset's tailored scores; they rebuild from the preset.
+    database.exerciseProgressionStates,
   ]
 }
 

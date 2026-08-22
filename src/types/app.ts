@@ -7,6 +7,15 @@ export type WeightUnit = 'lb' | 'kg'
 export type AppLanguage = 'en' | 'es'
 export type EnergyUnit = 'kcal'
 export type WorkoutAutofillMode = 'history_copy' | 'smart_progression'
+/**
+ * Self-reported training experience. Sets the baseline speed of smart
+ * progression and seeds each exercise's per-exercise progression level.
+ */
+export type ProgressionExperienceLevel =
+  | 'novice'
+  | 'intermediate'
+  | 'advanced'
+  | 'expert'
 export type HistorySortMode = 'recent' | 'program'
 export type FoodSourceType = 'local' | 'provider'
 export type FoodProviderId = 'usda' | 'open_food_facts'
@@ -93,6 +102,16 @@ export type UserSettings = {
   rirTrackingEnabled?: boolean
   /** How prior completed sets prefill a newly started workout. */
   workoutAutofillMode?: WorkoutAutofillMode
+  /**
+   * Baseline experience level chosen when smart progression is first enabled.
+   * Seeds each exercise's progression speed; per-exercise levels can drift.
+   */
+  smartProgressionBaselineLevel?: ProgressionExperienceLevel
+  /**
+   * True once the first-enable experience-level prompt has been answered, so it
+   * is shown once rather than on every toggle.
+   */
+  smartProgressionExperiencePrompted?: boolean
   /** Persisted History list organization. */
   historySortMode?: HistorySortMode
   /** Persisted program drilldown while History is organized by program. */
@@ -429,6 +448,25 @@ export type Exercise = {
   origin: ExerciseOrigin
   seedDataVersion: number | null
   status: ExerciseStatus
+  createdAt: IsoTimestamp
+  updatedAt: IsoTimestamp
+}
+
+/**
+ * Per-exercise smart-progression state. Seeded from the user's chosen preset
+ * level and then deterministically tailored along a continuous spectrum from
+ * that exercise's own outcomes, so a lifter can progress fast on one lift and
+ * slowly on another. The keyed `exerciseId` matches the stable exercise ID
+ * (built-in or custom).
+ */
+export type ExerciseProgressionState = {
+  exerciseId: string
+  /**
+   * Continuous position on the experience spectrum: 0 is the novice (fastest)
+   * end and 3 is the expert (slowest) end. Seeded from the chosen preset, then
+   * drifts as the exercise is trained.
+   */
+  score: number
   createdAt: IsoTimestamp
   updatedAt: IsoTimestamp
 }

@@ -5,6 +5,7 @@ import {
   evaluateCurrentWorkoutRecommendation,
   evaluateNextWorkoutRecommendation,
 } from '@domain/progressionRecommendations'
+import { PROGRESSION_LEVEL_PARAMS } from '@domain/progressionLevels'
 import type {
   ActiveCycleWorkoutExercise,
   TrackingMethodId,
@@ -255,6 +256,86 @@ describe('next workout progression recommendations', () => {
         increment: 5,
       }).reason,
     ).toBe('insufficient_final_rir_hold')
+  })
+})
+
+describe('next workout progression by experience level', () => {
+  it('novice increases after a single top-range session with no prior history', () => {
+    const result = evaluateNextWorkoutRecommendation({
+      current: performance({ reps: [10, 10], finalRir: 2 }),
+      previous: undefined,
+      increment: 5,
+      params: PROGRESSION_LEVEL_PARAMS.novice,
+    })
+
+    expect(result).toMatchObject({
+      reason: 'repeated_top_range_increase',
+      action: 'increase',
+      materialChange: true,
+    })
+  })
+
+  it('novice reduces after a single failed session', () => {
+    const result = evaluateNextWorkoutRecommendation({
+      current: performance({ reps: [3, 4], failedSetNumbers: [1] }),
+      previous: undefined,
+      increment: 5,
+      params: PROGRESSION_LEVEL_PARAMS.novice,
+    })
+
+    expect(result.action).toBe('reduce')
+    expect(result.materialChange).toBe(true)
+  })
+
+  it('expert holds when only two comparable top-range sessions qualify', () => {
+    const result = evaluateNextWorkoutRecommendation({
+      current: performance({ reps: [10, 10], finalRir: 2 }),
+      previous: performance({
+        workoutId: 'previous',
+        reps: [10, 10],
+        finalRir: 2,
+      }),
+      increment: 5,
+      params: PROGRESSION_LEVEL_PARAMS.expert,
+    })
+
+    expect(result.reason).toBe('top_range_insufficient_history_hold')
+    expect(result.action).toBe('hold')
+  })
+
+  it('expert increases once four comparable top-range sessions qualify', () => {
+    const result = evaluateNextWorkoutRecommendation({
+      current: performance({ reps: [10, 10], finalRir: 2 }),
+      previous: performance({
+        workoutId: 'previous-1',
+        reps: [10, 10],
+        finalRir: 2,
+      }),
+      earlierPerformances: [
+        performance({ workoutId: 'previous-2', reps: [10, 10], finalRir: 2 }),
+        performance({ workoutId: 'previous-3', reps: [10, 10], finalRir: 2 }),
+      ],
+      increment: 5,
+      params: PROGRESSION_LEVEL_PARAMS.expert,
+    })
+
+    expect(result).toMatchObject({
+      reason: 'repeated_top_range_increase',
+      action: 'increase',
+      materialChange: true,
+    })
+  })
+
+  it('holds when the final-set RIR is below the supplied target reserve', () => {
+    const result = evaluateNextWorkoutRecommendation({
+      current: performance({ reps: [10, 10], finalRir: 2 }),
+      previous: undefined,
+      increment: 5,
+      params: PROGRESSION_LEVEL_PARAMS.novice,
+      targetRir: 3,
+    })
+
+    expect(result.reason).toBe('insufficient_final_rir_hold')
   })
 })
 

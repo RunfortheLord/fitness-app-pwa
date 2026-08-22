@@ -11,6 +11,11 @@ import type {
   WorkoutSetTargetSnapshot,
 } from '@shared-types/app'
 
+import {
+  PROGRESSION_LEVEL_PARAMS,
+  type ProgressionLevelParams,
+} from './progressionLevels'
+
 const WEIGHTED_METHODS = new Set<TrackingMethodId>([
   'weight_reps',
   'assisted_weight_reps',
@@ -53,6 +58,19 @@ export type NextWorkoutRecommendationInput = {
   current: NextWorkoutPerformance
   previous: NextWorkoutPerformance | undefined
   increment: number | null | undefined
+  /**
+   * Comparable performances older than `previous`, most-recent first. Used when
+   * the experience level requires more than two qualifying sessions.
+   */
+  earlierPerformances?: NextWorkoutPerformance[]
+  /** Level cadence parameters. Defaults to the intermediate cadence. */
+  params?: ProgressionLevelParams
+  /**
+   * RIR the final programmed set must leave in reserve to qualify for a load
+   * increase (from the program prescription, falling back to the last record).
+   * Defaults to 2.
+   */
+  targetRir?: number | null
 }
 
 export type NextWorkoutRecommendationResult = {
@@ -230,6 +248,9 @@ export function evaluateNextWorkoutRecommendation({
   current,
   previous,
   increment,
+  earlierPerformances,
+  params = PROGRESSION_LEVEL_PARAMS.intermediate,
+  targetRir,
 }: NextWorkoutRecommendationInput): NextWorkoutRecommendationResult {
   const method = current.exercise.exerciseSnapshot.trackingMethodId
   if (!WEIGHTED_METHODS.has(method)) {
@@ -238,16 +259,17 @@ export function evaluateNextWorkoutRecommendation({
       'Automatic next-workout progression is not implemented for this tracking method.',
     )
   }
-  if (!previous) {
-    return nextHold(
-      'no_comparable_previous_performance_hold',
-      'No comparable previous completed performance was found.',
-    )
-  }
-  if (
-    previous.exercise.exerciseId !== current.exercise.exerciseId ||
-    previous.exercise.exerciseSnapshot.trackingMethodId !== method
-  ) {
+  // Comparable prior performances, most-recent first. `previous` stays first so
+  // the intermediate two-session cadence keeps its existing behavior.
+  const priors = [previous, ...(earlierPerformances ?? [])].filter(
+    (performance): performance is NextWorkoutPerformance =>
+      performance !== undefined &&
+      performance.exercise.exerciseId === current.exercise.exerciseId &&
+      performance.exercise.exerciseSnapshot.trackingMethodId === method,
+  )
+  const needsPriors =
+    params.sessionsBeforeIncrease > 1 && params.sessionsBeforeReduce > 1
+  if (priors.length === 0 && needsPriors) {
     return nextHold(
       'no_comparable_previous_performance_hold',
       'No comparable previous completed performance was found.',
@@ -260,60 +282,102 @@ export function evaluateNextWorkoutRecommendation({
     )
   }
   const currentAnalysis = analyzePerformance(current)
-  const previousAnalysis = analyzePerformance(previous)
-  if (!currentAnalysis || !previousAnalysis) {
+  if (!currentAnalysis) {
     return nextHold(
       'no_material_prescription_change',
       'Comparable target or actual data is unavailable, so the prescription is held.',
     )
   }
-  if (currentAnalysis.hasSkipped || previousAnalysis.hasSkipped) {
-    if (currentAnalysis.repeatedFailure && previousAnalysis.repeatedFailure) {
+  const effectiveTargetRir = validRir(targetRir) ? targetRir : 2
+
+  // Reduce: the current session plus enough recent sessions all missed the
+  // programmed minimum. Fewer sessions are required at lower experience levels.
+  const reducePriorsNeeded = Math.max(0, params.sessionsBeforeReduce - 1)
+  const reducePriors = priors
+    .slice(0, reducePriorsNeeded)
+    .map(analyzePerformance)
+  const reduceHistoryComplete =
+    reducePriors.length === reducePriorsNeeded &&
+    reducePriors.every((analysis) => analysis !== null)
+  if (
+    currentAnalysis.repeatedFailure &&
+    reduceHistoryComplete &&
+    reducePriors.every((analysis) => analysis?.repeatedFailure)
+  ) {
+    const hasFailedBelowMin =
+      currentAnalysis.hasFailedBelowMin ||
+      reducePriors.some((analysis) => analysis?.hasFailedBelowMin)
+    return nextMaterial(
+      hasFailedBelowMin
+        ? 'repeated_failed_performance_reduce'
+        : 'repeated_missed_minimums_reduce',
+      'reduce',
+      current,
+      increment,
+    )
+  }
+
+  // Increase: the current session plus enough recent sessions all reached the
+  // top of the range with the required reserve. Higher levels need more.
+  const increasePriorsNeeded = Math.max(0, params.sessionsBeforeIncrease - 1)
+  const increasePriors = priors
+    .slice(0, increasePriorsNeeded)
+    .map(analyzePerformance)
+  const increaseHistoryComplete =
+    increasePriors.length === increasePriorsNeeded &&
+    increasePriors.every((analysis) => analysis !== null)
+  if (currentAnalysis.topRange && !currentAnalysis.hasSkipped) {
+    const priorsQualify =
+      increaseHistoryComplete &&
+      increasePriors.every(
+        (analysis) =>
+          analysis?.topRange &&
+          !analysis.hasSkipped &&
+          !analysis.repeatedFailure,
+      )
+    if (priorsQualify) {
+      if (currentAnalysis.finalRir === null) {
+        return nextHold(
+          'missing_final_rir_hold',
+          'Final programmed-set RIR is missing, so the prescription is held.',
+        )
+      }
+      if (currentAnalysis.finalRir < effectiveTargetRir) {
+        return nextHold(
+          'insufficient_final_rir_hold',
+          'Final programmed-set RIR is below the target reserve, so the prescription is held.',
+        )
+      }
       return nextMaterial(
-        'repeated_missed_minimums_reduce',
-        'reduce',
+        'repeated_top_range_increase',
+        'increase',
         current,
         increment,
       )
     }
+    if (
+      increasePriors.some(
+        (analysis) => analysis !== null && analysis.hasSkipped,
+      )
+    ) {
+      return nextHold(
+        'skipped_programmed_set_hold',
+        'A comparable workout contains a skipped programmed set, so progression is withheld.',
+      )
+    }
+    return nextHold(
+      'top_range_insufficient_history_hold',
+      'Not enough comparable top-range workouts qualify, so the prescription is held.',
+    )
+  }
+
+  if (currentAnalysis.hasSkipped) {
     return nextHold(
       'skipped_programmed_set_hold',
       'A comparable workout contains a skipped programmed set, so progression is withheld.',
     )
   }
-  if (currentAnalysis.repeatedFailure && previousAnalysis.repeatedFailure) {
-    const failedReason =
-      currentAnalysis.hasFailedBelowMin || previousAnalysis.hasFailedBelowMin
-        ? 'repeated_failed_performance_reduce'
-        : 'repeated_missed_minimums_reduce'
-    return nextMaterial(failedReason, 'reduce', current, increment)
-  }
-  if (currentAnalysis.topRange && previousAnalysis.topRange) {
-    if (currentAnalysis.finalRir === null) {
-      return nextHold(
-        'missing_final_rir_hold',
-        'Final programmed-set RIR is missing, so the prescription is held.',
-      )
-    }
-    if (currentAnalysis.finalRir < 2) {
-      return nextHold(
-        'insufficient_final_rir_hold',
-        'Final programmed-set RIR is below 2, so the prescription is held.',
-      )
-    }
-    return nextMaterial(
-      'repeated_top_range_increase',
-      'increase',
-      current,
-      increment,
-    )
-  }
-  if (currentAnalysis.topRange || previousAnalysis.topRange) {
-    return nextHold(
-      'top_range_insufficient_history_hold',
-      'Only one comparable top-range workout qualifies, so the prescription is held.',
-    )
-  }
+
   return nextHold(
     'normal_in_range_hold',
     'Performance was within the programmed range, so the prescription is held.',
@@ -453,6 +517,10 @@ function normalizeLoad(value: number) {
 
 function validIncrement(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
+}
+
+function validRir(value: number | null | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
 }
 
 function validLoad(value: number | null | undefined): value is number {

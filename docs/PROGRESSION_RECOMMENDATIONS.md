@@ -107,8 +107,49 @@ Rules:
   each have at least half of programmed sets below the minimum or at least one
   failed set below the minimum.
 
-Only the final programmed set's RIR is used. RIR 0 or 1 blocks the top-range
-increase; missing final-set RIR produces a conservative hold for increases.
+Only the final programmed set's RIR is used. The required reserve is the
+program's target RIR for the exercise, falling back to the RIR actually recorded
+last time for the same exercise, and finally to a default of 2. A final-set RIR
+below that reserve blocks the top-range increase; missing final-set RIR produces
+a conservative hold for increases.
+
+## Experience Levels (Smart Progression)
+
+When smart progression is enabled, the first-enable prompt asks for one of four
+training presets (novice, intermediate, advanced, expert). The preset seeds each
+exercise's position on a **continuous progression spectrum**; each exercise then
+drifts along that spectrum independently, so a lifter can progress fast on one
+lift and slowly on another. The spectrum and presets are internal tuning only
+and are never displayed as rules to the user.
+
+The spectrum runs from 0 (novice, fastest) to 3 (expert, slowest). Cadence is
+interpolated from the score and rounded where a whole number is required. It
+tunes only the cadence — not the double progression itself (reps climb within
+the range, then load increases and reps reset toward the bottom; a fixed rep
+scheme progresses load once the qualifying sessions are met; missed minimums
+reduce load and raise reps back into range). At the preset anchors:
+
+- Qualifying top-range sessions before a load increase: novice 1, intermediate
+  2, advanced 3, expert 4.
+- Sessions of missed minimums before a load reduction: novice 1, intermediate 2,
+  advanced 2, expert 3.
+- Reps added per session while climbing toward the top of the range (workout
+  prefill): novice 2, others 1.
+- The load step is always the exercise's own `defaultWeightIncrement`.
+
+With no preset chosen the engine keeps its default two-session, RIR-2 behavior
+and writes no per-exercise state, so existing installs are unaffected.
+
+Each exercise's score is tailored deterministically after every completed
+workout: a clean load increase eases its cadence toward the faster end (score
+−1/3), a load reduction slows it toward the conservative end (score +1/2), and a
+hold leaves it unchanged; the score is clamped to the spectrum bounds. Roughly
+three increases or two reductions shift a full preset step, but the effective
+cadence changes smoothly in between rather than snapping between buckets.
+Tailoring only adjusts cadence — it never applies a target change without the
+normal detected-change review. Per-exercise scores are derived state: they are
+not part of the backup payload (the preset on `UserSettings` is) and are cleared
+on reset/restore, then rebuild from the preset.
 
 ## Reason Codes
 

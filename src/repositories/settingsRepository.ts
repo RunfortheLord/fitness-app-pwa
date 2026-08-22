@@ -8,6 +8,7 @@ import type {
   AppLanguage,
   IntegrationConnectionStatus,
   HistorySortMode,
+  ProgressionExperienceLevel,
   UserSettings,
   WeightUnit,
   WorkoutAutofillMode,
@@ -55,6 +56,9 @@ export type SettingsRepository = {
   saveWeightUnit(unit: WeightUnit): Promise<UserSettings>
   saveRirTrackingEnabled(enabled: boolean): Promise<UserSettings>
   saveWorkoutAutofillMode(mode: WorkoutAutofillMode): Promise<UserSettings>
+  saveSmartProgressionExperienceLevel(
+    level: ProgressionExperienceLevel,
+  ): Promise<UserSettings>
   saveHistoryPreference(input: {
     sortMode: HistorySortMode
     programId: string | null
@@ -317,6 +321,19 @@ export function createSettingsRepository(
       const updated: UserSettings = {
         ...settings,
         workoutAutofillMode: mode,
+        updatedAt: now,
+      }
+      await database.userSettings.put(updated)
+      return updated
+    },
+
+    async saveSmartProgressionExperienceLevel(level) {
+      const settings = await ensureSettings()
+      const now = new Date().toISOString()
+      const updated: UserSettings = {
+        ...settings,
+        smartProgressionBaselineLevel: level,
+        smartProgressionExperiencePrompted: true,
         updatedAt: now,
       }
       await database.userSettings.put(updated)

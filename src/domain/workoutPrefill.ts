@@ -113,6 +113,7 @@ export function buildWorkoutPrefillPlan({
   targetRir,
   trackingMethodId,
   sameProgramDay,
+  repClimbPerSession = 1,
 }: {
   previousSets: WorkoutPrefillSourceSet[]
   targetSetCount: number
@@ -121,6 +122,11 @@ export function buildWorkoutPrefillPlan({
   targetRir: number | null
   trackingMethodId: TrackingMethodId
   sameProgramDay: boolean
+  /**
+   * How many reps to add per session while climbing toward the top of the rep
+   * range (from the experience level). Defaults to 1.
+   */
+  repClimbPerSession?: number
 }): WorkoutPrefillPlan | null {
   if (!Number.isInteger(targetSetCount) || targetSetCount < 1) {
     return null
@@ -157,6 +163,7 @@ export function buildWorkoutPrefillPlan({
         range,
         desiredRir,
         trackingMethodId,
+        repClimbPerSession,
       })
     : buildCrossDayPlan({
         sources: usable,
@@ -219,12 +226,14 @@ function buildSameDayPlan({
   range,
   desiredRir,
   trackingMethodId,
+  repClimbPerSession = 1,
 }: {
   sources: WorkoutPrefillSourceSet[]
   targetSetCount: number
   range: RepRange | null
   desiredRir: number
   trackingMethodId: TrackingMethodId
+  repClimbPerSession?: number
 }): WorkoutPrefillPlan {
   const plan = mapSourceSequence(sources, targetSetCount)
   const isWeighted = loadMetricKey(trackingMethodId) !== null
@@ -245,8 +254,19 @@ function buildSameDayPlan({
     }
   }
 
+  // Climb reps toward the top of the range. Higher experience adds one rep per
+  // session; lower experience climbs faster. progressOneRep caps at range.max.
+  const climbSteps = Math.max(1, Math.round(repClimbPerSession))
+  let climbed: WorkoutPrefillPlanSet[] = progressOneRep(
+    plan,
+    range?.max ?? null,
+  )
+  for (let step = 1; step < climbSteps; step += 1) {
+    climbed = progressOneRep(climbed, range?.max ?? null)
+  }
+
   return {
-    sets: progressOneRep(plan, range?.max ?? null),
+    sets: climbed,
     loadProgressed: false,
   }
 }

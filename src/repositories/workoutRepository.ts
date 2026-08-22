@@ -11,6 +11,12 @@ import {
   evaluateNextWorkoutRecommendation,
   type NextWorkoutPerformance,
 } from '@domain/progressionRecommendations'
+import {
+  adjustScoreForOutcome,
+  cadenceForScore,
+  createExerciseProgressionState,
+  presetToScore,
+} from '@domain/progressionLevels'
 import { snapshotExercise } from '@domain/snapshots'
 import {
   currentProgramWeek,
@@ -38,6 +44,7 @@ import type {
   AppliedWorkoutChange,
   DetectedWorkoutChange,
   Exercise,
+  ProgressionExperienceLevel,
   RestTimerState,
   StructuralChangeDestination,
   TemplateWorkoutExercise,
@@ -132,6 +139,18 @@ export function createWorkoutRepository(
   testHooks: WorkoutRepositoryTestHooks = {},
   structuralChangeAppliers: StructuralChangeAppliers = {},
 ) {
+  // Dedupe concurrent finish requests for the same workout. Finishing deletes
+  // the active workout, so a second press mid-flight (for example after the
+  // Live Workout screen unmounts and remounts) would otherwise throw
+  // "Active workout not found". Both callers await the same result instead.
+  const completeWorkoutInFlight = new Map<
+    string,
+    Promise<{
+      history: WorkoutHistoryEntry
+      detectedChanges: DetectedWorkoutChange[]
+    }>
+  >()
+
   return {
     async startWorkout(input: StartWorkoutInput) {
       const now = new Date().toISOString()
@@ -144,6 +163,7 @@ export function createWorkoutRepository(
           database.programTemplates,
           database.userSettings,
           database.exercises,
+          database.exerciseProgressionStates,
           database.workouts,
           database.workoutExercises,
           database.workoutSets,
@@ -374,6 +394,11 @@ export function createWorkoutRepository(
                         : null,
                       trackingMethodId,
                       sameProgramDay: sameDayPreviousSets.length > 0,
+                      repClimbPerSession: await exerciseRepClimbPerSession(
+                        database,
+                        settings?.smartProgressionBaselineLevel,
+                        sourceExercise.exerciseId,
+                      ),
                     })
                   : null
 
@@ -1394,8 +1419,12 @@ export function createWorkoutRepository(
     },
 
     async completeWorkout(input: CompleteWorkoutInput) {
+      const existing = completeWorkoutInFlight.get(input.workoutId)
+      if (existing) {
+        return existing
+      }
       const completedAt = input.completedAt ?? new Date().toISOString()
-      return database.transaction(
+      const run = database.transaction(
         'rw',
         [
           database.workouts,
@@ -1410,6 +1439,8 @@ export function createWorkoutRepository(
           database.activeProgramCycles,
           database.activeCycleDayChecks,
           database.exercises,
+          database.exerciseProgressionStates,
+          database.userSettings,
         ],
         async () => {
           const workout = await database.workouts.get(input.workoutId)
@@ -1511,6 +1542,8 @@ export function createWorkoutRepository(
                 performedSetsByExercise: mapSetsByExercise(exercises, sets),
               })
           if (!input.detectedChanges && !workout.isDeload) {
+            const settings = await database.userSettings.get('settings')
+            const baseline = settings?.smartProgressionBaselineLevel
             detectedDrafts.push(
               ...(await detectProgressionRecommendationChanges(
                 database,
@@ -1518,6 +1551,7 @@ export function createWorkoutRepository(
                 exercises,
                 sets,
                 sourceExercises,
+                baseline,
               )),
             )
           }
@@ -1615,6 +1649,12 @@ export function createWorkoutRepository(
           return { history, detectedChanges: changes }
         },
       )
+      completeWorkoutInFlight.set(input.workoutId, run)
+      try {
+        return await run
+      } finally {
+        completeWorkoutInFlight.delete(input.workoutId)
+      }
     },
 
     async resumeCompletedWorkout(workoutId: string) {
@@ -2021,6 +2061,7 @@ async function detectProgressionRecommendationChanges(
   exercises: WorkoutExercise[],
   sets: WorkoutSet[],
   sourceExercises: ActiveCycleWorkoutExercise[],
+  baseline: ProgressionExperienceLevel | undefined,
 ): Promise<NonNullable<CompleteWorkoutInput['detectedChanges']>> {
   const sourceById = new Map(
     sourceExercises.map((source) => [source.id, source]),
@@ -2028,7 +2069,14 @@ async function detectProgressionRecommendationChanges(
   type DetectedChangeDraft = NonNullable<
     CompleteWorkoutInput['detectedChanges']
   >[number]
-  const results: Array<DetectedChangeDraft | null> = await Promise.all(
+  // When the user has chosen a smart-progression preset, each exercise
+  // progresses at its own point on the spectrum and drifts afterward. Otherwise
+  // the engine keeps its default two-session behavior.
+  const usesLevels = baseline !== undefined
+  const baselineScore = baseline !== undefined ? presetToScore(baseline) : 0
+  const now = workout.completedAt
+
+  const evaluated = await Promise.all(
     exercises.map(async (exercise) => {
       if (!exercise.sourcePrescribedExerciseId || !exercise.exerciseId) {
         return null
@@ -2040,6 +2088,20 @@ async function detectProgressionRecommendationChanges(
         return null
       }
       const exerciseRecord = await database.exercises.get(exercise.exerciseId)
+
+      let score = baselineScore
+      if (usesLevels) {
+        const state = await database.exerciseProgressionStates.get(
+          exercise.exerciseId,
+        )
+        score = state?.score ?? baselineScore
+      }
+      const params = cadenceForScore(score)
+      const priorsNeeded = usesLevels
+        ? Math.max(params.sessionsBeforeIncrease, params.sessionsBeforeReduce) -
+          1
+        : 1
+
       const currentPerformance: NextWorkoutPerformance = {
         workout,
         exercise,
@@ -2048,35 +2110,106 @@ async function detectProgressionRecommendationChanges(
           .filter((set) => set.workoutExerciseId === exercise.id)
           .sort((left, right) => left.setNumber - right.setNumber),
       }
-      const previousPerformance = await findPreviousComparablePerformance(
+      const performances = await findPreviousComparablePerformances(
         database,
         currentPerformance,
+        Math.max(1, priorsNeeded),
       )
+      const [previousPerformance, ...earlierPerformances] = performances
+      // RIR target follows the program prescription, falling back to the RIR
+      // actually recorded last time for this exercise on the same day.
+      const targetRir =
+        currentPrescription.targetRir ??
+        finalRecordedRir(previousPerformance) ??
+        null
       const recommendation = evaluateNextWorkoutRecommendation({
         current: currentPerformance,
         previous: previousPerformance,
+        earlierPerformances,
         increment: exerciseRecord?.defaultWeightIncrement,
+        params: usesLevels ? params : undefined,
+        targetRir: usesLevels ? targetRir : undefined,
       })
-      if (
+      const draft: DetectedChangeDraft | null =
         !recommendation.materialChange ||
         recommendation.recommendedTargetWeight === null
-      ) {
-        return null
-      }
+          ? null
+          : {
+              type: 'progression_recommendation',
+              description: recommendation.description,
+              sourcePath: repositorySourceExercisePath(
+                workout,
+                currentPrescription,
+              ),
+              performedPath: `workout:${workout.id};exercise:${exercise.id};recommendedWeight:${recommendation.recommendedTargetWeight}`,
+              recommendationReason: recommendation.reason,
+              recommendationSummary: recommendation.summary,
+            }
       return {
-        type: 'progression_recommendation',
-        description: recommendation.description,
-        sourcePath: repositorySourceExercisePath(workout, currentPrescription),
-        performedPath: `workout:${workout.id};exercise:${exercise.id};recommendedWeight:${recommendation.recommendedTargetWeight}`,
-        recommendationReason: recommendation.reason,
-        recommendationSummary: recommendation.summary,
-      } satisfies DetectedChangeDraft
+        exerciseId: exercise.exerciseId,
+        action: recommendation.action,
+        draft,
+      }
     }),
   )
 
-  return results.filter(
-    (result): result is DetectedChangeDraft => result !== null,
+  // Tailor each exercise's spectrum score from its own outcome. Done
+  // sequentially so an exercise appearing twice in one workout accumulates
+  // correctly.
+  if (usesLevels) {
+    for (const item of evaluated) {
+      if (!item) {
+        continue
+      }
+      const existing = await database.exerciseProgressionStates.get(
+        item.exerciseId,
+      )
+      const state =
+        existing ??
+        createExerciseProgressionState(item.exerciseId, baselineScore, now)
+      const nextScore = adjustScoreForOutcome(state.score, item.action)
+      await database.exerciseProgressionStates.put({
+        ...state,
+        score: nextScore,
+        updatedAt: now,
+      })
+    }
+  }
+
+  return evaluated
+    .map((item) => item?.draft ?? null)
+    .filter((draft): draft is DetectedChangeDraft => draft !== null)
+}
+
+async function exerciseRepClimbPerSession(
+  database: TrainingLogDatabase,
+  baseline: ProgressionExperienceLevel | undefined,
+  exerciseId: string,
+): Promise<number> {
+  if (baseline === undefined) {
+    return 1
+  }
+  const state = await database.exerciseProgressionStates.get(exerciseId)
+  const score = state?.score ?? presetToScore(baseline)
+  return cadenceForScore(score).repClimbPerSession
+}
+
+function finalRecordedRir(
+  performance: NextWorkoutPerformance | undefined,
+): number | null {
+  if (!performance) {
+    return null
+  }
+  const sorted = [...performance.sets].sort(
+    (left, right) => left.setNumber - right.setNumber,
   )
+  for (let index = sorted.length - 1; index >= 0; index -= 1) {
+    const rir = sorted[index].rir
+    if (typeof rir === 'number' && Number.isFinite(rir)) {
+      return rir
+    }
+  }
+  return null
 }
 
 function repositorySourceExercisePath(
@@ -2086,71 +2219,94 @@ function repositorySourceExercisePath(
   return `cycle:${workout.sourceActiveCycleId ?? ''};day:${exercise.dayId};exercise:${exercise.id};template:${workout.sourceTemplateId ?? ''};templateExercise:${exercise.sourceTemplateExerciseId ?? ''}`
 }
 
-async function findPreviousComparablePerformance(
+async function findPreviousComparablePerformances(
   database: TrainingLogDatabase,
   current: NextWorkoutPerformance,
-): Promise<NextWorkoutPerformance | undefined> {
+  limit: number,
+): Promise<NextWorkoutPerformance[]> {
+  if (limit < 1) {
+    return []
+  }
   const exerciseId = current.exercise.exerciseId
   if (!exerciseId) {
-    return undefined
+    return []
   }
   const historyExercises = await database.workoutHistoryExercises
     .where({ exerciseId })
     .toArray()
-  const candidates = await Promise.all(
-    historyExercises
-      .filter(
-        (exercise) =>
-          exercise.workoutId !== current.workout.id &&
-          exercise.exerciseSnapshot.trackingMethodId ===
-            current.exercise.exerciseSnapshot.trackingMethodId,
-      )
-      .map(async (exercise) => ({
-        exercise,
-        workout: await database.workoutHistoryEntries.get(exercise.workoutId),
-        sets: await database.workoutHistorySets
-          .where({ workoutExerciseId: exercise.id })
-          .sortBy('setNumber'),
-        prescription: exercise.sourcePrescribedExerciseId
-          ? await database.activeCycleWorkoutExercises.get(
-              exercise.sourcePrescribedExerciseId,
-            )
-          : undefined,
-      })),
+  const comparable = historyExercises.filter(
+    (exercise) =>
+      exercise.workoutId !== current.workout.id &&
+      exercise.exerciseSnapshot.trackingMethodId ===
+        current.exercise.exerciseSnapshot.trackingMethodId,
   )
-  return candidates
+  if (!comparable.length) {
+    return []
+  }
+  // Load the candidate workouts once for filtering and ranking. Sets and the
+  // source prescription are only hydrated for the few winning candidates, so
+  // the finish transaction does not fan out one query per historical set.
+  const workoutIds = [
+    ...new Set(comparable.map((exercise) => exercise.workoutId)),
+  ]
+  const workoutById = new Map<string, WorkoutHistoryEntry>()
+  for (const workout of await database.workoutHistoryEntries.bulkGet(
+    workoutIds,
+  )) {
+    if (workout) {
+      workoutById.set(workout.id, workout)
+    }
+  }
+  const ranked = comparable
+    .map((exercise) => ({
+      exercise,
+      workout: workoutById.get(exercise.workoutId),
+    }))
     .filter(
-      (candidate) =>
-        candidate.workout &&
+      (
+        candidate,
+      ): candidate is {
+        exercise: WorkoutHistoryExercise
+        workout: WorkoutHistoryEntry
+      } =>
+        candidate.workout !== undefined &&
         candidate.workout.isDeload !== true &&
         candidate.workout.completedAt < current.workout.completedAt,
     )
     .sort((left, right) => {
       const leftContextScore = comparableContextScore(
         current,
-        left.workout!,
+        left.workout,
         left.exercise,
       )
       const rightContextScore = comparableContextScore(
         current,
-        right.workout!,
+        right.workout,
         right.exercise,
       )
       return (
         rightContextScore - leftContextScore ||
-        right.workout!.completedAt.localeCompare(left.workout!.completedAt)
+        right.workout.completedAt.localeCompare(left.workout.completedAt)
       )
     })
-    .map((candidate) =>
-      candidate.workout
-        ? ({
-            workout: candidate.workout,
-            exercise: candidate.exercise,
-            prescription: candidate.prescription,
-            sets: candidate.sets,
-          } satisfies NextWorkoutPerformance)
-        : undefined,
-    )[0]
+  return Promise.all(
+    ranked.slice(0, limit).map(async (candidate) => {
+      const sets = await database.workoutHistorySets
+        .where({ workoutExerciseId: candidate.exercise.id })
+        .sortBy('setNumber')
+      const prescription = candidate.exercise.sourcePrescribedExerciseId
+        ? await database.activeCycleWorkoutExercises.get(
+            candidate.exercise.sourcePrescribedExerciseId,
+          )
+        : undefined
+      return {
+        workout: candidate.workout,
+        exercise: candidate.exercise,
+        prescription,
+        sets,
+      } satisfies NextWorkoutPerformance
+    }),
+  )
 }
 
 function comparableContextScore(

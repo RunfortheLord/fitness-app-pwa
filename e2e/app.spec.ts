@@ -1179,11 +1179,25 @@ test(
       ).toHaveValue('8')
     }
 
-    await page.getByRole('button', { name: 'Discard' }).click()
-    await page
-      .getByRole('dialog', { name: 'Discard workout?' })
-      .getByRole('button', { name: 'Discard Workout' })
-      .click()
+    // Completing the only programmed set can open the auto-finish prompt once
+    // the restored workout registers all sets complete; its timing varies under
+    // parallel load (it may already be open, appear late, or not at all). Poll:
+    // dismiss it if present, then open Discard, retrying so a late prompt cannot
+    // leave its backdrop over the Discard control.
+    const finishPrompt = page.getByRole('dialog', { name: 'Finish workout?' })
+    const discardPrompt = page.getByRole('dialog', { name: 'Discard workout?' })
+    await expect(async () => {
+      if (await finishPrompt.isVisible()) {
+        await finishPrompt
+          .getByRole('button', { name: 'Keep working out' })
+          .click()
+        await expect(finishPrompt).toBeHidden()
+      }
+      await page.getByRole('button', { name: 'Discard' }).click()
+      await expect(discardPrompt).toBeVisible({ timeout: 3000 })
+    }).toPass({ timeout: 30000 })
+
+    await discardPrompt.getByRole('button', { name: 'Discard Workout' }).click()
     await expect(page).toHaveURL(/\/training/)
   },
 )

@@ -23,6 +23,7 @@ import type {
   DetectedWorkoutChange,
   Exercise,
   ExerciseEquipmentType,
+  ExerciseProgressionState,
   Food,
   FoodLogEntry,
   FoodUnitPreference,
@@ -45,7 +46,7 @@ import type {
   WorkoutSet,
 } from '@shared-types/app'
 
-export const DATABASE_SCHEMA_VERSION = 21
+export const DATABASE_SCHEMA_VERSION = 22
 export const BACKUP_SCHEMA_VERSION = 1
 export const DATABASE_NAME = 'training-log'
 
@@ -60,6 +61,10 @@ export class TrainingLogDatabase extends Dexie {
   barcodeProductCache!: EntityTable<BarcodeProductCache, 'id'>
   bodyweightEntries!: EntityTable<BodyweightEntry, 'id'>
   exercises!: EntityTable<Exercise, 'id'>
+  exerciseProgressionStates!: EntityTable<
+    ExerciseProgressionState,
+    'exerciseId'
+  >
   programTemplates!: EntityTable<ProgramTemplate, 'id'>
   templateWorkoutDays!: EntityTable<ProgramTemplateDay, 'id'>
   templateWorkoutExercises!: EntityTable<TemplateWorkoutExercise, 'id'>
@@ -1485,6 +1490,25 @@ export class TrainingLogDatabase extends Dexie {
         })
       }
     })
+
+    // Per-exercise smart-progression state. The store starts empty; states are
+    // created lazily the first time an exercise is progressed, seeded from the
+    // user's chosen baseline experience level.
+    this.version(22)
+      .stores({
+        exerciseProgressionStates: '&exerciseId, updatedAt',
+      })
+      .upgrade(async (tx) => {
+        const metadata = await tx.table<AppMetadata>('appMetadata').get('app')
+        if (metadata) {
+          await tx.table<AppMetadata>('appMetadata').put({
+            ...metadata,
+            databaseSchemaVersion: DATABASE_SCHEMA_VERSION,
+            backupSchemaVersion: BACKUP_SCHEMA_VERSION,
+            updatedAt: new Date().toISOString(),
+          })
+        }
+      })
   }
 }
 

@@ -511,7 +511,8 @@ function LiveWorkoutPageContent() {
           changeSaveFailed = true
         }
       }
-      await cancelNativeRestTimer()
+      // Best-effort notification cleanup; do not block navigation on it.
+      void cancelNativeRestTimer()
       const params = new URLSearchParams({ workout: completed.history.id })
       if (changeSaveFailed) {
         params.set('changeSave', 'failed')
