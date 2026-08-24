@@ -4436,8 +4436,12 @@ input::placeholder {
 }
 
 /* The full-screen food search hides the bottom nav so the on-screen keyboard
-   cannot float it up over the results when the list is scrolled. */
-body.food-search-open .bottom-nav {
+   cannot float it up over the results when the list is scrolled. The same
+   applies whenever any software keyboard is open (e.g. the History exercise
+   search): a fixed element would otherwise be dragged up with the iOS visual
+   viewport and can be left shifted after the keyboard closes. */
+body.food-search-open .bottom-nav,
+body.keyboard-input-open .bottom-nav {
   display: none;
 }
 

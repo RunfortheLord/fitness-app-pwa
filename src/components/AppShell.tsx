@@ -38,6 +38,7 @@ import {
 } from '@components/ui'
 import { useDashboardContext } from '@hooks/useDashboardContext'
 import { useAuth } from '@hooks/useAuth'
+import { useSoftwareKeyboardNav } from '@hooks/useSoftwareKeyboardNav'
 import { useTabSwipeNavigation } from '@hooks/useTabSwipeNavigation'
 import { runRepository } from '@repositories/runRepository'
 import { automaticCloudBackupService } from '@services/automaticCloudBackupService'
@@ -98,6 +99,7 @@ function AppShellContent({ children }: AppShellProps) {
   }
 
   useTabSwipeNavigation(mainRef, location.pathname, navigate)
+  useSoftwareKeyboardNav()
 
   useEffect(() => {
     const update = registerServiceWorkerUpdateHandler((nextUpdate) => {

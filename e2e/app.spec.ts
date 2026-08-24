@@ -372,61 +372,47 @@ test('bottom navigation has exactly five controls and no History tab', async ({
   ).toBeLessThan(1)
 })
 
-test('never hides or remounts bottom navigation from viewport keyboard signals', async ({
+test('hides the bottom navigation while a software keyboard is open without remounting it', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.addInitScript(() => {
-    class TestVisualViewport extends EventTarget {
-      height = 844
-      offsetTop = 0
-    }
-    Object.defineProperty(window, 'visualViewport', {
-      configurable: true,
-      value: new TestVisualViewport(),
-    })
-  })
   await page.goto('/')
   await dismissSignInPrompt(page)
 
   const nav = page.getByRole('navigation', { name: 'Primary' })
+  // CSS locator so the "same element" assertions still resolve while the nav is
+  // display:none (and therefore absent from the accessibility tree).
+  const navElement = page.locator('nav.bottom-nav')
   await expect(nav).toBeVisible()
-  await nav.evaluate((element) => {
+  await navElement.evaluate((element) => {
     element.setAttribute('data-navigation-instance', 'stable')
   })
 
+  // Focusing a text field opens the keyboard. The fixed nav hides so iOS cannot
+  // drag it up over the page, but the same nav element stays in the DOM (it is
+  // never remounted, so it cannot be lost after the keyboard closes).
   await page.evaluate(() => {
     const input = document.createElement('input')
     input.type = 'number'
     input.setAttribute('aria-label', 'Keyboard viewport test')
+    input.style.cssText =
+      'position:fixed;top:120px;left:20px;width:200px;height:44px;z-index:60'
     document.body.append(input)
-    input.focus()
-    const viewport = window.visualViewport as VisualViewport & {
-      height: number
-    }
-    viewport.height = 500
-    viewport.dispatchEvent(new Event('resize'))
+  })
+  const keyboardField = page.getByLabel('Keyboard viewport test')
+  await keyboardField.click()
+
+  await expect(nav).toBeHidden()
+  await expect(navElement).toHaveAttribute('data-navigation-instance', 'stable')
+
+  // Blurring restores the same nav, freshly positioned at the bottom.
+  await keyboardField.blur()
+  await page.evaluate(() => {
+    document.querySelector('[aria-label="Keyboard viewport test"]')?.remove()
   })
 
   await expect(nav).toBeVisible()
-  await expect(nav).toHaveAttribute('data-navigation-instance', 'stable')
-  await page.evaluate(() => {
-    const input = document.querySelector<HTMLInputElement>(
-      '[aria-label="Keyboard viewport test"]',
-    )!
-    input.blur()
-    window.dispatchEvent(new Event('resize'))
-  })
-  await expect(nav).toBeVisible()
-
-  await page.evaluate(() => {
-    const viewport = window.visualViewport as VisualViewport & {
-      height: number
-    }
-    viewport.height = 844
-  })
-  await expect(nav).toBeVisible()
-  await expect(nav).toHaveAttribute('data-navigation-instance', 'stable')
+  await expect(navElement).toHaveAttribute('data-navigation-instance', 'stable')
 })
 
 test('sets a weight goal through the recommended-rate step', async ({
