@@ -4457,12 +4457,12 @@ input::placeholder {
   grid-template-columns: 1fr 1fr 74px 1fr 1fr;
   align-items: end;
   gap: var(--space-1);
-  /* Sit the tabs closer to the home indicator: use most of the safe-area inset
-     for clearance rather than the full inset plus extra, but never less than a
-     small floor so labels never collide with the home indicator on devices with
-     little or no bottom inset. */
-  padding: var(--space-2) var(--space-3)
-    max(var(--space-2), calc(env(safe-area-inset-bottom) - var(--space-1)));
+  /* Rest the tabs on the bottom edge rather than floating them a full safe-area
+     inset up (~40px on tall home-indicator iPhones). A small fixed clearance
+     keeps labels just clear of the home-indicator pill without the large gap.
+     The nav background still fills to the screen bottom (it is the shell's final
+     row), so the dashboard visually sits on the bottom. */
+  padding: var(--space-2) var(--space-3) var(--space-4);
   border-top: 1px solid var(--color-border-soft);
   background: rgb(18 18 20 / 96%);
   backdrop-filter: blur(18px);
