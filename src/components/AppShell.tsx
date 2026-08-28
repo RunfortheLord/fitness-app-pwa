@@ -99,7 +99,9 @@ function AppShellContent({ children }: AppShellProps) {
   }
 
   useTabSwipeNavigation(mainRef, location.pathname, navigate)
-  useSoftwareKeyboardNav()
+  // The live workout owns a pinned layout; hiding its nav on input focus would
+  // strand the user mid-set (its web number fields are real text inputs).
+  useSoftwareKeyboardNav(!location.pathname.startsWith('/workout'))
 
   useEffect(() => {
     const update = registerServiceWorkerUpdateHandler((nextUpdate) => {
@@ -320,6 +322,11 @@ function AppShellContent({ children }: AppShellProps) {
     }
 
     previousPathRef.current = location.pathname
+    // The app main is the scroll container (the document does not scroll), so a
+    // fresh route must start it at the top.
+    if (mainRef.current) {
+      mainRef.current.scrollTop = 0
+    }
     document.documentElement.scrollTop = 0
     document.body.scrollTop = 0
     window.scrollTo(0, 0)

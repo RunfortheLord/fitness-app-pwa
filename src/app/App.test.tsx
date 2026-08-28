@@ -156,7 +156,7 @@ describe('App', () => {
     expect(navigation).toHaveTextContent('Home')
     expect(navigation).toHaveTextContent('Nutrition')
     expect(navigation).toHaveTextContent('Training')
-    expect(navigation).toHaveTextContent('Run')
+    expect(navigation).toHaveTextContent('Cardio')
     expect(navigation).not.toHaveTextContent('History')
     expect(
       screen

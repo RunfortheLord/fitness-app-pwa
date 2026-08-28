@@ -1217,6 +1217,93 @@ describe('workoutRepository', () => {
     })
   })
 
+  it('updates the session target RIR and replaces the RIR on the last set', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    const repository = createWorkoutRepository(database)
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    const workoutExercise = started.exercises[0]
+
+    // Record an RIR on the current last set first so we can prove it is
+    // replaced when the target RIR changes.
+    const lastSetBefore = started.sets[started.sets.length - 1]
+    await repository.updateWorkoutSet(lastSetBefore.id, { rir: 5 })
+
+    const updated = await repository.updateLiveExercisePrescription({
+      workoutExerciseId: workoutExercise.id,
+      targetSetCount: started.sets.length,
+      targetRepsMin: 6,
+      targetRepsMax: 8,
+      targetRir: 2,
+    })
+
+    expect(updated.exercise.sessionTargetRir).toBe(2)
+    const finalSet = updated.sets[updated.sets.length - 1]
+    expect(finalSet.rir).toBe(2)
+    // Non-final sets keep whatever RIR they had (null here).
+    expect(updated.sets.slice(0, -1).every((set) => set.rir === null)).toBe(
+      true,
+    )
+
+    const reloaded = await repository.getActiveWorkoutStructure()
+    expect(reloaded?.exercises[0].sessionTargetRir).toBe(2)
+  })
+
+  it('leaves recorded RIR untouched when the prescription omits target RIR', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    const repository = createWorkoutRepository(database)
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    const workoutExercise = started.exercises[0]
+    const lastSet = started.sets[started.sets.length - 1]
+    await repository.updateWorkoutSet(lastSet.id, { rir: 4 })
+
+    const updated = await repository.updateLiveExercisePrescription({
+      workoutExerciseId: workoutExercise.id,
+      targetSetCount: started.sets.length,
+      targetRepsMin: 6,
+      targetRepsMax: 8,
+    })
+
+    const finalSet = updated.sets[updated.sets.length - 1]
+    expect(finalSet.rir).toBe(4)
+  })
+
+  it('rejects an out-of-range target RIR', async () => {
+    const program = await seedProgram(database)
+    const active = await createProgramRepository(database).activateTemplate(
+      program.template.id,
+    )
+    const repository = createWorkoutRepository(database)
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+
+    await expect(
+      repository.updateLiveExercisePrescription({
+        workoutExerciseId: started.exercises[0].id,
+        targetSetCount: started.sets.length,
+        targetRepsMin: 6,
+        targetRepsMax: 8,
+        targetRir: 150,
+      }),
+    ).rejects.toThrow(/Target RIR/)
+  })
+
   it('cancels active workouts without writing history', async () => {
     const program = await seedProgram(database)
     const active = await createProgramRepository(database).activateTemplate(

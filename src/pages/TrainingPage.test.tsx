@@ -652,7 +652,7 @@ describe('TrainingPage', () => {
       (firstRender.container.querySelector('.bottom-nav') as HTMLElement).inert,
     ).toBe(true)
     expect(
-      within(exerciseOptions).getByText('2 sets - 8-10 reps'),
+      within(exerciseOptions).getByText('2 sets - 8-10 reps - 2 RIR'),
     ).toBeVisible()
     expect(
       within(
@@ -692,7 +692,7 @@ describe('TrainingPage', () => {
       within(exerciseOptions).getByRole('button', { name: 'Save target' }),
     )
     expect(
-      await within(exerciseOptions).findByText('4 sets - 6-8 reps'),
+      await within(exerciseOptions).findByText('4 sets - 6-8 reps - 2 RIR'),
     ).toBeVisible()
     await user.click(
       within(exerciseOptions).getByRole('button', {
@@ -799,6 +799,54 @@ describe('TrainingPage', () => {
       document.documentElement.style.getPropertyValue('--live-workout-height'),
     ).toBe('')
     await expect(db.workouts.get(started.workout.id)).resolves.toBeUndefined()
+  })
+
+  it('finishes without hanging while optional timer notification work is pending', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    // A native rest-timer notification bridge that never resolves (as can happen
+    // on iOS while the app resumes) must not be able to block finishing.
+    vi.spyOn(nativeRestTimerNotificationService, 'sync').mockImplementation(
+      () => new Promise(() => undefined),
+    )
+    vi.spyOn(nativeRestTimerNotificationService, 'cancel').mockImplementation(
+      () => new Promise(() => undefined),
+    )
+    renderTraining(['/workout'])
+
+    await user.type(
+      await screen.findByRole('textbox', { name: 'Set 1 Weight' }),
+      '185',
+    )
+    await user.type(screen.getByRole('textbox', { name: 'Set 1 Reps' }), '8')
+    await user.click(screen.getByRole('button', { name: 'Complete set 1' }))
+    await waitFor(async () =>
+      expect(await db.workouts.get(started.workout.id)).toMatchObject({
+        activeRestTimer: expect.objectContaining({ status: 'running' }),
+      }),
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Finish' }))
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Finish workout?' })).getByRole(
+        'button',
+        { name: 'Finish Workout' },
+      ),
+    )
+
+    expect(await screen.findByText('Date completed')).toBeInTheDocument()
+    await expect(db.workouts.get(started.workout.id)).resolves.toBeUndefined()
+    await expect(
+      db.workoutHistoryEntries.get(started.workout.id),
+    ).resolves.toBeDefined()
   })
 
   it('starts live rest timers from the exercise default instead of a global setting', async () => {

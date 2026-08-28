@@ -10,6 +10,15 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-08-24-rir-target-and-finish-reliability',
+    date: '2026-08-24',
+    title: 'Adjust target RIR mid-workout and finish without waiting',
+    items: [
+      'The exercise options menu (⋯) now lets you change the target RIR during a live workout. The new target applies to the last set and replaces any RIR already recorded there.',
+      'Finishing a workout no longer hangs: rest-timer notifications are now handled in the background, so a stalled iPhone notification can never delay saving or leaving the workout.',
+    ],
+  },
+  {
     id: '2026-08-21-workout-dashboard-pinned',
     date: '2026-08-21',
     title: 'Workout dashboard can no longer be pushed off screen',

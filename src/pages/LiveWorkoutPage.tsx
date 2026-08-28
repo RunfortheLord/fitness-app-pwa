@@ -130,7 +130,7 @@ type LiveExercisePrescription = Pick<
 type LivePrescriptionInput = Pick<
   LiveExercisePrescription,
   'targetSetCount' | 'targetRepsMin' | 'targetRepsMax'
->
+> & { targetRir?: number | null }
 
 declare global {
   interface Window {
@@ -469,9 +469,22 @@ function LiveWorkoutPageContent() {
     )
   }
 
-  async function waitForPendingWorkoutMutations() {
-    while (pendingWorkoutMutations.current.size > 0) {
-      await Promise.all([...pendingWorkoutMutations.current])
+  async function waitForPendingWorkoutMutations(timeoutMs = 4000) {
+    // Wait for tracked persistence to settle before finishing, but never wait
+    // forever: if a mutation stalls (e.g. a hung native bridge slipped into the
+    // set), proceed after the timeout so finishing can never deadlock.
+    let timedOut = false
+    const timeout = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        timedOut = true
+        resolve()
+      }, timeoutMs)
+    })
+    while (pendingWorkoutMutations.current.size > 0 && !timedOut) {
+      await Promise.race([
+        Promise.all([...pendingWorkoutMutations.current]),
+        timeout,
+      ])
     }
   }
 
@@ -580,14 +593,19 @@ function LiveWorkoutPageContent() {
     action: Promise<RestTimerState | null>,
     requestPermission = false,
   ) {
-    run(
-      action.then((timer) =>
+    // Only the IndexedDB persistence is tracked as a pending workout mutation so
+    // that finishing waits for the write. The native notification sync is a
+    // best-effort side effect fired detached: on iOS the native bridge can hang
+    // (e.g. while the app is resuming or a permission prompt is pending), and it
+    // must never be able to block finishing the workout.
+    run(action, 'Rest timer could not be updated.')
+    void action
+      .then((timer) =>
         timer
           ? syncNativeRestTimer(timer, requestPermission)
           : cancelNativeRestTimer(),
-      ),
-      'Rest timer could not be updated.',
-    )
+      )
+      .catch(() => undefined)
   }
 
   function showRestTimerImmediately(
@@ -677,7 +695,8 @@ function LiveWorkoutPageContent() {
           workoutId,
           normalizedSeconds,
         )
-        await syncNativeRestTimer(timer)
+        // Detached OS notification sync; never gate the tracked mutation.
+        void syncNativeRestTimer(timer).catch(() => undefined)
       }
     })
     restDurationMutationChain.current = mutation.catch(() => undefined)
@@ -696,17 +715,21 @@ function LiveWorkoutPageContent() {
   }
 
   async function dismissRestTimerIfPresent(workout: Workout) {
+    // The IndexedDB dismissal is awaited so callers can gate on persisted state,
+    // but the native notification cleanup is fired detached: on iOS the bridge
+    // can hang, and it must never block a tracked mutation (and therefore
+    // finishing the workout).
     const timer = workout.activeRestTimer
     if (!timer || timer.status === 'dismissed') {
-      await cancelNativeRestTimer()
+      void cancelNativeRestTimer()
       return
     }
 
     const dismissedTimer = await workoutRepository.dismissRestTimer(workout.id)
     if (dismissedTimer) {
-      await syncNativeRestTimer(dismissedTimer)
+      void syncNativeRestTimer(dismissedTimer)
     } else {
-      await cancelNativeRestTimer()
+      void cancelNativeRestTimer()
     }
   }
 
@@ -1142,7 +1165,9 @@ function LiveWorkoutPageContent() {
                       state.workout.id,
                       restSeconds,
                     )
-                    await syncNativeRestTimer(timer, true)
+                    // Detached: the OS notification must never gate the tracked
+                    // mutation, or a hung native bridge would stall finishing.
+                    void syncNativeRestTimer(timer, true).catch(() => undefined)
                     return
                   }
                   await dismissRestTimerIfPresent(state.workout)
@@ -1168,10 +1193,11 @@ function LiveWorkoutPageContent() {
                 const timer = await workoutRepository.dismissRestTimer(
                   state.workout.id,
                 )
+                // Detached OS notification cleanup; never gate the mutation.
                 if (timer) {
-                  await syncNativeRestTimer(timer)
+                  void syncNativeRestTimer(timer)
                 } else {
-                  await cancelNativeRestTimer()
+                  void cancelNativeRestTimer()
                 }
               }),
             ).finally(() => deletingSetIds.current.delete(setId))
@@ -1501,6 +1527,8 @@ function ExerciseWorkspace({
     onPrevious,
   })
   const weightUnit = useWeightUnit()
+  const rirEnabled = useRirTracking()
+  const canEditTargetRir = supportsRir(metrics) && rirEnabled
   const finalProgrammedSetId = getFinalProgrammedSetId(sets)
   const exerciseNotes = exercise.notes.trim()
   const [isEditingNotes, setIsEditingNotes] = useState(false)
@@ -1522,6 +1550,9 @@ function ExerciseWorkspace({
     prescription.targetRepsMax === null
       ? ''
       : String(prescription.targetRepsMax),
+  )
+  const [rirDraft, setRirDraft] = useState(
+    prescription.targetRir === null ? '' : String(prescription.targetRir),
   )
   const [isSavingNotes, setIsSavingNotes] = useState(false)
   const [notesDraft, setNotesDraft] = useState(exercise.notes)
@@ -1550,6 +1581,9 @@ function ExerciseWorkspace({
         ? ''
         : String(prescription.targetRepsMax),
     )
+    setRirDraft(
+      prescription.targetRir === null ? '' : String(prescription.targetRir),
+    )
     setPrescriptionError(null)
     setIsEditingPrescription(false)
     setIsExerciseOptionsOpen(true)
@@ -1560,14 +1594,24 @@ function ExerciseWorkspace({
       setCount: setCountDraft,
       repsMin: repsMinDraft,
       repsMax: repsMaxDraft,
+      // When RIR editing is unavailable the field is hidden; omit the target so
+      // saving sets/reps never rewrites the recorded RIR on the last set.
+      rir: canEditTargetRir ? rirDraft : '',
     })
     if (!parsed.ok) {
       setPrescriptionError(parsed.error)
       return
     }
+    const payload: LivePrescriptionInput = canEditTargetRir
+      ? parsed.value
+      : {
+          targetSetCount: parsed.value.targetSetCount,
+          targetRepsMin: parsed.value.targetRepsMin,
+          targetRepsMax: parsed.value.targetRepsMax,
+        }
     setIsSavingPrescription(true)
     try {
-      await onSavePrescription(parsed.value)
+      await onSavePrescription(payload)
       setPrescriptionError(null)
       setIsEditingPrescription(false)
     } catch (caught: unknown) {
@@ -1744,6 +1788,24 @@ function ExerciseWorkspace({
                   />
                 </FormField>
               </div>
+            ) : null}
+            {canEditTargetRir ? (
+              <FormField
+                id="live-target-rir"
+                label="Target RIR"
+                helpText="Applies to the last set, replacing any RIR recorded there."
+              >
+                <LiveWorkoutNumericInput
+                  id="live-target-rir"
+                  max={99}
+                  min={0}
+                  mode="integer"
+                  onValueChange={(value) =>
+                    setRirDraft(value.replace(/\D+/g, ''))
+                  }
+                  value={rirDraft}
+                />
+              </FormField>
             ) : null}
             {prescriptionError ? (
               <ValidationMessage message={prescriptionError} />
@@ -2688,6 +2750,7 @@ function parseLivePrescriptionDraft(draft: {
   setCount: string
   repsMin: string
   repsMax: string
+  rir: string
 }): { ok: true; value: LivePrescriptionInput } | { ok: false; error: string } {
   const targetSetCount = Number(draft.setCount)
   if (
@@ -2723,9 +2786,19 @@ function parseLivePrescriptionDraft(draft: {
       error: 'Minimum reps cannot be greater than maximum reps.',
     }
   }
+  const targetRir = draft.rir.trim() === '' ? null : Number(draft.rir)
+  if (
+    targetRir !== null &&
+    (!Number.isFinite(targetRir) || targetRir < 0 || targetRir > 99)
+  ) {
+    return {
+      ok: false,
+      error: 'Target RIR must be a number from 0 to 99.',
+    }
+  }
   return {
     ok: true,
-    value: { targetSetCount, targetRepsMin, targetRepsMax },
+    value: { targetSetCount, targetRepsMin, targetRepsMax, targetRir },
   }
 }
 
@@ -2755,6 +2828,9 @@ function formatPrescriptionSummary(
     prescription.targetDistance !== undefined
   ) {
     parts.push(`${prescription.targetDistance} ft`)
+  }
+  if (prescription.targetRir !== null && prescription.targetRir !== undefined) {
+    parts.push(`${prescription.targetRir} RIR`)
   }
   return parts.join(' - ')
 }

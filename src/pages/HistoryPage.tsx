@@ -29,6 +29,7 @@ import {
   SectionHeader,
   StatusMessage,
 } from '@components/ui'
+import { getAppScrollTop, scrollAppTo } from '@components/appScroll'
 import { CalorieHistoryChart } from '@components/CalorieHistoryChart'
 import { DashboardContext } from '@components/dashboardContextValue'
 import { useLanguage } from '@components/languageContextValue'
@@ -249,7 +250,7 @@ export function HistoryPage() {
     }
     const scrollTop = historyScrollPositionRef.current
     historyScrollPositionRef.current = null
-    window.scrollTo({ top: scrollTop, left: 0, behavior: 'auto' })
+    scrollAppTo(scrollTop)
   }, [searchParams, state])
 
   useEffect(() => {
@@ -437,7 +438,7 @@ export function HistoryPage() {
     setSearchParams(isHomeHistory ? { ...params, source: 'home' } : params)
   }
   const openHistoryDetail = (params: Record<string, string>) => {
-    historyScrollPositionRef.current = window.scrollY
+    historyScrollPositionRef.current = getAppScrollTop()
     setHistoryParams(params)
   }
   const selectedItemLabel = selectedHistory

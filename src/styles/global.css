@@ -48,15 +48,20 @@
 
 html {
   min-width: 320px;
+  height: 100%;
   background: var(--color-bg);
   overflow-x: clip;
 }
 
 body {
   min-width: 320px;
-  min-height: 100dvh;
+  height: 100%;
   margin: 0;
-  overflow-x: clip;
+  /* The app shell is pinned to the viewport and owns all scrolling internally
+     (see .app-shell / .app-main). Locking the document scroll removes the only
+     surface iOS/WebKit could shift, so the bottom nav can never drift. */
+  overflow: hidden;
+  overscroll-behavior: none;
   background: var(--color-bg);
 }
 
@@ -99,7 +104,7 @@ textarea:focus-visible {
 }
 
 #root {
-  min-height: 100dvh;
+  height: 100%;
 }
 
 .app-launch-screen {
@@ -193,15 +198,21 @@ textarea:focus-visible {
   transform: translateY(0);
 }
 
+/* Pin the shell to the layout viewport as a flex column: the header sits on top,
+   the scrollable main takes the remaining space, and the bottom nav is a normal
+   in-flow row at the end. Because nothing here is `position: fixed` relative to
+   the viewport, iOS/WebKit has no fixed element to drag up when the software
+   keyboard opens/closes — the recurring "dashboard creeps up" bug cannot occur. */
 .app-shell {
-  min-height: 100dvh;
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background:
     linear-gradient(180deg, rgb(255 255 255 / 3%), transparent 170px),
     var(--color-bg);
-  padding: calc(env(safe-area-inset-top) + var(--space-3)) var(--space-4)
-    calc(
-      env(safe-area-inset-bottom) + var(--bottom-nav-height) + var(--space-5)
-    );
+  padding: calc(env(safe-area-inset-top) + var(--space-3)) var(--space-4) 0;
 }
 
 .app-header,
@@ -213,6 +224,19 @@ textarea:focus-visible {
   width: min(100%, 720px);
   margin-right: auto;
   margin-left: auto;
+}
+
+/* The only scroll container in the app. It grows to fill the space between the
+   header and the bottom nav and scrolls its own overflow, so the document never
+   scrolls and fixed-element drift is impossible. */
+.app-main {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: clip;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding-bottom: calc(env(safe-area-inset-bottom) + var(--space-5));
 }
 
 .app-main:focus {
@@ -2063,6 +2087,7 @@ body.live-workout-open .app-main {
   min-height: 0;
   flex: 1 1 0;
   overflow: hidden;
+  padding-bottom: 0;
 }
 
 body.live-workout-open .route-transition,
@@ -4419,12 +4444,15 @@ input::placeholder {
   font-weight: 700;
 }
 
+/* An in-flow final row of the shell flex column — never `position: fixed`, so it
+   cannot be shifted by the iOS visual viewport. It spans the shell's horizontal
+   padding via negative margins to stay edge-to-edge. */
 .bottom-nav {
-  position: fixed;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  position: relative;
   z-index: 20;
+  flex: 0 0 auto;
+  width: calc(100% + 2 * var(--space-4));
+  margin: 0 calc(-1 * var(--space-4));
   display: grid;
   grid-template-columns: 1fr 1fr 74px 1fr 1fr;
   align-items: end;

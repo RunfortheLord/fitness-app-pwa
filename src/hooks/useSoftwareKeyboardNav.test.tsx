@@ -71,6 +71,37 @@ describe('useSoftwareKeyboardNav', () => {
     expect(document.body.classList.contains('keyboard-input-open')).toBe(false)
   })
 
+  it('does not mark the body when inactive (e.g. the live workout)', () => {
+    function InactiveHarness() {
+      useSoftwareKeyboardNav(false)
+      return null
+    }
+
+    const input = document.createElement('input')
+    input.type = 'text'
+    document.body.append(input)
+    render(<InactiveHarness />)
+
+    input.focus()
+    input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+    expect(document.body.classList.contains('keyboard-input-open')).toBe(false)
+  })
+
+  it('clears a lingering marker when it becomes inactive', () => {
+    function Toggling({ active }: { active: boolean }) {
+      useSoftwareKeyboardNav(active)
+      return null
+    }
+
+    document.body.classList.add('keyboard-input-open')
+    const { rerender } = render(<Toggling active={false} />)
+    expect(document.body.classList.contains('keyboard-input-open')).toBe(false)
+
+    rerender(<Toggling active={true} />)
+    // Re-activating does not spuriously set the class on its own.
+    expect(document.body.classList.contains('keyboard-input-open')).toBe(false)
+  })
+
   it('stays open when focus moves directly between two text fields', () => {
     const rafCallbacks: FrameRequestCallback[] = []
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {

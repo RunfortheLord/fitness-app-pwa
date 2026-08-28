@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react'
 
+import { scrollAppTo } from '@components/appScroll'
+
 // Tracks how many in-app sub-pages are currently open so that, when several are
 // stacked (e.g. Browse -> Preview), only the top-most one responds to a back
 // gesture or Escape.
@@ -27,13 +29,9 @@ export function useSubpageBackGesture(isOpen: boolean, onExit: () => void) {
     }
 
     // A sub-page is a fresh screen, so start it at the top rather than inheriting
-    // the parent page's scroll position. Guarded for environments (e.g. jsdom)
-    // that do not implement scrollTo.
-    try {
-      window.scrollTo({ top: 0 })
-    } catch {
-      // Non-critical: ignore environments without a real scroll implementation.
-    }
+    // the parent page's scroll position. Scrolls the app main (the real scroll
+    // container); scrollAppTo is guarded for environments without scrollTo.
+    scrollAppTo(0)
 
     const depth = ++openSubpageDepth
     let exitedViaPop = false

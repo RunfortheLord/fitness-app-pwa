@@ -15,6 +15,7 @@ import {
   SwitchControl,
   ValidationMessage,
 } from '@components/ui'
+import { scrollAppTo } from '@components/appScroll'
 import { useLanguage } from '@components/languageContextValue'
 import { BACKUP_SCHEMA_VERSION, DATABASE_SCHEMA_VERSION } from '@db/database'
 import { CHANGELOG, LATEST_CHANGELOG_ENTRY } from '@domain/changelog'
@@ -227,8 +228,7 @@ export function SettingsPage() {
     if (requestedSection === 'whats-new') {
       return
     }
-    document.documentElement.scrollTop = 0
-    document.body.scrollTop = 0
+    scrollAppTo(0)
   }, [requestedSection])
 
   useEffect(() => {

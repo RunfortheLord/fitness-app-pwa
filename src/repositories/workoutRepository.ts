@@ -114,6 +114,7 @@ export type UpdateLiveExercisePrescriptionInput = {
   targetSetCount: number
   targetRepsMin: number | null
   targetRepsMax: number | null
+  targetRir?: number | null
 }
 
 export type WorkoutRepositoryTestHooks = {
@@ -1013,6 +1014,8 @@ export function createWorkoutRepository(
             })
           }
 
+          const updatesTargetRir = input.targetRir !== undefined
+          const finalSetIndex = sets.length - 1
           for (const [index, set] of sets.entries()) {
             const targetSnapshot: WorkoutSetTargetSnapshot = {
               trackingMethodId,
@@ -1020,10 +1023,18 @@ export function createWorkoutRepository(
               targetRepsMin: input.targetRepsMin,
               targetRepsMax: input.targetRepsMax,
             }
+            // The last set owns the exercise's final RIR target. When the target
+            // RIR changes it replaces whatever RIR is recorded on that set so the
+            // set entry matches the new target the lifter is aiming for.
+            const rir =
+              updatesTargetRir && index === finalSetIndex
+                ? (input.targetRir ?? null)
+                : set.rir
             const updatedSet: WorkoutSet = {
               ...set,
               setNumber: index + 1,
               targetSnapshot,
+              rir,
               targetRecommendation: set.targetRecommendation
                 ? {
                     ...set.targetRecommendation,
@@ -1042,6 +1053,9 @@ export function createWorkoutRepository(
             ...exercise,
             sessionTargetRepsMin: input.targetRepsMin,
             sessionTargetRepsMax: input.targetRepsMax,
+            sessionTargetRir: updatesTargetRir
+              ? (input.targetRir ?? null)
+              : exercise.sessionTargetRir,
             updatedAt: now,
           }
           await database.workoutExercises.put(updatedExercise)
@@ -2354,6 +2368,15 @@ function validateLiveExercisePrescription(
     input.targetRepsMin > input.targetRepsMax
   ) {
     throw new Error('Minimum reps cannot be greater than maximum reps.')
+  }
+  if (
+    input.targetRir !== undefined &&
+    input.targetRir !== null &&
+    (!Number.isFinite(input.targetRir) ||
+      input.targetRir < 0 ||
+      input.targetRir > 99)
+  ) {
+    throw new Error('Target RIR must be a number from 0 to 99.')
   }
 }
 

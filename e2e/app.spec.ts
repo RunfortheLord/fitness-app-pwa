@@ -6,7 +6,7 @@ const routes = [
   { path: '/', title: 'Home', nav: 'Home' },
   { path: '/nutrition', title: 'Nutrition', nav: 'Nutrition' },
   { path: '/training', title: 'Current Program', nav: 'Training' },
-  { path: '/run', title: 'Run', nav: 'Run' },
+  { path: '/run', title: 'Run', nav: 'Cardio' },
   { path: '/calories', title: 'Calories' },
   { path: '/history', title: 'History' },
   { path: '/settings', title: 'Settings' },
@@ -173,7 +173,7 @@ test(
     ).toBeVisible()
     await expect(page.getByText('Program library')).toBeVisible()
 
-    await page.getByRole('link', { name: 'Run' }).click()
+    await page.getByRole('link', { name: 'Cardio' }).click()
     await expect(
       page.getByRole('heading', { level: 1, name: 'Run' }),
     ).toBeVisible()
@@ -198,17 +198,26 @@ test(
       page.getByRole('heading', { level: 1, name: 'Settings' }),
     ).toBeVisible()
 
-    await page.evaluate(() =>
-      window.scrollTo(0, document.documentElement.scrollHeight),
-    )
+    // The app main is the scroll container (the document itself never scrolls),
+    // so scroll it to the bottom and confirm navigating Home resets it to the top.
+    await page.evaluate(() => {
+      const main = document.querySelector('.app-main')!
+      main.scrollTop = main.scrollHeight
+    })
     await expect
-      .poll(() => page.evaluate(() => window.scrollY))
+      .poll(() =>
+        page.evaluate(() => document.querySelector('.app-main')!.scrollTop),
+      )
       .toBeGreaterThan(0)
     await page.getByRole('link', { name: 'Home' }).click()
     await expect(
       page.getByRole('heading', { level: 1, name: 'Home' }),
     ).toBeVisible()
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+    await expect
+      .poll(() =>
+        page.evaluate(() => document.querySelector('.app-main')!.scrollTop),
+      )
+      .toBe(0)
     await expect(page.getByLabel('Selected date')).toBeInViewport()
 
     await expect
@@ -233,18 +242,27 @@ test('returns Home to the top after navigating from a scrolled route @smoke', as
   ).toBeVisible({ timeout: 45_000 })
   await expect(page.getByText('Application version')).toBeVisible()
 
-  await page.evaluate(() =>
-    window.scrollTo(0, document.documentElement.scrollHeight),
-  )
+  // The app main is the scroll container (the document itself never scrolls),
+  // so scroll it to the bottom and confirm navigating Home resets it to the top.
+  await page.evaluate(() => {
+    const main = document.querySelector('.app-main')!
+    main.scrollTop = main.scrollHeight
+  })
   await expect
-    .poll(() => page.evaluate(() => window.scrollY))
+    .poll(() =>
+      page.evaluate(() => document.querySelector('.app-main')!.scrollTop),
+    )
     .toBeGreaterThan(0)
 
   await page.getByRole('link', { name: 'Home' }).click()
   await expect(
     page.getByRole('heading', { level: 1, name: 'Home' }),
   ).toBeVisible()
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.querySelector('.app-main')!.scrollTop),
+    )
+    .toBe(0)
   await expect(page.getByLabel('Selected date')).toBeInViewport()
 })
 
@@ -326,7 +344,7 @@ test('bottom navigation has exactly five controls and no History tab', async ({
     nav.getByRole('button', { name: 'Open quick actions' }),
   ).toBeVisible()
   await expect(nav.getByRole('link', { name: 'Training' })).toBeVisible()
-  await expect(nav.getByRole('link', { name: 'Run' })).toBeVisible()
+  await expect(nav.getByRole('link', { name: 'Cardio' })).toBeVisible()
   await expect(nav.getByRole('link', { name: 'History' })).toHaveCount(0)
   await expect(nav.locator('a,button')).toHaveCount(5)
   await expect
@@ -362,7 +380,11 @@ test('bottom navigation has exactly five controls and no History tab', async ({
     Math.abs(beforeScroll.bottom - beforeScroll.viewportHeight),
   ).toBeLessThan(1)
 
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+  // Scrolling the content region (the app main) must not move the in-flow nav.
+  await page.evaluate(() => {
+    const main = document.querySelector('.app-main')!
+    main.scrollTop = main.scrollHeight
+  })
   const afterScroll = await nav.evaluate((element) => {
     const rect = element.getBoundingClientRect()
     return { bottom: rect.bottom, viewportHeight: window.innerHeight }
@@ -388,9 +410,9 @@ test('hides the bottom navigation while a software keyboard is open without remo
     element.setAttribute('data-navigation-instance', 'stable')
   })
 
-  // Focusing a text field opens the keyboard. The fixed nav hides so iOS cannot
-  // drag it up over the page, but the same nav element stays in the DOM (it is
-  // never remounted, so it cannot be lost after the keyboard closes).
+  // Focusing a text field opens the keyboard. The nav hides while it is open so
+  // it cannot sit over the keyboard, but the same nav element stays in the DOM
+  // (it is never remounted, so it cannot be lost after the keyboard closes).
   await page.evaluate(() => {
     const input = document.createElement('input')
     input.type = 'number'

@@ -48,11 +48,21 @@ export function opensSoftwareKeyboard(target: EventTarget | null): boolean {
  * cannot float it up over the page (the visual viewport shifts fixed elements
  * when the keyboard appears). The nav is restored — freshly positioned — as
  * soon as focus leaves the editable field, which also clears any lingering
- * offset. The live workout owns its own pinned layout and is left untouched.
+ * offset.
+ *
+ * Pass `active: false` on screens that own their own pinned layout — notably
+ * the live workout, whose number fields fall back to a real text input on the
+ * web (the in-app keypad is installed-iOS only). Hiding the nav there would
+ * strand the user with no way to navigate away mid-set.
  */
-export function useSoftwareKeyboardNav() {
+export function useSoftwareKeyboardNav(active = true) {
   useEffect(() => {
     const body = document.body
+    if (!active) {
+      // Ensure the nav is never left hidden when this screen opts out.
+      body.classList.remove('keyboard-input-open')
+      return
+    }
 
     function setOpen(isOpen: boolean) {
       body.classList.toggle('keyboard-input-open', isOpen)
@@ -82,5 +92,5 @@ export function useSoftwareKeyboardNav() {
       document.removeEventListener('focusout', handleFocusOut)
       body.classList.remove('keyboard-input-open')
     }
-  }, [])
+  }, [active])
 }

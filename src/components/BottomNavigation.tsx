@@ -37,7 +37,7 @@ export function BottomNavigation({
       </NavLink>
       <NavLink to="/run" className="bottom-nav-link">
         <Footprints aria-hidden="true" size={20} />
-        <span>{t('Run')}</span>
+        <span>{t('Cardio')}</span>
       </NavLink>
     </nav>
   )
