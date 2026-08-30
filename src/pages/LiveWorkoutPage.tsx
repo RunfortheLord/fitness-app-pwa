@@ -1205,13 +1205,6 @@ function LiveWorkoutPageContent() {
           }}
           onNext={() => selectExercise(activeIndex + 1)}
           onPrevious={() => selectExercise(activeIndex - 1)}
-          onReplaceExercise={() =>
-            setPicker({
-              mode: 'replace',
-              workoutExerciseId: activeExercise.id,
-              exerciseId: activeExercise.exerciseId,
-            })
-          }
           onRemoveExercise={() => setConfirmRemove(true)}
           onChangeExerciseDefaultRest={changeActiveExerciseRest}
           onDismissRestTimer={dismissCurrentRestTimer}
@@ -1264,13 +1257,6 @@ function LiveWorkoutPageContent() {
               'Exercise target could not be saved.',
             )
           }
-          onSkip={(skipped) => {
-            const nextExercise = state.exercises[activeIndex + 1]
-            if (skipped && nextExercise) {
-              setActiveExerciseId(nextExercise.id)
-            }
-            run(workoutRepository.skipExercise(activeExercise.id, skipped))
-          }}
           onToggleWorkoutPause={() => void toggleWorkoutPause(state.workout)}
           prescription={liveExercisePrescription(
             activeExercise,
@@ -1299,6 +1285,39 @@ function LiveWorkoutPageContent() {
           />
         </Card>
       )}
+      {activeExercise ? (
+        <div className="live-workout-exercise-actions">
+          <SecondaryButton
+            type="button"
+            onClick={() =>
+              setPicker({
+                mode: 'replace',
+                workoutExerciseId: activeExercise.id,
+                exerciseId: activeExercise.exerciseId,
+              })
+            }
+          >
+            <RefreshCcw aria-hidden="true" size={18} />
+            {t('Swap Exercise')}
+          </SecondaryButton>
+          <SecondaryButton
+            type="button"
+            disabled={
+              !activeExercise.skipped && !canSkipWorkoutExercise(activeSets)
+            }
+            onClick={() => {
+              const skipped = !activeExercise.skipped
+              const nextExercise = state.exercises[activeIndex + 1]
+              if (skipped && nextExercise) {
+                setActiveExerciseId(nextExercise.id)
+              }
+              run(workoutRepository.skipExercise(activeExercise.id, skipped))
+            }}
+          >
+            {t(activeExercise.skipped ? 'Unskip' : 'Skip Exercise')}
+          </SecondaryButton>
+        </div>
+      ) : null}
       <div className="live-workout-session-bar">
         <RestTimerControls
           onAddTime={addRestTimerTime}
@@ -1464,7 +1483,6 @@ function ExerciseWorkspace({
   onDismissRestTimer,
   onNext,
   onPrevious,
-  onReplaceExercise,
   onRemoveExercise,
   onPauseRestTimer,
   onResumeRestTimer,
@@ -1472,7 +1490,6 @@ function ExerciseWorkspace({
   onSetRir,
   onSaveNotes,
   onSavePrescription,
-  onSkip,
   onToggleWorkoutPause,
   prescription,
   restRemainingSeconds,
@@ -1499,7 +1516,6 @@ function ExerciseWorkspace({
   onDismissRestTimer: () => void
   onNext: () => void
   onPrevious: () => void
-  onReplaceExercise: () => void
   onRemoveExercise: () => void
   onPauseRestTimer: () => void
   onResumeRestTimer: () => void
@@ -1510,7 +1526,6 @@ function ExerciseWorkspace({
   onSetRir: (set: WorkoutSet, rir: number | null) => void
   onSaveNotes: (notes: string) => Promise<unknown>
   onSavePrescription: (input: LivePrescriptionInput) => Promise<unknown>
-  onSkip: (skipped: boolean) => void
   onToggleWorkoutPause: () => void
   prescription: LiveExercisePrescription
   restRemainingSeconds: number
@@ -1861,26 +1876,6 @@ function ExerciseWorkspace({
               restTimer={restTimer}
               workoutPaused={workoutPaused}
             />
-            <SecondaryButton
-              type="button"
-              onClick={() => {
-                setIsExerciseOptionsOpen(false)
-                onReplaceExercise()
-              }}
-            >
-              <RefreshCcw aria-hidden="true" size={18} />
-              {t('Swap Exercise')}
-            </SecondaryButton>
-            <SecondaryButton
-              type="button"
-              disabled={!exercise.skipped && !canSkipWorkoutExercise(sets)}
-              onClick={() => {
-                setIsExerciseOptionsOpen(false)
-                onSkip(!exercise.skipped)
-              }}
-            >
-              {t(exercise.skipped ? 'Unskip' : 'Skip Exercise')}
-            </SecondaryButton>
           </div>
         )}
       </BottomSheet>

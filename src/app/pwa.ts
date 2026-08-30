@@ -35,7 +35,40 @@ export function registerServiceWorkerUpdateHandler(
     onUpdateReady(update)
   })
 
+  // When an updated worker takes control of this page, reload once so the app
+  // is actually running the freshly deployed assets — this is what makes a
+  // deploy land without the user force-quitting and relaunching. Guarded so it
+  // only fires for real updates (never the first install) and never loops.
+  // A reload is deferred while a live workout is open so a mid-set update can
+  // never interrupt logging; it is applied at the next safe checkpoint instead
+  // (workout state persists to IndexedDB regardless, so nothing is lost).
+  let hasReloadedForUpdate = false
+  let updateReloadPending = false
+
+  function isLiveWorkoutOpen() {
+    return document.body.classList.contains('live-workout-open')
+  }
+
+  function reloadForUpdateIfSafe() {
+    if (hasReloadedForUpdate || !updateReloadPending) {
+      return
+    }
+    if (isLiveWorkoutOpen()) {
+      return
+    }
+    hasReloadedForUpdate = true
+    window.location.reload()
+  }
+
+  workbox.addEventListener('controlling', (event) => {
+    if (event.isUpdate || event.isExternal) {
+      updateReloadPending = true
+      reloadForUpdateIfSafe()
+    }
+  })
+
   function checkForUpdate() {
+    reloadForUpdateIfSafe()
     if (navigator.onLine) {
       void update.checkForUpdate().catch(() => undefined)
     }
@@ -55,6 +88,17 @@ export function registerServiceWorkerUpdateHandler(
     UPDATE_CHECK_INTERVAL_MS,
   )
 
+  // Apply a deferred update reload the instant the live workout screen closes,
+  // rather than waiting for the next visibility/interval checkpoint.
+  const bodyClassObserver =
+    typeof MutationObserver === 'undefined'
+      ? null
+      : new MutationObserver(() => reloadForUpdateIfSafe())
+  bodyClassObserver?.observe(document.body, {
+    attributeFilter: ['class'],
+    attributes: true,
+  })
+
   void workbox
     .register()
     .then(() => workbox.update())
@@ -71,6 +115,7 @@ export function registerServiceWorkerUpdateHandler(
       window.removeEventListener('online', checkForUpdate)
       window.removeEventListener('pageshow', checkForUpdate)
       window.clearInterval(intervalId)
+      bodyClassObserver?.disconnect()
     },
   }
 

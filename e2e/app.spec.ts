@@ -1863,11 +1863,9 @@ test('completes the release workflow through backup restore', async ({
     .getByRole('button', { name: 'Audit squat, exercise 1 of 2' })
     .click()
   await expect(page.getByRole('heading', { name: 'Audit squat' })).toBeVisible()
-  await page.getByRole('button', { name: 'More exercise actions' }).click()
-  await page
-    .getByRole('dialog', { name: 'Exercise options' })
-    .getByRole('button', { name: 'Swap Exercise' })
-    .click()
+  // Swap / Skip now live in the live workout's bottom action row, not the
+  // exercise options sheet.
+  await page.getByRole('button', { name: 'Swap Exercise' }).click()
   const replaceSheet = page.getByRole('dialog', { name: 'Swap Exercise' })
   await replaceSheet.getByLabel('Search exercises').fill('Audit row')
   await replaceSheet.getByRole('button', { name: /Audit row/ }).click()
@@ -1877,19 +1875,8 @@ test('completes the release workflow through backup restore', async ({
     .getByRole('button', { name: 'Audit curl, exercise 2 of 2' })
     .click()
   await expect(page.getByRole('heading', { name: 'Audit curl' })).toBeVisible()
-  await page.getByRole('button', { name: 'More exercise actions' }).click()
-  const skipOptions = page.getByRole('dialog', { name: 'Exercise options' })
-  await skipOptions.getByRole('button', { name: 'Skip Exercise' }).click()
-  await expect(skipOptions).not.toBeVisible()
-  await page.getByRole('button', { name: 'More exercise actions' }).click()
-  const reopenedExerciseOptions = page.getByRole('dialog', {
-    name: 'Exercise options',
-  })
-  await expect(
-    reopenedExerciseOptions.getByRole('button', { name: 'Unskip' }),
-  ).toBeVisible()
-  await page.keyboard.press('Escape')
-  await expect(reopenedExerciseOptions).not.toBeVisible()
+  await page.getByRole('button', { name: 'Skip Exercise' }).click()
+  await expect(page.getByRole('button', { name: 'Unskip' })).toBeVisible()
 
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Audit curl' })).toBeVisible()

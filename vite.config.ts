@@ -51,7 +51,11 @@ export default defineConfig({
       },
       workbox: {
         cleanupOutdatedCaches: true,
-        clientsClaim: false,
+        // Claim open clients as soon as an updated worker activates so the
+        // running app switches onto the new worker (which then triggers the
+        // one-shot reload in pwa.ts) instead of serving stale cached assets
+        // until the next cold launch.
+        clientsClaim: true,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,mp3,webmanifest}'],
         importScripts: ['/push-handler.js'],
         navigateFallbackDenylist: [/^\/api\//],

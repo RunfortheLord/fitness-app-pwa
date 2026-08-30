@@ -29,6 +29,20 @@ function legalDocuments() {
   )
 }
 
+function isWorkingTreeDirty() {
+  try {
+    return (
+      execFileSync('git', ['status', '--porcelain'], {
+        cwd: root,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim().length > 0
+    )
+  } catch {
+    return false
+  }
+}
+
 function gitShortHash() {
   const vercelSha = process.env.VERCEL_GIT_COMMIT_SHA
   if (vercelSha) {
@@ -36,11 +50,14 @@ function gitShortHash() {
   }
 
   try {
-    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+    const hash = execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
       cwd: root,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     }).trim()
+    // Flag local builds made from uncommitted changes so a stale-looking hash
+    // can never be mistaken for "nothing changed".
+    return isWorkingTreeDirty() ? `${hash}-dirty` : hash
   } catch {
     return 'unknown'
   }
