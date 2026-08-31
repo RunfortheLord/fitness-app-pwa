@@ -11,7 +11,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { App } from '@app/App'
 import { db } from '@db/database'
-import { hasUnseenChangelog, markChangelogSeen } from '@domain/changelog'
+import {
+  hasUnseenChangelog,
+  LATEST_CHANGELOG_ENTRY,
+  markChangelogSeen,
+} from '@domain/changelog'
 import { SettingsPage } from '@pages/SettingsPage'
 import { settingsRepository } from '@repositories/settingsRepository'
 import { initializeAppData } from '@services/appInitializationService'
@@ -554,7 +558,7 @@ describe('SettingsPage', () => {
     await user.click(await screen.findByRole('button', { name: 'About' }))
     expect(
       await screen.findByRole('heading', {
-        name: 'Adjust target RIR mid-workout and finish without waiting',
+        name: LATEST_CHANGELOG_ENTRY?.title ?? '',
       }),
     ).toBeInTheDocument()
     expect(
