@@ -2104,27 +2104,15 @@ body.live-workout-open .route-transition,
   min-height: 0;
 }
 
-/* The live workout owns the full screen: hide the app-wide bottom nav while a
-   workout is open so its Skip/Swap/Finish controls take the dashboard's place.
-   The nav returns automatically on exit (the class is removed when the live
-   workout page unmounts). Hiding it (rather than translating it) keeps it out
-   of flow entirely, so it can never drift with the software keyboard. */
+/* The live dashboard is a real final shell row. It is never hidden, fixed,
+   translated, or rebuilt from software-keyboard viewport measurements. */
 body.live-workout-open .bottom-nav {
-  display: none;
-}
-
-/* Skip / Swap for the active exercise, surfaced at the bottom of the live
-   workout in the space the bottom nav used to occupy. */
-.live-workout-exercise-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-2);
+  position: relative;
+  inset: auto;
+  width: calc(100% + var(--space-4));
   flex: 0 0 auto;
-}
-
-.live-workout-exercise-actions > .button {
-  min-height: 44px;
-  justify-content: center;
+  margin-right: calc(-1 * var(--space-2));
+  margin-left: calc(-1 * var(--space-2));
 }
 
 .live-workout-page {

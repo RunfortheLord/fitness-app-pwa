@@ -10,13 +10,12 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    id: '2026-08-31-auto-updates-and-live-workout-nav',
+    id: '2026-08-31-automatic-updates',
     date: '2026-08-31',
-    title: 'Automatic updates and a cleaner live workout',
+    title: 'Automatic updates',
     items: [
       'App updates now apply on their own. When a new version is deployed, reopening the app loads it automatically — no more force-quitting or wondering whether you are on the latest build. An update is held until you leave a live workout so it can never interrupt a set.',
-      'The bottom navigation now hides while a live workout is open, giving the workout the full screen, and returns as soon as you leave it.',
-      'Skip Exercise and Swap Exercise now sit in a row at the bottom of the live workout, where the navigation used to be, instead of only inside the options menu.',
+      'The bottom navigation now rests flush on the bottom edge of the screen on iPhone, instead of leaving a gap below it.',
     ],
   },
   {

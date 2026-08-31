@@ -624,10 +624,6 @@ describe('TrainingPage', () => {
         name: 'Skip Exercise',
       }),
     ).not.toBeInTheDocument()
-    // Swap / Skip are now surfaced at the bottom of the live workout (in the
-    // space the bottom nav vacates), not inside the exercise options sheet.
-    expect(screen.getByRole('button', { name: 'Swap Exercise' })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Skip Exercise' })).toBeVisible()
     const exerciseTitleLine = (exerciseWorkspace as HTMLElement).querySelector(
       '.exercise-title-line',
     )
@@ -673,11 +669,11 @@ describe('TrainingPage', () => {
       ).getByRole('option', { name: '30' }),
     ).toHaveAttribute('aria-selected', 'true')
     expect(
-      within(exerciseOptions).queryByRole('button', { name: 'Swap Exercise' }),
-    ).not.toBeInTheDocument()
+      within(exerciseOptions).getByRole('button', { name: 'Swap Exercise' }),
+    ).toBeVisible()
     expect(
-      within(exerciseOptions).queryByRole('button', { name: 'Skip Exercise' }),
-    ).not.toBeInTheDocument()
+      within(exerciseOptions).getByRole('button', { name: 'Skip Exercise' }),
+    ).toBeVisible()
     await user.click(
       within(exerciseOptions).getByRole('button', {
         name: 'Edit current workout target',
@@ -1214,8 +1210,9 @@ describe('TrainingPage', () => {
     renderTraining(['/workout'])
 
     await user.click(
-      await screen.findByRole('button', { name: 'Swap Exercise' }),
+      await screen.findByRole('button', { name: 'More exercise actions' }),
     )
+    await user.click(screen.getByRole('button', { name: 'Swap Exercise' }))
     const picker = await screen.findByRole('dialog', { name: 'Swap Exercise' })
     await user.click(
       within(picker).getByRole('button', { name: 'Create custom exercise' }),
@@ -1854,7 +1851,14 @@ describe('TrainingPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Skipped carry' }),
     ).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Skip Exercise' }))
+    await user.click(
+      screen.getByRole('button', { name: 'More exercise actions' }),
+    )
+    await user.click(
+      within(
+        screen.getByRole('dialog', { name: 'Exercise options' }),
+      ).getByRole('button', { name: 'Skip Exercise' }),
+    )
     expect(
       await screen.findByRole('heading', { name: 'Finished carry' }),
     ).toBeInTheDocument()
