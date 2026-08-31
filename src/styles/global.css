@@ -206,6 +206,14 @@ textarea:focus-visible {
 .app-shell {
   position: fixed;
   inset: 0;
+  /* Some iOS standalone PWAs give a `position: fixed; inset: 0` element a
+     containing block that stops short of the physical bottom (leaving a dead
+     band under the home indicator). Pinning the height to the dynamic viewport
+     makes the shell — and therefore the bottom nav resting in its final row —
+     fill all the way down. `bottom: 0` from `inset` is ignored once an explicit
+     height is set, so the shell stays top-anchored and fixed (no drift). */
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;

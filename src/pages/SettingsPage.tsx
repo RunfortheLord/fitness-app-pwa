@@ -371,8 +371,10 @@ export function SettingsPage() {
       const shellBottom = shell
         ? Math.round(shell.getBoundingClientRect().bottom)
         : null
+      const sh = window.screen ? window.screen.height : null
+      const ch = document.documentElement.clientHeight
       setLayoutDebug(
-        `sab=${sab} ih=${ih} vv=${vv ?? 'n/a'} navBottomGap=${navBottom === null ? 'n/a' : ih - navBottom} shellBottomGap=${shellBottom === null ? 'n/a' : ih - shellBottom}`,
+        `sab=${sab} ih=${ih} vv=${vv ?? 'n/a'} sh=${sh ?? 'n/a'} ch=${ch} navBottomGap=${navBottom === null ? 'n/a' : ih - navBottom} shellBottomGap=${shellBottom === null ? 'n/a' : ih - shellBottom}`,
       )
     }
     measure()
