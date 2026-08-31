@@ -20,7 +20,11 @@ export function registerServiceWorkerUpdateHandler(
     return undefined
   }
 
-  const workbox = new Workbox('/sw.js')
+  // `updateViaCache: 'none'` forces the browser to revalidate sw.js from the
+  // network on every update check instead of serving a stale HTTP-cached copy.
+  // Without it, iOS can keep handing back an old sw.js and never notice a new
+  // deployment, leaving the app on stale code even though a build is live.
+  const workbox = new Workbox('/sw.js', { updateViaCache: 'none' })
 
   const update: ServiceWorkerUpdate = {
     applyUpdate() {

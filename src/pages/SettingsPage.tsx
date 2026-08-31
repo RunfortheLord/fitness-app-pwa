@@ -182,7 +182,6 @@ export function SettingsPage() {
   const [storagePersistenceStatus, setStoragePersistenceStatus] =
     useState<StoragePersistenceStatus | null>(null)
   const [buildInfo, setBuildInfo] = useState<BuildInfo | null>(null)
-  const [layoutDebug, setLayoutDebug] = useState<string | null>(null)
   const [feedbackText, setFeedbackText] = useState('')
   const [feedbackSending, setFeedbackSending] = useState(false)
   const [feedbackError, setFeedbackError] = useState<string | null>(null)
@@ -349,42 +348,6 @@ export function SettingsPage() {
     return () => {
       isCurrent = false
     }
-  }, [])
-
-  useEffect(() => {
-    function measure() {
-      const probe = document.createElement('div')
-      probe.style.cssText =
-        'position:fixed;left:0;bottom:0;width:1px;height:env(safe-area-inset-bottom);pointer-events:none;opacity:0;'
-      document.body.appendChild(probe)
-      const sab = Math.round(probe.getBoundingClientRect().height)
-      probe.remove()
-      const nav = document.querySelector('.bottom-nav')
-      const shell = document.querySelector('.app-shell')
-      const ih = window.innerHeight
-      const vv = window.visualViewport
-        ? Math.round(window.visualViewport.height)
-        : null
-      const navBottom = nav
-        ? Math.round(nav.getBoundingClientRect().bottom)
-        : null
-      const shellBottom = shell
-        ? Math.round(shell.getBoundingClientRect().bottom)
-        : null
-      const sh = window.screen ? window.screen.height : null
-      const ch = document.documentElement.clientHeight
-      const sy = Math.round(window.screenY ?? window.screenTop ?? 0)
-      const oh = Math.round(window.outerHeight ?? 0)
-      const vvTop = window.visualViewport
-        ? Math.round(window.visualViewport.offsetTop)
-        : null
-      setLayoutDebug(
-        `sab=${sab} ih=${ih} vv=${vv ?? 'n/a'} sh=${sh ?? 'n/a'} ch=${ch} sy=${sy} oh=${oh} vvTop=${vvTop ?? 'n/a'} navBottomGap=${navBottom === null ? 'n/a' : ih - navBottom} shellBottomGap=${shellBottom === null ? 'n/a' : ih - shellBottom}`,
-      )
-    }
-    measure()
-    window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
   }, [])
 
   function saveTimerSettings(next: {
@@ -1437,16 +1400,6 @@ export function SettingsPage() {
                     : t('Development')}
                 </dd>
               </div>
-              {buildInfo &&
-              buildInfo.environment !== 'Production' &&
-              layoutDebug ? (
-                <div>
-                  <dt>Layout debug</dt>
-                  <dd style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {layoutDebug}
-                  </dd>
-                </div>
-              ) : null}
               <div>
                 <dt>{t('Database schema version')}</dt>
                 <dd>{DATABASE_SCHEMA_VERSION}</dd>
