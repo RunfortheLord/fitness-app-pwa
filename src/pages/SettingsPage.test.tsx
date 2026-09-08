@@ -616,8 +616,24 @@ describe('SettingsPage', () => {
     expect(await screen.findByText(/4 records/)).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Back up now' }))
+    const dialog = screen.getByRole('dialog', {
+      name: 'Overwrite cloud backup?',
+    })
 
-    expect(mockCloudSyncService.backupToCloud).toHaveBeenCalled()
+    // Confirming without typing OVERWRITE must not overwrite the cloud backup.
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Overwrite cloud backup' }),
+    )
+    expect(mockCloudSyncService.backupToCloud).not.toHaveBeenCalled()
+
+    await user.type(within(dialog).getByLabelText('Confirmation'), 'OVERWRITE')
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Overwrite cloud backup' }),
+    )
+
+    await waitFor(() =>
+      expect(mockCloudSyncService.backupToCloud).toHaveBeenCalled(),
+    )
     expect(await screen.findByText('Cloud backup saved.')).toBeInTheDocument()
   })
 

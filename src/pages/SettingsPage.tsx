@@ -126,6 +126,9 @@ export function SettingsPage() {
     null,
   )
   const [pendingBackup, setPendingBackup] = useState<JsonBackup | null>(null)
+  const [isCloudBackupConfirmOpen, setIsCloudBackupConfirmOpen] =
+    useState(false)
+  const [cloudBackupConfirmation, setCloudBackupConfirmation] = useState('')
   const [isCloudRestoreConfirmOpen, setIsCloudRestoreConfirmOpen] =
     useState(false)
   const [cloudRestoreConfirmation, setCloudRestoreConfirmation] = useState('')
@@ -586,6 +589,12 @@ export function SettingsPage() {
   }
 
   async function backupToCloud() {
+    // Backing up replaces the single cloud backup for this account with the
+    // current device data, which cannot be undone. Require an explicit typed
+    // confirmation so an existing backup can never be overwritten by accident.
+    if (cloudBackupConfirmation !== 'OVERWRITE') {
+      return
+    }
     setCloudBusy(true)
     setCloudError(null)
     setCloudMessage(null)
@@ -598,6 +607,8 @@ export function SettingsPage() {
       setCloudError(cloudErrorMessage(caught))
     } finally {
       setCloudBusy(false)
+      setIsCloudBackupConfirmOpen(false)
+      setCloudBackupConfirmation('')
     }
   }
 
@@ -1253,7 +1264,7 @@ export function SettingsPage() {
                   <PrimaryButton
                     disabled={cloudBusy || !isOnline}
                     type="button"
-                    onClick={() => void backupToCloud()}
+                    onClick={() => setIsCloudBackupConfirmOpen(true)}
                   >
                     {cloudBusy ? 'Working' : 'Back up now'}
                   </PrimaryButton>
@@ -1443,6 +1454,35 @@ export function SettingsPage() {
         </FormField>
         {restoreConfirmation !== 'REPLACE' ? (
           <ValidationMessage message="Type REPLACE to continue." />
+        ) : null}
+      </ModalConfirmationDialog>
+
+      <ModalConfirmationDialog
+        confirmLabel="Overwrite cloud backup"
+        isOpen={isCloudBackupConfirmOpen}
+        onCancel={() => {
+          setIsCloudBackupConfirmOpen(false)
+          setCloudBackupConfirmation('')
+        }}
+        onConfirm={() => {
+          void backupToCloud()
+        }}
+        title="Overwrite cloud backup?"
+      >
+        <p>
+          {t(
+            'This replaces the existing cloud backup for the signed-in account with the current data on this device. The previous cloud backup cannot be recovered afterward. Type OVERWRITE to continue.',
+          )}
+        </p>
+        <FormField id="cloud-backup-confirmation" label="Confirmation">
+          <input
+            id="cloud-backup-confirmation"
+            value={cloudBackupConfirmation}
+            onChange={(event) => setCloudBackupConfirmation(event.target.value)}
+          />
+        </FormField>
+        {cloudBackupConfirmation !== 'OVERWRITE' ? (
+          <ValidationMessage message="Type OVERWRITE to continue." />
         ) : null}
       </ModalConfirmationDialog>
 
