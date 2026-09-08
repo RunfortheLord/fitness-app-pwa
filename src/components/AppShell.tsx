@@ -1,4 +1,5 @@
 import {
+  Dumbbell,
   Minus,
   NotebookPen,
   Scale,
@@ -37,6 +38,7 @@ import {
   ValidationMessage,
 } from '@components/ui'
 import { useDashboardContext } from '@hooks/useDashboardContext'
+import { useStartQuickWorkout } from '@hooks/useStartQuickWorkout'
 import { useAuth } from '@hooks/useAuth'
 import { useSoftwareKeyboardNav } from '@hooks/useSoftwareKeyboardNav'
 import { useTabSwipeNavigation } from '@hooks/useTabSwipeNavigation'
@@ -92,6 +94,8 @@ function AppShellContent({ children }: AppShellProps) {
   } = useDashboardContext()
   const { signIn, signInWithApple, status: authStatus } = useAuth()
   const navigate = useNavigate()
+  const { startQuickWorkout, isStarting: isStartingQuickWorkout } =
+    useStartQuickWorkout()
 
   function runAfterQuickActionsClose(action: () => void) {
     pendingQuickActionRef.current = action
@@ -394,6 +398,18 @@ function AppShellContent({ children }: AppShellProps) {
                     <Minus aria-hidden="true" size={22} />
                   </button>
                 </>
+              ) : null}
+              {location.pathname.startsWith('/training') ? (
+                <button
+                  className="icon-link"
+                  type="button"
+                  aria-label={t('Start quick workout')}
+                  title={t('Start quick workout')}
+                  disabled={isStartingQuickWorkout}
+                  onClick={() => void startQuickWorkout()}
+                >
+                  <Dumbbell aria-hidden="true" size={22} />
+                </button>
               ) : null}
               <Link
                 className="icon-link"

@@ -337,6 +337,49 @@ textarea:focus-visible {
   text-align: left;
 }
 
+.home-calories-quick {
+  display: flex;
+  gap: var(--space-3);
+  align-items: stretch;
+  min-width: 0;
+}
+
+.home-calories-quick > .metric-card {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.home-quick-workout-tile {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  width: 84px;
+  min-height: 44px;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: 0 14px 34px rgb(0 0 0 / 20%);
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: center;
+}
+
+.home-quick-workout-tile span {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--color-muted);
+}
+
+.home-quick-workout-tile:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .home-bodyweight-summary {
   display: grid;
   gap: var(--space-2);
@@ -2388,6 +2431,18 @@ body.live-workout-open .bottom-nav {
   font-size: 16px;
   font-weight: 850;
   font-variant-numeric: tabular-nums;
+}
+
+.rest-timer-readout-button {
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rest-timer-readout-button:active {
+  background: rgb(255 255 255 / 6%);
 }
 
 .rest-timer-digits {
@@ -5048,6 +5103,34 @@ body.keyboard-input-open .bottom-nav {
     minmax(74px, auto);
   gap: var(--space-2);
   align-items: center;
+}
+
+.history-set-log {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history-set-log-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.history-set-rest {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 2px 0 0 var(--space-2);
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.history-set-rest svg {
+  flex: 0 0 auto;
+  opacity: 0.85;
 }
 
 .history-readonly-metric,

@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   Search,
   Square,
+  Timer,
 } from 'lucide-react'
 import {
   useContext,
@@ -35,6 +36,7 @@ import { DashboardContext } from '@components/dashboardContextValue'
 import { useLanguage } from '@components/languageContextValue'
 import { formatLocalDate } from '@domain/dates'
 import { formatClockDuration as formatDuration } from '@domain/workoutTiming'
+import { hasRestBetweenSets, restBetweenSets } from '@domain/restBetweenSets'
 import { currentTrendWeight } from '@domain/bodyweightTrend'
 import {
   createBodyweightChartModel,
@@ -1724,6 +1726,9 @@ function HistoryExerciseAccordion({
   const metrics = exercise.exerciseSnapshot.trackingMetrics
   const [expanded, setExpanded] = useState(false)
   const panelId = `history-exercise-panel-${exercise.id}`
+  const orderedSets = [...sets].sort(
+    (left, right) => left.setNumber - right.setNumber,
+  )
 
   return (
     <article
@@ -1751,18 +1756,50 @@ function HistoryExerciseAccordion({
         <div className="history-exercise-panel" id={panelId}>
           {exercise.skipped ? <p className="muted">Skipped</p> : null}
 
-          <div className="set-list">
-            {sets.length ? (
-              sets.map((set) => (
-                <HistorySetRow key={set.id} metrics={metrics} set={set} />
-              ))
-            ) : (
-              <p className="muted">No performed sets recorded.</p>
-            )}
-          </div>
+          {sets.length ? (
+            <div className="history-set-log">
+              {orderedSets.map((set, index) => {
+                const previous = index > 0 ? orderedSets[index - 1] : null
+                const rest = previous ? restBetweenSets(previous, set) : null
+                return (
+                  <div className="history-set-log-item" key={set.id}>
+                    {rest && hasRestBetweenSets(rest) ? (
+                      <HistorySetRest rest={rest} />
+                    ) : null}
+                    <HistorySetRow metrics={metrics} set={set} />
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <p className="muted">No performed sets recorded.</p>
+          )}
         </div>
       ) : null}
     </article>
+  )
+}
+
+function HistorySetRest({
+  rest,
+}: {
+  rest: ReturnType<typeof restBetweenSets>
+}) {
+  const { t } = useLanguage()
+  const parts: string[] = []
+  if (rest.actualSeconds !== null) {
+    parts.push(
+      t('{time} between sets', { time: formatDuration(rest.actualSeconds) }),
+    )
+  }
+  if (rest.plannedSeconds !== null) {
+    parts.push(t('{time} rest', { time: formatDuration(rest.plannedSeconds) }))
+  }
+  return (
+    <p className="history-set-rest" aria-label={parts.join(', ')}>
+      <Timer aria-hidden="true" size={13} />
+      <span>{parts.join(' · ')}</span>
+    </p>
   )
 }
 

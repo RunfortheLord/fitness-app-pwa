@@ -1,4 +1,4 @@
-import { History, LineChart, Scale } from 'lucide-react'
+import { Dumbbell, History, LineChart, Scale } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -26,6 +26,7 @@ import { formatProgramWeekLabel } from '@domain/programWeeks'
 import { formatWeight as formatWeightWithUnit } from '@domain/weightUnits'
 import type { BodyweightEntry } from '@shared-types/app'
 import { useDashboardContext } from '@hooks/useDashboardContext'
+import { useStartQuickWorkout } from '@hooks/useStartQuickWorkout'
 import { useWeightUnit } from '@hooks/useWeightUnit'
 import { workoutRepository } from '@repositories/workoutRepository'
 import {
@@ -72,6 +73,8 @@ export function HomePage() {
     setSelectedDate,
   } = useDashboardContext()
   const navigate = useNavigate()
+  const { startQuickWorkout, isStarting: isStartingQuickWorkout } =
+    useStartQuickWorkout()
   const today = formatLocalDate(new Date())
   const [dashboardState, setDashboardState] = useState<DashboardLoadState>(
     () => {
@@ -326,16 +329,29 @@ export function HomePage() {
               onLog={() => openBodyweightSheet(selectedDate)}
               onView={() => void navigate('/history?view=bodyweight')}
             />
-            <MetricCard
-              label="Calories remaining"
-              onClick={() => void navigate('/nutrition?tab=day')}
-              value={`${caloriesRemaining}`}
-              detail={
-                calorieTarget > 0
-                  ? `${calorieTarget} kcal target`
-                  : 'Target not set'
-              }
-            />
+            <div className="home-calories-quick">
+              <MetricCard
+                label="Calories remaining"
+                onClick={() => void navigate('/nutrition?tab=day')}
+                value={`${caloriesRemaining}`}
+                detail={
+                  calorieTarget > 0
+                    ? `${calorieTarget} kcal target`
+                    : 'Target not set'
+                }
+              />
+              <button
+                className="home-quick-workout-tile"
+                type="button"
+                aria-label={t('Start quick workout')}
+                title={t('Start quick workout')}
+                disabled={isStartingQuickWorkout}
+                onClick={() => void startQuickWorkout()}
+              >
+                <Dumbbell aria-hidden="true" size={22} />
+                <span>{t('Quick workout')}</span>
+              </button>
+            </div>
           </section>
 
           <Card className="home-calories-card" title="Calories">

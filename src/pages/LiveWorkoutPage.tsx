@@ -156,6 +156,7 @@ function LiveWorkoutPageContent() {
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const [isDiscarding, setIsDiscarding] = useState(false)
   const [isWorkoutPauseBusy, setIsWorkoutPauseBusy] = useState(false)
+  const [isRestTimerSheetOpen, setIsRestTimerSheetOpen] = useState(false)
   const [confirmFinish, setConfirmFinish] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
   const [picker, setPicker] = useState<ExercisePickerState>(null)
@@ -1302,6 +1303,7 @@ function LiveWorkoutPageContent() {
       <div className="live-workout-session-bar">
         <RestTimerControls
           onAddTime={addRestTimerTime}
+          onOpen={() => setIsRestTimerSheetOpen(true)}
           onSubtractTime={subtractRestTimerTime}
           remainingSeconds={restRemaining}
           timer={state.workout.activeRestTimer}
@@ -1326,6 +1328,30 @@ function LiveWorkoutPageContent() {
           {isFinishing ? t('Saving...') : t('Finish')}
         </PrimaryButton>
       </div>
+
+      <BottomSheet
+        isOpen={isRestTimerSheetOpen}
+        onClose={() => setIsRestTimerSheetOpen(false)}
+        title="Rest timer"
+        variant="page"
+      >
+        <ExerciseOptionsTimerSettings
+          defaultRestSeconds={
+            activeExercise?.exerciseSnapshot.defaultRestSeconds ?? 0
+          }
+          elapsedSeconds={elapsedSeconds}
+          isWorkoutPauseBusy={isWorkoutPauseBusy}
+          onChangeDefaultRest={changeActiveExerciseRest}
+          onDismissRestTimer={dismissCurrentRestTimer}
+          onPauseRestTimer={pauseCurrentRestTimer}
+          onResumeRestTimer={resumeCurrentRestTimer}
+          onToggleWorkoutPause={() => void toggleWorkoutPause(state.workout)}
+          restRemainingSeconds={restRemaining}
+          restTimer={state.workout.activeRestTimer}
+          showExerciseRest={Boolean(activeExercise)}
+          workoutPaused={Boolean(state.workout.pausedAt)}
+        />
+      </BottomSheet>
 
       <ExercisePickerSheet
         currentWorkoutId={state.workout.id}
@@ -2234,11 +2260,13 @@ function MetricNumericInput({
 
 function RestTimerControls({
   onAddTime,
+  onOpen,
   onSubtractTime,
   remainingSeconds,
   timer,
 }: {
   onAddTime: () => void
+  onOpen?: () => void
   onSubtractTime: () => void
   remainingSeconds: number
   timer: Workout['activeRestTimer']
@@ -2252,6 +2280,14 @@ function RestTimerControls({
       : timer?.status === 'paused'
         ? t('Timer paused')
         : t('Timer running')
+  const readoutContent = (
+    <>
+      <Clock aria-hidden="true" size={17} />
+      <span className="rest-timer-digits">
+        {formatDuration(remainingSeconds)}
+      </span>
+    </>
+  )
 
   return (
     <div
@@ -2264,17 +2300,27 @@ function RestTimerControls({
       }`}
       aria-label={t('Rest timer')}
     >
-      <span
-        aria-label={`${timerStatus}: ${formatDuration(remainingSeconds)}`}
-        aria-live="polite"
-        className="rest-timer-readout"
-        title={timerStatus}
-      >
-        <Clock aria-hidden="true" size={17} />
-        <span className="rest-timer-digits">
-          {formatDuration(remainingSeconds)}
+      {onOpen ? (
+        <button
+          type="button"
+          aria-label={`${timerStatus}: ${formatDuration(remainingSeconds)}`}
+          aria-live="polite"
+          className="rest-timer-readout rest-timer-readout-button"
+          title={t('Open rest timer')}
+          onClick={onOpen}
+        >
+          {readoutContent}
+        </button>
+      ) : (
+        <span
+          aria-label={`${timerStatus}: ${formatDuration(remainingSeconds)}`}
+          aria-live="polite"
+          className="rest-timer-readout"
+          title={timerStatus}
+        >
+          {readoutContent}
         </span>
-      </span>
+      )}
       <IconButton
         aria-label="Subtract 30 seconds"
         disabled={!isAvailable || remainingSeconds === 0}
@@ -2308,6 +2354,7 @@ function ExerciseOptionsTimerSettings({
   onToggleWorkoutPause,
   restRemainingSeconds,
   restTimer,
+  showExerciseRest = true,
   workoutPaused,
 }: {
   defaultRestSeconds: number
@@ -2320,6 +2367,8 @@ function ExerciseOptionsTimerSettings({
   onToggleWorkoutPause: () => void
   restRemainingSeconds: number
   restTimer: Workout['activeRestTimer']
+  /** Hide the per-exercise rest picker when no exercise is in focus. */
+  showExerciseRest?: boolean
   workoutPaused: boolean
 }) {
   const { t } = useLanguage()
@@ -2354,21 +2403,25 @@ function ExerciseOptionsTimerSettings({
           )}
         </IconButton>
       </div>
-      <FormField
-        id="exercise-default-rest-seconds"
-        label="Rest duration for this exercise"
-      >
-        <RestWheelPicker
-          minutes={Math.floor(selectedRestSeconds / 60)}
-          onChange={(minutes, seconds) =>
-            onChangeDefaultRest(minutes * 60 + seconds)
-          }
-          seconds={selectedRestSeconds % 60}
-        />
-      </FormField>
-      <p className="muted exercise-options-timer-help">
-        Changes apply immediately to the current rest timer and future sets.
-      </p>
+      {showExerciseRest ? (
+        <>
+          <FormField
+            id="exercise-default-rest-seconds"
+            label="Rest duration for this exercise"
+          >
+            <RestWheelPicker
+              minutes={Math.floor(selectedRestSeconds / 60)}
+              onChange={(minutes, seconds) =>
+                onChangeDefaultRest(minutes * 60 + seconds)
+              }
+              seconds={selectedRestSeconds % 60}
+            />
+          </FormField>
+          <p className="muted exercise-options-timer-help">
+            Changes apply immediately to the current rest timer and future sets.
+          </p>
+        </>
+      ) : null}
       <div className="exercise-options-rest-actions">
         <SecondaryButton
           disabled={!hasCurrentTimer || restTimer?.status === 'completed'}

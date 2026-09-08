@@ -65,6 +65,12 @@ export type StartWorkoutInput = {
   localDate: LocalDateString
 }
 
+export type StartEmptyWorkoutInput = {
+  localDate: LocalDateString
+  /** Optional label; defaults to "Quick Workout" when empty. */
+  name?: string
+}
+
 export type CompleteWorkoutInput = {
   workoutId: string
   completedAt?: string
@@ -490,6 +496,61 @@ export function createWorkoutRepository(
           }
 
           return { workout, exercises: workoutExercises, sets: workoutSets }
+        },
+      )
+    },
+
+    async startEmptyWorkout(input: StartEmptyWorkoutInput) {
+      const now = new Date().toISOString()
+      return database.transaction(
+        'rw',
+        [database.workouts, database.runs],
+        async () => {
+          const existingActive = await database.workouts
+            .where({ status: 'active' })
+            .first()
+          if (existingActive) {
+            throw new Error('An active workout already exists.')
+          }
+          const existingRun = await database.runs
+            .where('status')
+            .anyOf('active', 'paused')
+            .first()
+          if (existingRun) {
+            throw new Error('An active run already exists.')
+          }
+
+          const name = input.name?.trim() || 'Quick Workout'
+          const workout: Workout = {
+            id: createId(),
+            sourceActiveCycleId: null,
+            sourceTemplateId: null,
+            sourceDayId: null,
+            localDate: input.localDate,
+            name,
+            workoutSnapshot: {
+              activeCycleName: null,
+              templateName: null,
+              dayName: name,
+              dayNotes: '',
+            },
+            notes: '',
+            startedAt: now,
+            completedAt: null,
+            durationSeconds: null,
+            elapsedPausedSeconds: 0,
+            pausedAt: null,
+            activeRestTimer: null,
+            status: 'active',
+            trackRirEverySet: false,
+            programWeekNumber: null,
+            isDeload: false,
+            createdAt: now,
+            updatedAt: now,
+          }
+          await database.workouts.add(workout)
+          await testHooks.afterWorkoutAdded?.()
+          return { workout, exercises: [], sets: [] }
         },
       )
     },
@@ -1545,17 +1606,26 @@ export function createWorkoutRepository(
                 targetRir: deloadTargetRir(source.targetRir),
               }))
             : storedSourceExercises
+          // Program-less quick workouts have no source day to diff against, so
+          // every performed exercise would otherwise be flagged as an "added"
+          // structural change with nowhere to apply it. Skip detection entirely.
           const detectedDrafts: NonNullable<
             CompleteWorkoutInput['detectedChanges']
           > = input.detectedChanges
             ? [...input.detectedChanges]
-            : detectWorkoutStructuralChanges({
-                sourceExercises,
-                workout,
-                performedExercises: exercises,
-                performedSetsByExercise: mapSetsByExercise(exercises, sets),
-              })
-          if (!input.detectedChanges && !workout.isDeload) {
+            : workout.sourceDayId
+              ? detectWorkoutStructuralChanges({
+                  sourceExercises,
+                  workout,
+                  performedExercises: exercises,
+                  performedSetsByExercise: mapSetsByExercise(exercises, sets),
+                })
+              : []
+          if (
+            !input.detectedChanges &&
+            !workout.isDeload &&
+            workout.sourceDayId
+          ) {
             const settings = await database.userSettings.get('settings')
             const baseline = settings?.smartProgressionBaselineLevel
             detectedDrafts.push(

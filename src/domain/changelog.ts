@@ -10,6 +10,16 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-09-08-quick-workout-and-history-rest',
+    date: '2026-09-08',
+    title: 'Quick workouts, rest times in history, and a tappable timer',
+    items: [
+      'Start a Quick Workout that follows no program: tap the dumbbell in the Training header or the Quick workout tile on Home to begin an empty session, then add whatever exercises you like. It saves to history like any other workout, and works even while a program is active.',
+      'Exercise history now shows how long you rested — the actual time between each past set plus the planned rest — so you can see your pacing at a glance.',
+      'Tapping the rest timer during a live workout now opens the timer controls, so you can pause, clear, or adjust the rest without opening an exercise’s menu.',
+    ],
+  },
+  {
     id: '2026-08-31-automatic-updates',
     date: '2026-08-31',
     title: 'Automatic updates',

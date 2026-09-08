@@ -8,7 +8,7 @@ import { createProgramRepository } from '@repositories/programRepository'
 import { createSettingsRepository } from '@repositories/settingsRepository'
 import { createWorkoutRepository } from '@repositories/workoutRepository'
 import { createTestDatabase, destroyTestDatabase } from '@test/database'
-import { seedProgram, testLocalDate } from '@test/seedFactories'
+import { seedExercise, seedProgram, testLocalDate } from '@test/seedFactories'
 
 let database: TrainingLogDatabase
 
@@ -45,6 +45,61 @@ describe('workoutRepository', () => {
       }),
     ).rejects.toThrow('An active workout already exists.')
     await expect(database.workouts.toArray()).resolves.toHaveLength(1)
+  })
+
+  it('starts an empty quick workout with no program source or exercises', async () => {
+    const repository = createWorkoutRepository(database)
+
+    const started = await repository.startEmptyWorkout({
+      localDate: testLocalDate,
+    })
+
+    expect(started.exercises).toEqual([])
+    expect(started.sets).toEqual([])
+    expect(started.workout).toMatchObject({
+      sourceActiveCycleId: null,
+      sourceTemplateId: null,
+      sourceDayId: null,
+      status: 'active',
+      name: 'Quick Workout',
+      isDeload: false,
+    })
+    await expect(database.workouts.toArray()).resolves.toHaveLength(1)
+  })
+
+  it('prevents a quick workout while another workout is active', async () => {
+    const repository = createWorkoutRepository(database)
+    await repository.startEmptyWorkout({ localDate: testLocalDate })
+
+    await expect(
+      repository.startEmptyWorkout({ localDate: testLocalDate }),
+    ).rejects.toThrow('An active workout already exists.')
+    await expect(database.workouts.toArray()).resolves.toHaveLength(1)
+  })
+
+  it('completes a quick workout without raising structural change prompts', async () => {
+    const exercise = await seedExercise(database)
+    const repository = createWorkoutRepository(database)
+    const started = await repository.startEmptyWorkout({
+      localDate: testLocalDate,
+    })
+    await repository.addExercise({
+      workoutId: started.workout.id,
+      exerciseId: exercise.id,
+    })
+    const structure = await repository.getActiveWorkoutStructure()
+    const firstSet = Object.values(structure?.setsByExercise ?? {}).flat()[0]
+    await repository.updateWorkoutSet(firstSet.id, { completed: true })
+
+    const completed = await repository.completeWorkout({
+      workoutId: started.workout.id,
+    })
+
+    expect(completed.detectedChanges).toEqual([])
+    await expect(database.detectedWorkoutChanges.toArray()).resolves.toEqual([])
+    await expect(
+      database.workoutHistoryEntries.get(started.workout.id),
+    ).resolves.toMatchObject({ status: 'completed', sourceDayId: null })
   })
 
   it('starts a workout from an active-cycle day and completes it into history', async () => {
