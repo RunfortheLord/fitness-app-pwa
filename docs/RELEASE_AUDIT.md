@@ -2,6 +2,46 @@
 
 Audit date: 2026-06-19
 
+## App Store Readiness Update — 2026-10-08
+
+The current release candidate implements encrypted server-side retention of
+Apple/Google provider credentials and revokes linked provider authorization
+before Supabase account deletion. Revocation, network, configuration, and
+decryption failures leave the account in place and do not report deletion as
+complete. Manual provider removal is retained only for legacy identities with
+no stored credential. Capacitor core, iOS, and CLI are pinned to 8.5.3 and the
+Swift package is synchronized to the same version.
+
+The Windows repository gate passed on October 8, 2026:
+
+- TypeScript, ESLint, and Prettier passed.
+- Secret scan, production dependency audit, and package-signature verification
+  passed. The production audit reports zero vulnerabilities; three moderate
+  development-only advisories remain in Capacitor CLI's `xcode`/`uuid` parser
+  chain with no patched Capacitor 8 release.
+- Vitest passed: 118 files and 1,035 tests.
+- The production build and client-secret leak assertion passed. The existing
+  large-chunk/dynamic-import warnings remain performance follow-ups.
+- Playwright prebuilt release coverage passed: 193 tests with 14 intentional
+  platform skips.
+- Capacitor sync and iOS wrapper verification passed with the final web build.
+
+Stable Vercel production now has the public support contact, server Supabase
+URL, and a generated server-only OAuth encryption key configured. Deployment
+is intentionally withheld because the remaining owner credentials/database
+work is release-blocking: apply `db/supabase/schema.sql`; add a Supabase
+secret/service-role key; and add `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`,
+`APPLE_KEY_ID`, and `APPLE_PRIVATE_KEY`. The current stable preflight still
+fails `accountDeletion`, `providerRevocation`, `supportContact`, and the new
+credential-route check because those environment changes and the release code
+have not been redeployed. Do not promote until all missing values are present;
+then deploy once and rerun the full preflight.
+
+Mac/Xcode archive validation, the combined privacy report, App Store Connect
+record/owner declarations, TestFlight upload, and physical-iPhone QA remain
+unperformed and must not be represented as passed. The exact handoff is in
+`docs/MAC_XCODE_HANDOFF.md`.
+
 ## Store Readiness Update — 2026-08-18
 
 Repository-controlled App Store preparation is complete through the Windows

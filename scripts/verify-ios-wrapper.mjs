@@ -19,6 +19,30 @@ const packageSource = await readFile(
   new URL('ios/App/CapApp-SPM/Package.swift', root),
   'utf8',
 )
+const packageJson = JSON.parse(
+  await readFile(new URL('package.json', root), 'utf8'),
+)
+const capacitorCoreVersion = packageJson.dependencies?.['@capacitor/core']
+const capacitorIosVersion = packageJson.dependencies?.['@capacitor/ios']
+const capacitorCliVersion = packageJson.devDependencies?.['@capacitor/cli']
+if (
+  !capacitorCoreVersion ||
+  capacitorCoreVersion !== capacitorIosVersion ||
+  capacitorCoreVersion !== capacitorCliVersion
+) {
+  throw new Error(
+    'Capacitor core, iOS, and CLI package versions must match exactly.',
+  )
+}
+if (
+  !packageSource.includes(
+    `capacitor-swift-pm.git", exact: "${capacitorCoreVersion}"`,
+  )
+) {
+  throw new Error(
+    'The Capacitor Swift package version does not match package.json.',
+  )
+}
 if (packageSource.includes('\\')) {
   throw new Error('Capacitor Swift package paths still contain backslashes.')
 }
