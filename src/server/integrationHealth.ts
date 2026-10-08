@@ -1,4 +1,8 @@
 import { readRedisAuthRelayConfig } from './authRelay.js'
+import {
+  isProviderCredentialEncryptionKey,
+  readAppleRevocationConfig,
+} from './providerCredentials.js'
 import { readRedisRateLimiterConfig } from './serverRateLimiter.js'
 
 export type IntegrationEnvironment = Record<string, string | undefined>
@@ -7,12 +11,17 @@ export function readIntegrationHealth(environment: IntegrationEnvironment) {
   const cloudBackup = Boolean(
     environment.VITE_SUPABASE_URL && environment.VITE_SUPABASE_ANON_KEY,
   )
+  const providerRevocation = Boolean(
+    readAppleRevocationConfig(environment) &&
+    isProviderCredentialEncryptionKey(environment.OAUTH_TOKEN_ENCRYPTION_KEY),
+  )
   return {
     accountDeletion: Boolean(
       environment.SUPABASE_URL &&
       (environment.SUPABASE_SECRET_KEY ||
         environment.SUPABASE_SERVICE_ROLE_KEY) &&
-      readRedisRateLimiterConfig(environment),
+      readRedisRateLimiterConfig(environment) &&
+      providerRevocation,
     ),
     authRelay: cloudBackup && Boolean(readRedisAuthRelayConfig(environment)),
     cloudBackup,
@@ -23,6 +32,7 @@ export function readIntegrationHealth(environment: IntegrationEnvironment) {
     foodSearch: Boolean(environment.USDA_FDC_API_KEY),
     distributedAiProtection: Boolean(readRedisRateLimiterConfig(environment)),
     mealAnalysis: Boolean(environment.OPENAI_API_KEY),
+    providerRevocation,
     supportContact: Boolean(environment.VITE_SUPPORT_EMAIL?.trim()),
     webPush: Boolean(
       environment.WEB_PUSH_PUBLIC_KEY &&

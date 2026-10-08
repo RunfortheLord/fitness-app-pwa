@@ -1,5 +1,19 @@
 # Decisions
 
+## 2026-09-08: Back up immediately on app open and foreground return
+
+- The requested backup-on-open behavior includes resuming an installed PWA's
+  existing document. Both fresh launches and visible foreground returns request
+  an immediate backup for signed-in users, even without local edits. Offline
+  requests wait until connectivity returns; data edits retain the fifteen-minute
+  throttle.
+- Recognize this device's snapshot by comparing timestamp instants, accommodating
+  Supabase's timezone and fractional-second serialization. Keep the existing
+  protection against automatically overwriting an unrecognized cloud snapshot.
+- Use `backups.updated_at` only as an indication of successful backup activity;
+  it does not measure signed-out or offline app use. No additional usage tracking
+  or Supabase schema changes are introduced.
+
 ## 2026-08-21: Smart Progression by Experience Level (per exercise)
 
 - Smart progression now tailors its cadence per exercise. The user picks one of
@@ -177,8 +191,10 @@
   target, workout timer, rest wheels, and exercise actions fit together on an
   iPhone-sized screen.
 - A prescribed rest override becomes the active exercise snapshot's effective
-  rest duration. Changing it during the workout preserves completed-set history
-  and updates every upcoming set.
+  rest duration. Changing it during the workout preserves earlier completed-set
+  history and updates every upcoming set. When a break is currently running,
+  the completed set that started that break also records the edited duration so
+  history reflects the timer the user actually selected for that transition.
 - A live-added exercise's first set uses the same history-based estimate path
   as workout-start prefill. Added sets are inserted into the rendered workout
   state directly after persistence instead of waiting on a second full reload.
@@ -1333,3 +1349,33 @@ as the blank band visible in the failed workout screenshot.
 - Ordinary browser tabs keep directly editable inputs. Genuine live-workout
   text notes may still use the native keyboard, but they cannot hide the in-flow
   live dashboard or write viewport measurements back into the workout layout.
+
+## 2026-09-09: Live Program Information Summary
+
+- The program editor and Training-page headers expose the same full-height,
+  read-only information sub-page. On Training, the Quick Workout control sits
+  immediately left of Program Information, followed by Settings. The sub-page
+  summarizes the currently loaded template or active cycle, including length,
+  current week, workout-day and exercise counts, programmed sets, deload and
+  RIR settings, notes, per-day structure, and the most recent edit timestamp
+  across the program record and its children.
+- Direct weekly muscle-set totals use the current primary-muscle tags on each
+  programmed exercise. A set counts once for every primary muscle tagged on
+  that exercise; secondary-muscle involvement is not estimated, and sets from
+  untagged exercises are called out as excluded.
+
+## 2026-10-08: Revoke linked OAuth authorization before account deletion
+
+- Supabase exposes Apple/Google provider credentials only to the client that
+  completes OAuth and intentionally does not retain them. Vigorune immediately
+  forwards an available provider refresh token (or access token when no refresh
+  token is returned) to an authenticated, origin-restricted, rate-limited API.
+- The API verifies the linked provider and stores only an AES-256-GCM encrypted
+  envelope in a service-only Supabase table. The encryption key, Apple `.p8`,
+  and generated Apple client-secret JWT are server-only and never use `VITE_`
+  variables.
+- Permanent deletion revokes each retained Apple/Google authorization before
+  deleting the Supabase user. Provider/network/decryption failure leaves the
+  account in place and is reported honestly. A missing token on an older
+  identity falls back to the provider's manual authorization-removal page after
+  app-controlled deletion; it is not the normal flow.

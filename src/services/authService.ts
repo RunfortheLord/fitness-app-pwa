@@ -9,6 +9,7 @@ import {
   pollPendingAuthRelay,
   shouldUseAuthRelay,
 } from '@services/authRelayClient'
+import { providerCredentialService } from '@services/providerCredentialService'
 import { getSupabaseClient } from '@services/supabaseClient'
 
 export type AuthStatus = 'loading' | 'signedIn' | 'signedOut'
@@ -87,11 +88,13 @@ export const authService = {
     if (result.status !== 'ready') {
       throw new Error('Sign-in was not completed. Please try again.')
     }
-    const { error } = await getSupabaseClient().auth.exchangeCodeForSession(
-      result.code,
-    )
+    const { data, error } =
+      await getSupabaseClient().auth.exchangeCodeForSession(result.code)
     if (error) {
       throw new Error(error.message || 'Sign-in could not be completed.')
+    }
+    if (data.session) {
+      await providerCredentialService.captureFromSession(data.session)
     }
     return true
   },
@@ -116,6 +119,9 @@ export const authService = {
     const { data, error } = await getSupabaseClient().auth.getSession()
     if (error) {
       throw new Error(error.message || 'Session could not be loaded.')
+    }
+    if (data.session) {
+      await providerCredentialService.captureFromSession(data.session)
     }
     return data.session
   },

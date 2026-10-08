@@ -1,58 +1,61 @@
 # Sign in with Apple Account-Deletion Decision
 
-Date reviewed: August 20, 2026
+Date reviewed: October 8, 2026
 
-## Current release behavior
+## Release behavior
 
-Vigorune starts Sign in with Apple through Supabase's OAuth redirect flow. The
-app receives a Supabase session, not a durable Apple access token, refresh token,
-or authorization code that Vigorune can later send to Apple's token-revocation
-endpoint. Supabase documents that provider tokens are intentionally not stored
-in the project's database and that applications must separately transmit and
-store a provider token when they need to use it outside the browser that
-completed the flow.
+Vigorune uses Supabase OAuth with PKCE. Supabase returns the Apple provider
+credential to the client that completes the exchange but intentionally does not
+retain it. Vigorune now immediately sends that credential, together with the
+current Supabase access token, to the trusted `/api/auth/provider-credential`
+route. The route verifies the Supabase user and linked provider, encrypts the
+provider credential with AES-256-GCM, and stores only the encrypted envelope in
+the server-only `oauth_provider_tokens` table. The encryption key and Apple
+private key never enter a client build.
 
-When a signed-in user deletes the Vigorune account, the authenticated server
-route deletes the Supabase Auth user and its cascading app-controlled cloud
-rows, and the app clears the local Supabase session. If the deleted identity
-included Apple, the app then presents Apple's manual Sign in with Apple removal
-steps. Device-local fitness data remains until the user separately clears it.
+Permanent account deletion performs these steps in order:
 
-## Decision for the pre-LLC release candidate
+1. verify the Supabase bearer token and apply the distributed rate limit;
+2. load and decrypt the retained Apple credential;
+3. generate a short-lived ES256 Apple client-secret JWT on the server;
+4. call Apple's `/auth/revoke` endpoint;
+5. only after successful revocation, delete the Supabase Auth user and
+   cascading app-controlled cloud rows; and
+6. clear the local Supabase session while retaining device-local fitness data.
 
-Do not add Apple private keys, client-secret generation, or provider-token
-storage to the current release candidate. The existing OAuth exchange did not
-retain the Apple credential required for programmatic revocation, and adding a
-new credential store before the Apple developer entity, Team ID, Services ID,
-and production secrets are final would create a larger authentication and
-security migration.
+A timeout, provider error, invalid encrypted envelope, or missing server
+configuration fails closed. The API does not delete the Vigorune account or
+claim success. An older account that predates credential capture may have no
+stored provider credential; after deleting app-controlled data, the UI presents
+Apple's manual authorization-removal link as a recovery path. It is not the
+normal release behavior.
 
-Apple's TN3194 says that when a developer does not have the Apple refresh token,
-access token, or authorization code, the developer must still delete its own
-account data and direct the user to revoke access manually. The current flow is
-therefore implemented as that documented fallback, with a conspicuous in-app
-link after successful deletion. This is a technical determination, not an App
-Review guarantee.
+Google credentials use the same authenticated encrypted store and are revoked
+through Google's OAuth revocation endpoint before deletion. An
+`invalid_token` response is treated as already cleaned up; malformed requests
+and provider/network failures remain failures.
 
-## Post-LLC production decision gate
+## Production requirements
 
-Before final App Store submission, re-evaluate the authentication architecture
-with the finalized Apple developer organization and counsel/reviewer guidance.
-If programmatic revocation is required for the submitted build:
+Apply `db/supabase/schema.sql`, then configure these server-only values on the
+stable Vercel project:
 
-1. Use an Apple authorization flow that returns an authorization code or Apple
-   provider credential to a trusted Vigorune server.
-2. Validate the code with Apple and securely store only the revocation-capable
-   token needed for the user's authorization.
-3. Generate Apple client secrets server-side from the finalized Team ID, Key ID,
-   client ID, and private key. Never ship the private key in the app or PWA.
-4. Revoke the Apple token before deleting the Vigorune/Supabase user, with a
-   retryable failure state that does not falsely report complete revocation.
-5. Delete the stored Apple token and all app-controlled account data, clear the
-   local session, and test new authorization, repeat deletion, failure, and
-   already-revoked cases.
-6. Configure and validate Apple credential-change notifications if supported by
-   the final provider architecture.
+- `OAUTH_TOKEN_ENCRYPTION_KEY`: 32 random bytes encoded with base64url;
+- `APPLE_CLIENT_ID`: the client identifier that issued the retained token;
+- `APPLE_TEAM_ID`;
+- `APPLE_KEY_ID`; and
+- `APPLE_PRIVATE_KEY`: the complete `.p8` private key.
+
+Also configure `SUPABASE_URL`, a Supabase secret/service-role key, and the Redis
+rate-limiter values described in `STORE_RELEASE_SETUP.md`. None of these values
+may use a `VITE_` prefix. `/api/health` must report both
+`providerRevocation: true` and `accountDeletion: true`.
+
+Before submission, test Apple sign-in and deletion with a disposable identity
+on the release-signed TestFlight build. Confirm the authorization disappears
+from the Apple Account, the Supabase Auth user and cloud rows are gone, local
+records remain, a retryable provider failure does not delete the account, and a
+subsequent sign-in works.
 
 ## Sources
 
@@ -61,6 +64,7 @@ If programmatic revocation is required for the submitted build:
 - Apple, [Token revocation](https://developer.apple.com/documentation/signinwithapplerestapi/revoke-tokens)
 - Apple, [Offering account deletion in your
   app](https://developer.apple.com/support/offering-account-deletion-in-your-app/)
-- Supabase, [Login with Apple](https://supabase.com/docs/guides/auth/social-login/auth-apple)
 - Supabase, [Social Login: provider
   tokens](https://supabase.com/docs/guides/auth/social-login#provider-tokens)
+- Google, [OAuth 2.0 Policies](https://developers.google.com/identity/protocols/oauth2/policies)
+- Google, [OpenID Connect revocation endpoint](https://developers.google.com/identity/openid-connect/reference#revocation-endpoint)

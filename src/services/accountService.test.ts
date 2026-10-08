@@ -26,14 +26,22 @@ describe('accountService', () => {
   it('authorizes deletion with the current session and clears only auth locally', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json({
-        data: { providerRevocation: 'manual_apple' },
+        data: {
+          providerCleanup: {
+            apple: 'manual_required',
+            google: 'not_linked',
+          },
+        },
         ok: true,
       }),
     )
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(accountService.deleteAccount()).resolves.toEqual({
-      providerRevocation: 'manual_apple',
+      providerCleanup: {
+        apple: 'manual_required',
+        google: 'not_linked',
+      },
     })
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(/\/api\/account\/delete$/),
@@ -61,6 +69,29 @@ describe('accountService', () => {
     )
     await expect(accountService.deleteAccount()).rejects.toThrow(
       'account could not be deleted',
+    )
+    expect(mocks.clearLocalSession).not.toHaveBeenCalled()
+  })
+
+  it('explains provider revocation failures without clearing the local session', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(
+        Response.json(
+          {
+            error: {
+              code: 'provider_revocation_failed',
+              provider: 'apple',
+            },
+            ok: false,
+          },
+          { status: 502 },
+        ),
+      ),
+    )
+
+    await expect(accountService.deleteAccount()).rejects.toThrow(
+      'Apple authorization could not be revoked',
     )
     expect(mocks.clearLocalSession).not.toHaveBeenCalled()
   })

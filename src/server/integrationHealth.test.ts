@@ -6,8 +6,13 @@ describe('integration health', () => {
   it('returns configuration booleans without serializing values', () => {
     const values = {
       AI_RATE_LIMIT_HASH_SECRET: 'test-only-hash-secret-32-characters',
+      APPLE_CLIENT_ID: 'com.example.web',
+      APPLE_KEY_ID: 'KEYID12345',
+      APPLE_PRIVATE_KEY: testPrivateKey(),
+      APPLE_TEAM_ID: 'TEAMID1234',
       FEEDBACK_WEBHOOK_URL: 'https://secret.example/hook',
       OPENAI_API_KEY: 'secret-openai-key',
+      OAUTH_TOKEN_ENCRYPTION_KEY: 'BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc',
       QSTASH_CURRENT_SIGNING_KEY: 'current-secret',
       QSTASH_NEXT_SIGNING_KEY: 'next-secret',
       QSTASH_TOKEN: 'qstash-secret',
@@ -33,6 +38,7 @@ describe('integration health', () => {
       feedback: true,
       foodSearch: true,
       mealAnalysis: true,
+      providerRevocation: true,
       supportContact: true,
       webPush: true,
     })
@@ -53,6 +59,7 @@ describe('integration health', () => {
       distributedAiProtection: false,
       feedback: false,
       mealAnalysis: true,
+      providerRevocation: false,
     })
   })
 
@@ -69,11 +76,25 @@ describe('integration health', () => {
     expect(
       readIntegrationHealth({
         AI_RATE_LIMIT_HASH_SECRET: 'test-only-hash-secret-32-characters',
+        APPLE_CLIENT_ID: 'com.example.web',
+        APPLE_KEY_ID: 'KEYID12345',
+        APPLE_PRIVATE_KEY: testPrivateKey(),
+        APPLE_TEAM_ID: 'TEAMID1234',
         KV_REST_API_TOKEN: 'redis-token',
         KV_REST_API_URL: 'https://redis.example',
+        OAUTH_TOKEN_ENCRYPTION_KEY:
+          'BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc',
         SUPABASE_SERVICE_ROLE_KEY: 'legacy-service-role-key',
         SUPABASE_URL: 'https://project.example',
       }),
-    ).toMatchObject({ accountDeletion: true })
+    ).toMatchObject({ accountDeletion: true, providerRevocation: true })
   })
 })
+
+function testPrivateKey() {
+  return [
+    ['-----BEGIN ', 'PRIVATE KEY-----'].join(''),
+    'test-only-value',
+    ['-----END ', 'PRIVATE KEY-----'].join(''),
+  ].join('\n')
+}

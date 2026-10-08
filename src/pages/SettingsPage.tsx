@@ -145,6 +145,8 @@ export function SettingsPage() {
   const [cloudError, setCloudError] = useState<string | null>(null)
   const [showAppleRevocationSteps, setShowAppleRevocationSteps] =
     useState(false)
+  const [showGoogleRevocationSteps, setShowGoogleRevocationSteps] =
+    useState(false)
   const [isOnline, setIsOnline] = useState(() =>
     typeof navigator === 'undefined' ? true : navigator.onLine,
   )
@@ -667,13 +669,17 @@ export function SettingsPage() {
     setCloudError(null)
     setCloudMessage(null)
     setShowAppleRevocationSteps(false)
+    setShowGoogleRevocationSteps(false)
     try {
       const result = await accountService.deleteAccount()
       setCloudBackupInfo(null)
-      setShowAppleRevocationSteps(result.providerRevocation === 'manual_apple')
+      const appleManual = result.providerCleanup.apple === 'manual_required'
+      const googleManual = result.providerCleanup.google === 'manual_required'
+      setShowAppleRevocationSteps(appleManual)
+      setShowGoogleRevocationSteps(googleManual)
       setCloudMessage(
-        result.providerRevocation === 'manual_apple'
-          ? 'Account and cloud data deleted. Local data remains. Finish by revoking Vigorune in your Apple Account settings.'
+        appleManual || googleManual
+          ? 'Account and cloud data deleted. Local data remains. Finish the provider authorization cleanup using the recovery link below.'
           : 'Account and cloud data deleted. Local data remains on this device.',
       )
     } catch (caught) {
@@ -1235,6 +1241,17 @@ export function SettingsPage() {
                 </a>
               </p>
             ) : null}
+            {showGoogleRevocationSteps ? (
+              <p>
+                <a
+                  href="https://myaccount.google.com/connections"
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Open Google third-party connection removal steps
+                </a>
+              </p>
+            ) : null}
             {cloudError ? (
               <StatusMessage tone="warning">{cloudError}</StatusMessage>
             ) : null}
@@ -1561,9 +1578,11 @@ export function SettingsPage() {
         <p>
           This permanently deletes the signed-in Vigorune account, cloud backup,
           and daily nutrition cloud rows, then signs out. Local fitness data on
-          this device remains until you separately clear it. If you used Sign in
-          with Apple, Vigorune will provide Apple's manual authorization-removal
-          steps after deletion. Type DELETE ACCOUNT to continue.
+          this device remains until you separately clear it. Vigorune first
+          revokes a retained Apple or Google authorization. If an older account
+          has no retained provider credential, Vigorune provides the provider's
+          manual removal steps as a recovery path. Type DELETE ACCOUNT to
+          continue.
         </p>
         <FormField id="account-delete-confirmation" label="Confirmation">
           <input

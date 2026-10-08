@@ -63,3 +63,19 @@ create policy "Users can delete their own daily nutrition"
   on public.daily_nutrition
   for delete
   using (auth.uid() = user_id);
+
+-- Server-only OAuth credentials retained solely so account deletion can revoke
+-- Apple/Google authorization before removing the Supabase user. Values are
+-- AES-256-GCM envelopes encrypted by the trusted API and are never readable by
+-- anon or authenticated clients. The service-role/secret-key API bypasses RLS.
+create table if not exists public.oauth_provider_tokens (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  provider text not null check (provider in ('apple', 'google')),
+  token_type text not null check (token_type in ('access_token', 'refresh_token')),
+  encrypted_token jsonb not null,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, provider)
+);
+
+alter table public.oauth_provider_tokens enable row level security;
+revoke all on table public.oauth_provider_tokens from anon, authenticated;

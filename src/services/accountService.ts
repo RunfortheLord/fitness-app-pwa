@@ -1,7 +1,10 @@
 import { authService } from '@services/authService'
 
 export type AccountDeletionResult = {
-  providerRevocation: 'manual_apple' | 'not_required'
+  providerCleanup: {
+    apple: 'manual_required' | 'not_linked' | 'revoked'
+    google: 'manual_required' | 'not_linked' | 'revoked'
+  }
 }
 
 export const accountService = {
@@ -24,14 +27,12 @@ export const accountService = {
     if (!response.ok) {
       throw new Error(errorMessage(response.status, payload))
     }
-    const providerRevocation =
-      isRecord(payload) &&
-      isRecord(payload.data) &&
-      payload.data.providerRevocation === 'manual_apple'
-        ? 'manual_apple'
-        : 'not_required'
+    const providerCleanup = readProviderCleanup(payload)
+    if (!providerCleanup) {
+      throw new Error('The account deletion response was invalid.')
+    }
     await authService.clearLocalSession()
-    return { providerRevocation }
+    return { providerCleanup }
   },
 }
 
@@ -65,7 +66,39 @@ function errorMessage(status: number, payload: unknown) {
   if (status === 503) {
     return 'Account deletion is temporarily unavailable. Try again later.'
   }
+  if (status === 502 && code === 'provider_revocation_failed') {
+    const provider =
+      isRecord(payload) &&
+      isRecord(payload.error) &&
+      payload.error.provider === 'google'
+        ? 'Google'
+        : 'Apple'
+    return `${provider} authorization could not be revoked. Your Vigorune account and cloud data were not deleted. Try again, or use the provider's account settings as a recovery step.`
+  }
   return 'The account could not be deleted. No local data was changed.'
+}
+
+function readProviderCleanup(
+  payload: unknown,
+): AccountDeletionResult['providerCleanup'] | undefined {
+  if (!isRecord(payload) || !isRecord(payload.data)) {
+    return undefined
+  }
+  const value = payload.data.providerCleanup
+  if (!isRecord(value)) {
+    return undefined
+  }
+  const apple = readCleanupStatus(value.apple)
+  const google = readCleanupStatus(value.google)
+  return apple && google ? { apple, google } : undefined
+}
+
+function readCleanupStatus(value: unknown) {
+  return value === 'manual_required' ||
+    value === 'not_linked' ||
+    value === 'revoked'
+    ? value
+    : undefined
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

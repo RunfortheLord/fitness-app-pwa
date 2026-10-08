@@ -7,7 +7,14 @@ import {
   readBearerToken,
   type AccountDeletionAuthClient,
 } from './accountDeletion'
+import {
+  encryptProviderToken,
+  type OAuthProvider,
+  type ProviderCredentialGateway,
+} from './providerCredentials'
 import { createMemoryServerRateLimiter } from './serverRateLimiter'
+
+const TEST_ENCRYPTION_KEY = encodeBase64Url(new Uint8Array(32).fill(9))
 
 function authClientFor(user: User | null) {
   const getUser = vi.fn().mockResolvedValue({ data: { user }, error: null })
@@ -34,33 +41,99 @@ describe('account deletion', () => {
       userWithProvider('google'),
     )
 
+    const providerCredentialGateway = await gatewayWithCredential(
+      'google',
+      'google-provider-token-value',
+    )
+    const revokeGoogle = vi.fn().mockResolvedValue(true)
     await expect(
       deleteAuthenticatedAccount({
         accessToken: 'verified.access.token.value',
         authClient: client,
+        encryptionKey: TEST_ENCRYPTION_KEY,
         limiter: createMemoryServerRateLimiter(),
+        providerCredentialGateway,
+        providerRevokers: { google: revokeGoogle },
       }),
     ).resolves.toEqual({
       code: 'deleted',
-      providerRevocation: 'not_required',
+      providerCleanup: { apple: 'not_linked', google: 'revoked' },
       status: 200,
     })
     expect(getUser).toHaveBeenCalledWith('verified.access.token.value')
     expect(deleteUser).toHaveBeenCalledWith('user-owned-by-token')
+    expect(revokeGoogle).toHaveBeenCalledWith({
+      token: 'google-provider-token-value',
+      tokenType: 'refresh_token',
+    })
   })
 
-  it('reports the separate Apple authorization cleanup after deletion', async () => {
+  it('uses manual Apple cleanup only for a legacy account with no credential', async () => {
     const { client } = authClientFor(userWithProvider('apple'))
     await expect(
       deleteAuthenticatedAccount({
         accessToken: 'verified.apple.token.value',
         authClient: client,
+        encryptionKey: TEST_ENCRYPTION_KEY,
         limiter: createMemoryServerRateLimiter(),
+        providerCredentialGateway: missingCredentialGateway(),
+        providerRevokers: { apple: vi.fn().mockResolvedValue(true) },
       }),
-    ).resolves.toMatchObject({
+    ).resolves.toEqual({
       code: 'deleted',
-      providerRevocation: 'manual_apple',
+      providerCleanup: {
+        apple: 'manual_required',
+        google: 'not_linked',
+      },
+      status: 200,
     })
+  })
+
+  it('does not delete the account when Apple revocation fails', async () => {
+    const { client, deleteUser } = authClientFor(userWithProvider('apple'))
+    const providerCredentialGateway = await gatewayWithCredential(
+      'apple',
+      'apple-provider-token-value',
+    )
+    await expect(
+      deleteAuthenticatedAccount({
+        accessToken: 'verified.apple.token.value',
+        authClient: client,
+        encryptionKey: TEST_ENCRYPTION_KEY,
+        limiter: createMemoryServerRateLimiter(),
+        providerCredentialGateway,
+        providerRevokers: { apple: vi.fn().mockResolvedValue(false) },
+      }),
+    ).resolves.toEqual({
+      code: 'provider_revocation_failed',
+      provider: 'apple',
+      status: 502,
+    })
+    expect(deleteUser).not.toHaveBeenCalled()
+  })
+
+  it('does not delete the account when provider credential storage is unavailable', async () => {
+    const { client, deleteUser } = authClientFor(userWithProvider('apple'))
+    const providerCredentialGateway: ProviderCredentialGateway = {
+      read: vi.fn().mockRejectedValue(new Error('database unavailable')),
+      save: vi.fn(),
+    }
+
+    await expect(
+      deleteAuthenticatedAccount({
+        accessToken: 'verified.apple.token.value',
+        authClient: client,
+        encryptionKey: TEST_ENCRYPTION_KEY,
+        limiter: createMemoryServerRateLimiter(),
+        providerCredentialGateway,
+        providerRevokers: { apple: vi.fn().mockResolvedValue(true) },
+      }),
+    ).resolves.toEqual({
+      code: 'service_unavailable',
+      retryAfterSeconds: 60,
+      status: 503,
+    })
+    expect(deleteUser).not.toHaveBeenCalled()
   })
 
   it('never calls the admin delete API for an invalid session', async () => {
@@ -129,3 +202,41 @@ describe('account deletion', () => {
     ).toBe(true)
   })
 })
+
+async function gatewayWithCredential(
+  provider: OAuthProvider,
+  token: string,
+): Promise<ProviderCredentialGateway> {
+  const encryptedToken = await encryptProviderToken({
+    encryptionKey: TEST_ENCRYPTION_KEY,
+    provider,
+    token,
+    tokenType: 'refresh_token',
+    userId: 'user-owned-by-token',
+  })
+  return {
+    read: vi.fn().mockResolvedValue({
+      credential: { encryptedToken, tokenType: 'refresh_token' },
+      status: 'found',
+    }),
+    save: vi.fn(),
+  }
+}
+
+function missingCredentialGateway(): ProviderCredentialGateway {
+  return {
+    read: vi.fn().mockResolvedValue({ status: 'missing' }),
+    save: vi.fn(),
+  }
+}
+
+function encodeBase64Url(bytes: Uint8Array) {
+  let binary = ''
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary)
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replace(/=+$/u, '')
+}

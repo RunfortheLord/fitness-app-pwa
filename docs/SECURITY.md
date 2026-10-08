@@ -8,7 +8,8 @@ a guarantee that the application is immune to every attack.
 
 - Local workout, nutrition, bodyweight, running, and preference records.
 - Optional Supabase identity, cloud snapshot, and daily nutrition rows.
-- OAuth authorization codes, PKCE verifiers, sessions, and relay secrets.
+- OAuth authorization codes, PKCE verifiers, sessions, relay secrets, and
+  encrypted provider-revocation credentials.
 - Server-only OpenAI, Supabase service-role, Redis, QStash, webhook, and push
   credentials.
 - User-supplied USDA credentials stored locally and excluded from exports.
@@ -38,6 +39,11 @@ a guarantee that the application is immune to every attack.
 - Account deletion validates the Supabase access token, derives the user ID
   server-side, rejects untrusted browser origins, and fails closed when its
   distributed limiter is unavailable.
+- Apple/Google provider credentials are accepted only by an authenticated,
+  origin-restricted, rate-limited API route, bound to the verified linked
+  identity, and encrypted with AES-256-GCM before server-only storage. Deletion
+  revokes the provider authorization before deleting the Auth user and does not
+  claim success when revocation fails.
 - Supabase cloud tables enable row-level security with owner-only policies.
 - Paid AI requests are size bounded, schema validated, time limited, and
   protected by a distributed rate limiter.
@@ -54,8 +60,8 @@ a guarantee that the application is immune to every attack.
 ## Release-Blocking Security Checks
 
 - `/api/health` reports `accountDeletion`, `authRelay`, `cloudBackup`,
-  `distributedAiProtection`, `foodSearch`, `mealAnalysis`, and `supportContact`
-  as configured for the release.
+  `distributedAiProtection`, `foodSearch`, `mealAnalysis`,
+  `providerRevocation`, and `supportContact` as configured for the release.
 - Account deletion is exercised with a disposable Google account and a
   disposable Apple account; cloud rows are verified deleted and local records
   are verified retained.
@@ -119,6 +125,7 @@ or fitness records.
 | ------------------------------- | ----------------------------------------------------------------------- |
 | Apple client secret             | Before its six-month expiry and immediately after suspected exposure    |
 | Apple `.p8` key                 | Suspected exposure, staff/access change, or Apple-directed replacement  |
+| OAuth token encryption key      | Suspected exposure; reauthenticate users after coordinated rotation     |
 | Supabase service-role key       | Suspected exposure or project access change                             |
 | OpenAI key                      | Suspected exposure, unexplained spend, or provider access change        |
 | Redis/KV and QStash credentials | Suspected exposure or integration replacement                           |

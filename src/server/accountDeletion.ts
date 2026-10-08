@@ -4,6 +4,14 @@ import {
   evaluateRateLimit,
   type ServerRateLimiter,
 } from './serverRateLimiter.js'
+import {
+  decryptProviderToken,
+  linkedOAuthProviders,
+  type OAuthProvider,
+  type ProviderCredentialGateway,
+  type ProviderCredentialReadResult,
+  type ProviderRevokers,
+} from './providerCredentials.js'
 
 export type AccountDeletionAuthClient = {
   auth: {
@@ -22,7 +30,10 @@ export type AccountDeletionAuthClient = {
 export type AccountDeletionResult =
   | {
       code: 'deleted'
-      providerRevocation: 'manual_apple' | 'not_required'
+      providerCleanup: Record<
+        OAuthProvider,
+        'manual_required' | 'not_linked' | 'revoked'
+      >
       status: 200
     }
   | {
@@ -31,16 +42,26 @@ export type AccountDeletionResult =
       status: 429 | 503
     }
   | { code: 'unauthorized'; status: 401 }
-  | { code: 'deletion_failed'; status: 502 }
+  | {
+      code: 'deletion_failed' | 'provider_revocation_failed'
+      provider?: OAuthProvider
+      status: 502
+    }
 
 export async function deleteAuthenticatedAccount({
   accessToken,
   authClient,
+  encryptionKey,
   limiter,
+  providerCredentialGateway,
+  providerRevokers = {},
 }: {
   accessToken: string
   authClient: AccountDeletionAuthClient
+  encryptionKey?: string
   limiter: ServerRateLimiter | undefined
+  providerCredentialGateway?: ProviderCredentialGateway
+  providerRevokers?: ProviderRevokers
 }): Promise<AccountDeletionResult> {
   if (!isAccessToken(accessToken)) {
     return { code: 'unauthorized', status: 401 }
@@ -67,14 +88,70 @@ export async function deleteAuthenticatedAccount({
     }
   }
 
-  const providerRevocation = hasAppleIdentity(data.user)
-    ? 'manual_apple'
-    : 'not_required'
+  const linkedProviders = linkedOAuthProviders(data.user)
+  const providerCleanup: AccountDeletionResult & { code: 'deleted' } = {
+    code: 'deleted',
+    providerCleanup: { apple: 'not_linked', google: 'not_linked' },
+    status: 200,
+  }
+  for (const provider of linkedProviders) {
+    const revoker = providerRevokers[provider]
+    if (!providerCredentialGateway || !encryptionKey || !revoker) {
+      return {
+        code: 'service_unavailable',
+        retryAfterSeconds: 60,
+        status: 503,
+      }
+    }
+    let storedCredential: ProviderCredentialReadResult
+    try {
+      storedCredential = await providerCredentialGateway.read(
+        data.user.id,
+        provider,
+      )
+    } catch {
+      return {
+        code: 'service_unavailable',
+        retryAfterSeconds: 60,
+        status: 503,
+      }
+    }
+    if (storedCredential.status === 'unavailable') {
+      return {
+        code: 'service_unavailable',
+        retryAfterSeconds: 60,
+        status: 503,
+      }
+    }
+    if (storedCredential.status === 'missing') {
+      providerCleanup.providerCleanup[provider] = 'manual_required'
+      continue
+    }
+    try {
+      const token = await decryptProviderToken({
+        encryptedToken: storedCredential.credential.encryptedToken,
+        encryptionKey,
+        provider,
+        tokenType: storedCredential.credential.tokenType,
+        userId: data.user.id,
+      })
+      const revoked = await revoker({
+        token,
+        tokenType: storedCredential.credential.tokenType,
+      })
+      if (!revoked) {
+        return { code: 'provider_revocation_failed', provider, status: 502 }
+      }
+      providerCleanup.providerCleanup[provider] = 'revoked'
+    } catch {
+      return { code: 'provider_revocation_failed', provider, status: 502 }
+    }
+  }
   const deletion = await authClient.auth.admin.deleteUser(data.user.id)
   if (deletion.error) {
     return { code: 'deletion_failed', status: 502 }
   }
-  return { code: 'deleted', providerRevocation, status: 200 }
+  return providerCleanup
 }
 
 export function readBearerToken(authorization: string | undefined) {
@@ -144,15 +221,6 @@ function parseRequestHost(host: string | undefined): {
   } catch {
     return null
   }
-}
-
-function hasAppleIdentity(user: User) {
-  const providers = user.app_metadata.providers
-  return (
-    user.app_metadata.provider === 'apple' ||
-    (Array.isArray(providers) && providers.includes('apple')) ||
-    user.identities?.some((identity) => identity.provider === 'apple') === true
-  )
 }
 
 function isAccessToken(value: string) {

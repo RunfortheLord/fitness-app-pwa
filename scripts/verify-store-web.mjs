@@ -127,6 +127,7 @@ if (healthResponse) {
       'distributedAiProtection',
       'foodSearch',
       'mealAnalysis',
+      'providerRevocation',
       'supportContact',
     ]
     for (const integration of requiredIntegrations) {
@@ -147,6 +148,24 @@ if (deletionResponse) {
   if (deletionResponse.status !== 401) {
     failures.push(
       '/api/account/delete: unauthenticated request was not rejected',
+    )
+  }
+}
+
+const providerCredentialResponse = await request(
+  '/api/auth/provider-credential',
+  {
+    method: 'POST',
+    headers: { Origin: 'capacitor://localhost' },
+  },
+)
+if (providerCredentialResponse) {
+  results.push(
+    `/api/auth/provider-credential: ${providerCredentialResponse.status}`,
+  )
+  if (providerCredentialResponse.status !== 401) {
+    failures.push(
+      '/api/auth/provider-credential: unauthenticated request was not rejected',
     )
   }
 }

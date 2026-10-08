@@ -92,7 +92,9 @@ Suggested review path:
 5. Test optional Apple/Google authentication and cloud backup with the supplied
    non-expiring review account or reviewer-created identity.
 6. Delete cloud data separately, then test **Delete account**. Account deletion
-   retains local records by design; **Clear all data** removes local records.
+   first revokes retained Apple/Google authorization, then removes the account
+   and cloud rows. It retains local records by design; **Clear all data**
+   removes local records.
 7. Meal-photo analysis names OpenAI and requires an unchecked affirmative
    permission after the reviewer selects a photo and before Analyze is enabled.
    The estimate is editable and is not logged until accepted.

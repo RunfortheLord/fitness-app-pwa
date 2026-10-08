@@ -1,11 +1,18 @@
 /// <reference types="node" />
 import { createClient } from '@supabase/supabase-js'
 
+import { createSupabaseProviderCredentialGateway } from '../providerCredentialGateway.js'
 import {
   deleteAuthenticatedAccount,
   isAllowedAppOrigin,
   readBearerToken,
 } from '../../src/server/accountDeletion.js'
+import {
+  createAppleProviderRevoker,
+  createGoogleProviderRevoker,
+  readAppleRevocationConfig,
+  type ProviderRevokers,
+} from '../../src/server/providerCredentials.js'
 import {
   createRequestObserver,
   readHeader,
@@ -34,6 +41,16 @@ const authClient =
         auth: { autoRefreshToken: false, persistSession: false },
       })
     : undefined
+const providerCredentialGateway = authClient
+  ? createSupabaseProviderCredentialGateway(authClient)
+  : undefined
+const appleRevocationConfig = readAppleRevocationConfig(process.env)
+const providerRevokers: ProviderRevokers = {
+  ...(appleRevocationConfig
+    ? { apple: createAppleProviderRevoker({ config: appleRevocationConfig }) }
+    : {}),
+  google: createGoogleProviderRevoker(),
+}
 const limiterConfig = readRedisRateLimiterConfig(process.env)
 const limiter = limiterConfig
   ? createRedisServerRateLimiter(limiterConfig)
@@ -87,18 +104,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const result = await deleteAuthenticatedAccount({
     accessToken,
     authClient,
+    encryptionKey: process.env.OAUTH_TOKEN_ENCRYPTION_KEY?.trim(),
     limiter,
+    providerCredentialGateway,
+    providerRevokers,
   })
   if (result.status === 200) {
     observer.finish({ outcome: result.code, status: 200 })
     res.status(200).json({
-      data: { providerRevocation: result.providerRevocation },
+      data: { providerCleanup: result.providerCleanup },
       ok: true,
     })
     return
   }
   if ('retryAfterSeconds' in result) {
     res.setHeader('Retry-After', String(result.retryAfterSeconds))
+  }
+  if (result.code === 'provider_revocation_failed') {
+    observer.finish({ outcome: result.code, status: result.status })
+    res.status(result.status).json({
+      error: { code: result.code, provider: result.provider },
+      ok: false,
+    })
+    return
   }
   respond(res, observer, result.status, result.code)
 }

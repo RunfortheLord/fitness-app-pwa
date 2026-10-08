@@ -25,6 +25,7 @@ const supabaseMocks = vi.hoisted(() => ({
   pollPendingAuthRelay: vi.fn(),
   shouldUseAuthRelay: vi.fn(),
   isNativePlatform: vi.fn(),
+  captureFromSession: vi.fn(),
 }))
 
 vi.mock('@capacitor/core', () => ({
@@ -50,6 +51,11 @@ vi.mock('@services/authRelayClient', () => ({
   pollPendingAuthRelay: supabaseMocks.pollPendingAuthRelay,
   shouldUseAuthRelay: supabaseMocks.shouldUseAuthRelay,
 }))
+vi.mock('@services/providerCredentialService', () => ({
+  providerCredentialService: {
+    captureFromSession: supabaseMocks.captureFromSession,
+  },
+}))
 
 beforeEach(() => {
   supabaseMocks.addListener.mockReset()
@@ -57,6 +63,8 @@ beforeEach(() => {
   supabaseMocks.browserClose.mockReset()
   supabaseMocks.isNativePlatform.mockReset()
   supabaseMocks.isNativePlatform.mockReturnValue(false)
+  supabaseMocks.captureFromSession.mockReset()
+  supabaseMocks.captureFromSession.mockResolvedValue(false)
   supabaseMocks.getSession.mockReset()
   supabaseMocks.getUser.mockReset()
   supabaseMocks.exchangeCodeForSession.mockReset()
@@ -177,7 +185,11 @@ describe('authService', () => {
       code: 'one-time-code',
       status: 'ready',
     })
-    supabaseMocks.exchangeCodeForSession.mockResolvedValue({ error: null })
+    const session = { access_token: 'session-token', user: { id: 'user-1' } }
+    supabaseMocks.exchangeCodeForSession.mockResolvedValue({
+      data: { session },
+      error: null,
+    })
 
     await expect(authService.completePendingGoogleSignIn(15_000)).resolves.toBe(
       true,
@@ -187,6 +199,7 @@ describe('authService', () => {
     expect(supabaseMocks.exchangeCodeForSession).toHaveBeenCalledWith(
       'one-time-code',
     )
+    expect(supabaseMocks.captureFromSession).toHaveBeenCalledWith(session)
   })
 
   it('clears the pending relay when OAuth cannot start', async () => {
@@ -218,6 +231,7 @@ describe('authService', () => {
     supabaseMocks.getUser.mockResolvedValue({ data: { user }, error: null })
 
     await expect(authService.getSession()).resolves.toBe(session)
+    expect(supabaseMocks.captureFromSession).toHaveBeenCalledWith(session)
     await expect(authService.getUser()).resolves.toBe(user)
   })
 

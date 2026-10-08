@@ -46,6 +46,15 @@ as passed from desktop emulation, Playwright, or simulator testing.
 - [ ] Verify every core local flow works without creating an account.
 - [ ] Verify optional Google and Apple sign-in, snapshot backup, sign out, cloud
       data deletion, and account deletion on a release-signed build.
+- [ ] After each provider sign-in, confirm the production API stored an
+      encrypted credential row without exposing a provider token in client or
+      function logs.
+- [ ] Delete disposable Apple and Google accounts and confirm authorization is
+      revoked before the Supabase user/cloud rows disappear; local records must
+      remain.
+- [ ] Simulate a provider-revocation failure and confirm the account/cloud rows
+      are not reported or treated as deleted. Exercise the legacy missing-token
+      recovery link separately.
 - [ ] Confirm OAuth opens in the system browser and `vigorune://auth-complete`
       returns to Settings without exposing an authorization code in app history.
 - [ ] Confirm Apple private relay email works and returning Apple users are not

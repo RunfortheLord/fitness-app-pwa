@@ -178,8 +178,11 @@ Tracking Transparency permission.
 - [ ] Physical permissions and background notification tests have concise
       instructions and no claim of behavior that was not verified on the
       submitted TestFlight build.
-- [ ] Sign in with Apple account deletion includes token revocation or the exact
-      documented alternative accepted by App Review.
+- [ ] Sign in with Apple account deletion revokes the server-retained provider
+      token before deleting the Supabase user; failure and already-revoked paths
+      were tested. Manual removal is shown only for a legacy missing token.
+- [ ] Google account deletion revokes the retained provider token and treats
+      only Google's documented `invalid_token` response as already cleaned up.
 - [ ] Review contact name, monitored email, phone, and time zone are current.
 
 ## Final signed-build gate

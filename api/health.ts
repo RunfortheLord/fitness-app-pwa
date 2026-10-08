@@ -32,6 +32,7 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
     configured.distributedAiProtection &&
     configured.foodSearch &&
     configured.mealAnalysis &&
+    configured.providerRevocation &&
     configured.supportContact
   observer.finish({ outcome: ready ? 'ready' : 'degraded', status: 200 })
   res.status(200).json({ configured, ok: true, ready })

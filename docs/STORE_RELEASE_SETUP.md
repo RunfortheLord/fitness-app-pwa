@@ -47,23 +47,27 @@ ios:sync`, create a git-ignored `.env.local` on the Mac containing only the
 The browser receives only the public Supabase URL and anon key. Permanent
 account deletion runs through `/api/account/delete`, verifies the bearer token
 with Supabase, derives the user ID from that verified token, rate limits by that
-ID, and calls the Supabase admin delete operation. The foreign keys in
-`db/supabase/schema.sql` cascade account deletion to the backup and daily
-nutrition rows. Local IndexedDB is not touched.
+ID, revokes any retained Apple/Google authorization, and only then calls the
+Supabase admin delete operation. The foreign keys in `db/supabase/schema.sql`
+cascade account deletion to the encrypted provider credential, backup, and
+daily nutrition rows. Local IndexedDB is not touched.
 
 Set these server-only Vercel variables:
 
 - `SUPABASE_URL`
 - `SUPABASE_SECRET_KEY` (preferred) or the legacy
   `SUPABASE_SERVICE_ROLE_KEY`
+- `OAUTH_TOKEN_ENCRYPTION_KEY` (32 random bytes, base64url encoded)
 - the existing Redis variables and `AI_RATE_LIMIT_HASH_SECRET`
 
 Create a dedicated Supabase secret key for this backend when the project offers
 the newer `sb_secret_...` keys. Never prefix either admin key with `VITE_`.
-Verify `/api/health` reports
-`accountDeletion: true` before testing deletion. Use a disposable account for
-the first test and confirm its Auth user, backup row, and daily nutrition rows
-are gone while the device's local records remain.
+Apply `db/supabase/schema.sql` so `oauth_provider_tokens` exists with RLS and no
+anon/authenticated grants. Verify `/api/health` reports
+`providerRevocation: true` and `accountDeletion: true` before testing deletion.
+Use disposable Apple and Google accounts and confirm each authorization, Auth
+user, encrypted credential, backup row, and daily nutrition row is gone while
+the device's local records remain.
 
 ## Sign in with Apple
 
@@ -76,7 +80,12 @@ In Apple Developer:
    its return URL as `https://<project-ref>.supabase.co/auth/v1/callback`.
 4. Create a Sign in with Apple key, download its `.p8` file once, and store it
    outside the repository.
-5. Generate the Apple client secret and record its six-month rotation date.
+5. Configure `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, and the complete
+   `.p8` value as `APPLE_PRIVATE_KEY` in Vercel's server-only production
+   environment. Vigorune generates a five-minute client secret when deletion is
+   requested; it does not ship or persist a generated client secret.
+6. Generate the separate Apple client secret required by Supabase Auth and
+   record its rotation date.
 
 In Supabase Authentication → Providers → Apple:
 
@@ -95,18 +104,19 @@ callback places only the one-time PKCE authorization code in the existing Redis
 relay, then opens `vigorune://auth-complete`. The app consumes that code with the
 retrieval secret and PKCE verifier that never left the initiating installation.
 
-Supabase does not retain Apple provider refresh tokens. Account deletion still
-deletes the Vigorune identity and all app-controlled cloud data. When an Apple
-identity was linked, the app also tells the user how to remove Vigorune from
-their Apple Account's **Sign in with Apple** settings. A future native-token
-implementation may automate Apple token revocation if provider refresh tokens
-are securely retained server-side.
+Supabase does not retain provider credentials. After the PKCE exchange,
+Vigorune securely forwards the returned Apple or Google provider credential to
+the authenticated server route and stores an AES-256-GCM encrypted envelope.
+Account deletion revokes that authorization before deleting the Vigorune
+identity. Manual Apple/Google account-setting links appear only for a legacy
+identity that has no retained credential. See
+`docs/APPLE_ACCOUNT_DELETION_DECISION.md` for the exact failure semantics.
 
 ## Xcode and TestFlight
 
-On a Mac with current Xcode:
+On a Mac with Node 22 or newer and Xcode 26 or newer:
 
-1. Create the public-only `.env.local` described above, then run `npm install`,
+1. Create the public-only `.env.local` described above, then run `npm ci`,
    `npm run ios:sync`, and `npm run ios:verify`.
 2. Open the project with `npm run ios:open`.
 3. Select the correct development team without changing the bundle ID.

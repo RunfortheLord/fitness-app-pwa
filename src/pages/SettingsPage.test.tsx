@@ -95,7 +95,7 @@ beforeEach(async () => {
     updatedAt: '2026-01-02T03:04:05.000Z',
   })
   mockAccountService.deleteAccount.mockResolvedValue({
-    providerRevocation: 'not_required',
+    providerCleanup: { apple: 'not_linked', google: 'not_linked' },
   })
   await db.delete()
   await db.open()
@@ -751,7 +751,7 @@ describe('SettingsPage', () => {
   it('shows the Apple authorization-removal step after Apple account deletion', async () => {
     const user = userEvent.setup()
     mockAccountService.deleteAccount.mockResolvedValueOnce({
-      providerRevocation: 'manual_apple',
+      providerCleanup: { apple: 'manual_required', google: 'not_linked' },
     })
     authHookMocks.useAuth.mockReturnValue({
       signIn: authHookMocks.signIn,
@@ -768,7 +768,7 @@ describe('SettingsPage', () => {
       name: 'Permanently delete account?',
     })
     expect(dialog).toHaveTextContent(
-      "Vigorune will provide Apple's manual authorization-removal steps",
+      "Vigorune provides the provider's manual removal steps as a recovery path",
     )
     await user.type(
       within(dialog).getByLabelText('Confirmation'),
