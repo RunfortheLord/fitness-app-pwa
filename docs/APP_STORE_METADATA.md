@@ -8,20 +8,20 @@ build and Xcode privacy report before publishing.
 
 ## App Information
 
-| Field                    | Release value or required action                                                                                |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| Name                     | **OWNER:** Confirm the final public name. `Vigorune` remains temporary until name/trademark review is complete. |
-| Bundle ID                | `com.adamshugart.fitnesslog` — do not change.                                                                   |
-| Version                  | `1.0` (build `1` for the first upload; increment build for every subsequent upload).                            |
-| Primary language         | English (U.S.); Spanish app UI exists, but localized store metadata/screenshots require owner review.           |
-| Primary category         | **OWNER:** Health & Fitness is the expected choice.                                                             |
-| Secondary category       | **OWNER:** Optional; leave blank unless a defensible category is selected.                                      |
-| SKU                      | **OWNER:** Choose an internal immutable value such as `vigorune-ios-1`.                                         |
-| Age rating               | **OWNER:** Complete Apple's current questionnaire from actual app behavior. Do not select Made for Kids.        |
-| Content rights           | **OWNER:** Confirm rights to the name, icon, sounds, text, exercise/program content, and screenshots.           |
-| Copyright                | **OWNER:** Legal name and release year.                                                                         |
-| DSA/trader status        | **OWNER:** Complete according to actual legal/distribution status.                                              |
-| Regulated medical device | Declare that Vigorune is not a regulated medical device, subject to owner/legal confirmation.                   |
+| Field                    | Release value or required action                                                                      |
+| ------------------------ | ----------------------------------------------------------------------------------------------------- |
+| Name                     | `Vigorune`                                                                                            |
+| Bundle ID                | `com.adamshugart.fitnesslog` — do not change.                                                         |
+| Version                  | `1.0` (build `1` for the first upload; increment build for every subsequent upload).                  |
+| Primary language         | English (U.S.); Spanish app UI exists, but localized store metadata/screenshots require owner review. |
+| Primary category         | Health & Fitness                                                                                      |
+| Secondary category       | Leave blank for Version 1.                                                                            |
+| SKU                      | `vigorune-ios-1` (internal and immutable)                                                             |
+| Age rating               | Use the answers below, do not select Made for Kids, and override to 18+ for the Terms requirement.    |
+| Content rights           | **OWNER:** Confirm rights to the name, icon, sounds, text, exercise/program content, and screenshots. |
+| Copyright                | **OWNER:** Legal name and release year.                                                               |
+| DSA/trader status        | **OWNER:** Complete according to actual legal/distribution status.                                    |
+| Regulated medical device | Declare that Vigorune is not a regulated medical device, subject to owner/legal confirmation.         |
 
 ## Product Page Copy
 
@@ -49,11 +49,12 @@ service.
 
 **Keywords:** fitness,workout,training,nutrition,bodyweight,running,gym,log
 
-**Support URL:** `https://<production-origin>/support`
+**Support URL:** `https://fitness-app-pwa-eight.vercel.app/support`
 
-**Privacy URL:** `https://<production-origin>/privacy`
+**Privacy URL:** `https://fitness-app-pwa-eight.vercel.app/privacy`
 
-**Account deletion URL:** `https://<production-origin>/account-deletion`
+**Account deletion URL:**
+`https://fitness-app-pwa-eight.vercel.app/account-deletion`
 
 **Support contact:** `adamshugart31@gmail.com`. Confirm it remains actively
 monitored before using these URLs in App Store Connect.
@@ -102,6 +103,55 @@ Suggested review path:
 **OWNER:** Provide a monitored review contact, any required non-expiring test
 credentials, and concise instructions for features that require physical
 movement, camera, notification, or location permission.
+
+## Age Rating Questionnaire Working Answers
+
+Use the questionnaire shown for the submitted build; Apple can change its
+wording. For the current Version 1 behavior:
+
+| Current category or descriptor                          | Answer                                       |
+| ------------------------------------------------------- | -------------------------------------------- |
+| Parental controls                                       | No                                           |
+| Age assurance                                           | Yes — first-run 18+ self-attestation         |
+| Unrestricted web access                                 | No — OAuth/legal links do not allow browsing |
+| User-generated content distributed to other users       | No                                           |
+| Social media; messaging/chat; advertising               | No                                           |
+| Health or wellness topics                               | Yes                                          |
+| Medical or treatment information                        | None                                         |
+| Profanity, fear, substances, sexuality/nudity, violence | None                                         |
+| Contests, loot boxes, simulated gambling, gambling      | None / No                                    |
+| Made for Kids                                           | No                                           |
+| Age category override                                   | Override to Higher Age Rating: **18+**       |
+
+The content answers may calculate below 18+, but Apple's current guidance says
+an app whose EULA requires a higher minimum age must use the higher override.
+The in-app eligibility rule and Terms require 18+; do not add sensitive content
+merely to obtain that rating.
+
+## App Store Connect Compliance Working Answers
+
+- **License agreement:** Apple's Standard EULA; do not upload a custom App Store
+  EULA.
+- **Digital goods and services:** No. The app is free and has no IAP,
+  subscription, paid entitlement, paywall, ad, or external purchase offer.
+- **Export compliance:** The binary uses standard operating-system HTTPS and
+  exempt platform cryptography, not proprietary or non-standard encryption.
+  Keep `ITSAppUsesNonExemptEncryption = NO`; the Account Holder must confirm the
+  final dependency set and answer Apple's flow consistently.
+- **Regulated medical device:** No. Vigorune is a fitness journal, not a medical
+  device, diagnosis, or treatment service.
+- **Content rights:** The app accesses third-party food data. USDA FoodData
+  Central is public domain/CC0 and Open Food Facts database reuse is governed by
+  ODbL/Database Contents License with source attribution. The owner must retain
+  evidence for these rights plus the icon, sounds, exercise/program text, and
+  screenshots.
+- **DSA:** Version 1 is unavailable in every EU storefront. Apple's current
+  guidance says an app distributed only outside the EU is not acting as a
+  trader on the App Store. Select the app-specific non-trader state; the Account
+  Holder must still complete any account-level declaration and confirm whether
+  unrelated business activity changes that assessment.
+- **Release method:** Manual release. Do not select automatic release after
+  approval.
 
 ## App Privacy Working Map
 

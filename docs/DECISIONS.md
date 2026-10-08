@@ -106,8 +106,10 @@
 - Version 1 is frozen to the feature boundary in `docs/V1_SCOPE_FREEZE.md`.
   Scope entries describe approved release behavior, not proof that every path is
   already complete or store-ready.
-- **Vigorune** is the temporary public-facing working name pending later naming
-  and trademark review.
+- **Vigorune** was initially adopted as a temporary public-facing working name.
+  The October 8, 2026 first-release instruction fixes **Vigorune** as the App
+  Store display name for this submission unless the owner explicitly changes
+  it; trademark review remains an owner responsibility.
 - The working-name change is presentation-only. The existing bundle/application
   identifiers, IndexedDB database name (`training-log`), local-storage keys,
   persisted IDs, and backup-format identifiers remain unchanged so installed

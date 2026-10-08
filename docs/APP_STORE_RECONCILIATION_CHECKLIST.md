@@ -20,8 +20,8 @@ account, build, or provider details.
 
 ## Release identity and commercial settings
 
-- [ ] Final public name has naming/trademark approval. `Vigorune` remains
-      provisional until that approval.
+- [ ] Public name is `Vigorune`; naming/trademark approval is recorded without
+      changing any persisted or platform identifier.
 - [ ] Bundle identifier remains `com.adamshugart.fitnesslog`; no IndexedDB,
       local-storage, backup-format, URL-scheme, or persisted identifier was
       renamed with the public name.
@@ -37,8 +37,9 @@ account, build, or provider details.
 - [ ] Copyright, SKU, content rights, export compliance, DSA/trader response,
       and regulated-medical-device response are completed from current facts.
 - [ ] Not Made for Kids is selected. Apple's content-rating questionnaire is
-      answered from actual content; the contractual/in-app 18+ eligibility rule
-      is documented separately and not misrepresented as the content rating.
+      answered from actual content with Age Assurance and Health or Wellness
+      Topics selected; the contractual/in-app 18+ eligibility rule uses Apple's
+      higher-age override as documented in `APP_STORE_METADATA.md`.
 
 ## Public pages and in-app legal controls
 
