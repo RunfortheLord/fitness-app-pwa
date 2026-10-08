@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { ArrowLeft } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 import {
-  BottomSheet,
   EmptyState,
+  IconButton,
   ModalConfirmationDialog,
   PrimaryButton,
   SecondaryButton,
@@ -15,14 +16,15 @@ import { workoutRepository } from '@repositories/workoutRepository'
 import { PrescriptionSummaryText } from './prescriptionSummary'
 import type { SelectedDay } from './types'
 
-export function WorkoutDayDetailSheet({
-  isOpen,
+/** The selected workout day is rendered as an in-flow Training subpage. */
+export function WorkoutDayDetailPage({
   onClose,
+  onEdit,
   onStarted,
   selectedDay,
 }: {
-  isOpen: boolean
   onClose: () => void
+  onEdit: () => void
   onStarted: () => void
   selectedDay: SelectedDay
 }) {
@@ -32,6 +34,13 @@ export function WorkoutDayDetailSheet({
   )
   const [existingRunId, setExistingRunId] = useState<string | null>(null)
   const [isDiscardConfirmOpen, setIsDiscardConfirmOpen] = useState(false)
+  const titleRef = useRef<HTMLHeadingElement>(null)
+
+  useEffect(() => {
+    document.body.classList.add('workout-day-page-open')
+    titleRef.current?.focus()
+    return () => document.body.classList.remove('workout-day-page-open')
+  }, [])
 
   function startWorkout() {
     void workoutRepository
@@ -101,12 +110,18 @@ export function WorkoutDayDetailSheet({
 
   return (
     <>
-      <BottomSheet
-        isOpen={isOpen}
-        onClose={onClose}
-        title={selectedDay.day.name}
-        variant="page"
+      <section
+        className="workout-day-page subpage-enter"
+        aria-labelledby="workout-day-page-title"
       >
+        <div className="workout-day-page-header">
+          <IconButton aria-label="Back to Current Program" onClick={onClose}>
+            <ArrowLeft aria-hidden="true" size={20} />
+          </IconButton>
+          <h2 id="workout-day-page-title" ref={titleRef} tabIndex={-1}>
+            {selectedDay.day.name}
+          </h2>
+        </div>
         <p className="sheet-context">
           {selectedDay.cycle.name} stays on this day until you choose another
           one.
@@ -114,17 +129,22 @@ export function WorkoutDayDetailSheet({
         {selectedDay.day.notes ? (
           <p className="muted">{selectedDay.day.notes}</p>
         ) : null}
-        {!existingWorkoutId && !existingRunId ? (
-          <PrimaryButton
-            disabled={!selectedDay.exercises.length}
-            type="button"
-            onClick={startWorkout}
-          >
-            Start Workout
-          </PrimaryButton>
-        ) : null}
+        <div className="button-row workout-day-page-actions">
+          {!existingWorkoutId && !existingRunId ? (
+            <PrimaryButton
+              disabled={!selectedDay.exercises.length}
+              type="button"
+              onClick={startWorkout}
+            >
+              Start Workout
+            </PrimaryButton>
+          ) : null}
+          <SecondaryButton type="button" onClick={onEdit}>
+            Edit program
+          </SecondaryButton>
+        </div>
         {selectedDay.exercises.length ? (
-          <div className="program-prescription-list">
+          <div className="program-prescription-list workout-day-prescription-list">
             {selectedDay.exercises.map((exercise) => (
               <div className="program-prescription-row" key={exercise.id}>
                 <div>
@@ -176,7 +196,7 @@ export function WorkoutDayDetailSheet({
             </SecondaryButton>
           </div>
         ) : null}
-      </BottomSheet>
+      </section>
       <ModalConfirmationDialog
         confirmLabel="Discard Existing Workout and Start New Workout"
         isOpen={isDiscardConfirmOpen}

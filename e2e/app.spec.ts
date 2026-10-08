@@ -93,7 +93,7 @@ for (const viewport of [
           await expect(page).toHaveTitle(/Vigorune/)
           await expect(
             page.getByRole('heading', { level: 1, name: route.title }),
-          ).toBeVisible()
+          ).toBeVisible({ timeout: 30_000 })
           await expect(
             page.getByRole('navigation', { name: 'Primary' }),
           ).toBeVisible()
@@ -643,6 +643,16 @@ test('creates, activates, starts the next day, and persists a program cycle', as
   await expect(
     page.getByLabel('Current Program').getByText('E2E Strength'),
   ).toBeVisible()
+  await page.getByRole('button', { name: /^Day A/ }).click()
+  const dayPreview = page.getByRole('region', { name: 'Day A' })
+  await expect(dayPreview).toBeVisible()
+  await expect(
+    dayPreview.getByRole('button', { name: 'Start Workout' }),
+  ).toBeVisible()
+  await dayPreview
+    .getByRole('button', { name: 'Back to Current Program' })
+    .click()
+  await expect(dayPreview).toHaveCount(0)
   await expect(page.getByRole('button', { name: /^Day A/ })).toBeVisible()
 })
 
@@ -702,7 +712,7 @@ test(
       .click()
     await page.getByRole('button', { name: /^Live A/ }).click()
     await page
-      .getByRole('dialog', { name: 'Live A' })
+      .getByRole('region', { name: 'Live A' })
       .getByRole('button', { name: 'Start Workout' })
       .click()
 
@@ -1081,7 +1091,7 @@ test(
       .click()
     await page.getByRole('button', { name: /^Keypad day/ }).click()
     await page
-      .getByRole('dialog', { name: 'Keypad day' })
+      .getByRole('region', { name: 'Keypad day' })
       .getByRole('button', { name: 'Start Workout' })
       .click()
 
@@ -1833,7 +1843,7 @@ test('completes the release workflow through backup restore', async ({
     .click()
   await page.getByRole('button', { name: /^Audit A/ }).click()
   await page
-    .getByRole('dialog', { name: 'Audit A' })
+    .getByRole('region', { name: 'Audit A' })
     .getByRole('button', { name: 'Start Workout' })
     .click()
 

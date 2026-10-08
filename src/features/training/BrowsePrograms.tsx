@@ -183,7 +183,7 @@ export function ProgramPreviewPage({
   }, [template.id])
 
   return (
-    <Card className="subpage-enter">
+    <Card className="subpage-enter program-preview-page">
       <div className="set-goal-header">
         <IconButton aria-label="Back to browse programs" onClick={onBack}>
           <ArrowLeft aria-hidden="true" size={20} />

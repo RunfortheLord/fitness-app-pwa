@@ -1760,7 +1760,12 @@ function HistoryExerciseAccordion({
             <div className="history-set-log">
               {orderedSets.map((set, index) => {
                 const previous = index > 0 ? orderedSets[index - 1] : null
-                const rest = previous ? restBetweenSets(previous, set) : null
+                const rest = previous
+                  ? restBetweenSets(
+                      previous,
+                      exercise.exerciseSnapshot.defaultRestSeconds ?? null,
+                    )
+                  : null
                 return (
                   <div className="history-set-log-item" key={set.id}>
                     {rest && hasRestBetweenSets(rest) ? (
@@ -1786,19 +1791,13 @@ function HistorySetRest({
   rest: ReturnType<typeof restBetweenSets>
 }) {
   const { t } = useLanguage()
-  const parts: string[] = []
-  if (rest.actualSeconds !== null) {
-    parts.push(
-      t('{time} between sets', { time: formatDuration(rest.actualSeconds) }),
-    )
-  }
-  if (rest.plannedSeconds !== null) {
-    parts.push(t('{time} rest', { time: formatDuration(rest.plannedSeconds) }))
-  }
+  const label = t('{time} between sets', {
+    time: formatDuration(rest.plannedSeconds ?? 0),
+  })
   return (
-    <p className="history-set-rest" aria-label={parts.join(', ')}>
+    <p className="history-set-rest" aria-label={label}>
       <Timer aria-hidden="true" size={13} />
-      <span>{parts.join(' · ')}</span>
+      <span>{label}</span>
     </p>
   )
 }

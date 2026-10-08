@@ -10,12 +10,41 @@ export type ChangelogEntry = {
 // introduces something worth surfacing in-app.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-10-06-workout-day-subpage',
+    date: '2026-10-06',
+    title: 'Workout-day preview opens as a subpage',
+    items: [
+      'Workout-day previews now fill the Training content area with a back button that stays visible while you scroll. Exercise cards use the full width, with clearer space below the workout actions.',
+    ],
+  },
+  {
+    id: '2026-10-06-workout-preview-and-progression-polish',
+    date: '2026-10-06',
+    title: 'A clearer workout preview and smarter progression',
+    items: [
+      'Workout-day previews now open in a more natural, scrollable sheet with a clear close button and swipe-down dismissal. The exercise list and actions fit the screen more comfortably.',
+      'Smart progression now carries forward deload adjustments only for the deload workout, not the following week.',
+      'Add 30 seconds to the rest timer whenever needed, including before starting a set.',
+      'Smart progression can use a new rep-range record from another training day when that exercise is performed on a different day.',
+    ],
+  },
+  {
+    id: '2026-09-09-rest-history-and-program-editing',
+    date: '2026-09-09',
+    title: 'Accurate rest settings and quicker program editing',
+    items: [
+      'Workout history now shows the rest-timer duration selected between sets instead of the wall-clock gap. If you edit the duration during a break, that transition keeps the updated time.',
+      'Workout-day details now include an Edit program button that opens the active program editor, and full-height program details and editors conceal the underlying Current Program header.',
+      'Program information is now a dedicated sub-page available beside Settings on Training and from the program editor, with current structure, settings, and direct weekly sets for each primary muscle group.',
+    ],
+  },
+  {
     id: '2026-09-08-quick-workout-and-history-rest',
     date: '2026-09-08',
     title: 'Quick workouts, rest times in history, and a tappable timer',
     items: [
       'Start a Quick Workout that follows no program: tap the dumbbell in the Training header or the Quick workout tile on Home to begin an empty session, then add whatever exercises you like. It saves to history like any other workout, and works even while a program is active.',
-      'Exercise history now shows how long you rested — the actual time between each past set plus the planned rest — so you can see your pacing at a glance.',
+      'Exercise history shows the selected rest-timer duration between each past set so you can see your planned pacing at a glance.',
       'Tapping the rest timer during a live workout now opens the timer controls, so you can pause, clear, or adjust the rest without opening an exercise’s menu.',
     ],
   },

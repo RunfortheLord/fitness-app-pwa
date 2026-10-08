@@ -129,6 +129,7 @@ export function SectionHeader({ title, action }: SectionHeaderProps) {
 
 type BottomSheetProps = {
   children: ReactNode
+  className?: string
   dismissOnSwipeDown?: boolean
   headerAction?: ReactNode
   isOpen: boolean
@@ -144,6 +145,7 @@ type BottomSheetProps = {
 }
 
 const SHEET_EXIT_ANIMATION_MS = 220
+let openPageSheetCount = 0
 
 const inertBackgroundState = new WeakMap<
   HTMLElement,
@@ -193,6 +195,7 @@ function getSheetExitAnimationMs() {
 
 export function BottomSheet({
   children,
+  className,
   dismissOnSwipeDown = true,
   headerAction,
   isOpen,
@@ -293,11 +296,27 @@ export function BottomSheet({
     onClose,
   })
 
+  const isPage = variant === 'page'
+
+  useEffect(() => {
+    if (!isPresent || !isPage) {
+      return
+    }
+
+    openPageSheetCount += 1
+    document.body.classList.add('page-sheet-open')
+    return () => {
+      openPageSheetCount = Math.max(0, openPageSheetCount - 1)
+      if (openPageSheetCount === 0) {
+        document.body.classList.remove('page-sheet-open')
+      }
+    }
+  }, [isPage, isPresent])
+
   if (!isPresent) {
     return null
   }
 
-  const isPage = variant === 'page'
   const backdropClassName = [
     'sheet-backdrop',
     isPage ? 'sheet-backdrop--page' : '',
@@ -308,6 +327,7 @@ export function BottomSheet({
   const sheetClassName = [
     'bottom-sheet',
     isPage ? 'bottom-sheet--page' : '',
+    className ?? '',
     dismissOnSwipeDown && !isPage ? 'is-swipe-dismissible' : '',
     swipeOffset > 0 ? 'is-dragging' : '',
     isClosing ? 'is-closing' : '',

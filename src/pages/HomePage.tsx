@@ -169,6 +169,20 @@ export function HomePage() {
   const caloriesRemaining = Math.round(
     dashboard?.nutrition.remainingCalories ?? 0,
   )
+  const proteinConsumed = Math.round(
+    dashboard?.nutrition.totals.proteinGrams ?? 0,
+  )
+  const proteinTarget = Math.round(
+    dashboard?.nutrition.targets.proteinGrams ?? 0,
+  )
+  const carbsConsumed = Math.round(
+    dashboard?.nutrition.totals.carbohydrateGrams ?? 0,
+  )
+  const carbsTarget = Math.round(
+    dashboard?.nutrition.targets.carbohydrateGrams ?? 0,
+  )
+  const fatConsumed = Math.round(dashboard?.nutrition.totals.fatGrams ?? 0)
+  const fatTarget = Math.round(dashboard?.nutrition.targets.fatGrams ?? 0)
   const trendWeight = dashboard
     ? currentTimeAwareTrendWeight(dashboard.bodyweightEntries)
     : null
@@ -249,23 +263,15 @@ export function HomePage() {
             }
           >
             <div className="dashboard-shortcuts">
-              {dashboard?.activeWorkout ? (
-                <>
+              <div className="home-workout-actions">
+                {dashboard?.activeWorkout ? (
                   <PrimaryButton
                     type="button"
                     onClick={() => void navigate('/workout')}
                   >
                     Resume workout
                   </PrimaryButton>
-                  <p className="home-action-meta">
-                    {dashboard.activeWorkout.name} -{' '}
-                    {t('Started {date}', {
-                      date: dashboard.activeWorkout.localDate,
-                    })}
-                  </p>
-                </>
-              ) : dashboard.activeProgram?.nextDay ? (
-                <>
+                ) : dashboard.activeProgram?.nextDay ? (
                   <PrimaryButton
                     disabled={isStartingWorkout}
                     type="button"
@@ -277,24 +283,44 @@ export function HomePage() {
                           day: dashboard.activeProgram.nextDay.name,
                         })}
                   </PrimaryButton>
-                  <p className="home-action-meta">
-                    {formatProgramWeekLabel(
-                      dashboard.activeProgram.weekNumber,
-                      dashboard.activeProgram.cycle.deloadSchedulingEnabled
-                        ? dashboard.activeProgram.cycle.deloadWeekNumbers
-                        : [],
-                    )}{' '}
-                    · {t('Next workout')}
-                  </p>
-                </>
-              ) : (
-                <PrimaryButton
+                ) : (
+                  <PrimaryButton
+                    type="button"
+                    onClick={() => void navigate('/training?createProgram=1')}
+                  >
+                    Create program
+                  </PrimaryButton>
+                )}
+                <button
+                  className="home-quick-workout-tile"
                   type="button"
-                  onClick={() => void navigate('/training?createProgram=1')}
+                  aria-label={t('Start quick workout')}
+                  title={t('Start quick workout')}
+                  disabled={isStartingQuickWorkout}
+                  onClick={() => void startQuickWorkout()}
                 >
-                  Create program
-                </PrimaryButton>
-              )}
+                  <Dumbbell aria-hidden="true" size={22} />
+                  <span>{t('Quick workout')}</span>
+                </button>
+              </div>
+              {dashboard?.activeWorkout ? (
+                <p className="home-action-meta">
+                  {dashboard.activeWorkout.name} -{' '}
+                  {t('Started {date}', {
+                    date: dashboard.activeWorkout.localDate,
+                  })}
+                </p>
+              ) : dashboard.activeProgram?.nextDay ? (
+                <p className="home-action-meta">
+                  {formatProgramWeekLabel(
+                    dashboard.activeProgram.weekNumber,
+                    dashboard.activeProgram.cycle.deloadSchedulingEnabled
+                      ? dashboard.activeProgram.cycle.deloadWeekNumbers
+                      : [],
+                  )}{' '}
+                  · {t('Next workout')}
+                </p>
+              ) : null}
             </div>
           </Card>
 
@@ -329,7 +355,7 @@ export function HomePage() {
               onLog={() => openBodyweightSheet(selectedDate)}
               onView={() => void navigate('/history?view=bodyweight')}
             />
-            <div className="home-calories-quick">
+            <div className="home-nutrition-summary">
               <MetricCard
                 label="Calories remaining"
                 onClick={() => void navigate('/nutrition?tab=day')}
@@ -340,17 +366,31 @@ export function HomePage() {
                     : 'Target not set'
                 }
               />
-              <button
-                className="home-quick-workout-tile"
-                type="button"
-                aria-label={t('Start quick workout')}
-                title={t('Start quick workout')}
-                disabled={isStartingQuickWorkout}
-                onClick={() => void startQuickWorkout()}
+              <section
+                aria-label={t('Daily macros')}
+                className="card home-macro-summary-card"
               >
-                <Dumbbell aria-hidden="true" size={22} />
-                <span>{t('Quick workout')}</span>
-              </button>
+                <dl>
+                  <div>
+                    <dt>{t('Protein')}</dt>
+                    <dd>
+                      {proteinConsumed} / {proteinTarget} g
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{t('Carbs')}</dt>
+                    <dd>
+                      {carbsConsumed} / {carbsTarget} g
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{t('Fat')}</dt>
+                    <dd>
+                      {fatConsumed} / {fatTarget} g
+                    </dd>
+                  </div>
+                </dl>
+              </section>
             </div>
           </section>
 

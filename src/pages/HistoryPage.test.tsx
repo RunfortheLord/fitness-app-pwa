@@ -74,6 +74,7 @@ describe('HistoryPage', () => {
     renderHistory('/history?view=bodyweight')
 
     expect(await screen.findByText('Bodyweight progress')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'All' }))
     expect(await screen.findByLabelText('Graph summary')).toHaveTextContent(
       '188.4 lb',
     )
@@ -103,6 +104,7 @@ describe('HistoryPage', () => {
   })
 
   it('shows the bodyweight graph converted to kilograms when preferred', async () => {
+    const user = userEvent.setup()
     await settingsRepository.saveWeightUnit('kg')
     await db.bodyweightEntries.add({
       id: 'weight-kg',
@@ -118,6 +120,7 @@ describe('HistoryPage', () => {
 
     // 200 lb -> 90.7 kg shown to one decimal, with a kg axis label. The unit
     // resolves from a live query, so wait for the converted render.
+    await user.click(await screen.findByRole('button', { name: 'All' }))
     expect(await screen.findByText('Bodyweight (kg)')).toBeInTheDocument()
     await waitFor(() =>
       expect(screen.getByLabelText('Graph summary')).toHaveTextContent(
@@ -229,6 +232,7 @@ describe('HistoryPage', () => {
     expect(
       await screen.findByLabelText('Strength graph metric'),
     ).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'All' }))
     expect(
       (await screen.findAllByText(/latest estimated 1 rep max: 120 lb/i))
         .length,
@@ -270,6 +274,7 @@ describe('HistoryPage', () => {
 
     renderHistory('/history?view=graphs')
 
+    await user.click(await screen.findByRole('button', { name: 'All' }))
     await user.click(
       await screen.findByRole('button', { name: 'Total volume' }),
     )
@@ -830,6 +835,96 @@ describe('HistoryPage', () => {
       name: 'Reusable rice',
       notes: 'food notes',
     })
+  })
+
+  it.each([
+    { restSecondsUsed: null, label: '2:00 between sets' },
+    { restSecondsUsed: 45, label: '0:45 between sets' },
+    { restSecondsUsed: 0, label: null },
+  ])(
+    'shows saved default or overridden rest in legacy history ($restSecondsUsed)',
+    async ({ restSecondsUsed, label }) => {
+      const user = userEvent.setup()
+      const program = await seedProgram(db)
+      const active = await createProgramRepository(db).activateTemplate(
+        program.template.id,
+      )
+      await db.activeCycleWorkoutExercises.update(active.exercises[0].id, {
+        restSecondsOverride: null,
+      })
+      const repository = createWorkoutRepository(db)
+      const started = await repository.startWorkout({
+        activeCycleId: active.cycle.id,
+        dayId: active.days[0].id,
+        localDate: testLocalDate,
+      })
+      for (const set of started.sets) {
+        await repository.updateWorkoutSet(set.id, { completed: true })
+      }
+      const completed = await repository.completeWorkout({
+        workoutId: started.workout.id,
+      })
+      const history = await repository.getWorkoutHistoryStructure(
+        completed.history.id,
+      )
+      const firstSet = history.setsByExercise[history.exercises[0].id][0]
+      // Simulate old history from before inherited defaults were captured per set.
+      await db.workoutHistorySets.update(firstSet.id, { restSecondsUsed })
+      await createExerciseRepository(db).updateExerciseDefaultRest(
+        active.exercises[0].exerciseId!,
+        240,
+      )
+      const savedHistory = await repository.getWorkoutHistoryStructure(
+        completed.history.id,
+      )
+
+      renderHistory(`/history?workout=${completed.history.id}`)
+      await user.click(
+        await screen.findByRole('button', { name: /Bench press/ }),
+      )
+      if (label) {
+        expect(screen.getByLabelText(label)).toBeInTheDocument()
+      } else {
+        expect(screen.queryByLabelText(/between sets/)).not.toBeInTheDocument()
+      }
+      expect(
+        await repository.getWorkoutHistoryStructure(completed.history.id),
+      ).toEqual(savedHistory)
+    },
+  )
+
+  it('shows the snapshotted exercise default between historical sets when no override was recorded', async () => {
+    const user = userEvent.setup()
+    const repository = createWorkoutRepository(db)
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    await db.activeCycleWorkoutExercises.update(active.exercises[0].id, {
+      restSecondsOverride: null,
+    })
+    const started = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    const exercise = started.exercises[0]
+    const sets = started.sets.filter(
+      (set) => set.workoutExerciseId === exercise.id,
+    )
+    expect(sets).toHaveLength(2)
+    expect(sets.map((set) => set.restSecondsUsed)).toEqual([null, null])
+    for (const set of sets) {
+      await repository.updateWorkoutSet(set.id, { completed: true })
+    }
+    const completed = await repository.completeWorkout({
+      workoutId: started.workout.id,
+    })
+
+    renderHistory(`/history?workout=${completed.history.id}`)
+
+    await user.click(await screen.findByRole('button', { name: /Bench press/ }))
+    expect(screen.getByText('2:00 between sets')).toBeInTheDocument()
   })
 
   it('does not expose destructive completed workout actions in detail', async () => {

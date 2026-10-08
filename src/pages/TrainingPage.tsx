@@ -22,12 +22,13 @@ import { ExerciseFormSheet } from '@features/training/ExerciseFormSheet'
 import { ExerciseLibraryCard } from '@features/training/ExerciseLibraryCard'
 import { ProgramBuilderSheet } from '@features/training/ProgramBuilderSheet'
 import { ProgramCreateSheet } from '@features/training/ProgramCreateSheet'
+import { ProgramInformationSheet } from '@features/training/ProgramInformationSheet'
 import {
   FullProgramLibraryPage,
   ProgramLibrary,
 } from '@features/training/ProgramLibrary'
 import { ProgramOverview } from '@features/training/ProgramOverview'
-import { WorkoutDayDetailSheet } from '@features/training/WorkoutDayDetailSheet'
+import { WorkoutDayDetailPage } from '@features/training/WorkoutDayDetailSheet'
 import type {
   ExerciseView,
   ProgramSheetTarget,
@@ -103,6 +104,10 @@ export function TrainingPage() {
         status: 'loading',
       },
   )
+  const [programExercises, setProgramExercises] = useState<Exercise[]>(
+    () => getCachedTrainingPageData()?.exercises ?? [],
+  )
+  const isProgramInformationOpen = searchParams.get('programInfo') === '1'
   const activeSheet =
     searchParams.get('createExercise') === '1'
       ? ({ type: 'exercise', exercise: null } satisfies SheetState)
@@ -200,6 +205,9 @@ export function TrainingPage() {
         }
         setCachedTrainingPageData(nextLoadState)
         setLoadState(nextLoadState)
+        if (view === 'active' && !query.trim()) {
+          setProgramExercises(exercises)
+        }
 
         if (currentCycle) {
           const allChecks = await programRepository.listAllActiveCycleDayChecks(
@@ -318,17 +326,44 @@ export function TrainingPage() {
     setProgramSearchQuery('')
     setPreviewTemplate(null)
   }
+  const closeProgramInformation = () => {
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('programInfo')
+    setSearchParams(nextParams, { replace: true })
+  }
 
   useSubpageBackGesture(programView !== 'main', leaveProgramSubpage)
   useSubpageBackGesture(previewTemplate !== null, () =>
     setPreviewTemplate(null),
+  )
+  useSubpageBackGesture(isProgramInformationOpen, closeProgramInformation)
+  useSubpageBackGesture(activeSheet?.type === 'selectedDay', () =>
+    setSheet(null),
   )
 
   return (
     <PageContainer>
       <Toast message={message} onDismiss={() => setMessage(null)} />
 
-      {programView === 'library' ? (
+      {activeSheet?.type === 'selectedDay' ? (
+        <WorkoutDayDetailPage
+          onClose={() => setSheet(null)}
+          onEdit={() =>
+            setSheet({
+              type: 'builder',
+              target: {
+                mode: 'cycle',
+                cycleId: activeSheet.selectedDay.cycle.id,
+              },
+            })
+          }
+          onStarted={() => {
+            setSheet(null)
+            void navigate('/workout')
+          }}
+          selectedDay={activeSheet.selectedDay}
+        />
+      ) : programView === 'library' ? (
         <FullProgramLibraryPage
           loadStatus={loadState.status}
           onActivate={onActivateProgram}
@@ -535,7 +570,7 @@ export function TrainingPage() {
       {activeSheet?.type === 'builder' ? (
         <ProgramBuilderSheet
           exerciseUsage={loadState.exerciseUsage}
-          exercises={loadState.exercises.filter(
+          exercises={programExercises.filter(
             (exercise) => exercise.status === 'active',
           )}
           isOpen
@@ -544,17 +579,22 @@ export function TrainingPage() {
           target={activeSheet.target}
         />
       ) : null}
-      {activeSheet?.type === 'selectedDay' ? (
-        <WorkoutDayDetailSheet
-          isOpen
-          onClose={() => setSheet(null)}
-          onStarted={() => {
-            setSheet(null)
-            void navigate('/workout')
-          }}
-          selectedDay={activeSheet.selectedDay}
-        />
-      ) : null}
+      <ProgramInformationSheet
+        exercises={programExercises}
+        isLoading={loadState.status === 'loading'}
+        isOpen={isProgramInformationOpen}
+        mode="cycle"
+        onClose={closeProgramInformation}
+        structure={
+          loadState.currentCycle
+            ? {
+                record: loadState.currentCycle.cycle,
+                days: loadState.currentCycle.days,
+                exercisesByDay: loadState.currentCycle.exercisesByDay,
+              }
+            : null
+        }
+      />
       <ModalConfirmationDialog
         confirmLabel={
           programConfirmation?.type === 'delete-first'

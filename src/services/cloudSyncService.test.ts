@@ -5,6 +5,7 @@ import { BUILT_IN_PROGRAMS } from '@domain/programLibrarySeed'
 import { createProgramRepository } from '@repositories/programRepository'
 import { initializeAppData } from '@services/appInitializationService'
 import { backupService } from '@services/backupService'
+import { createAutomaticCloudBackupService } from '@services/automaticCloudBackupService'
 import {
   cloudSyncService,
   CloudBackupTooLargeError,
@@ -284,6 +285,69 @@ describe('cloudSyncService', () => {
       true,
     )
     expect(selected).toHaveBeenCalledWith('updated_at')
+  })
+
+  it.each([
+    '2026-01-02T03:04:05+00:00',
+    '2026-01-02T03:04:05.000000+00:00',
+    '2026-01-01T21:04:05-06:00',
+  ])('recognizes its own backup returned as %s', async (updatedAt) => {
+    await backupService.createCloudBackup(new Date('2026-01-02T03:04:05.000Z'))
+    mockSelectRow({ updated_at: updatedAt })
+
+    await expect(cloudSyncService.canSafelyBackUpAutomatically()).resolves.toBe(
+      true,
+    )
+  })
+
+  it.each(['2026-01-02T03:04:05.124+00:00', 'invalid timestamp'])(
+    'blocks an unrecognized or invalid cloud timestamp %s',
+    async (updatedAt) => {
+      await backupService.createCloudBackup(
+        new Date('2026-01-02T03:04:05.123Z'),
+      )
+      mockSelectRow({ updated_at: updatedAt })
+
+      await expect(
+        cloudSyncService.canSafelyBackUpAutomatically(),
+      ).resolves.toBe(false)
+    },
+  )
+
+  it('allows the first automatic backup when no cloud snapshot exists', async () => {
+    mockSelectRow(null)
+
+    await expect(cloudSyncService.canSafelyBackUpAutomatically()).resolves.toBe(
+      true,
+    )
+  })
+
+  it('uploads again after reopening with a Postgres-formatted timestamp', async () => {
+    let cloudRow: { updated_at: string } | null = null
+    const maybeSingle = vi.fn(async () => ({ data: cloudRow, error: null }))
+    const upsert = vi.fn(async (row: { updated_at: string }) => {
+      cloudRow = { updated_at: row.updated_at.replace('Z', '+00:00') }
+      return { error: null }
+    })
+    supabaseMocks.from.mockReturnValue({
+      select: () => ({ eq: () => ({ maybeSingle }) }),
+      upsert,
+    })
+    const onSuccess = vi.fn()
+    const service = createAutomaticCloudBackupService({
+      subscribeToMutations: () => () => undefined,
+    })
+    let stop = service.start({ onSuccess })
+    try {
+      await vi.waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1))
+      stop()
+      stop = service.start({ onSuccess })
+      await vi.waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(2))
+      expect(upsert).toHaveBeenCalledTimes(2)
+      expect(maybeSingle).toHaveBeenCalledTimes(2)
+    } finally {
+      stop()
+    }
   })
 
   it('rejects an oversized snapshot before opening the backups table', async () => {

@@ -357,6 +357,50 @@ describe('workoutRepository', () => {
     expect(started.sets.map((set) => set.restSecondsUsed)).toEqual([null, null])
   })
 
+  it.each([null, 45, 0])(
+    'records effective rest on completion and preserves it after later edits (override %s)',
+    async (restSecondsOverride) => {
+      const program = await seedProgram(database)
+      const active = await createProgramRepository(database).activateTemplate(
+        program.template.id,
+      )
+      await database.activeCycleWorkoutExercises.update(
+        active.exercises[0].id,
+        { restSecondsOverride },
+      )
+      const repository = createWorkoutRepository(database)
+      const started = await repository.startWorkout({
+        activeCycleId: active.cycle.id,
+        dayId: active.days[0].id,
+        localDate: testLocalDate,
+      })
+      const expectedRest = restSecondsOverride ?? 120
+      const completed = await repository.updateWorkoutSet(started.sets[0].id, {
+        completed: true,
+      })
+      expect(completed.restSecondsUsed).toBe(expectedRest)
+      await repository.updateWorkoutExerciseDefaultRest(
+        started.exercises[0].id,
+        180,
+      )
+      await repository.updateWorkoutSet(started.sets[0].id, {
+        metricValues: { reps: 10 },
+      })
+      await repository.updateWorkoutSet(started.sets[1].id, { completed: true })
+      const finished = await repository.completeWorkout({
+        workoutId: started.workout.id,
+      })
+      const history = await repository.getWorkoutHistoryStructure(
+        finished.history.id,
+      )
+      expect(
+        history.setsByExercise[history.exercises[0].id].map(
+          (set) => set.restSecondsUsed,
+        ),
+      ).toEqual([expectedRest, 180])
+    },
+  )
+
   it('uses corrected built-in tracking metadata when starting from an older program snapshot', async () => {
     const bodyweightSquat = BUILT_IN_EXERCISES.find(
       (exercise) => exercise.id === 'builtin:bodyweight-squat',
@@ -600,6 +644,20 @@ describe('workoutRepository', () => {
     ).resolves.toMatchObject({
       currentWeekNumber: 3,
     })
+
+    const afterDeload = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    expect(
+      afterDeload.sets.map((set) => set.targetRecommendation?.sourceSetId),
+    ).toEqual(regular.sets.map((set) => set.id))
+    expect(
+      afterDeload.sets.some(
+        (set) => set.targetRecommendation?.sourceSetId === deload.sets[0].id,
+      ),
+    ).toBe(false)
   })
 
   it('persists live metric edits, notes, set completion, add set, and delete set', async () => {
@@ -676,7 +734,7 @@ describe('workoutRepository', () => {
     ).resolves.toMatchObject({ targetSetCount: 2 })
   })
 
-  it('uses the prescribed rest in the live snapshot and updates upcoming sets only', async () => {
+  it('updates upcoming rests and the completed set that owns the current timer', async () => {
     const program = await seedProgram(database)
     const active = await createProgramRepository(database).activateTemplate(
       program.template.id,
@@ -689,10 +747,13 @@ describe('workoutRepository', () => {
     })
 
     expect(started.exercises[0].exerciseSnapshot.defaultRestSeconds).toBe(90)
+    await repository.addSet(started.exercises[0].id)
     await repository.updateWorkoutSet(started.sets[0].id, { completed: true })
+    await repository.updateWorkoutSet(started.sets[1].id, { completed: true })
     await repository.updateWorkoutExerciseDefaultRest(
       started.exercises[0].id,
       105,
+      started.sets[1].id,
     )
 
     const reloaded = await repository.getActiveWorkoutStructure()
@@ -700,7 +761,7 @@ describe('workoutRepository', () => {
       reloaded?.setsByExercise[started.exercises[0].id].map(
         (set) => set.restSecondsUsed,
       ),
-    ).toEqual([90, 105])
+    ).toEqual([90, 105, 105])
     expect(reloaded?.exercises[0].exerciseSnapshot.defaultRestSeconds).toBe(105)
   })
 
@@ -1126,9 +1187,16 @@ describe('workoutRepository', () => {
       localDate: testLocalDate,
     })
 
+    await repository.addRestTimerSeconds(started.workout.id, 30)
+    let reloaded = await repository.getActiveWorkoutStructure()
+    expect(reloaded?.workout.activeRestTimer).toMatchObject({
+      durationSeconds: 30,
+      status: 'running',
+    })
+
     await repository.setRestTimer(started.workout.id, 90)
     await repository.pauseRestTimer(started.workout.id)
-    let reloaded = await repository.getActiveWorkoutStructure()
+    reloaded = await repository.getActiveWorkoutStructure()
     expect(reloaded?.workout.activeRestTimer).toMatchObject({
       durationSeconds: 90,
       status: 'paused',
@@ -1167,6 +1235,13 @@ describe('workoutRepository', () => {
     reloaded = await repository.getActiveWorkoutStructure()
     expect(reloaded?.workout.activeRestTimer).toMatchObject({
       status: 'dismissed',
+    })
+
+    await repository.addRestTimerSeconds(started.workout.id, 30)
+    reloaded = await repository.getActiveWorkoutStructure()
+    expect(reloaded?.workout.activeRestTimer).toMatchObject({
+      durationSeconds: 30,
+      status: 'running',
     })
   })
 
@@ -1601,6 +1676,70 @@ describe('workoutRepository', () => {
     expect(
       second.sets.map((set) => set.targetRecommendation?.sourceSetId),
     ).toEqual([first.sets[0].id, first.sets[0].id, first.sets[0].id])
+  })
+
+  it('uses a newer cross-day performance instead of older same-day history in smart mode', async () => {
+    const exercise = await seedExercise(database)
+    const programs = createProgramRepository(database)
+    const program = await programs.createProgramTemplate({
+      name: 'Shared exercise split',
+      days: ['First day', 'Second day'].map((name) => ({
+        name,
+        exercises: [
+          {
+            exerciseId: exercise.id,
+            targetSetCount: 1,
+            targetRepsMin: 8,
+            targetRepsMax: 10,
+            targetRir: 2,
+          },
+        ],
+      })),
+    })
+    const active = await programs.activateTemplate(program.template.id)
+    const repository = createWorkoutRepository(database)
+    await createSettingsRepository(database).saveWorkoutAutofillMode(
+      'smart_progression',
+    )
+
+    const olderSameDay = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(olderSameDay.sets[0].id, {
+      metricValues: { weight: 100, reps: 8 },
+      completed: true,
+    })
+    await repository.completeWorkout({
+      workoutId: olderSameDay.workout.id,
+      completedAt: '2026-01-01T00:00:00.000Z',
+    })
+
+    const newerCrossDay = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[1].id,
+      localDate: testLocalDate,
+    })
+    await repository.updateWorkoutSet(newerCrossDay.sets[0].id, {
+      metricValues: { weight: 200, reps: 10 },
+      rir: 2,
+      completed: true,
+    })
+    await repository.completeWorkout({
+      workoutId: newerCrossDay.workout.id,
+      completedAt: '2026-02-01T00:00:00.000Z',
+    })
+
+    const nextSameDay = await repository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    expect(nextSameDay.sets[0].targetRecommendation?.sourceSetId).toBe(
+      newerCrossDay.sets[0].id,
+    )
+    expect(nextSameDay.sets[0].metricValues.weight).toBeGreaterThan(100)
   })
 
   it('records applied structural changes separately from workout completion', async () => {

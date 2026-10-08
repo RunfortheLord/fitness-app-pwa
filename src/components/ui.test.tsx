@@ -106,11 +106,13 @@ describe('BottomSheet', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open swap' }))
     expect(workoutAction.inert).toBe(true)
+    expect(document.body).toHaveClass('page-sheet-open')
 
     fireEvent.click(
       await screen.findByRole('button', { name: 'Choose replacement' }),
     )
 
     await waitFor(() => expect(workoutAction.inert).toBe(false))
+    expect(document.body).not.toHaveClass('page-sheet-open')
   })
 })

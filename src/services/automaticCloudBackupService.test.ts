@@ -63,7 +63,7 @@ describe('automaticCloudBackupService', () => {
     expect(unsubscribe).toHaveBeenCalledOnce()
   })
 
-  it('keeps the throttle when the app becomes visible again', async () => {
+  it('backs up immediately when the app becomes visible again', async () => {
     const backupToCloud = vi.fn().mockResolvedValue(undefined)
     let notifyMutation: () => void = () => undefined
     const service = createService({
@@ -83,11 +83,50 @@ describe('automaticCloudBackupService', () => {
 
     document.dispatchEvent(new Event('visibilitychange'))
     await vi.advanceTimersByTimeAsync(0)
-    expect(backupToCloud).toHaveBeenCalledTimes(1)
+    expect(backupToCloud).toHaveBeenCalledTimes(2)
 
     await vi.advanceTimersByTimeAsync(40)
     expect(backupToCloud).toHaveBeenCalledTimes(2)
     stop()
+  })
+
+  it('backs up on every fresh start even without local changes', async () => {
+    const backupToCloud = vi.fn().mockResolvedValue(undefined)
+    const service = createService({
+      backupToCloud,
+      canSafelyBackUp: () => Promise.resolve(true),
+    })
+    const stop = service.start()
+    await vi.advanceTimersByTimeAsync(0)
+    stop()
+
+    const stopAgain = service.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(backupToCloud).toHaveBeenCalledTimes(2)
+    stopAgain()
+  })
+
+  it('does not upload when backgrounded or after the service stops', async () => {
+    const backupToCloud = vi.fn().mockResolvedValue(undefined)
+    const service = createService({
+      backupToCloud,
+      canSafelyBackUp: () => Promise.resolve(true),
+    })
+    const stop = service.start()
+    await vi.advanceTimersByTimeAsync(0)
+    const visibility = vi.spyOn(document, 'visibilityState', 'get')
+    visibility.mockReturnValue('hidden')
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(backupToCloud).toHaveBeenCalledTimes(1)
+    stop()
+
+    visibility.mockReturnValue('visible')
+    document.dispatchEvent(new Event('visibilitychange'))
+    window.dispatchEvent(new Event('online'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(backupToCloud).toHaveBeenCalledTimes(1)
+    visibility.mockRestore()
   })
 
   it('waits while offline and backs up when the connection returns', async () => {
@@ -254,6 +293,11 @@ describe('automaticCloudBackupService', () => {
 
     expect(backupToCloud).not.toHaveBeenCalled()
     expect(onBlocked).toHaveBeenCalledOnce()
+
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(backupToCloud).not.toHaveBeenCalled()
+    expect(onBlocked).toHaveBeenCalledTimes(2)
 
     service.markCurrentDeviceSafe()
     expect(onSuccess).toHaveBeenCalledOnce()

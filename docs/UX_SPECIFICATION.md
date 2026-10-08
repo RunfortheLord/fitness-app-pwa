@@ -434,7 +434,8 @@
   workout snapshot; otherwise uses the exercise default rest duration.
 - Shows remaining time calculated from start timestamp and duration.
 - Controls: pause/resume, add 30 seconds, subtract 30 seconds without going
-  negative, stop, and clear.
+  negative, stop, and clear. Add 30 seconds starts a new 30-second timer when
+  no rest timer is active.
 - On resume from background, recalculates remaining time instead of trusting an interval count.
 - Timer state is stored on the active workout and continues while navigating
   between exercises or returning to the workout route.

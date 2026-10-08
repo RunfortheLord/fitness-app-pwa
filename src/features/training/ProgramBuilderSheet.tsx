@@ -1,4 +1,13 @@
-import { Check, Copy, Edit2, Plus, Settings2, Trash2, X } from 'lucide-react'
+import {
+  Check,
+  Copy,
+  Edit2,
+  Info,
+  Plus,
+  Settings2,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import {
@@ -32,16 +41,16 @@ import {
 import { useRirTracking } from '@hooks/useRirTracking'
 import { programRepository } from '@repositories/programRepository'
 import type {
-  ActiveCycleWorkoutDay,
   ActiveCycleWorkoutExercise,
-  ActiveProgramCycle,
   Exercise,
-  ProgramTemplate,
-  ProgramTemplateDay,
   TemplateWorkoutExercise,
 } from '@shared-types/app'
 
 import { formatEquipment } from './exerciseMetadata'
+import {
+  ProgramInformationSheet,
+  type ProgramInformationStructure,
+} from './ProgramInformationSheet'
 import { PrescriptionEditor } from './PrescriptionEditor'
 import { PrescriptionSummaryText } from './prescriptionSummary'
 import {
@@ -67,14 +76,8 @@ export function ProgramBuilderSheet({
   onClose: () => void
   target: ProgramSheetTarget
 }) {
-  const [structure, setStructure] = useState<{
-    record: ProgramTemplate | ActiveProgramCycle
-    days: Array<ProgramTemplateDay | ActiveCycleWorkoutDay>
-    exercisesByDay: Record<
-      string,
-      Array<TemplateWorkoutExercise | ActiveCycleWorkoutExercise>
-    >
-  } | null>(null)
+  const [structure, setStructure] =
+    useState<ProgramInformationStructure | null>(null)
   const [nameForm, setNameForm] = useState(emptyProgramForm)
   const [dayName, setDayName] = useState('')
   const [isAddingDay, setIsAddingDay] = useState(false)
@@ -101,6 +104,7 @@ export function ProgramBuilderSheet({
   const [isDiscardPrescriptionOpen, setIsDiscardPrescriptionOpen] =
     useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isInformationOpen, setIsInformationOpen] = useState(false)
   const isMountedRef = useRef(true)
 
   const mode: BuilderMode = target.mode
@@ -740,12 +744,26 @@ export function ProgramBuilderSheet({
       <BottomSheet
         headerAction={
           structure ? (
-            <IconButton
-              aria-label="Program editor settings"
-              onClick={() => setIsSettingsOpen(true)}
-            >
-              <Settings2 aria-hidden="true" size={20} />
-            </IconButton>
+            <>
+              <IconButton
+                aria-label="Program information"
+                onClick={() => {
+                  setIsSettingsOpen(false)
+                  setIsInformationOpen(true)
+                }}
+              >
+                <Info aria-hidden="true" size={20} />
+              </IconButton>
+              <IconButton
+                aria-label="Program editor settings"
+                onClick={() => {
+                  setIsInformationOpen(false)
+                  setIsSettingsOpen(true)
+                }}
+              >
+                <Settings2 aria-hidden="true" size={20} />
+              </IconButton>
+            </>
           ) : null
         }
         isOpen={isOpen}
@@ -1227,6 +1245,13 @@ export function ProgramBuilderSheet({
         onAction={undoRemoveExercise}
         onDismiss={() => setRemovedExercise(null)}
         tone="neutral"
+      />
+      <ProgramInformationSheet
+        exercises={exercises}
+        isOpen={isInformationOpen}
+        mode={mode}
+        onClose={() => setIsInformationOpen(false)}
+        structure={structure}
       />
       <BottomSheet
         isOpen={isSettingsOpen}

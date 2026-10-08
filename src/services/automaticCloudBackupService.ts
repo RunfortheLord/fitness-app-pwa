@@ -226,7 +226,9 @@ export function createAutomaticCloudBackupService({
     if (backupBlocked) {
       automaticBackupAllowed = null
     }
-    requestBackup(false)
+    // Reopening an installed PWA often resumes the existing document instead
+    // of mounting the app again. Treat that as an open, even without edits.
+    requestBackup(true)
   }
 
   return {

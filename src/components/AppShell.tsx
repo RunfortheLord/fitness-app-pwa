@@ -1,5 +1,6 @@
 import {
   Dumbbell,
+  Info,
   Minus,
   NotebookPen,
   Scale,
@@ -32,7 +33,6 @@ import {
   AppHeader,
   BottomSheet,
   IconButton,
-  OfflineIndicator,
   PrimaryButton,
   SecondaryButton,
   ValidationMessage,
@@ -74,7 +74,6 @@ export function AppShell({ children }: AppShellProps) {
 function AppShellContent({ children }: AppShellProps) {
   const { t } = useLanguage()
   const location = useLocation()
-  const [isOffline, setIsOffline] = useState(() => !navigator.onLine)
   const [showWhatsNew, setShowWhatsNew] = useState(() => hasUnseenChangelog())
   const [isQuickActionOpen, setIsQuickActionOpen] = useState(false)
   const [activeActivity, setActiveActivity] = useState<ActiveActivity>(null)
@@ -306,20 +305,6 @@ function AppShellContent({ children }: AppShellProps) {
     }
   }, [activeActivity])
 
-  useEffect(() => {
-    function updateOnlineStatus() {
-      setIsOffline(!navigator.onLine)
-    }
-
-    window.addEventListener('online', updateOnlineStatus)
-    window.addEventListener('offline', updateOnlineStatus)
-
-    return () => {
-      window.removeEventListener('online', updateOnlineStatus)
-      window.removeEventListener('offline', updateOnlineStatus)
-    }
-  }, [])
-
   useLayoutEffect(() => {
     if (previousPathRef.current === location.pathname) {
       return
@@ -359,6 +344,9 @@ function AppShellContent({ children }: AppShellProps) {
     !hasDismissedSignInPrompt
   const showWhatsNewBanner =
     showWhatsNew && latestChangelogEntry && isHomeRoute && !showSignInPrompt
+  const isTrainingMainRoute =
+    location.pathname === '/training' &&
+    !new URLSearchParams(location.search).has('programView')
 
   function dismissWhatsNew() {
     markChangelogSeen()
@@ -399,17 +387,27 @@ function AppShellContent({ children }: AppShellProps) {
                   </button>
                 </>
               ) : null}
-              {location.pathname.startsWith('/training') ? (
-                <button
-                  className="icon-link"
-                  type="button"
-                  aria-label={t('Start quick workout')}
-                  title={t('Start quick workout')}
-                  disabled={isStartingQuickWorkout}
-                  onClick={() => void startQuickWorkout()}
-                >
-                  <Dumbbell aria-hidden="true" size={22} />
-                </button>
+              {isTrainingMainRoute ? (
+                <>
+                  <button
+                    className="icon-link"
+                    type="button"
+                    aria-label={t('Start quick workout')}
+                    title={t('Start quick workout')}
+                    disabled={isStartingQuickWorkout}
+                    onClick={() => void startQuickWorkout()}
+                  >
+                    <Dumbbell aria-hidden="true" size={22} />
+                  </button>
+                  <Link
+                    className="icon-link"
+                    aria-label="Program information"
+                    title="Program information"
+                    to="/training?programInfo=1"
+                  >
+                    <Info aria-hidden="true" size={22} />
+                  </Link>
+                </>
               ) : null}
               <Link
                 className="icon-link"
@@ -422,8 +420,6 @@ function AppShellContent({ children }: AppShellProps) {
           )
         }
       />
-
-      <OfflineIndicator isOffline={isOffline} />
 
       {showWhatsNewBanner ? (
         <div className="whats-new-banner">

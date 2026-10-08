@@ -128,6 +128,11 @@ describe('HomePage', () => {
       within(bodyweightCard).queryByText('Weekly change'),
     ).not.toBeInTheDocument()
     expect(screen.getByText('Calories remaining')).toBeInTheDocument()
+    const macroSummary = screen.getByRole('region', { name: 'Daily macros' })
+    expect(within(macroSummary).getByText('Protein')).toBeInTheDocument()
+    expect(within(macroSummary).getByText('Carbs')).toBeInTheDocument()
+    expect(within(macroSummary).getByText('Fat')).toBeInTheDocument()
+    expect(within(macroSummary).getAllByText('0 / 0 g')).toHaveLength(3)
     expect(
       screen.getByRole('img', {
         name: 'Daily calories logged and target graph',
@@ -237,6 +242,15 @@ describe('HomePage', () => {
     expect(
       screen.getByRole('button', { name: 'Start Upper' }),
     ).toBeInTheDocument()
+    const startNextButton = screen.getByRole('button', { name: 'Start Upper' })
+    const quickWorkoutButton = screen.getByRole('button', {
+      name: 'Start quick workout',
+    })
+    expect(startNextButton.parentElement).toBe(quickWorkoutButton.parentElement)
+    expect(
+      startNextButton.compareDocumentPosition(quickWorkoutButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
     expect(screen.getByText('Week 1 · Next workout')).toBeInTheDocument()
   })
 

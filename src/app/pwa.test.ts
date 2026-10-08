@@ -95,7 +95,7 @@ describe('PWA service worker updates', () => {
     expect(workbox.update).toHaveBeenCalledTimes(5)
   })
 
-  it('activates a waiting update and reloads onto the new worker', async () => {
+  it('activates a waiting update without reloading the running app', async () => {
     const onUpdateReady = vi.fn()
     const { registerServiceWorkerUpdateHandler } = await import('@app/pwa')
 
@@ -107,11 +107,12 @@ describe('PWA service worker updates', () => {
     onUpdateReady.mock.calls[0]?.[0].applyUpdate()
     expect(workbox.messageSkipWaiting).toHaveBeenCalledTimes(1)
 
-    // The updated worker taking control reloads the app onto the fresh assets.
+    // The running app keeps its already-loaded assets. A natural future launch
+    // will load the newly activated worker's cached build.
     workbox.listeners.controlling?.forEach((listener) =>
       listener({ isUpdate: true }),
     )
-    expect(reloadMock).toHaveBeenCalledTimes(1)
+    expect(reloadMock).not.toHaveBeenCalled()
 
     handle?.cleanup()
   })
@@ -130,7 +131,7 @@ describe('PWA service worker updates', () => {
     handle?.cleanup()
   })
 
-  it('defers the update reload during a live workout and applies it once the workout closes', async () => {
+  it('does not reload for an update while a live workout opens or closes', async () => {
     document.body.classList.add('live-workout-open')
     const { registerServiceWorkerUpdateHandler } = await import('@app/pwa')
 
@@ -142,11 +143,9 @@ describe('PWA service worker updates', () => {
     )
     expect(reloadMock).not.toHaveBeenCalled()
 
-    // Leaving the live workout returns to a safe checkpoint; the deferred
-    // reload then applies (via the visibility checkpoint) exactly once.
     document.body.classList.remove('live-workout-open')
     document.dispatchEvent(new Event('visibilitychange'))
-    expect(reloadMock).toHaveBeenCalledTimes(1)
+    expect(reloadMock).not.toHaveBeenCalled()
 
     handle?.cleanup()
   })

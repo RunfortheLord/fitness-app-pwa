@@ -94,6 +94,7 @@ export type UpdateWorkoutSetInput = {
   metricValueSources?: NonNullable<WorkoutSet['metricValueSources']>
   rir?: number | null
   completed?: boolean
+  restSecondsUsed?: number | null
 }
 
 export type UpdateWorkoutSetTargetInput = {
@@ -301,18 +302,27 @@ export function createWorkoutRepository(
               trackingMethodId,
               beforeStartedAt: now,
               sourceDayId: day.id,
-              excludeDeload: deload,
+              excludeDeload: true,
             })
-            const previousSets = sameDayPreviousSets.length
-              ? sameDayPreviousSets
-              : await getPreviousCompletedExerciseSets({
-                  database,
-                  exerciseId: sourceForWorkout.exerciseId,
-                  exerciseName: sourceForWorkout.exerciseSnapshot.exerciseName,
-                  trackingMethodId,
-                  beforeStartedAt: now,
-                  excludeDeload: deload,
-                })
+            const latestPreviousSets = await getPreviousCompletedExerciseSets({
+              database,
+              exerciseId: sourceForWorkout.exerciseId,
+              exerciseName: sourceForWorkout.exerciseSnapshot.exerciseName,
+              trackingMethodId,
+              beforeStartedAt: now,
+              excludeDeload: true,
+            })
+            const previousSets =
+              workoutAutofillMode === 'smart_progression' && !deload
+                ? latestPreviousSets
+                : sameDayPreviousSets.length
+                  ? sameDayPreviousSets
+                  : latestPreviousSets
+            const previousSetsAreFromSameDay = Boolean(
+              previousSets.length &&
+              sameDayPreviousSets.length &&
+              previousSets[0].workoutId === sameDayPreviousSets[0].workoutId,
+            )
             const performancePrefill =
               deload && repBasedTrackingMethod(trackingMethodId)
                 ? buildDeloadPrefillPlan({
@@ -400,7 +410,7 @@ export function createWorkoutRepository(
                         ? sourceExercise.targetRir
                         : null,
                       trackingMethodId,
-                      sameProgramDay: sameDayPreviousSets.length > 0,
+                      sameProgramDay: previousSetsAreFromSameDay,
                       repClimbPerSession: await exerciseRepClimbPerSession(
                         database,
                         settings?.smartProgressionBaselineLevel,
@@ -684,6 +694,7 @@ export function createWorkoutRepository(
     async updateWorkoutExerciseDefaultRest(
       workoutExerciseId: string,
       defaultRestSeconds: number,
+      currentRestSetId?: string,
     ) {
       if (
         defaultRestSeconds < 0 ||
@@ -717,8 +728,16 @@ export function createWorkoutRepository(
             .where({ workoutExerciseId })
             .filter((set) => !set.completed)
             .toArray()
+          const currentRestSet = currentRestSetId
+            ? await database.workoutSets.get(currentRestSetId)
+            : undefined
+          const setsToUpdate =
+            currentRestSet?.completed &&
+            currentRestSet.workoutId === workoutExercise.workoutId
+              ? [...upcomingSets, currentRestSet]
+              : upcomingSets
           await database.workoutSets.bulkPut(
-            upcomingSets.map((set) => ({
+            setsToUpdate.map((set) => ({
               ...set,
               restSecondsUsed: defaultRestSeconds,
               updatedAt: now,
@@ -749,6 +768,13 @@ export function createWorkoutRepository(
             throw new Error(`Workout set ${setId} was not found.`)
           }
           const completed = input.completed ?? set.completed
+          const workoutExercise =
+            completed &&
+            !set.completed &&
+            !hasOwn(input, 'restSecondsUsed') &&
+            set.restSecondsUsed === null
+              ? await database.workoutExercises.get(set.workoutExerciseId)
+              : undefined
           const updated: WorkoutSet = {
             ...set,
             metricValues: input.metricValues
@@ -761,6 +787,11 @@ export function createWorkoutRepository(
                 }
               : (set.metricValueSources ?? {}),
             rir: hasOwn(input, 'rir') ? (input.rir ?? null) : set.rir,
+            restSecondsUsed: hasOwn(input, 'restSecondsUsed')
+              ? (input.restSecondsUsed ?? null)
+              : (set.restSecondsUsed ??
+                workoutExercise?.exerciseSnapshot.defaultRestSeconds ??
+                null),
             completed,
             completedAt:
               completed && !set.completed
@@ -1416,21 +1447,44 @@ export function createWorkoutRepository(
     },
 
     async addRestTimerSeconds(workoutId: string, seconds: number) {
-      return updateRestTimer(database, workoutId, (timer, now) => {
-        if (timer.status === 'completed' && seconds > 0) {
-          return {
-            ...timer,
+      const now = new Date().toISOString()
+      return database.transaction('rw', database.workouts, async () => {
+        const workout = await database.workouts.get(workoutId)
+        if (!workout || workout.status !== 'active') {
+          throw new Error(`Active workout ${workoutId} was not found.`)
+        }
+        const current = workout.activeRestTimer
+        const shouldStart =
+          seconds > 0 &&
+          (!current ||
+            current.status === 'dismissed' ||
+            current.status === 'completed')
+        let activeRestTimer: RestTimerState
+        if (shouldStart) {
+          activeRestTimer = {
+            id: createId(),
             startedAt: now,
             durationSeconds: seconds,
             pausedAt: null,
             accumulatedPausedSeconds: 0,
             status: 'running',
           }
+        } else {
+          if (!current) {
+            throw new Error(
+              `Active rest timer for workout ${workoutId} was not found.`,
+            )
+          }
+          activeRestTimer = {
+            ...current,
+            durationSeconds: Math.max(0, current.durationSeconds + seconds),
+          }
         }
-        return {
-          ...timer,
-          durationSeconds: Math.max(0, timer.durationSeconds + seconds),
-        }
+        await database.workouts.update(workoutId, {
+          activeRestTimer,
+          updatedAt: now,
+        })
+        return activeRestTimer
       })
     },
 

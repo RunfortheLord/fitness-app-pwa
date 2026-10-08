@@ -126,7 +126,9 @@ describe('TrainingPage', () => {
       screen.getByRole('searchbox', { name: 'Search exercises' }),
       'bench',
     )
-    expect(await screen.findByText('Barbell bench')).toBeInTheDocument()
+    expect(
+      await screen.findByText('Barbell bench', {}, { timeout: 5_000 }),
+    ).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Create exercise' }))
     const duplicateDialog = await screen.findByRole('dialog', {
@@ -351,7 +353,7 @@ describe('TrainingPage', () => {
       await screen.findByRole('button', { name: /^Pull/ }, { timeout: 5_000 }),
     )
     expect(
-      await screen.findByRole('dialog', { name: 'Pull' }),
+      await screen.findByRole('region', { name: 'Pull' }),
     ).toBeInTheDocument()
     expect(screen.getByText(/stays on this day/)).toBeInTheDocument()
   }, 15_000)
@@ -558,7 +560,7 @@ describe('TrainingPage', () => {
       }),
     )
     await user.click(
-      within(await screen.findByRole('dialog', { name: 'Upper' })).getByRole(
+      within(await screen.findByRole('region', { name: 'Upper' })).getByRole(
         'button',
         { name: 'Start Workout' },
       ),
@@ -896,6 +898,10 @@ describe('TrainingPage', () => {
     await waitFor(async () => {
       const workout = await db.workouts.toCollection().first()
       expect(workout?.activeRestTimer?.durationSeconds).toBe(60)
+      const completedSet = (await db.workoutSets.toArray()).find(
+        (set) => set.completed,
+      )
+      expect(completedSet?.restSecondsUsed).toBe(60)
     })
 
     await user.click(
@@ -936,12 +942,19 @@ describe('TrainingPage', () => {
         defaultRestSeconds: 90,
       })
       const activeExercise = await db.workoutExercises.toCollection().first()
+      if (!activeExercise) {
+        throw new Error('Active exercise was not found.')
+      }
       expect(activeExercise?.exerciseSnapshot.defaultRestSeconds).toBe(90)
       const workout = await db.workouts.toCollection().first()
       expect(workout?.activeRestTimer).toMatchObject({
         durationSeconds: 90,
         status: 'running',
       })
+      const sets = await db.workoutSets
+        .where({ workoutExerciseId: activeExercise.id })
+        .sortBy('setNumber')
+      expect(sets.map((set) => set.restSecondsUsed)).toEqual([90, 90])
     })
     await user.keyboard('{Escape}')
     expect(
@@ -950,6 +963,36 @@ describe('TrainingPage', () => {
     expect(
       screen.getByLabelText(/Timer running: 1:(29|30)/),
     ).toBeInTheDocument()
+  })
+
+  it('starts a 30-second rest timer from the add control before any set is completed', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const active = await createProgramRepository(db).activateTemplate(
+      program.template.id,
+    )
+    const started = await workoutRepository.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: testLocalDate,
+    })
+    renderTraining(['/workout'])
+
+    const addTime = await screen.findByRole('button', {
+      name: 'Add 30 seconds',
+    })
+    expect(addTime).toBeEnabled()
+    await user.click(addTime)
+
+    await waitFor(async () => {
+      await expect(db.workouts.get(started.workout.id)).resolves.toMatchObject({
+        activeRestTimer: {
+          durationSeconds: 30,
+          status: 'running',
+        },
+      })
+    })
+    expect(screen.getByLabelText(/Timer running: 0:(29|30)/)).toBeVisible()
   })
 
   it('completes a zero-rest set without requiring RIR or dismissing a missing timer', async () => {
@@ -1038,12 +1081,19 @@ describe('TrainingPage', () => {
         screen.getByLabelText('Rest timer ready: 0:00'),
       ).toBeInTheDocument(),
     )
-    expect(
-      screen.getByRole('button', { name: 'Add 30 seconds' }),
-    ).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add 30 seconds' })).toBeEnabled()
     expect(
       (await workoutRepository.getActiveWorkout())?.activeRestTimer?.status,
     ).toBe('dismissed')
+
+    await user.click(screen.getByRole('button', { name: 'Add 30 seconds' }))
+    await waitFor(async () => {
+      await expect(workoutRepository.getActiveWorkout()).resolves.toMatchObject(
+        {
+          activeRestTimer: { durationSeconds: 30, status: 'running' },
+        },
+      )
+    })
   })
 
   it('checks off a set and shows timer controls before persistence finishes', async () => {
@@ -2094,7 +2144,11 @@ describe('TrainingPage', () => {
     await createProgramRepository(db).activateTemplate(program.template.id)
     renderTraining()
 
-    const workoutDays = await screen.findByLabelText('Workout days')
+    const workoutDays = await screen.findByLabelText(
+      'Workout days',
+      undefined,
+      { timeout: 10_000 },
+    )
     const upperDay = within(workoutDays)
       .getByText('Upper')
       .closest('.program-day-card')
@@ -2113,19 +2167,41 @@ describe('TrainingPage', () => {
       }),
     ).toBeInTheDocument()
 
-    await user.click(
-      within(upperDay as HTMLElement).getByRole('button', { name: /^Upper/ }),
-    )
-    const dialog = await screen.findByRole('dialog', { name: 'Upper' })
-    expect(dialog).toHaveClass('bottom-sheet--page')
-    const startButton = within(dialog).getByRole('button', {
+    await user.click(screen.getByRole('button', { name: /^Upper/ }))
+    const preview = await screen.findByRole('region', { name: 'Upper' })
+    expect(
+      within(preview).getByRole('button', { name: 'Back to Current Program' }),
+    ).toBeVisible()
+    expect(preview).toHaveClass('workout-day-page')
+    expect(document.body).toHaveClass('workout-day-page-open')
+    const startButton = within(preview).getByRole('button', {
       name: 'Start Workout',
     })
-    const firstExercise = within(dialog).getByText('Bench press')
+    const firstExercise = within(preview).getByText('Bench press')
+    expect(firstExercise.closest('.program-prescription-list')).toHaveClass(
+      'workout-day-prescription-list',
+    )
     expect(
       startButton.compareDocumentPosition(firstExercise) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
+    await user.click(
+      within(preview).getByRole('button', { name: 'Back to Current Program' }),
+    )
+    expect(
+      screen.queryByRole('region', { name: 'Upper' }),
+    ).not.toBeInTheDocument()
+    expect(document.body).not.toHaveClass('workout-day-page-open')
+    await user.click(screen.getByRole('button', { name: /^Upper/ }))
+    await user.click(
+      within(await screen.findByRole('region', { name: 'Upper' })).getByRole(
+        'button',
+        { name: 'Edit program' },
+      ),
+    )
+    expect(
+      await screen.findByRole('dialog', { name: 'Program Editor' }),
+    ).toBeInTheDocument()
   })
 
   it('shows the current program week on the active cycle card', async () => {
@@ -2620,7 +2696,7 @@ describe('TrainingPage', () => {
       screen
         .getByRole('button', { name: 'Back to browse programs' })
         .closest('section'),
-    ).toHaveClass('subpage-enter')
+    ).toHaveClass('subpage-enter', 'program-preview-page')
     expect(screen.getByText('Barbell Back Squat')).toBeInTheDocument()
     const mondayPreview = screen
       .getByText('Monday - Squat + Bench')
@@ -2889,6 +2965,95 @@ describe('TrainingPage', () => {
     expect(
       await screen.findByRole('option', { name: 'Deload 2' }),
     ).toBeInTheDocument()
+  })
+
+  it('shows current program information and direct weekly sets by primary muscle', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const exercise = program.exercises[0]
+    await db.exercises.update(exercise.exerciseId, {
+      primaryMuscleGroups: ['chest', 'triceps'],
+    })
+    const programs = createProgramRepository(db)
+    const active = await programs.activateTemplate(program.template.id)
+    await programs.updateActiveCycle(active.cycle.id, {
+      deloadSchedulingEnabled: true,
+      deloadWeekNumbers: [4, 8],
+      trackRirEverySet: true,
+    })
+    await db.activeProgramCycles.update(active.cycle.id, {
+      notes: 'Use controlled repetitions.',
+    })
+    renderTraining()
+
+    await screen.findByRole(
+      'button',
+      { name: 'Edit active program' },
+      { timeout: 10_000 },
+    )
+    const quickWorkout = await screen.findByRole('button', {
+      name: 'Start quick workout',
+    })
+    const mainInformationButton = screen.getByRole('link', {
+      name: 'Program information',
+    })
+    const settingsButton = screen.getByRole('link', { name: 'Settings' })
+    expect(
+      quickWorkout.compareDocumentPosition(mainInformationButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      mainInformationButton.compareDocumentPosition(settingsButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    await user.click(mainInformationButton)
+    const mainInformation = await screen.findByRole('dialog', {
+      name: 'Program information',
+    })
+    expect(mainInformation).toHaveClass('bottom-sheet--page')
+    expect(mainInformation).toHaveClass('bottom-sheet--app-background')
+    expect(within(mainInformation).getByText('Upper Lower')).toBeInTheDocument()
+    expect(
+      within(mainInformation).getByText('Use controlled repetitions.'),
+    ).toBeInTheDocument()
+    expect(
+      within(mainInformation).getByText('Current active program'),
+    ).toBeInTheDocument()
+    expect(within(mainInformation).getByText('1 of 10')).toBeInTheDocument()
+    expect(within(mainInformation).getByText('Weeks 4, 8')).toBeInTheDocument()
+    expect(within(mainInformation).getByText('Every set')).toBeInTheDocument()
+    expect(within(mainInformation).getByText('Upper')).toBeInTheDocument()
+    expect(
+      within(mainInformation).getByText('1 exercise · 2 sets'),
+    ).toBeInTheDocument()
+    expect(within(mainInformation).getByText('Chest')).toBeInTheDocument()
+    expect(within(mainInformation).getByText('Triceps')).toBeInTheDocument()
+    expect(within(mainInformation).getAllByText('2 sets')).toHaveLength(2)
+    expect(
+      within(mainInformation).getByText(
+        /Secondary-muscle work is not estimated/,
+      ),
+    ).toBeInTheDocument()
+    await user.click(
+      within(mainInformation).getByRole('button', {
+        name: 'Back from program information',
+      }),
+    )
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Edit active program' }),
+    )
+    const editor = await screen.findByRole('dialog', {
+      name: 'Program Editor',
+    })
+    await user.click(
+      within(editor).getByRole('button', { name: 'Program information' }),
+    )
+    const information = await screen.findByRole('dialog', {
+      name: 'Program information',
+    })
+    expect(information).toHaveClass('bottom-sheet--page')
+    expect(within(information).getByText('Direct sets per week')).toBeVisible()
   })
 
   it('routes the Training bottom nav item to the live workout when a workout is active', async () => {

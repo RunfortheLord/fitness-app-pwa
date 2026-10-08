@@ -648,6 +648,11 @@ function LiveWorkoutPageContent() {
       readyState.workout.activeRestTimer &&
       readyState.workout.activeRestTimer.status !== 'dismissed',
     )
+    const currentRestSetId = shouldUpdateTimer
+      ? mostRecentlyCompletedSet(
+          Object.values(readyState.setsByExercise).flat(),
+        )?.id
+      : undefined
 
     setState((current) => {
       if (current.status !== 'ready' || current.workout.id !== workoutId) {
@@ -677,6 +682,17 @@ function LiveWorkoutPageContent() {
               }
             : exercise,
         ),
+        setsByExercise: Object.fromEntries(
+          Object.entries(current.setsByExercise).map(([exerciseId, sets]) => [
+            exerciseId,
+            sets.map((set) =>
+              (exerciseId === workoutExerciseId && !set.completed) ||
+              set.id === currentRestSetId
+                ? { ...set, restSecondsUsed: normalizedSeconds }
+                : set,
+            ),
+          ]),
+        ),
       }
     })
 
@@ -689,6 +705,7 @@ function LiveWorkoutPageContent() {
         workoutRepository.updateWorkoutExerciseDefaultRest(
           workoutExerciseId,
           normalizedSeconds,
+          currentRestSetId,
         ),
       ])
       if (shouldUpdateTimer) {
@@ -942,8 +959,35 @@ function LiveWorkoutPageContent() {
   }
 
   const currentWorkoutId = state.workout.id
+  const currentRestTimer = state.workout.activeRestTimer
 
   function addRestTimerTime() {
+    if (!currentRestTimer || currentRestTimer.status === 'dismissed') {
+      const startedAt = new Date().toISOString()
+      setState((current) =>
+        current.status === 'ready'
+          ? {
+              ...current,
+              workout: {
+                ...current.workout,
+                activeRestTimer: {
+                  id: crypto.randomUUID(),
+                  startedAt,
+                  durationSeconds: 30,
+                  pausedAt: null,
+                  accumulatedPausedSeconds: 0,
+                  status: 'running',
+                },
+              },
+            }
+          : current,
+      )
+      runRestTimerMutation(
+        workoutRepository.addRestTimerSeconds(currentWorkoutId, 30),
+        true,
+      )
+      return
+    }
     updateRestTimerImmediately(
       (timer) =>
         timer.status === 'completed'
@@ -1144,6 +1188,9 @@ function LiveWorkoutPageContent() {
                           completedAt: completed
                             ? (candidate.completedAt ?? changedAt)
                             : null,
+                          restSecondsUsed: completed
+                            ? restSeconds
+                            : candidate.restSecondsUsed,
                           updatedAt: changedAt,
                         }
                       : candidate,
@@ -1156,7 +1203,10 @@ function LiveWorkoutPageContent() {
             }
             const setMutation = trackOptimisticMutation(
               workoutRepository
-                .updateWorkoutSet(set.id, { completed })
+                .updateWorkoutSet(set.id, {
+                  completed,
+                  ...(completed ? { restSecondsUsed: restSeconds } : {}),
+                })
                 .then(async () => {
                   if (!completed) {
                     return
@@ -2332,7 +2382,6 @@ function RestTimerControls({
       </IconButton>
       <IconButton
         aria-label="Add 30 seconds"
-        disabled={!isAvailable}
         title="Add 30 seconds"
         type="button"
         onClick={onAddTime}
@@ -3199,6 +3248,20 @@ function prefersReducedMotion() {
   return (
     window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
   )
+}
+
+function mostRecentlyCompletedSet(sets: WorkoutSet[]) {
+  return sets.reduce<WorkoutSet | undefined>((latest, set) => {
+    if (!set.completed || !set.completedAt) {
+      return latest
+    }
+    if (!latest?.completedAt) {
+      return set
+    }
+    return Date.parse(set.completedAt) >= Date.parse(latest.completedAt)
+      ? set
+      : latest
+  }, undefined)
 }
 
 function isInteractiveElement(target: EventTarget | null) {

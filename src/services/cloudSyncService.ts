@@ -125,8 +125,13 @@ export const cloudSyncService = {
     }
 
     const localBackupHistory = await db.backupMetadata.toArray()
+    // Postgres can return +00:00 and omit zero fractional seconds, whereas
+    // local exports use toISOString(). Compare instants, not serialized text.
+    const cloudBackupAt = Date.parse(cloudBackup.updated_at)
     return localBackupHistory.some(
-      (entry) => entry.exportedAt === cloudBackup.updated_at,
+      (entry) =>
+        entry.exportedAt !== null &&
+        Date.parse(entry.exportedAt) === cloudBackupAt,
     )
   },
 }

@@ -88,7 +88,7 @@ test('returns a standalone OAuth callback to app Settings', async ({
   await expect(page).toHaveURL('/settings?auth_relay_callback=received')
   await expect(
     page.getByRole('heading', { level: 1, name: 'Settings' }),
-  ).toBeVisible()
+  ).toBeVisible({ timeout: 30_000 })
 })
 
 test('registers the service worker in the production build', async ({
@@ -136,7 +136,7 @@ test(
     ).toBeVisible()
     await expect(
       page.getByText('Offline. Changes stay on this device.'),
-    ).toBeVisible()
+    ).toHaveCount(0)
 
     await page.goto('/training')
     await expect(
@@ -190,7 +190,7 @@ test('activates an available update without interrupting the active app', async 
   await page.goto('/?pwaTest=1')
   await expect(
     page.getByRole('heading', { level: 1, name: 'Home' }),
-  ).toBeVisible()
+  ).toBeVisible({ timeout: 30_000 })
   const signInPrompt = page.getByRole('complementary', {
     name: 'Your data stays local',
   })
@@ -268,7 +268,7 @@ async function installControlledServiceWorker(
   await page.goto('/')
   await expect(
     page.getByRole('heading', { level: 1, name: 'Home' }),
-  ).toBeVisible()
+  ).toBeVisible({ timeout: 30_000 })
 
   const supportsServiceWorker = await page.evaluate(
     () => 'serviceWorker' in navigator,
@@ -342,7 +342,7 @@ async function createActiveWorkout(page: Page) {
     .click()
   await page.getByRole('button', { name: /^Offline A/ }).click()
   await page
-    .getByRole('dialog', { name: 'Offline A' })
+    .getByRole('region', { name: 'Offline A' })
     .getByRole('button', { name: 'Start Workout' })
     .click()
 

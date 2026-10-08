@@ -12,6 +12,7 @@ reference/*.mp4
 reference/*.MP4
 reference/frames/
 reference/contact-sheets/
+recovery/
 *.log
 .DS_Store
 Thumbs.db

@@ -11,10 +11,12 @@ Apple use the same local-first, PKCE relay, and deletion boundaries.
 
 - Sign-in uses Supabase Auth. Google and Apple are the approved optional OAuth
   providers; neither may gate core local features.
-- Signed-in users receive a restorable compact automatic snapshot when the app opens, when
-  connectivity returns, and within fifteen minutes of backed-up local data
-  changing. Returning to a visible app respects the same throttle rather than
-  forcing another upload.
+- Signed-in users receive a restorable compact automatic snapshot when the app
+  opens, when it returns to the foreground (including an installed PWA resume),
+  when connectivity returns, and within fifteen minutes of backed-up local data
+  changing. Opening or returning to the foreground requests an immediate upload
+  even without edits; only mutation-triggered backups use the fifteen-minute
+  throttle. Offline requests wait for connectivity.
 - Automatic backups retry after transient failures. Changes made offline stay
   local and are backed up after connectivity returns.
 - Automatic-backup failures and existing-snapshot conflicts remain silent in
@@ -25,6 +27,9 @@ Apple use the same local-first, PKCE relay, and deletion boundaries.
   its local backup history proves that the snapshot was created or restored on
   that device. This prevents a new or cleared device from overwriting a useful
   cloud backup with an empty local database.
+- The overwrite guard compares timestamp instants rather than timestamp text:
+  Supabase can return `+00:00` and different fractional-second formatting for the
+  same local ISO timestamp. Invalid or different timestamps remain blocked.
 - `Back up now` uploads cloud snapshot format 1 from
   `backupService.createCloudBackup()` to the signed-in user's `public.backups`
   row and remains available as a manual fallback. The compact payload omits
@@ -58,6 +63,25 @@ Apple use the same local-first, PKCE relay, and deletion boundaries.
   to continue offline on that device.
 
 ## Manual Setup
+
+### Checking recent backup activity
+
+In Supabase Table Editor, `public.backups.updated_at` records the latest
+successful snapshot upload. In SQL Editor, join it to the account email:
+
+```sql
+select u.email, b.updated_at as last_cloud_backup_at
+from auth.users u
+left join public.backups b on b.user_id = u.id
+order by b.updated_at desc nulls last;
+```
+
+This is evidence of a successful backup, not exact last-use analytics. Offline
+or signed-out use and failed or protected uploads do not advance it. Supabase's
+authentication `last_sign_in_at` is separate. The timestamp is supplied by the
+device when the snapshot is created, so it also depends on the device clock.
+
+### Configuration
 
 Run `db/supabase/schema.sql` in Supabase SQL editor, then set these variables:
 
