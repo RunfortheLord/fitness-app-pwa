@@ -1333,3 +1333,21 @@ as the blank band visible in the failed workout screenshot.
 - Ordinary browser tabs keep directly editable inputs. Genuine live-workout
   text notes may still use the native keyboard, but they cannot hide the in-flow
   live dashboard or write viewport measurements back into the workout layout.
+
+## 2026-10-22: Public 20-week strength and hypertrophy blocks
+
+- Publish the supplied 20-week plan as two read-only, ten-week built-in program
+  templates in Browse programs. The app does not switch templates or change
+  weekly prescriptions automatically; people choose Block A, then Block B, and
+  follow the dated week-by-week instructions in each program's notes.
+- Preserve the handoff's 53 exercise prescriptions and written progression,
+  taper, and February testing guidance. Block A schedules deload weeks 4 and 8;
+  Block B schedules recovery week 7. These use the app's existing deload behavior,
+  while the written notes explain additional manual load and volume changes.
+- The public seeds use new stable built-in IDs and omit the handoff's private
+  template, day, and exercise record IDs. Seeding adds library entries without
+  editing existing user templates, active cycles, completed workouts, nutrition,
+  or bodyweight records. The auxiliary test-week template is not included in the
+  supplied two-program specification; its February schedule remains in Block B
+  notes.
+

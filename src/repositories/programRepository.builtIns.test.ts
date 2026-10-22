@@ -24,16 +24,16 @@ afterEach(async () => {
 })
 
 describe('seedBuiltInPrograms', () => {
-  it('seeds all 29 immutable built-in templates with days and exercises', async () => {
+  it('seeds all 31 immutable built-in templates with days and exercises', async () => {
     const repository = createProgramRepository(database)
     await repository.seedBuiltInPrograms()
 
     const templates = await database.programTemplates.toArray()
     const builtIns = templates.filter((t) => t.isBuiltIn)
-    expect(builtIns).toHaveLength(29)
+    expect(builtIns).toHaveLength(31)
 
     const ids = builtIns.map((t) => t.id)
-    expect(new Set(ids).size).toBe(29)
+    expect(new Set(ids).size).toBe(31)
 
     // Every prescription references a real, seeded exercise.
     const prescriptions = await database.templateWorkoutExercises.toArray()
@@ -57,9 +57,47 @@ describe('seedBuiltInPrograms', () => {
     await repository.seedBuiltInPrograms()
     await repository.seedBuiltInPrograms()
 
-    expect(await database.programTemplates.count()).toBe(29)
+    expect(await database.programTemplates.count()).toBe(31)
     expect(await database.templateWorkoutDays.count()).toBe(firstDays)
     expect(await database.templateWorkoutExercises.count()).toBe(firstExercises)
+  })
+
+  it('seeds the public block prescriptions and deload schedules without changing an active cycle', async () => {
+    const repository = createProgramRepository(database)
+    await repository.seedBuiltInPrograms()
+    const existing = await repository.cloneProgramTemplate(
+      builtInProgramTemplateId('beginner-full-body-a-b'),
+    )
+    const active = await repository.activateTemplate(existing.template.id)
+
+    await repository.seedBuiltInPrograms()
+
+    for (const [slug, weeks, rowRest] of [
+      ['20-week-size-strength-block-a-2026', [4, 8], 150],
+      ['20-week-strength-peak-block-b-2027', [7], 120],
+    ] as const) {
+      const structure = await repository.getTemplateStructure(
+        builtInProgramTemplateId(slug),
+      )
+      expect(structure.template).toMatchObject({
+        isBuiltIn: true,
+        durationWeeks: 10,
+        deloadWeekNumbers: weeks,
+        deloadSchedulingEnabled: true,
+      })
+      const thursday = structure.days[2]
+      expect(
+        structure.exercisesByDay[thursday.id].find(
+          (exercise) => exercise.exerciseId === 'builtin:t-bar-row',
+        ),
+      ).toMatchObject({ restSecondsOverride: rowRest })
+    }
+    await expect(
+      database.activeProgramCycles.get(active.cycle.id),
+    ).resolves.toMatchObject({
+      status: 'active',
+      sourceTemplateId: existing.template.id,
+    })
   })
 
   it('replaces an older built-in seed while preserving the stable template id', async () => {

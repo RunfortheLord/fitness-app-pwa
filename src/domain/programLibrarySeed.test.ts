@@ -32,12 +32,14 @@ const EXPECTED_NAMES = [
   'Hybrid Upper/Lower/Push/Pull/Legs',
   'Hybrid Upper/Lower/Chest-Back/Lower/Arms',
   'Bodybuilding-Biased Powerbuilding',
+  '20WK A | Size + Strength | Oct 26–Jan 3',
+  '20WK B | Strength Peak | Jan 4–Mar 14',
 ]
 
 // number of training days expected per program, in order.
 const EXPECTED_DAY_COUNTS = [
   2, 3, 4, 3, 4, 4, 4, 6, 5, 4, 5, 4, 4, 4, 3, 5, 3, 6, 2, 3, 4, 5, 6, 4, 6, 4,
-  5, 5, 7,
+  5, 5, 7, 4, 4,
 ]
 
 function programByName(name: string) {
@@ -49,8 +51,8 @@ function programByName(name: string) {
 }
 
 describe('BUILT_IN_PROGRAMS', () => {
-  it('contains exactly 29 programs in the required order', () => {
-    expect(BUILT_IN_PROGRAMS).toHaveLength(29)
+  it('contains exactly 31 programs in the required order', () => {
+    expect(BUILT_IN_PROGRAMS).toHaveLength(31)
     expect(BUILT_IN_PROGRAMS.map((p) => p.name)).toEqual(EXPECTED_NAMES)
   })
 
@@ -66,6 +68,68 @@ describe('BUILT_IN_PROGRAMS', () => {
     for (const program of BUILT_IN_PROGRAMS) {
       expect(program.level.length).toBeGreaterThan(0)
       expect(program.goal.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('publishes both 20-week blocks with the requested Thursday changes and scheduled deloads', () => {
+    const blocks = EXPECTED_NAMES.slice(-2).map(programByName)
+    expect(blocks.map((block) => block.deloadWeekNumbers)).toEqual([
+      [4, 8],
+      [7],
+    ])
+    expect(blocks.every((block) => block.deloadSchedulingEnabled)).toBe(true)
+
+    for (const [index, block] of blocks.entries()) {
+      expect(block.durationWeeks).toBe(10)
+      expect(block.notes).toContain('Feb 8')
+      const monday = block.days[0].exercises
+      const thursday = block.days[2].exercises
+      expect(
+        monday.filter(
+          (ex) => ex.exerciseId === 'builtin:machine-lateral-raise',
+        ),
+      ).toHaveLength(1)
+      expect(
+        thursday.some((ex) => ex.exerciseId === 'builtin:seated-cable-row'),
+      ).toBe(false)
+      expect(thursday.map((ex) => ex.exerciseId).slice(-3)).toEqual([
+        'builtin:machine-lateral-raise',
+        'builtin:cable-rear-delt-fly',
+        'builtin:ez-bar-curl',
+      ])
+      expect(
+        thursday.find((ex) => ex.exerciseId === 'builtin:t-bar-row'),
+      ).toMatchObject({
+        targetSetCount: 3,
+        targetRepsMin: 8,
+        targetRepsMax: index === 0 ? 12 : 10,
+        targetRir: 2,
+        restSecondsOverride: index === 0 ? 150 : 120,
+      })
+      for (const day of [monday, thursday]) {
+        expect(
+          day.find((ex) => ex.exerciseId === 'builtin:machine-lateral-raise'),
+        ).toMatchObject({
+          targetSetCount: 2,
+          targetRepsMin: 12,
+          targetRepsMax: 20,
+          targetRir: 2,
+          restSecondsOverride: 90,
+        })
+      }
+      expect(
+        thursday.filter(
+          (ex) => ex.exerciseId === 'builtin:cable-rear-delt-fly',
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          targetSetCount: 2,
+          targetRepsMin: 12,
+          targetRepsMax: 20,
+          targetRir: 2,
+          restSecondsOverride: 90,
+        }),
+      ])
     }
   })
 

@@ -810,7 +810,9 @@ describe('NutritionPage', () => {
     expect(screen.getByText('Recommended')).toBeInTheDocument()
     expect(screen.getByText(/0.9 lb\/week \(0.50%\)/)).toBeInTheDocument()
     expect(screen.getByText('2313 kcal')).toBeInTheDocument()
-    expect(screen.getByText(/2026$/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/^[A-Z][a-z]{2} \d{1,2}, \d{4}$/),
+    ).toBeInTheDocument()
 
     fireEvent.input(rateSlider, { target: { value: '0.75' } })
     expect(screen.getByText(/1.35 lb\/week \(0.75%\)/)).toBeInTheDocument()
