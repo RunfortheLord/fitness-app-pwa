@@ -1,12 +1,15 @@
 // Seeded from the original 28-program source-of-truth. Targeted program
 // revisions are maintained here with exact regression coverage.
 
+import { TWENTY_WEEK_PROGRAMS } from './twentyWeekProgramSeed'
+
 export type BuiltInProgramExerciseSeed = {
   exerciseId: string
   targetSetCount: number
   targetRepsMin: number
   targetRepsMax: number
   targetRir: number
+  restSecondsOverride?: number
   perSide?: boolean
   notes?: string
 }
@@ -24,6 +27,8 @@ export type BuiltInProgramSeed = {
   goal: string
   /** Planned length in weeks; defaults to 10 when omitted. */
   durationWeeks?: number
+  deloadWeekNumbers?: number[]
+  deloadSchedulingEnabled?: boolean
   notes?: string
   days: BuiltInProgramDaySeed[]
 }
@@ -6653,4 +6658,5 @@ export const BUILT_IN_PROGRAMS: BuiltInProgramSeed[] = [
       },
     ],
   },
+  ...TWENTY_WEEK_PROGRAMS,
 ]
