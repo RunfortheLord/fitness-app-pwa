@@ -74,6 +74,7 @@ describe('HistoryPage', () => {
     renderHistory('/history?view=bodyweight')
 
     expect(await screen.findByText('Bodyweight progress')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'All' }))
     expect(await screen.findByLabelText('Graph summary')).toHaveTextContent(
       '188.4 lb',
     )
@@ -103,6 +104,7 @@ describe('HistoryPage', () => {
   })
 
   it('shows the bodyweight graph converted to kilograms when preferred', async () => {
+    const user = userEvent.setup()
     await settingsRepository.saveWeightUnit('kg')
     await db.bodyweightEntries.add({
       id: 'weight-kg',
@@ -118,6 +120,7 @@ describe('HistoryPage', () => {
 
     // 200 lb -> 90.7 kg shown to one decimal, with a kg axis label. The unit
     // resolves from a live query, so wait for the converted render.
+    await user.click(await screen.findByRole('button', { name: 'All' }))
     expect(await screen.findByText('Bodyweight (kg)')).toBeInTheDocument()
     await waitFor(() =>
       expect(screen.getByLabelText('Graph summary')).toHaveTextContent(
@@ -229,6 +232,7 @@ describe('HistoryPage', () => {
     expect(
       await screen.findByLabelText('Strength graph metric'),
     ).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'All' }))
     expect(
       (await screen.findAllByText(/latest estimated 1 rep max: 120 lb/i))
         .length,
@@ -273,6 +277,7 @@ describe('HistoryPage', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Total volume' }),
     )
+    await user.click(screen.getByRole('button', { name: 'All' }))
     expect(screen.getByLabelText('Total volume graph')).toBeInTheDocument()
     await user.click(
       screen.getByRole('button', {

@@ -1350,4 +1350,3 @@ as the blank band visible in the failed workout screenshot.
   or bodyweight records. The auxiliary test-week template is not included in the
   supplied two-program specification; its February schedule remains in Block B
   notes.
-
