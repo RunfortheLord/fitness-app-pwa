@@ -1,9 +1,11 @@
 /// <reference types="node" />
 
 import { createRequestObserver } from '../../src/server/serverHttp.js'
+import { readIntegrationHealth } from '../../src/server/integrationHealth.js'
 
 type VercelRequest = {
   method?: string
+  query?: Record<string, string | string[] | undefined>
 }
 
 type VercelResponse = {
@@ -13,9 +15,10 @@ type VercelResponse = {
 }
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
+  const isHealthRequest = req.query?.route === 'health'
   const observer = createRequestObserver({
     method: req.method,
-    route: '/api/push/config',
+    route: isHealthRequest ? '/api/health' : '/api/push/config',
   })
   res.setHeader('Cache-Control', 'no-store')
   res.setHeader('X-Request-ID', observer.requestId)
@@ -26,6 +29,22 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
       ok: false,
       error: { code: 'invalid_request', message: 'Method not allowed.' },
     })
+    return
+  }
+
+  if (isHealthRequest) {
+    const configured = readIntegrationHealth(process.env)
+    const ready =
+      configured.accountDeletion &&
+      configured.authRelay &&
+      configured.cloudBackup &&
+      configured.distributedAiProtection &&
+      configured.foodSearch &&
+      configured.mealAnalysis &&
+      configured.providerRevocation &&
+      configured.supportContact
+    observer.finish({ outcome: ready ? 'ready' : 'degraded', status: 200 })
+    res.status(200).json({ configured, ok: true, ready })
     return
   }
 

@@ -84,6 +84,10 @@
   ],
   "rewrites": [
     {
+      "source": "/api/health",
+      "destination": "/api/push/config?route=health"
+    },
+    {
       "source": "/api/analytics",
       "destination": "/api/feedback?route=analytics"
     },

@@ -4,7 +4,7 @@ import {
   isProviderTokenType,
   readEncryptedProviderToken,
   type ProviderCredentialGateway,
-} from '../src/server/providerCredentials.js'
+} from './providerCredentials.js'
 
 export function createSupabaseProviderCredentialGateway(
   client: SupabaseClient,

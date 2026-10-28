@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { createClient } from '@supabase/supabase-js'
 
-import { createSupabaseProviderCredentialGateway } from '../providerCredentialGateway.js'
+import { createSupabaseProviderCredentialGateway } from '../../src/server/providerCredentialGateway.js'
 import {
   isAllowedAppOrigin,
   readBearerToken,

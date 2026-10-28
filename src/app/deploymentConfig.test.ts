@@ -1,3 +1,5 @@
+import { readdirSync } from 'node:fs'
+
 import { describe, expect, it } from 'vitest'
 
 import packageJson from '../../package.json'
@@ -15,6 +17,7 @@ type VercelHeaderRule = {
 
 type VercelConfig = {
   headers: VercelHeaderRule[]
+  rewrites: { destination: string; source: string }[]
 }
 
 describe('deployment cache headers', () => {
@@ -41,6 +44,19 @@ describe('deployment cache headers', () => {
       'VITE_DEPLOYMENT_CHANNEL=dev-stable',
     )
     expect(packageJson.scripts['deploy:stable']).not.toContain('--project')
+  })
+
+  it('routes health through an existing function and fits the Hobby function limit', () => {
+    const config = vercelConfig as VercelConfig
+    expect(config.rewrites).toContainEqual({
+      source: '/api/health',
+      destination: '/api/push/config?route=health',
+    })
+    expect(
+      readdirSync('api', { recursive: true }).filter(
+        (entry) => typeof entry === 'string' && entry.endsWith('.ts'),
+      ).length,
+    ).toBeLessThanOrEqual(12)
   })
 })
 
