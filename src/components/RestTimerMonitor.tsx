@@ -62,77 +62,84 @@ export function RestTimerMonitor() {
 
   useEffect(() => {
     let isCurrent = true
+    let checkInProgress = false
 
     async function checkRestTimer() {
-      const workout = await workoutRepository.getActiveWorkout()
-      const timer = workout?.activeRestTimer
-      const nextNativeTimerSignature = timer
-        ? [
-            timer.id,
-            timer.startedAt,
-            timer.durationSeconds,
-            timer.accumulatedPausedSeconds,
-            timer.status,
-            timerSound.current.bannersEnabled,
-            timerSound.current.enabled,
-          ].join(':')
-        : 'no-active-rest-timer'
-      if (nativeTimerSignature.current !== nextNativeTimerSignature) {
-        try {
-          const nativeStatus = timerSound.current.bannersEnabled
-            ? await nativeRestTimerNotificationService.sync(timer ?? null, {
-                soundEnabled: timerSound.current.enabled,
-              })
-            : await nativeRestTimerNotificationService.cancel()
-          if (nativeStatus === 'unavailable') {
-            const webPushStatus = timerSound.current.bannersEnabled
-              ? await webPushRestTimerNotificationService.sync(timer ?? null)
-              : await webPushRestTimerNotificationService.cancel()
-            outsideAlertScheduled.current =
-              webPushStatus === 'scheduled' || webPushStatus === 'expired'
-          } else {
-            outsideAlertScheduled.current =
-              nativeStatus === 'scheduled' || nativeStatus === 'expired'
-          }
-          nativeTimerSignature.current = nextNativeTimerSignature
-        } catch {
-          // Retry on the next poll; in-app completion remains authoritative.
-        }
-      }
-      if (!isCurrent || !workout || !timer || !isRestTimerExpired(timer)) {
-        return
-      }
-
-      const timerKey = `${timer.id}:${timer.startedAt}`
-      if (!alertedTimerKeys.current.has(timerKey)) {
-        alertedTimerKeys.current.add(timerKey)
-        announceRestComplete(
-          timerSound.current,
-          shouldPlayInAppTimerSound(outsideAlertScheduled.current),
-          shouldShowImmediateSystemTimerAlert(),
-          timer.id,
-        )
-      }
-      if (completingTimerKeys.current.has(timerKey)) {
-        return
-      }
-
-      completingTimerKeys.current.add(timerKey)
+      if (checkInProgress) return
+      checkInProgress = true
       try {
-        await workoutRepository.completeRestTimer(workout.id)
-        const nativeStatus = await nativeRestTimerNotificationService.cancel()
-        if (nativeStatus === 'unavailable') {
-          await webPushRestTimerNotificationService.cancel()
+        const workout = await workoutRepository.getActiveWorkout()
+        const timer = workout?.activeRestTimer
+        const nextNativeTimerSignature = timer
+          ? [
+              timer.id,
+              timer.startedAt,
+              timer.durationSeconds,
+              timer.accumulatedPausedSeconds,
+              timer.status,
+              timerSound.current.bannersEnabled,
+              timerSound.current.enabled,
+            ].join(':')
+          : 'no-active-rest-timer'
+        if (nativeTimerSignature.current !== nextNativeTimerSignature) {
+          try {
+            const nativeStatus = timerSound.current.bannersEnabled
+              ? await nativeRestTimerNotificationService.sync(timer ?? null, {
+                  soundEnabled: timerSound.current.enabled,
+                })
+              : await nativeRestTimerNotificationService.cancel()
+            if (nativeStatus === 'unavailable') {
+              const webPushStatus = timerSound.current.bannersEnabled
+                ? await webPushRestTimerNotificationService.sync(timer ?? null)
+                : await webPushRestTimerNotificationService.cancel()
+              outsideAlertScheduled.current =
+                webPushStatus === 'scheduled' || webPushStatus === 'expired'
+            } else {
+              outsideAlertScheduled.current =
+                nativeStatus === 'scheduled' || nativeStatus === 'expired'
+            }
+            nativeTimerSignature.current = nextNativeTimerSignature
+          } catch {
+            // Retry on the next poll; in-app completion remains authoritative.
+          }
         }
-        if (isCurrent) {
-          window.dispatchEvent(
-            new CustomEvent('fitness-log:rest-timer-completed', {
-              detail: { workoutId: workout.id, timerId: timer.id },
-            }),
+        if (!isCurrent || !workout || !timer || !isRestTimerExpired(timer)) {
+          return
+        }
+
+        const timerKey = `${timer.id}:${timer.startedAt}`
+        if (!alertedTimerKeys.current.has(timerKey)) {
+          alertedTimerKeys.current.add(timerKey)
+          announceRestComplete(
+            timerSound.current,
+            shouldPlayInAppTimerSound(outsideAlertScheduled.current),
+            shouldShowImmediateSystemTimerAlert(),
+            timer.id,
           )
         }
+        if (completingTimerKeys.current.has(timerKey)) {
+          return
+        }
+
+        completingTimerKeys.current.add(timerKey)
+        try {
+          await workoutRepository.completeRestTimer(workout.id)
+          const nativeStatus = await nativeRestTimerNotificationService.cancel()
+          if (nativeStatus === 'unavailable') {
+            await webPushRestTimerNotificationService.cancel()
+          }
+          if (isCurrent) {
+            window.dispatchEvent(
+              new CustomEvent('fitness-log:rest-timer-completed', {
+                detail: { workoutId: workout.id, timerId: timer.id },
+              }),
+            )
+          }
+        } finally {
+          completingTimerKeys.current.delete(timerKey)
+        }
       } finally {
-        completingTimerKeys.current.delete(timerKey)
+        checkInProgress = false
       }
     }
 

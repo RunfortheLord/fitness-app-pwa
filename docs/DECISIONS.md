@@ -1398,3 +1398,15 @@ as the blank band visible in the failed workout screenshot.
   or bodyweight records. The auxiliary test-week template is not included in the
   supplied two-program specification; its February schedule remains in Block B
   notes.
+
+## 2026-11-01: Restore the installed-PWA sign-in relay on stable
+
+- The stable Vercel project had manually configured Redis REST variables
+  and no connected Redis resource. Relay creation returned HTTP 503. The
+  developer-stable project's existing Upstash Redis resource returned HTTP 201
+  for relay creation, so connect that working resource to stable production
+  with a `VIGORUNE_REDIS_` prefix and prefer its managed REST credentials.
+- The shared store holds only short-lived relay codes and hashed retrieval
+  secrets plus rate-limit counters. The two PWA origins keep separate local
+  IndexedDB data. Keep the old variables until the new connection is verified;
+  a dedicated stable Redis resource can replace the shared connection later.

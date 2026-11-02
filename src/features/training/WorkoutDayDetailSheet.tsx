@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react'
 
 import {
   EmptyState,
-  IconButton,
   ModalConfirmationDialog,
   PrimaryButton,
   SecondaryButton,
@@ -115,9 +114,15 @@ export function WorkoutDayDetailPage({
         aria-labelledby="workout-day-page-title"
       >
         <div className="workout-day-page-header">
-          <IconButton aria-label="Back to Current Program" onClick={onClose}>
+          <button
+            className="subpage-back-button"
+            type="button"
+            aria-label="Back to Current Program"
+            onClick={onClose}
+          >
             <ArrowLeft aria-hidden="true" size={20} />
-          </IconButton>
+            <span>Back</span>
+          </button>
           <h2 id="workout-day-page-title" ref={titleRef} tabIndex={-1}>
             {selectedDay.day.name}
           </h2>

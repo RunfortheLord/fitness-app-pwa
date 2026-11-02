@@ -95,6 +95,17 @@ export function createExerciseRepository(database: TrainingLogDatabase = db) {
   }
 
   return {
+    async hasCurrentCoreBuiltInExercises() {
+      const records = await database.exercises.bulkGet(
+        CORE_BUILT_IN_EXERCISES.map((exercise) => exercise.id),
+      )
+      return records.every(
+        (exercise) =>
+          exercise?.origin === 'built_in' &&
+          (exercise.seedDataVersion ?? 0) >= BUILT_IN_EXERCISE_SEED_VERSION,
+      )
+    },
+
     async seedBuiltInExercises(options: SeedBuiltInExerciseOptions = {}) {
       validateBuiltInExercises()
       await retireBuiltInExerciseVariants(database)

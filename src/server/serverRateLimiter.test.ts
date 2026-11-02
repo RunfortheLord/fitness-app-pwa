@@ -177,6 +177,19 @@ describe('server rate limiter', () => {
     expect(
       readRedisRateLimiterConfig({
         AI_RATE_LIMIT_HASH_SECRET: 'test-only-hash-secret-32-characters',
+        KV_REST_API_TOKEN: 'stale-token',
+        KV_REST_API_URL: 'https://stale.test',
+        VIGORUNE_REDIS_KV_REST_API_TOKEN: 'connected-token',
+        VIGORUNE_REDIS_KV_REST_API_URL: 'https://connected.test/',
+      }),
+    ).toEqual({
+      hashSecret: 'test-only-hash-secret-32-characters',
+      restToken: 'connected-token',
+      restUrl: 'https://connected.test',
+    })
+    expect(
+      readRedisRateLimiterConfig({
+        AI_RATE_LIMIT_HASH_SECRET: 'test-only-hash-secret-32-characters',
         UPSTASH_REDIS_REST_TOKEN: 'redis-token',
         UPSTASH_REDIS_REST_URL: 'https://redis.test/',
       }),

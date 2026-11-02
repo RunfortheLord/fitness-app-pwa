@@ -23,7 +23,13 @@ describe('exerciseRepository', () => {
   it('seeds built-in exercises idempotently with stable metadata', async () => {
     const repository = createExerciseRepository(database)
 
+    await expect(repository.hasCurrentCoreBuiltInExercises()).resolves.toBe(
+      false,
+    )
     await repository.seedBuiltInExercises()
+    await expect(repository.hasCurrentCoreBuiltInExercises()).resolves.toBe(
+      true,
+    )
     const bench = await repository.getExercise('builtin:barbell-bench-press')
     if (!bench) {
       throw new Error('Built-in bench press was not seeded.')

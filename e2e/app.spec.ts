@@ -649,11 +649,20 @@ test('creates, activates, starts the next day, and persists a program cycle', as
   await expect(
     dayPreview.getByRole('button', { name: 'Start Workout' }),
   ).toBeVisible()
+  await expect(
+    dayPreview.getByRole('button', { name: 'Back to Current Program' }),
+  ).toBeInViewport()
   await dayPreview
     .getByRole('button', { name: 'Back to Current Program' })
     .click()
   await expect(dayPreview).toHaveCount(0)
   await expect(page.getByRole('button', { name: /^Day A/ })).toBeVisible()
+  await page.getByRole('button', { name: /^Day A/ }).click()
+  await expect(dayPreview).toBeVisible()
+  await dayPreview
+    .getByRole('button', { name: 'Back to Current Program' })
+    .click()
+  await expect(dayPreview).toHaveCount(0)
 })
 
 test(
@@ -1572,6 +1581,9 @@ test('shows calorie bars and target line on Home and in History Graphs', async (
   const quickAdd = page.getByRole('dialog', { name: 'Quick add nutrition' })
   await quickAdd.getByRole('textbox', { name: 'Name' }).fill('E2E calorie day')
   await quickAdd.getByRole('textbox', { name: 'Calories' }).fill('1800')
+  await expect(
+    quickAdd.getByRole('button', { name: 'Log quick add' }),
+  ).toBeInViewport()
   await quickAdd.getByRole('button', { name: 'Log quick add' }).click()
   await expect(page.getByText('Quick add logged.')).toBeVisible()
   await page.getByRole('link', { name: 'Home' }).click()

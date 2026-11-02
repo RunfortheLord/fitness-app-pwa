@@ -9,6 +9,17 @@ describe('Redis auth relay', () => {
   it('reads only a complete Redis REST configuration', () => {
     expect(
       readRedisAuthRelayConfig({
+        KV_REST_API_TOKEN: 'stale-token',
+        KV_REST_API_URL: 'https://stale.test',
+        VIGORUNE_REDIS_KV_REST_API_TOKEN: 'connected-token',
+        VIGORUNE_REDIS_KV_REST_API_URL: 'https://connected.test/',
+      }),
+    ).toEqual({
+      restToken: 'connected-token',
+      restUrl: 'https://connected.test',
+    })
+    expect(
+      readRedisAuthRelayConfig({
         KV_REST_API_TOKEN: 'token',
         KV_REST_API_URL: 'https://redis.test/',
       }),

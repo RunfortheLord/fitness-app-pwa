@@ -83,6 +83,33 @@ afterEach(() => {
 })
 
 describe('RestTimerMonitor', () => {
+  it('does not overlap persisted workout reads when a poll is slow', async () => {
+    let finishRead: ((value: null) => void) | undefined
+    mocks.getActiveWorkout.mockImplementation(
+      () =>
+        new Promise<null>((resolve) => {
+          finishRead = resolve
+        }),
+    )
+
+    render(<RestTimerMonitor />)
+    expect(mocks.getActiveWorkout).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500)
+    })
+    expect(mocks.getActiveWorkout).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      finishRead?.(null)
+      await Promise.resolve()
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+    expect(mocks.getActiveWorkout).toHaveBeenCalledTimes(2)
+  })
+
   it('completes and announces an expired timer outside the workout route', async () => {
     mocks.getActiveWorkout.mockResolvedValue({
       id: 'workout-1',

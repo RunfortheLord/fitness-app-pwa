@@ -185,9 +185,15 @@ export function ProgramPreviewPage({
   return (
     <Card className="subpage-enter program-preview-page">
       <div className="set-goal-header">
-        <IconButton aria-label="Back to browse programs" onClick={onBack}>
+        <button
+          className="subpage-back-button"
+          type="button"
+          aria-label="Back to browse programs"
+          onClick={onBack}
+        >
           <ArrowLeft aria-hidden="true" size={20} />
-        </IconButton>
+          <span>Back</span>
+        </button>
         <h2 className="set-goal-title">{template.name}</h2>
       </div>
       {subtitle ? <p className="muted">{subtitle}</p> : null}

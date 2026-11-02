@@ -339,6 +339,14 @@ export function BottomSheet({
     if (!dismissOnSwipeDown || isPage || isClosing || event.button !== 0) {
       return
     }
+    if (
+      event.target instanceof Element &&
+      event.target.closest(
+        'button, a, input, select, textarea, [role="button"]',
+      )
+    ) {
+      return
+    }
     swipeRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,

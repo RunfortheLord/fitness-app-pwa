@@ -34,16 +34,10 @@ export async function initializeNonCriticalAppData(
     await import('@repositories/exerciseRepository')
   if (options.deferExpandedExerciseSeed) {
     // Only the compact core library belongs on the launch-critical path. The
-    // expanded exercise and program libraries install in short background
-    // chunks so first-run WebKit does not hold the launch screen for tens of
-    // seconds.
+    // expanded exercise library installs in short background chunks so
+    // first-run WebKit does not hold the launch screen for tens of seconds.
     await exerciseRepository.seedBuiltInExercises({
       deferExpanded: true,
-      onExpandedSeeded: async () => {
-        const { programRepository } =
-          await import('@repositories/programRepository')
-        await programRepository.seedBuiltInPrograms()
-      },
     })
   } else {
     await exerciseRepository.seedBuiltInExercises()

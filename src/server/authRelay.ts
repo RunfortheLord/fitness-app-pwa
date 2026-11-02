@@ -88,16 +88,20 @@ return {status, code}
 export function readRedisAuthRelayConfig(
   environment: AuthRelayEnvironment,
 ): RedisAuthRelayConfig | undefined {
+  const connectedUrl = environment.VIGORUNE_REDIS_KV_REST_API_URL?.trim()
+  const connectedToken = environment.VIGORUNE_REDIS_KV_REST_API_TOKEN?.trim()
   const upstashUrl = environment.UPSTASH_REDIS_REST_URL?.trim()
   const upstashToken = environment.UPSTASH_REDIS_REST_TOKEN?.trim()
   const kvUrl = environment.KV_REST_API_URL?.trim()
   const kvToken = environment.KV_REST_API_TOKEN?.trim()
   const [restUrl, restToken] =
-    upstashUrl && upstashToken
-      ? [upstashUrl, upstashToken]
-      : kvUrl && kvToken
-        ? [kvUrl, kvToken]
-        : []
+    connectedUrl && connectedToken
+      ? [connectedUrl, connectedToken]
+      : upstashUrl && upstashToken
+        ? [upstashUrl, upstashToken]
+        : kvUrl && kvToken
+          ? [kvUrl, kvToken]
+          : []
   if (!restUrl || !restToken) {
     return undefined
   }
@@ -130,10 +134,22 @@ export function createRedisAuthRelayStore({
         signal: controller.signal,
       })
       if (!response.ok) {
+        console.info(
+          JSON.stringify({
+            event: 'auth_relay_redis_error',
+            status: response.status,
+          }),
+        )
         return undefined
       }
       return ((await response.json()) as RedisCommandResponse).result
-    } catch {
+    } catch (caught) {
+      console.info(
+        JSON.stringify({
+          event: 'auth_relay_redis_error',
+          reason: caught instanceof Error ? caught.name : 'unknown',
+        }),
+      )
       return undefined
     } finally {
       globalThis.clearTimeout(timeoutId)
@@ -154,6 +170,13 @@ export function createRedisAuthRelayStore({
         String(AUTH_RELAY_TTL_MS),
       ])
       if (Number(result) !== 1) {
+        console.info(
+          JSON.stringify({
+            event: 'auth_relay_redis_error',
+            reason: 'unexpected_create_result',
+            resultType: result === null ? 'null' : typeof result,
+          }),
+        )
         return undefined
       }
       return {

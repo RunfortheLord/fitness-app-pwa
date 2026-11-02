@@ -97,6 +97,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       windowMs: CREATE_WINDOW_MS,
     })
     if (!rateLimit.allowed) {
+      if (!rateLimit.available) {
+        console.info(
+          JSON.stringify({
+            event: 'auth_relay_dependency_unavailable',
+            component: 'rate_limiter',
+            request_id: observer.requestId,
+          }),
+        )
+      }
       res.setHeader('Retry-After', String(rateLimit.retryAfterSeconds))
       respond(
         res,
@@ -108,6 +117,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     const ticket = await authRelayStore.create()
     if (!ticket) {
+      console.info(
+        JSON.stringify({
+          event: 'auth_relay_dependency_unavailable',
+          component: 'store',
+          request_id: observer.requestId,
+        }),
+      )
       respond(res, observer, 503, 'service_unavailable')
       return
     }

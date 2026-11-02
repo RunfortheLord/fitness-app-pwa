@@ -54,16 +54,20 @@ return {count, ttl}
 export function readRedisRateLimiterConfig(
   environment: DistributedRateLimiterEnvironment,
 ): RedisRateLimiterConfig | undefined {
+  const connectedUrl = environment.VIGORUNE_REDIS_KV_REST_API_URL?.trim()
+  const connectedToken = environment.VIGORUNE_REDIS_KV_REST_API_TOKEN?.trim()
   const upstashUrl = environment.UPSTASH_REDIS_REST_URL?.trim()
   const upstashToken = environment.UPSTASH_REDIS_REST_TOKEN?.trim()
   const kvUrl = environment.KV_REST_API_URL?.trim()
   const kvToken = environment.KV_REST_API_TOKEN?.trim()
   const [restUrl, restToken] =
-    upstashUrl && upstashToken
-      ? [upstashUrl, upstashToken]
-      : kvUrl && kvToken
-        ? [kvUrl, kvToken]
-        : []
+    connectedUrl && connectedToken
+      ? [connectedUrl, connectedToken]
+      : upstashUrl && upstashToken
+        ? [upstashUrl, upstashToken]
+        : kvUrl && kvToken
+          ? [kvUrl, kvToken]
+          : []
   const hashSecret = environment.AI_RATE_LIMIT_HASH_SECRET?.trim()
   if (!restUrl || !restToken || !hashSecret || hashSecret.length < 32) {
     return undefined
@@ -114,12 +118,24 @@ export function createRedisServerRateLimiter({
           signal: controller.signal,
         })
         if (!response.ok) {
+          console.info(
+            JSON.stringify({
+              event: 'rate_limiter_redis_error',
+              status: response.status,
+            }),
+          )
           return unavailableDecision()
         }
 
         const payload = (await response.json()) as RedisCommandResponse
         const parsed = parseRedisWindowResult(payload.result)
         if (!parsed) {
+          console.info(
+            JSON.stringify({
+              event: 'rate_limiter_redis_error',
+              reason: 'invalid_response',
+            }),
+          )
           return unavailableDecision()
         }
 
@@ -129,7 +145,13 @@ export function createRedisServerRateLimiter({
           remaining: Math.max(0, input.limit - parsed.count),
           retryAfterSeconds: Math.max(1, Math.ceil(parsed.ttlMs / 1_000)),
         }
-      } catch {
+      } catch (caught) {
+        console.info(
+          JSON.stringify({
+            event: 'rate_limiter_redis_error',
+            reason: caught instanceof Error ? caught.name : 'unknown',
+          }),
+        )
         return unavailableDecision()
       } finally {
         globalThis.clearTimeout(timeoutId)

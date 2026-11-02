@@ -151,7 +151,6 @@ function LiveWorkoutPageContent() {
   const navigate = useNavigate()
   const [state, setState] = useState<LiveWorkoutState>({ status: 'loading' })
   const [revision, setRevision] = useState(0)
-  const [now, setNow] = useState(() => new Date())
   const [error, setError] = useState<string | null>(null)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const [isDiscarding, setIsDiscarding] = useState(false)
@@ -310,11 +309,6 @@ function LiveWorkoutPageContent() {
     return () => {
       isCurrent = false
     }
-  }, [])
-
-  useEffect(() => {
-    const interval = window.setInterval(() => setNow(new Date()), 1000)
-    return () => window.clearInterval(interval)
   }, [])
 
   function reload() {
@@ -780,13 +774,6 @@ function LiveWorkoutPageContent() {
   }
 
   const readyState = state.status === 'ready' ? state : null
-  const elapsedSeconds = readyState
-    ? workoutElapsedSeconds(readyState.workout, now)
-    : 0
-  const restRemaining = getRestTimerRemainingSeconds(
-    readyState?.workout.activeRestTimer ?? null,
-    now.toISOString(),
-  )
   const activeIndex = readyState
     ? getActiveExerciseIndex(readyState.exercises, activeExerciseId)
     : 0
@@ -1127,7 +1114,6 @@ function LiveWorkoutPageContent() {
           exercise={activeExercise}
           exerciseCount={state.exercises.length}
           exerciseIndex={activeIndex}
-          elapsedSeconds={elapsedSeconds}
           enterDirection={workspaceEnterDirection}
           forceRir={state.workout.isDeload === true}
           isWorkoutPauseBusy={isWorkoutPauseBusy}
@@ -1328,9 +1314,9 @@ function LiveWorkoutPageContent() {
             activeSets,
             activeSourcePrescription,
           )}
-          restRemainingSeconds={restRemaining}
           restTimer={state.workout.activeRestTimer}
           sets={activeSets}
+          workout={state.workout}
           workoutPaused={Boolean(state.workout.pausedAt)}
         />
       ) : (
@@ -1355,7 +1341,6 @@ function LiveWorkoutPageContent() {
           onAddTime={addRestTimerTime}
           onOpen={() => setIsRestTimerSheetOpen(true)}
           onSubtractTime={subtractRestTimerTime}
-          remainingSeconds={restRemaining}
           timer={state.workout.activeRestTimer}
         />
         <SecondaryButton
@@ -1389,16 +1374,15 @@ function LiveWorkoutPageContent() {
           defaultRestSeconds={
             activeExercise?.exerciseSnapshot.defaultRestSeconds ?? 0
           }
-          elapsedSeconds={elapsedSeconds}
           isWorkoutPauseBusy={isWorkoutPauseBusy}
           onChangeDefaultRest={changeActiveExerciseRest}
           onDismissRestTimer={dismissCurrentRestTimer}
           onPauseRestTimer={pauseCurrentRestTimer}
           onResumeRestTimer={resumeCurrentRestTimer}
           onToggleWorkoutPause={() => void toggleWorkoutPause(state.workout)}
-          restRemainingSeconds={restRemaining}
           restTimer={state.workout.activeRestTimer}
           showExerciseRest={Boolean(activeExercise)}
+          workout={state.workout}
           workoutPaused={Boolean(state.workout.pausedAt)}
         />
       </BottomSheet>
@@ -1528,7 +1512,6 @@ function ExerciseWorkspace({
   exercise,
   exerciseCount,
   exerciseIndex,
-  elapsedSeconds,
   enterDirection,
   forceRir,
   isWorkoutPauseBusy,
@@ -1551,10 +1534,10 @@ function ExerciseWorkspace({
   onSkip,
   onToggleWorkoutPause,
   prescription,
-  restRemainingSeconds,
   restTimer,
   rirTargetOnEverySet,
   sets,
+  workout,
   workoutPaused,
 }: {
   canGoNext: boolean
@@ -1562,7 +1545,6 @@ function ExerciseWorkspace({
   exercise: WorkoutExercise
   exerciseCount: number
   exerciseIndex: number
-  elapsedSeconds: number
   enterDirection: 'next' | 'previous' | null
   forceRir: boolean
   isWorkoutPauseBusy: boolean
@@ -1589,9 +1571,9 @@ function ExerciseWorkspace({
   onSkip: (skipped: boolean) => void
   onToggleWorkoutPause: () => void
   prescription: LiveExercisePrescription
-  restRemainingSeconds: number
   restTimer: Workout['activeRestTimer']
   sets: WorkoutSet[]
+  workout: Workout
   workoutPaused: boolean
 }) {
   const { t } = useLanguage()
@@ -1926,15 +1908,14 @@ function ExerciseWorkspace({
               defaultRestSeconds={
                 exercise.exerciseSnapshot.defaultRestSeconds ?? 0
               }
-              elapsedSeconds={elapsedSeconds}
               isWorkoutPauseBusy={isWorkoutPauseBusy}
               onChangeDefaultRest={onChangeExerciseDefaultRest}
               onDismissRestTimer={onDismissRestTimer}
               onPauseRestTimer={onPauseRestTimer}
               onResumeRestTimer={onResumeRestTimer}
               onToggleWorkoutPause={onToggleWorkoutPause}
-              restRemainingSeconds={restRemainingSeconds}
               restTimer={restTimer}
+              workout={workout}
               workoutPaused={workoutPaused}
             />
             <SecondaryButton
@@ -2308,20 +2289,37 @@ function MetricNumericInput({
   )
 }
 
+function useWorkoutClock(ticking: boolean) {
+  const [, setTick] = useState(0)
+
+  useEffect(() => {
+    if (!ticking) {
+      return
+    }
+    const interval = window.setInterval(() => setTick((tick) => tick + 1), 1000)
+    return () => window.clearInterval(interval)
+  }, [ticking])
+
+  return new Date()
+}
+
 function RestTimerControls({
   onAddTime,
   onOpen,
   onSubtractTime,
-  remainingSeconds,
   timer,
 }: {
   onAddTime: () => void
   onOpen?: () => void
   onSubtractTime: () => void
-  remainingSeconds: number
   timer: Workout['activeRestTimer']
 }) {
   const { t } = useLanguage()
+  const now = useWorkoutClock(timer?.status === 'running')
+  const remainingSeconds = getRestTimerRemainingSeconds(
+    timer,
+    now.toISOString(),
+  )
   const isAvailable = Boolean(timer && timer.status !== 'dismissed')
   const timerStatus = !isAvailable
     ? t('Rest timer ready')
@@ -2394,33 +2392,37 @@ function RestTimerControls({
 
 function ExerciseOptionsTimerSettings({
   defaultRestSeconds,
-  elapsedSeconds,
   isWorkoutPauseBusy,
   onChangeDefaultRest,
   onDismissRestTimer,
   onPauseRestTimer,
   onResumeRestTimer,
   onToggleWorkoutPause,
-  restRemainingSeconds,
   restTimer,
   showExerciseRest = true,
+  workout,
   workoutPaused,
 }: {
   defaultRestSeconds: number
-  elapsedSeconds: number
   isWorkoutPauseBusy: boolean
   onChangeDefaultRest: (seconds: number) => void
   onDismissRestTimer: () => void
   onPauseRestTimer: () => void
   onResumeRestTimer: () => void
   onToggleWorkoutPause: () => void
-  restRemainingSeconds: number
   restTimer: Workout['activeRestTimer']
   /** Hide the per-exercise rest picker when no exercise is in focus. */
   showExerciseRest?: boolean
+  workout: Workout
   workoutPaused: boolean
 }) {
   const { t } = useLanguage()
+  const now = useWorkoutClock(true)
+  const elapsedSeconds = workoutElapsedSeconds(workout, now)
+  const restRemainingSeconds = getRestTimerRemainingSeconds(
+    restTimer,
+    now.toISOString(),
+  )
   const selectedRestSeconds = clampRestPickerSeconds(defaultRestSeconds)
   const hasCurrentTimer = Boolean(restTimer && restTimer.status !== 'dismissed')
   const restTimerPaused = restTimer?.status === 'paused'

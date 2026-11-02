@@ -37,6 +37,7 @@ import type {
 import { exerciseRepository } from '@repositories/exerciseRepository'
 import { programRepository } from '@repositories/programRepository'
 import { workoutRepository } from '@repositories/workoutRepository'
+import { initializeNonCriticalAppDataOnce } from '@services/appStartupService'
 import type {
   ActiveCycleWorkoutDay,
   ActiveCycleWorkoutExercise,
@@ -129,33 +130,24 @@ export function TrainingPage() {
 
   useEffect(() => {
     let isCurrent = true
-    const seedController = new AbortController()
-    const abortSeed = () => seedController.abort()
-    window.addEventListener('pagehide', abortSeed)
 
     // A quick-action custom-exercise form must remain immediately writable.
     // Start the large first-run seed after that sheet closes.
     if (shouldDeferExerciseSeed) {
       return () => {
         isCurrent = false
-        seedController.abort()
-        window.removeEventListener('pagehide', abortSeed)
       }
     }
 
-    // Seed the exercise library, then the built-in program library (which
-    // references it). Seeding lazily here keeps the larger program write off the
-    // app's initial load path.
+    // Startup owns the exercise seed. Re-running it for every Training visit
+    // reads the entire library and can contend with live workout writes on iOS.
     void exerciseRepository
-      .seedBuiltInExercises({
-        deferExpanded: true,
-        signal: seedController.signal,
-      })
-      .then(() => {
-        if (isCurrent) {
-          reload()
+      .hasCurrentCoreBuiltInExercises()
+      .then(async (isReady) => {
+        if (!isReady) {
+          await initializeNonCriticalAppDataOnce()
         }
-        return programRepository.seedBuiltInPrograms()
+        await programRepository.seedBuiltInPrograms()
       })
       .catch(() => {
         // Seeding is idempotent and retried on the next mount, so a failure here
@@ -171,8 +163,6 @@ export function TrainingPage() {
 
     return () => {
       isCurrent = false
-      seedController.abort()
-      window.removeEventListener('pagehide', abortSeed)
     }
   }, [shouldDeferExerciseSeed])
 

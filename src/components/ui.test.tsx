@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { LanguageProvider } from '@components/LanguageContext'
 import { BottomSheet } from '@components/ui'
@@ -56,6 +56,36 @@ function SwipeSheetHarness() {
 }
 
 describe('BottomSheet', () => {
+  it('keeps header action taps separate from swipe dismissal', () => {
+    const onAction = vi.fn()
+    const { container } = render(
+      <LanguageProvider>
+        <BottomSheet
+          headerAction={
+            <button type="button" onClick={onAction}>
+              Save
+            </button>
+          }
+          isOpen
+          onClose={() => undefined}
+          title="Quick add"
+        >
+          <span>Fields</span>
+        </BottomSheet>
+      </LanguageProvider>,
+    )
+    const dragRegion = container.querySelector('.sheet-drag-region')
+    const action = screen.getByRole('button', { name: 'Save' })
+    const capture = vi.fn()
+    if (!dragRegion) throw new Error('Sheet drag region was not found.')
+    dragRegion.setPointerCapture = capture
+
+    fireEvent.pointerDown(action, { button: 0, pointerId: 1 })
+    expect(capture).not.toHaveBeenCalled()
+    fireEvent.click(action)
+    expect(onAction).toHaveBeenCalledTimes(1)
+  })
+
   it('dismisses standard sheets with a downward swipe by default', async () => {
     const { container } = render(
       <LanguageProvider>
