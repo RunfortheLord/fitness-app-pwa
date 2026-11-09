@@ -36,6 +36,7 @@ import {
 } from '@components/ui'
 import { getRestTimerRemainingSeconds } from '@domain/restTimer'
 import { DEFAULT_TIMER_SOUND_ID, playTimerSoundOnce } from '@domain/timerSounds'
+import { useWorkoutViewportRecovery } from '@hooks/useWorkoutViewportRecovery'
 import { exerciseRepository } from '@repositories/exerciseRepository'
 import { settingsRepository } from '@repositories/settingsRepository'
 import {
@@ -75,6 +76,7 @@ declare global {
 }
 
 export function LiveWorkoutPage() {
+  useWorkoutViewportRecovery()
   const navigate = useNavigate()
   const [state, setState] = useState<LiveWorkoutState>({ status: 'loading' })
   const [revision, setRevision] = useState(0)

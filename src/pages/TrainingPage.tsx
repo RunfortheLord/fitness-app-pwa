@@ -101,6 +101,7 @@ type ExerciseFormState = {
 
 type LoadState = {
   exercises: Exercise[]
+  builderExercises: Exercise[]
   templates: ProgramTemplate[]
   exerciseUsage: ExerciseUsageSummary
   currentCycle:
@@ -175,6 +176,7 @@ export function TrainingPage() {
   const [message, setMessage] = useState<string | null>(null)
   const [loadState, setLoadState] = useState<LoadState>({
     exercises: [],
+    builderExercises: [],
     templates: [],
     exerciseUsage: {},
     currentCycle: undefined,
@@ -209,26 +211,36 @@ export function TrainingPage() {
         includeArchived: view === 'hidden',
         query,
       }),
+      exerciseRepository.searchExercises({ includeArchived: true, query: '' }),
       programRepository.listProgramTemplates(),
       programRepository.getCurrentActiveCycleStructure(),
       programRepository.getExerciseUsageSummary(),
     ])
-      .then(([exercises, templates, currentCycle, exerciseUsage]) => {
-        if (!isCurrent) {
-          return
-        }
-
-        setLoadState({
-          exercises:
-            view === 'hidden'
-              ? exercises.filter((exercise) => exercise.status !== 'active')
-              : exercises,
+      .then(
+        ([
+          exercises,
+          builderExercises,
           templates,
-          exerciseUsage,
           currentCycle,
-          status: 'ready',
-        })
-      })
+          exerciseUsage,
+        ]) => {
+          if (!isCurrent) {
+            return
+          }
+
+          setLoadState({
+            exercises:
+              view === 'hidden'
+                ? exercises.filter((exercise) => exercise.status !== 'active')
+                : exercises,
+            builderExercises,
+            templates,
+            exerciseUsage,
+            currentCycle,
+            status: 'ready',
+          })
+        },
+      )
       .catch(() => {
         if (!isCurrent) {
           return
@@ -428,9 +440,7 @@ export function TrainingPage() {
       {activeSheet?.type === 'builder' ? (
         <ProgramBuilderSheet
           exerciseUsage={loadState.exerciseUsage}
-          exercises={loadState.exercises.filter(
-            (exercise) => exercise.status === 'active',
-          )}
+          exercises={loadState.builderExercises}
           isOpen
           onClose={() => setSheet(null)}
           onChanged={reload}
@@ -1589,17 +1599,21 @@ function PrescriptionEditor({
     null
   const parsed = parsePrescriptionForm(form, selectedExercise)
   const searchable = hasSearchableQuery(searchQuery)
+  const selectableExercises = availableExercises.filter(
+    (exercise) => exercise.status === 'active',
+  )
   const results = searchable
-    ? searchExercises(availableExercises, searchQuery, exerciseUsage)
+    ? searchExercises(selectableExercises, searchQuery, exerciseUsage)
     : []
   const defaultResults = defaultExerciseResults(
-    availableExercises,
+    selectableExercises,
     exerciseUsage,
   )
   const isDirty = formIsDirty(form, target.exercise) || step === 'create'
 
   function update(field: keyof PrescriptionFormState, value: string) {
     setForm((current) => ({ ...current, [field]: value }))
+    setError(null)
   }
 
   function selectExercise(exercise: Exercise) {
@@ -1678,7 +1692,11 @@ function PrescriptionEditor({
           </IconButton>
           <div>
             <h3>{target.exercise ? 'Edit prescription' : 'Add exercise'}</h3>
-            <p className="muted">Choose an exercise, then set the target.</p>
+            <p className="muted">
+              {target.exercise
+                ? 'Update the targets for this workout day.'
+                : 'Choose an exercise, then set its targets.'}
+            </p>
           </div>
         </div>
 
@@ -1815,11 +1833,6 @@ function PrescriptionEditor({
 
         {step === 'edit' && selectedExercise ? (
           <div className="compact-prescription-form">
-            <div className="sheet-top-actions">
-              <PrimaryButton disabled={!parsed.ok} type="button" onClick={save}>
-                Save prescription
-              </PrimaryButton>
-            </div>
             {!target.exercise ? (
               <SecondaryButton type="button" onClick={() => setStep('search')}>
                 <ArrowLeft aria-hidden="true" size={18} />
@@ -1827,6 +1840,7 @@ function PrescriptionEditor({
               </SecondaryButton>
             ) : null}
             <div className="selected-exercise-summary">
+              <span className="eyebrow">Exercise</span>
               <strong>{selectedExercise.name}</strong>
               <small>{exerciseMetadata(selectedExercise)}</small>
               <small>
@@ -1836,6 +1850,7 @@ function PrescriptionEditor({
                   : ''}
               </small>
             </div>
+            <h4 className="prescription-section-title">Targets</h4>
             <div className="compact-field-grid">
               <FormField id="target-sets" label="Sets">
                 <NumericInput
@@ -1879,6 +1894,20 @@ function PrescriptionEditor({
                   />
                 </FormField>
               ) : null}
+              {selectedExercise.trackingMethodId === 'duration' ? (
+                <FormField
+                  id="target-duration"
+                  label="Duration target (seconds)"
+                >
+                  <NumericInput
+                    id="target-duration"
+                    onChange={(event) =>
+                      update('targetDurationSeconds', event.target.value)
+                    }
+                    value={form.targetDurationSeconds}
+                  />
+                </FormField>
+              ) : null}
             </div>
             {isRepetitionBased(selectedExercise) ? (
               <div className="rep-range-grid">
@@ -1917,10 +1946,13 @@ function PrescriptionEditor({
               />
             </FormField>
             {error ? <ValidationMessage message={error} /> : null}
-            <div className="button-row">
+            <div className="prescription-actions">
               <SecondaryButton type="button" onClick={requestClose}>
                 Cancel
               </SecondaryButton>
+              <PrimaryButton type="button" onClick={save}>
+                {target.exercise ? 'Update prescription' : 'Save prescription'}
+              </PrimaryButton>
             </div>
           </div>
         ) : null}
@@ -2662,7 +2694,7 @@ function parsePrescriptionForm(
   | { ok: false; error: string } {
   const targetSetCount = Number(form.targetSetCount)
   const targetWeight = parseOptionalNumber(form.targetWeight)
-  const targetDurationSeconds = { ok: true, value: null } as const
+  const targetDurationSeconds = parseOptionalInteger(form.targetDurationSeconds)
   const targetDistance = parseOptionalNumber(form.targetDistance)
   const targetRepsMin = parseOptionalInteger(form.targetRepsMin)
   const targetRepsMax = parseOptionalInteger(form.targetRepsMax)
@@ -2692,12 +2724,20 @@ function parsePrescriptionForm(
   const targetDistanceValue = targetDistance.value
 
   if (isRepetitionBased(exercise)) {
-    if (targetRepsMin.value === null || targetRepsMax.value === null) {
-      return { ok: false, error: 'Minimum and maximum reps are required.' }
-    }
-    if (targetRepsMin.value <= 0 || targetRepsMax.value <= 0) {
+    if (
+      (targetRepsMin.value !== null && targetRepsMin.value <= 0) ||
+      (targetRepsMax.value !== null && targetRepsMax.value <= 0)
+    ) {
       return { ok: false, error: 'Reps must be positive whole numbers.' }
     }
+  }
+
+  if (
+    exercise.trackingMethodId === 'duration' &&
+    targetDurationSecondsValue !== null &&
+    targetDurationSecondsValue <= 0
+  ) {
+    return { ok: false, error: 'Duration target must be positive.' }
   }
 
   if (

@@ -185,6 +185,66 @@ describe('programRepository', () => {
     ).toHaveLength(1)
   })
 
+  it('preserves duration targets and prescription notes through edits, cloning, and activation', async () => {
+    const repository = createProgramRepository(database)
+    const exercise = await createExerciseRepository(database).createExercise({
+      name: 'Wall sit',
+      defaultRestSeconds: 60,
+      trackingMethodId: 'duration',
+      notes: '',
+    })
+    const program = await repository.createProgramTemplate({
+      name: 'Timed',
+      days: [
+        {
+          name: 'Hold',
+          exercises: [
+            {
+              exerciseId: exercise.id,
+              targetSetCount: 2,
+              targetDurationSeconds: 60,
+              notes: 'Steady pace',
+            },
+          ],
+        },
+      ],
+    })
+    const original = program.exercises[0]
+    expect(original).toMatchObject({
+      targetDurationSeconds: 60,
+      notes: 'Steady pace',
+    })
+
+    await repository.updateTemplateExercise(original.id, {
+      targetDurationSeconds: 75,
+      notes: 'Longer hold',
+    })
+    const clone = await repository.cloneProgramTemplate(program.template.id)
+    expect(clone.exercises[0]).toMatchObject({
+      targetDurationSeconds: 75,
+      notes: 'Longer hold',
+    })
+
+    const active = await repository.activateTemplate(program.template.id)
+    expect(active.exercises[0]).toMatchObject({
+      targetDurationSeconds: 75,
+      notes: 'Longer hold',
+    })
+    await repository.updateActiveCycleExercise(active.exercises[0].id, {
+      targetDurationSeconds: 90,
+      notes: 'Cycle only',
+    })
+    expect(
+      await database.activeCycleWorkoutExercises.get(active.exercises[0].id),
+    ).toMatchObject({ targetDurationSeconds: 90, notes: 'Cycle only' })
+    expect(
+      await database.templateWorkoutExercises.get(original.id),
+    ).toMatchObject({
+      targetDurationSeconds: 75,
+      notes: 'Longer hold',
+    })
+  })
+
   it('rolls back template creation when a prescribed exercise is invalid', async () => {
     const repository = createProgramRepository(database)
 

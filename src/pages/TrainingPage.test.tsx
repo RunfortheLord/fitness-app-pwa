@@ -296,6 +296,61 @@ describe('TrainingPage', () => {
     expect(screen.getByText(/stays on this day/)).toBeInTheDocument()
   }, 15_000)
 
+  it('updates a timed prescription without losing its duration target', async () => {
+    const user = userEvent.setup()
+    const exercise = await createExerciseRepository(db).createExercise({
+      name: 'Wall sit',
+      defaultRestSeconds: 60,
+      trackingMethodId: 'duration',
+      notes: '',
+    })
+    await createProgramRepository(db).createProgramTemplate({
+      name: 'Timed program',
+      days: [
+        {
+          name: 'Timed day',
+          exercises: [
+            {
+              exerciseId: exercise.id,
+              targetSetCount: 2,
+              targetDurationSeconds: 60,
+            },
+          ],
+        },
+      ],
+    })
+    renderTraining()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Edit Timed program' }),
+    )
+    const builder = screen.getByRole('dialog', { name: 'Edit template' })
+    await user.click(
+      await within(builder).findByRole('button', {
+        name: 'Edit Wall sit prescription',
+      }),
+    )
+    const duration = within(builder).getByRole('textbox', {
+      name: 'Duration target (seconds)',
+    })
+    expect(duration).toHaveValue('60')
+    await user.clear(duration)
+    await user.type(duration, '75')
+    await user.click(
+      within(builder).getByRole('button', { name: 'Update prescription' }),
+    )
+
+    await waitFor(async () => {
+      const saved = await db.templateWorkoutExercises.toCollection().first()
+      expect(saved?.targetDurationSeconds).toBe(75)
+    })
+    await within(builder).findByText(/75s/)
+    await user.click(
+      within(builder).getByRole('button', { name: /Close edit/ }),
+    )
+    await waitFor(() => expect(builder).not.toBeInTheDocument())
+  })
+
   it('searches built-in and visible custom exercises while excluding hidden custom exercises', async () => {
     const user = userEvent.setup()
     const visible = await seedExercise(db)

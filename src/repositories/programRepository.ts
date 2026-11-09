@@ -121,7 +121,8 @@ export function createProgramRepository(
                 orderIndex: exerciseIndex,
                 targetSetCount: exerciseInput.targetSetCount,
                 targetWeight: exerciseInput.targetWeight ?? null,
-                targetDurationSeconds: null,
+                targetDurationSeconds:
+                  exerciseInput.targetDurationSeconds ?? null,
                 targetDistance: exerciseInput.targetDistance ?? null,
                 targetRepsMin: exerciseInput.targetRepsMin ?? null,
                 targetRepsMax: exerciseInput.targetRepsMax ?? null,
@@ -221,13 +222,14 @@ export function createProgramRepository(
                 orderIndex: sourceExercise.orderIndex,
                 targetSetCount: sourceExercise.targetSetCount,
                 targetWeight: sourceExercise.targetWeight ?? null,
-                targetDurationSeconds: null,
+                targetDurationSeconds:
+                  sourceExercise.targetDurationSeconds ?? null,
                 targetDistance: sourceExercise.targetDistance ?? null,
                 targetRepsMin: sourceExercise.targetRepsMin,
                 targetRepsMax: sourceExercise.targetRepsMax,
                 targetRir: sourceExercise.targetRir,
                 restSecondsOverride: sourceExercise.restSecondsOverride,
-                notes: '',
+                notes: sourceExercise.notes,
                 createdAt: now,
                 updatedAt: now,
               }
@@ -345,13 +347,13 @@ export function createProgramRepository(
             exerciseId: exercise.exerciseId,
             targetSetCount: exercise.targetSetCount,
             targetWeight: exercise.targetWeight ?? null,
-            targetDurationSeconds: null,
+            targetDurationSeconds: exercise.targetDurationSeconds ?? null,
             targetDistance: exercise.targetDistance ?? null,
             targetRepsMin: exercise.targetRepsMin,
             targetRepsMax: exercise.targetRepsMax,
             targetRir: exercise.targetRir,
             restSecondsOverride: exercise.restSecondsOverride,
-            notes: '',
+            notes: exercise.notes,
           })),
         })),
       })
@@ -545,13 +547,13 @@ export function createProgramRepository(
             orderIndex: existing.length,
             targetSetCount: input.targetSetCount,
             targetWeight: input.targetWeight ?? null,
-            targetDurationSeconds: null,
+            targetDurationSeconds: input.targetDurationSeconds ?? null,
             targetDistance: input.targetDistance ?? null,
             targetRepsMin: input.targetRepsMin ?? null,
             targetRepsMax: input.targetRepsMax ?? null,
             targetRir: input.targetRir ?? null,
             restSecondsOverride: input.restSecondsOverride ?? null,
-            notes: '',
+            notes: input.notes ?? '',
             createdAt: now,
             updatedAt: now,
           }
@@ -604,7 +606,9 @@ export function createProgramRepository(
             targetWeight: hasField(input, 'targetWeight')
               ? (input.targetWeight ?? null)
               : (prescribed.targetWeight ?? null),
-            targetDurationSeconds: null,
+            targetDurationSeconds: hasField(input, 'targetDurationSeconds')
+              ? (input.targetDurationSeconds ?? null)
+              : (prescribed.targetDurationSeconds ?? null),
             targetDistance: hasField(input, 'targetDistance')
               ? (input.targetDistance ?? null)
               : (prescribed.targetDistance ?? null),
@@ -614,7 +618,9 @@ export function createProgramRepository(
             restSecondsOverride: hasField(input, 'restSecondsOverride')
               ? (input.restSecondsOverride ?? null)
               : prescribed.restSecondsOverride,
-            notes: '',
+            notes: hasField(input, 'notes')
+              ? (input.notes ?? '')
+              : prescribed.notes,
             updatedAt: now,
           }
           await database.templateWorkoutExercises.put(updated)
@@ -1030,13 +1036,13 @@ export function createProgramRepository(
             orderIndex: existing.length,
             targetSetCount: input.targetSetCount,
             targetWeight: input.targetWeight ?? null,
-            targetDurationSeconds: null,
+            targetDurationSeconds: input.targetDurationSeconds ?? null,
             targetDistance: input.targetDistance ?? null,
             targetRepsMin: input.targetRepsMin ?? null,
             targetRepsMax: input.targetRepsMax ?? null,
             targetRir: input.targetRir ?? null,
             restSecondsOverride: input.restSecondsOverride ?? null,
-            notes: '',
+            notes: input.notes ?? '',
             createdAt: now,
             updatedAt: now,
           }
@@ -1089,7 +1095,9 @@ export function createProgramRepository(
             targetWeight: hasField(input, 'targetWeight')
               ? (input.targetWeight ?? null)
               : (prescribed.targetWeight ?? null),
-            targetDurationSeconds: null,
+            targetDurationSeconds: hasField(input, 'targetDurationSeconds')
+              ? (input.targetDurationSeconds ?? null)
+              : (prescribed.targetDurationSeconds ?? null),
             targetDistance: hasField(input, 'targetDistance')
               ? (input.targetDistance ?? null)
               : (prescribed.targetDistance ?? null),
@@ -1099,7 +1107,9 @@ export function createProgramRepository(
             restSecondsOverride: hasField(input, 'restSecondsOverride')
               ? (input.restSecondsOverride ?? null)
               : prescribed.restSecondsOverride,
-            notes: '',
+            notes: hasField(input, 'notes')
+              ? (input.notes ?? '')
+              : prescribed.notes,
             updatedAt: now,
           }
           await database.activeCycleWorkoutExercises.put(updated)

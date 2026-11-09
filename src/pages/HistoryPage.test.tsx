@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -52,6 +52,12 @@ describe('HistoryPage', () => {
     renderHistory('/history?view=bodyweight')
 
     expect(await screen.findByText('Bodyweight progress')).toBeInTheDocument()
+    await user.click(
+      within(screen.getByRole('group', { name: 'Bodyweight range' })).getByRole(
+        'button',
+        { name: 'All' },
+      ),
+    )
     expect(await screen.findByLabelText('Graph summary')).toHaveTextContent(
       '188.4 lb',
     )
@@ -139,6 +145,11 @@ describe('HistoryPage', () => {
     renderHistory('/history?view=graphs')
 
     expect(await screen.findByText('Strength graphs')).toBeInTheDocument()
+    await user.click(
+      within(
+        screen.getByRole('group', { name: 'Strength graph range' }),
+      ).getByRole('button', { name: 'All' }),
+    )
     expect(await screen.findByLabelText('Strength summary')).toHaveTextContent(
       'Latest - 2026-06-19',
     )

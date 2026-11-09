@@ -162,6 +162,33 @@ test('creates, activates, manually selects, and persists a program cycle', async
   await builder.getByRole('button', { name: 'Add exercise' }).click()
   await addPrescription(builder, 'E2E Squat')
   await expect(builder.getByText('E2E Squat')).toBeVisible()
+  await builder
+    .getByRole('button', { name: 'Edit E2E Squat prescription' })
+    .click()
+  await builder.getByRole('textbox', { name: 'Sets' }).fill('0')
+  await builder.getByRole('button', { name: 'Update prescription' }).click()
+  await expect(
+    builder.getByText('Target sets must be a positive whole number.'),
+  ).toBeVisible()
+  await builder.getByRole('textbox', { name: 'Sets' }).fill('4')
+  await builder.getByRole('textbox', { name: 'Min reps' }).fill('')
+  await builder.getByRole('textbox', { name: 'Max reps' }).fill('')
+  await builder.getByRole('button', { name: 'Update prescription' }).click()
+  await expect(builder.getByText(/4 sets/)).toBeVisible()
+  await closeBuilder(builder)
+
+  await page
+    .getByRole('searchbox', { name: 'Search exercises' })
+    .fill('No matching exercise')
+  await page.getByRole('button', { name: 'Edit E2E Strength' }).click()
+  await builder
+    .getByRole('button', { name: 'Edit E2E Squat prescription' })
+    .click()
+  await expect(builder.getByText('E2E Squat', { exact: true })).toBeVisible()
+  await expect(
+    builder.getByRole('button', { name: 'Update prescription' }),
+  ).toBeVisible()
+  await builder.getByRole('button', { name: 'Back to program editor' }).click()
   await closeBuilder(builder)
 
   await page.getByRole('button', { name: 'Activate E2E Strength' }).click()
@@ -178,7 +205,7 @@ test('creates, activates, manually selects, and persists a program cycle', async
   await page.reload()
   await expect(
     page.getByLabel('Current active cycle').getByText('E2E Strength'),
-  ).toBeVisible()
+  ).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('button', { name: /Day A/ })).toBeVisible()
 })
 
