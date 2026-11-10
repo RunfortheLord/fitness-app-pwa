@@ -182,7 +182,7 @@ export function parsePrescriptionForm(
   | { ok: false; error: string } {
   const targetSetCount = Number(form.targetSetCount)
   const targetWeight = parseOptionalNumber(form.targetWeight)
-  const targetDurationSeconds = { ok: true, value: null } as const
+  const targetDurationSeconds = parseOptionalInteger(form.targetDurationSeconds)
   const targetDistance = parseOptionalNumber(form.targetDistance)
   const targetRepsMin = parseOptionalInteger(form.targetRepsMin)
   const targetRepsMax = parseOptionalInteger(form.targetRepsMax)
@@ -212,12 +212,20 @@ export function parsePrescriptionForm(
   const targetDistanceValue = targetDistance.value
 
   if (isRepetitionBased(exercise)) {
-    if (targetRepsMin.value === null || targetRepsMax.value === null) {
-      return { ok: false, error: 'Minimum and maximum reps are required.' }
-    }
-    if (targetRepsMin.value <= 0 || targetRepsMax.value <= 0) {
+    if (
+      (targetRepsMin.value !== null && targetRepsMin.value <= 0) ||
+      (targetRepsMax.value !== null && targetRepsMax.value <= 0)
+    ) {
       return { ok: false, error: 'Reps must be positive whole numbers.' }
     }
+  }
+
+  if (
+    exercise.trackingMethodId === 'duration' &&
+    targetDurationSecondsValue !== null &&
+    targetDurationSecondsValue <= 0
+  ) {
+    return { ok: false, error: 'Duration target must be positive.' }
   }
 
   if (

@@ -186,7 +186,12 @@ export function ProgramBuilderSheet({
     onPrevious: () => switchDayByOffset(-1),
   })
   const quickAddResults = hasSearchableQuery(quickAddQuery)
-    ? searchExercises(exercises, quickAddQuery, exerciseUsage, 5)
+    ? searchExercises(
+        exercises.filter((exercise) => exercise.status === 'active'),
+        quickAddQuery,
+        exerciseUsage,
+        5,
+      )
     : []
 
   function refresh() {

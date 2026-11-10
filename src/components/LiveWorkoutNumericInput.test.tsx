@@ -99,6 +99,19 @@ describe('LiveWorkoutNumericInput', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Done' }))
     expect(onCommit).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(input).not.toHaveFocus()
+  })
+
+  it('restores the input focus after opening the keypad by keyboard', async () => {
+    setInstalledIphone(true)
+    render(<NumericHarness />)
+
+    const input = screen.getByRole('textbox', { name: 'Set 1 Weight' })
+    input.focus()
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(screen.getByRole('dialog')).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
     await waitFor(() => expect(input).toHaveFocus())
   })
 

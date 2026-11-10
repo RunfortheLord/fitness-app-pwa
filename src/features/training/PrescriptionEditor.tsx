@@ -113,11 +113,14 @@ export function PrescriptionEditor({
     null
   const parsed = parsePrescriptionForm(form, selectedExercise, weightUnit)
   const searchable = hasSearchableQuery(searchQuery)
+  const selectableExercises = availableExercises.filter(
+    (exercise) => exercise.status === 'active',
+  )
   const results = searchable
-    ? searchExercises(availableExercises, searchQuery, exerciseUsage)
+    ? searchExercises(selectableExercises, searchQuery, exerciseUsage)
     : []
   const defaultResults = defaultExerciseResults(
-    availableExercises,
+    selectableExercises,
     exerciseUsage,
   )
   const isDirty =
@@ -133,6 +136,7 @@ export function PrescriptionEditor({
 
   function update(field: keyof PrescriptionFormState, value: string) {
     setForm((current) => ({ ...current, [field]: value }))
+    setError(null)
   }
 
   function selectExercise(exercise: Exercise) {
@@ -440,6 +444,17 @@ export function PrescriptionEditor({
               />
             </FormField>
           ) : null}
+          {selectedExercise.trackingMethodId === 'duration' ? (
+            <FormField id="target-duration" label="Duration target (seconds)">
+              <NumericInput
+                id="target-duration"
+                onChange={(event) =>
+                  update('targetDurationSeconds', event.target.value)
+                }
+                value={form.targetDurationSeconds}
+              />
+            </FormField>
+          ) : null}
           {isRepetitionBased(selectedExercise) ? (
             <div className="rep-range-grid">
               <FormField id="target-reps-min" label="Min reps">
@@ -499,8 +514,8 @@ export function PrescriptionEditor({
             <SecondaryButton type="button" onClick={onClose}>
               Cancel
             </SecondaryButton>
-            <PrimaryButton disabled={!parsed.ok} type="button" onClick={save}>
-              Save prescription
+            <PrimaryButton type="button" onClick={save}>
+              {target.exercise ? 'Update prescription' : 'Save prescription'}
             </PrimaryButton>
           </div>
         </div>

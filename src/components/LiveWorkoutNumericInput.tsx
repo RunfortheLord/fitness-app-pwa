@@ -33,6 +33,7 @@ type ActiveEditor = {
   onCommit?: () => void
   onValueChange: (value: string) => void
   replaceOnNextEntry: boolean
+  restoreFocusOnClose: boolean
   trigger: HTMLInputElement
   value: string
 }
@@ -69,7 +70,11 @@ export function LiveWorkoutNumericKeypadProvider({
     setActiveEditor(null)
     editor.onCommit?.()
 
-    if (restoreFocus && editor.trigger.isConnected) {
+    if (
+      restoreFocus &&
+      editor.restoreFocusOnClose &&
+      editor.trigger.isConnected
+    ) {
       window.requestAnimationFrame(() => {
         focusWithoutViewportShift(editor.trigger)
       })
@@ -330,7 +335,7 @@ export function LiveWorkoutNumericInput({
     return () => closeForTrigger(input)
   }, [closeForTrigger, disabled])
 
-  function openKeypad() {
+  function openKeypad(restoreFocusOnClose: boolean) {
     const input = inputRef.current
     if (!input || !context || disabled) {
       return
@@ -342,6 +347,7 @@ export function LiveWorkoutNumericInput({
       mode,
       onCommit: () => onCommitRef.current?.(),
       onValueChange: (nextValue) => onValueChangeRef.current(nextValue),
+      restoreFocusOnClose,
       trigger: input,
       value,
     })
@@ -369,7 +375,7 @@ export function LiveWorkoutNumericInput({
   function handleKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
-      openKeypad()
+      openKeypad(true)
       return
     }
     onKeyDown?.(event)
@@ -384,7 +390,7 @@ export function LiveWorkoutNumericInput({
       className={`live-workout-keypad-input ${props.className ?? ''}`.trim()}
       disabled={disabled}
       inputMode="none"
-      onClick={openKeypad}
+      onClick={() => openKeypad(false)}
       onKeyDown={handleKeyDown}
       onPointerDown={(event) => {
         event.preventDefault()
@@ -393,7 +399,7 @@ export function LiveWorkoutNumericInput({
       onPointerUp={(event) => {
         event.stopPropagation()
         if (event.button === 0) {
-          openKeypad()
+          openKeypad(false)
         }
       }}
       readOnly

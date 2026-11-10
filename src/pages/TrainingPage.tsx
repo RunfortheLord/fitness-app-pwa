@@ -174,52 +174,60 @@ export function TrainingPage() {
         includeArchived: view === 'hidden',
         query,
       }),
+      exerciseRepository.searchExercises({ includeArchived: true, query: '' }),
       programRepository.listProgramTemplates(),
       programRepository.getCurrentActiveCycleStructure(),
       programRepository.getExerciseUsageSummary(),
     ])
-      .then(async ([exercises, templates, currentCycle, exerciseUsage]) => {
-        if (!isCurrent) {
-          return
-        }
-
-        const nextLoadState: LoadState = {
-          exercises:
-            view === 'hidden'
-              ? exercises.filter((exercise) => exercise.status !== 'active')
-              : exercises,
+      .then(
+        async ([
+          exercises,
+          allExercises,
           templates,
-          exerciseUsage,
           currentCycle,
-          status: 'ready',
-        }
-        setCachedTrainingPageData(nextLoadState)
-        setLoadState(nextLoadState)
-        if (view === 'active' && !query.trim()) {
-          setProgramExercises(exercises)
-        }
-
-        if (currentCycle) {
-          const allChecks = await programRepository.listAllActiveCycleDayChecks(
-            currentCycle.cycle.id,
-          )
-          const week = currentProgramWeek(
-            currentCycle.cycle.currentWeekNumber,
-            allChecks,
-            currentCycle.days.map((day) => day.id),
-          )
-          if (isCurrent) {
-            setWeekChecks({
-              week,
-              checkedDayIds: allChecks
-                .filter((check) => check.checked && check.weekNumber === week)
-                .map((check) => check.dayId),
-            })
+          exerciseUsage,
+        ]) => {
+          if (!isCurrent) {
+            return
           }
-        } else if (isCurrent) {
-          setWeekChecks({ week: 1, checkedDayIds: [] })
-        }
-      })
+
+          const nextLoadState: LoadState = {
+            exercises:
+              view === 'hidden'
+                ? exercises.filter((exercise) => exercise.status !== 'active')
+                : exercises,
+            templates,
+            exerciseUsage,
+            currentCycle,
+            status: 'ready',
+          }
+          setCachedTrainingPageData(nextLoadState)
+          setLoadState(nextLoadState)
+          setProgramExercises(allExercises)
+
+          if (currentCycle) {
+            const allChecks =
+              await programRepository.listAllActiveCycleDayChecks(
+                currentCycle.cycle.id,
+              )
+            const week = currentProgramWeek(
+              currentCycle.cycle.currentWeekNumber,
+              allChecks,
+              currentCycle.days.map((day) => day.id),
+            )
+            if (isCurrent) {
+              setWeekChecks({
+                week,
+                checkedDayIds: allChecks
+                  .filter((check) => check.checked && check.weekNumber === week)
+                  .map((check) => check.dayId),
+              })
+            }
+          } else if (isCurrent) {
+            setWeekChecks({ week: 1, checkedDayIds: [] })
+          }
+        },
+      )
       .catch(() => {
         if (!isCurrent) {
           return
@@ -560,9 +568,7 @@ export function TrainingPage() {
       {activeSheet?.type === 'builder' ? (
         <ProgramBuilderSheet
           exerciseUsage={loadState.exerciseUsage}
-          exercises={programExercises.filter(
-            (exercise) => exercise.status === 'active',
-          )}
+          exercises={programExercises}
           isOpen
           onClose={() => setSheet(null)}
           onChanged={reload}

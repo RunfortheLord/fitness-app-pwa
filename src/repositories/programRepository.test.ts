@@ -17,6 +17,26 @@ afterEach(async () => {
 })
 
 describe('programRepository', () => {
+  it('keeps duration targets through prescription updates, cloning, and activation', async () => {
+    const repository = createProgramRepository(database)
+    const program = await seedProgram(database)
+    const source = program.exercises[0]
+
+    await repository.updateTemplateExercise(source.id, {
+      targetDurationSeconds: 45,
+    })
+    const clone = await repository.cloneProgramTemplate(program.template.id)
+    const active = await repository.activateTemplate(program.template.id)
+
+    expect(
+      await database.templateWorkoutExercises.get(source.id),
+    ).toMatchObject({
+      targetDurationSeconds: 45,
+    })
+    expect(clone.exercises[0].targetDurationSeconds).toBe(45)
+    expect(active.exercises[0].targetDurationSeconds).toBe(45)
+  })
+
   it('activates a template as an independent active-cycle copy', async () => {
     const programRepository = createProgramRepository(database)
     const exerciseRepository = createExerciseRepository(database)

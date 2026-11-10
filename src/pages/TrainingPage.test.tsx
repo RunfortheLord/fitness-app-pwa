@@ -431,6 +431,43 @@ describe('TrainingPage', () => {
     })
   }, 15_000)
 
+  it('updates an existing prescription with empty rep targets even when its exercise is hidden', async () => {
+    const user = userEvent.setup()
+    const program = await seedProgram(db)
+    const prescribed = program.exercises[0]
+    await exerciseRepository.hideExercise(prescribed.exerciseId)
+    await createProgramRepository(db).activateTemplate(program.template.id)
+    renderTraining()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Edit active program' }),
+    )
+    const editor = await screen.findByRole('dialog', {
+      name: 'Program Editor',
+    })
+    await user.click(
+      within(editor).getByRole('button', {
+        name: 'Edit Bench press prescription',
+      }),
+    )
+    const minReps = within(editor).getByRole('textbox', { name: 'Min reps' })
+    const maxReps = within(editor).getByRole('textbox', { name: 'Max reps' })
+    await user.clear(minReps)
+    await user.clear(maxReps)
+    await user.click(
+      within(editor).getByRole('button', { name: 'Update prescription' }),
+    )
+
+    await waitFor(async () => {
+      const active =
+        await createProgramRepository(db).getCurrentActiveCycleStructure()
+      expect(active?.exercisesByDay[active.days[0].id][0]).toMatchObject({
+        targetRepsMin: null,
+        targetRepsMax: null,
+      })
+    })
+  }, 15_000)
+
   it('adds workout days from the compact plus control without a persistent naming field', async () => {
     const user = userEvent.setup()
     renderTraining()

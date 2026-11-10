@@ -343,7 +343,8 @@ export function createProgramRepository(
                 orderIndex: exerciseIndex,
                 targetSetCount: exerciseInput.targetSetCount,
                 targetWeight: exerciseInput.targetWeight ?? null,
-                targetDurationSeconds: null,
+                targetDurationSeconds:
+                  exerciseInput.targetDurationSeconds ?? null,
                 targetDistance: exerciseInput.targetDistance ?? null,
                 targetRepsMin: exerciseInput.targetRepsMin ?? null,
                 targetRepsMax: exerciseInput.targetRepsMax ?? null,
@@ -465,7 +466,8 @@ export function createProgramRepository(
                 orderIndex: sourceExercise.orderIndex,
                 targetSetCount: sourceExercise.targetSetCount,
                 targetWeight: sourceExercise.targetWeight ?? null,
-                targetDurationSeconds: null,
+                targetDurationSeconds:
+                  sourceExercise.targetDurationSeconds ?? null,
                 targetDistance: sourceExercise.targetDistance ?? null,
                 targetRepsMin: sourceExercise.targetRepsMin,
                 targetRepsMax: sourceExercise.targetRepsMax,
@@ -622,7 +624,7 @@ export function createProgramRepository(
             exerciseId: exercise.exerciseId,
             targetSetCount: exercise.targetSetCount,
             targetWeight: exercise.targetWeight ?? null,
-            targetDurationSeconds: null,
+            targetDurationSeconds: exercise.targetDurationSeconds ?? null,
             targetDistance: exercise.targetDistance ?? null,
             targetRepsMin: exercise.targetRepsMin,
             targetRepsMax: exercise.targetRepsMax,
@@ -829,7 +831,7 @@ export function createProgramRepository(
             orderIndex: existing.length,
             targetSetCount: input.targetSetCount,
             targetWeight: input.targetWeight ?? null,
-            targetDurationSeconds: null,
+            targetDurationSeconds: input.targetDurationSeconds ?? null,
             targetDistance: input.targetDistance ?? null,
             targetRepsMin: input.targetRepsMin ?? null,
             targetRepsMax: input.targetRepsMax ?? null,
@@ -889,7 +891,9 @@ export function createProgramRepository(
             targetWeight: hasField(input, 'targetWeight')
               ? (input.targetWeight ?? null)
               : (prescribed.targetWeight ?? null),
-            targetDurationSeconds: null,
+            targetDurationSeconds: hasField(input, 'targetDurationSeconds')
+              ? (input.targetDurationSeconds ?? null)
+              : (prescribed.targetDurationSeconds ?? null),
             targetDistance: hasField(input, 'targetDistance')
               ? (input.targetDistance ?? null)
               : (prescribed.targetDistance ?? null),
@@ -1577,7 +1581,7 @@ export function createProgramRepository(
             orderIndex: existing.length,
             targetSetCount: input.targetSetCount,
             targetWeight: input.targetWeight ?? null,
-            targetDurationSeconds: null,
+            targetDurationSeconds: input.targetDurationSeconds ?? null,
             targetDistance: input.targetDistance ?? null,
             targetRepsMin: input.targetRepsMin ?? null,
             targetRepsMax: input.targetRepsMax ?? null,
@@ -1636,7 +1640,9 @@ export function createProgramRepository(
             targetWeight: hasField(input, 'targetWeight')
               ? (input.targetWeight ?? null)
               : (prescribed.targetWeight ?? null),
-            targetDurationSeconds: null,
+            targetDurationSeconds: hasField(input, 'targetDurationSeconds')
+              ? (input.targetDurationSeconds ?? null)
+              : (prescribed.targetDurationSeconds ?? null),
             targetDistance: hasField(input, 'targetDistance')
               ? (input.targetDistance ?? null)
               : (prescribed.targetDistance ?? null),

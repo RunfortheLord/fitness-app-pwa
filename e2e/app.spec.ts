@@ -581,6 +581,13 @@ test('creates, activates, starts the next day, and persists a program cycle', as
   await builder.getByRole('button', { name: 'Add exercise' }).click()
   await addPrescription(builder, 'E2E Squat')
   await expect(builder.getByText('E2E Squat')).toBeVisible()
+  await builder
+    .getByRole('button', { name: 'Edit E2E Squat prescription' })
+    .click()
+  await builder.getByRole('textbox', { name: 'Min reps' }).fill('')
+  await builder.getByRole('textbox', { name: 'Max reps' }).fill('')
+  await builder.getByRole('button', { name: 'Update prescription' }).click()
+  await expect(builder.getByLabel('Prescription editor')).not.toBeVisible()
   await expect(
     builder.getByRole('spinbutton', { name: 'Current week' }),
   ).toHaveCount(0)
