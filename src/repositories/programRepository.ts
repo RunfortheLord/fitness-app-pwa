@@ -1,5 +1,13 @@
 import { db, type TrainingLogDatabase } from '@db/database'
 import { createId } from '@domain/ids'
+import { BUILT_IN_EXERCISES } from '@domain/exerciseLibrary'
+import {
+  periodizedPlanSchema,
+  programPosition,
+  resolvePeriodizedExercise,
+  remapPeriodizedPlan,
+} from '@domain/periodization'
+import { formatLocalDate, type LocalDateString } from '@domain/dates'
 import {
   BUILT_IN_PROGRAMS,
   BUILT_IN_PROGRAM_SEED_VERSION,
@@ -45,6 +53,7 @@ export type CreateTemplateDayInput = {
 }
 
 export type CreateProgramTemplateInput = {
+  periodization?: ProgramTemplate['periodization']
   name: string
   notes?: string
   durationWeeks?: number | null
@@ -216,6 +225,25 @@ export function createProgramRepository(
             return
           }
 
+          // The expanded library installs in background chunks on iPhone.
+          // Install only program references here instead of awaiting all 803 entries.
+          const available = new Set(exercises.map((exercise) => exercise.id))
+          const required = new Set(
+            BUILT_IN_PROGRAMS.flatMap((program) =>
+              program.days.flatMap((day) =>
+                day.exercises.map((exercise) => exercise.exerciseId),
+              ),
+            ),
+          )
+          const missing = BUILT_IN_EXERCISES.filter(
+            (exercise) =>
+              required.has(exercise.id) && !available.has(exercise.id),
+          )
+          if (missing.length) {
+            await database.exercises.bulkAdd(missing)
+            exercises.push(...missing)
+          }
+
           const seedRecords = createBuiltInProgramSeedRecords(exercises)
           const daysByTemplate = groupByTemplateId(
             seedRecords.templateWorkoutDays,
@@ -277,6 +305,9 @@ export function createProgramRepository(
     async createProgramTemplate(input: CreateProgramTemplateInput) {
       const now = new Date().toISOString()
       const template: ProgramTemplate = {
+        ...(input.periodization
+          ? { periodization: periodizedPlanSchema.parse(input.periodization) }
+          : {}),
         id: createId(),
         name: input.name,
         notes: '',
@@ -407,6 +438,9 @@ export function createProgramRepository(
           )
 
           const cycle: ActiveProgramCycle = {
+            ...(template.periodization
+              ? { periodization: structuredClone(template.periodization) }
+              : {}),
             id: createId(),
             sourceTemplateId: template.id,
             name: template.name,
@@ -609,7 +643,7 @@ export function createProgramRepository(
 
     async cloneProgramTemplate(id: string) {
       const source = await this.getTemplateStructure(id)
-      return this.createProgramTemplate({
+      const result = await this.createProgramTemplate({
         name: `${source.template.name} copy`,
         notes: '',
         durationWeeks: source.template.durationWeeks ?? null,
@@ -634,6 +668,27 @@ export function createProgramRepository(
           })),
         })),
       })
+      if (source.template.periodization) {
+        const ids = new Map<string, string>()
+        source.days.forEach((day, index) => {
+          ids.set(day.id, result.days[index].id)
+          source.exercisesByDay[day.id].forEach((exercise, exerciseIndex) => {
+            const target = result.exercises.filter(
+              (entry) => entry.dayId === result.days[index].id,
+            )[exerciseIndex]
+            ids.set(exercise.id, target.id)
+          })
+        })
+        const periodization = remapPeriodizedPlan(
+          source.template.periodization,
+          ids,
+        )
+        await database.programTemplates.update(result.template.id, {
+          periodization,
+        })
+        result.template.periodization = periodization
+      }
+      return result
     },
 
     async addTemplateDay(
@@ -1179,7 +1234,9 @@ export function createProgramRepository(
       }
     },
 
-    async getCurrentActiveCycleStructure() {
+    async getCurrentActiveCycleStructure(
+      date: LocalDateString = formatLocalDate(new Date()),
+    ) {
       const cycle = await database.activeProgramCycles
         .where({ status: 'active' })
         .last()
@@ -1188,7 +1245,32 @@ export function createProgramRepository(
         return undefined
       }
 
-      return this.getActiveCycleStructure(cycle.id)
+      const structure = await this.getActiveCycleStructure(cycle.id)
+      const plan = cycle.periodization
+      if (!plan) return structure
+      const position = programPosition(plan, date)
+      structure.cycle = { ...cycle, currentWeekNumber: position.week }
+      for (const day of structure.days) {
+        structure.exercisesByDay[day.id] = structure.exercisesByDay[
+          day.id
+        ].flatMap((exercise) => {
+          const resolved = resolvePeriodizedExercise(
+            plan,
+            position.week,
+            exercise,
+          )
+          return resolved ? [resolved] : []
+        })
+      }
+      structure.days = structure.days
+        .filter((day) => structure.exercisesByDay[day.id].length > 0)
+        .map((day) => ({
+          ...day,
+          name:
+            position.phase.dayNames?.[day.sourceTemplateDayId ?? day.id] ??
+            day.name,
+        }))
+      return structure
     },
 
     async listAllActiveCycleDayChecks(activeCycleId: string) {
@@ -1265,7 +1347,7 @@ export function createProgramRepository(
                   weekNumber: input.weekNumber,
                 })
               : currentWeekNumber
-          if (nextWeekNumber !== currentWeekNumber) {
+          if (!cycle.periodization && nextWeekNumber !== currentWeekNumber) {
             await database.activeProgramCycles.update(cycle.id, {
               currentWeekNumber: nextWeekNumber,
               updatedAt: now,

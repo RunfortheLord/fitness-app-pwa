@@ -52,6 +52,7 @@ import {
   type ProgramInformationStructure,
 } from './ProgramInformationSheet'
 import { PrescriptionEditor } from './PrescriptionEditor'
+import { PeriodizedProgramPanel } from './PeriodizedProgramPanel'
 import { PrescriptionSummaryText } from './prescriptionSummary'
 import {
   emptyProgramForm,
@@ -801,6 +802,18 @@ export function ProgramBuilderSheet({
         ) : null}
         {structure && !editingPrescription ? (
           <>
+            {!(
+              'isBuiltIn' in structure.record && structure.record.isBuiltIn
+            ) ? (
+              <details>
+                <summary>Advanced periodized programming (optional)</summary>
+                <PeriodizedProgramPanel
+                  record={structure.record}
+                  mode={mode}
+                  onChanged={onChanged}
+                />
+              </details>
+            ) : null}
             <FormField id="builder-program-name" label="Program name">
               <div className="rename-field">
                 <input

@@ -6654,3 +6654,56 @@ body.keyboard-input-open .bottom-nav {
   color: var(--color-muted);
   font-size: 0.875rem;
 }
+.periodized-panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.periodized-panel label {
+  display: grid;
+  gap: 6px;
+}
+.periodized-panel input,
+.periodized-panel select,
+.periodized-panel textarea {
+  min-height: 44px;
+  font-size: 16px;
+  max-width: 100%;
+  min-width: 0;
+}
+.periodized-panel input[type='checkbox'] {
+  width: 24px;
+}
+.periodized-panel fieldset {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid var(--border-color, #39393d);
+  border-radius: 12px;
+  padding: 12px;
+}
+.periodized-panel progress {
+  width: 100%;
+}
+.periodized-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.periodized-timeline {
+  display: grid;
+  gap: 12px;
+}
+.periodized-day {
+  border: 1px solid var(--border-color, #39393d);
+  border-radius: 12px;
+  padding: 12px;
+}
+.periodized-day summary {
+  padding: 12px 0;
+  min-height: 44px;
+  cursor: pointer;
+}
+.periodized-day li {
+  margin-bottom: 10px;
+}

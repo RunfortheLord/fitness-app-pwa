@@ -1,4 +1,8 @@
 import { z } from 'zod'
+import {
+  periodizedPlanSchema,
+  setPrescriptionSchema,
+} from '@domain/periodization'
 
 import packageJson from '../../package.json'
 import {
@@ -462,6 +466,7 @@ const exerciseSchema = z.object({
   updatedAt: isoTimestampSchema,
 })
 const programTemplateSchema = z.object({
+  periodization: periodizedPlanSchema.optional(),
   id: idSchema,
   name: z.string().min(1),
   notes: z.string(),
@@ -510,6 +515,7 @@ const prescribedExerciseSchema = z.object({
   updatedAt: isoTimestampSchema,
 })
 const activeProgramCycleSchema = z.object({
+  periodization: periodizedPlanSchema.optional(),
   id: idSchema,
   sourceTemplateId: nullableId,
   name: z.string().min(1),
@@ -621,6 +627,15 @@ const workoutSourceSnapshotSchema = z.object({
   dayNotes: z.string(),
 })
 const workoutSchema = z.object({
+  periodizedSession: z
+    .object({
+      phase: z.string(),
+      scheduledDate: localDateSchema,
+      planVersion: z.number().int().positive(),
+    })
+    .optional(),
+  programWeekNumber: z.number().int().positive().nullable().optional(),
+  isDeload: z.boolean().optional(),
   id: idSchema,
   sourceActiveCycleId: nullableId,
   sourceTemplateId: nullableId,
@@ -674,6 +689,8 @@ const metricValueSourcesSchema = z.record(
   z.enum(['manual', 'auto']),
 )
 const workoutSetSchema = z.object({
+  plannedSet: setPrescriptionSchema.optional(),
+  barSpeed: z.enum(['fast', 'normal', 'slow']).optional(),
   id: idSchema,
   workoutId: idSchema,
   workoutExerciseId: idSchema,

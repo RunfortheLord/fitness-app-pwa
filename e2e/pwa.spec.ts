@@ -319,11 +319,11 @@ async function createActiveWorkout(page: Page) {
   await page.getByRole('button', { name: 'Save exercise' }).click()
 
   await page
-    .getByLabel('Current Program')
+    .getByRole('region', { name: 'Current Program', exact: true })
     .getByRole('button', { name: 'Create program' })
     .click()
   await page
-    .getByRole('textbox', { name: 'Name' })
+    .getByRole('textbox', { name: 'Program name' })
     .fill('Offline recovery program')
   await page.getByRole('button', { name: 'Save program' }).click()
 

@@ -1,4 +1,5 @@
 import type { LocalDateString } from '@domain/dates'
+import type { PeriodizedPlan, SetPrescription } from '@domain/periodization'
 
 export type IsoTimestamp = string
 export type EntityStatus = 'active' | 'archived'
@@ -483,6 +484,7 @@ export type ExerciseSnapshot = {
 }
 
 export type ProgramTemplate = {
+  periodization?: PeriodizedPlan
   id: string
   name: string
   notes: string
@@ -543,6 +545,7 @@ export type TemplateWorkoutExercise = {
 }
 
 export type ActiveProgramCycle = {
+  periodization?: PeriodizedPlan
   id: string
   sourceTemplateId: string | null
   name: string
@@ -622,6 +625,11 @@ export type RestTimerState = {
 }
 
 export type Workout = {
+  periodizedSession?: {
+    phase: string
+    scheduledDate: LocalDateString
+    planVersion: number
+  }
   id: string
   sourceActiveCycleId: string | null
   sourceTemplateId: string | null
@@ -676,6 +684,8 @@ export type WorkoutExercise = {
 }
 
 export type WorkoutSet = {
+  plannedSet?: SetPrescription
+  barSpeed?: 'fast' | 'normal' | 'slow'
   id: string
   workoutId: string
   workoutExerciseId: string

@@ -4,6 +4,16 @@ import {
   type WorkoutHistoryStructure,
 } from '@domain/historyDisplay'
 import { createId } from '@domain/ids'
+import {
+  programPosition,
+  prescriptionKey,
+  resolvePrescription,
+  resolvePeriodizedExercise,
+  recommendPeriodizedLoad,
+  scheduledDate,
+  recommendNextAttempt,
+  recentCapacity,
+} from '@domain/periodization'
 import { buildSetMetricPropagationUpdates } from '@domain/setPropagation'
 import {
   buildSetRecommendation,
@@ -60,6 +70,7 @@ import type {
 } from '@shared-types/app'
 
 export type StartWorkoutInput = {
+  programWeekNumber?: number
   activeCycleId: string
   dayId: string
   localDate: LocalDateString
@@ -90,6 +101,7 @@ export type CompleteWorkoutInput = {
 export type WorkoutSetMetricValue = number | boolean | null
 
 export type UpdateWorkoutSetInput = {
+  barSpeed?: WorkoutSet['barSpeed']
   metricValues?: Record<string, WorkoutSetMetricValue>
   metricValueSources?: NonNullable<WorkoutSet['metricValueSources']>
   rir?: number | null
@@ -209,22 +221,83 @@ export function createWorkoutRepository(
           if (!cycle || !day || day.activeCycleId !== cycle.id) {
             throw new Error('Active cycle workout day was not found.')
           }
-          const programWeekNumber = Math.min(
-            cycle.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
-            currentProgramWeek(cycle.currentWeekNumber, [], []),
+          const periodizedPlan = cycle.periodization
+          const position = periodizedPlan
+            ? programPosition(periodizedPlan, input.localDate)
+            : null
+          if (
+            position &&
+            (position.paused || position.beforeStart || position.finished)
           )
-          const deload =
-            (cycle.deloadSchedulingEnabled ?? false) &&
-            isDeloadWeek(programWeekNumber, cycle.deloadWeekNumbers)
-          const sessionRirEnabled = rirTrackingEnabled || deload
+            throw new Error(
+              position.paused
+                ? 'Resume the program before starting a workout.'
+                : 'This date is outside the program schedule. Adjust the schedule first.',
+            )
+          const programWeekNumber = periodizedPlan
+            ? (input.programWeekNumber ?? position!.week)
+            : Math.min(
+                cycle.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
+                currentProgramWeek(cycle.currentWeekNumber, [], []),
+              )
+          if (
+            periodizedPlan &&
+            (!Number.isInteger(programWeekNumber) ||
+              programWeekNumber < 1 ||
+              programWeekNumber > periodizedPlan.weeks.length)
+          )
+            throw new Error('Choose a valid training week.')
+          const phase = periodizedPlan
+            ? periodizedPlan.phases.find(
+                (entry) =>
+                  entry.id ===
+                  periodizedPlan.weeks[programWeekNumber - 1].phaseId,
+              )
+            : undefined
+          const deload = periodizedPlan
+            ? phase?.name === 'Deload' || phase?.name === 'Taper'
+            : (cycle.deloadSchedulingEnabled ?? false) &&
+              isDeloadWeek(programWeekNumber, cycle.deloadWeekNumbers)
+          const sessionRirEnabled =
+            rirTrackingEnabled || deload || Boolean(periodizedPlan)
+          if (periodizedPlan) {
+            const previous = await database.workoutHistoryEntries
+              .where({ sourceActiveCycleId: cycle.id })
+              .toArray()
+            if (
+              previous.some(
+                (entry) =>
+                  entry.sourceDayId === day.id &&
+                  entry.programWeekNumber === programWeekNumber,
+              )
+            )
+              throw new Error(
+                'This scheduled session is already completed. Open it in History to review or resume it.',
+              )
+          }
 
           const workout: Workout = {
+            ...(periodizedPlan
+              ? {
+                  periodizedSession: {
+                    phase: phase!.name,
+                    scheduledDate: scheduledDate(
+                      periodizedPlan,
+                      programWeekNumber,
+                      day.sourceTemplateDayId ?? day.id,
+                    ),
+                    planVersion: periodizedPlan.version,
+                  },
+                }
+              : {}),
             id: createId(),
             sourceActiveCycleId: cycle.id,
             sourceTemplateId: cycle.sourceTemplateId,
             sourceDayId: day.id,
             localDate: input.localDate,
-            name: deload ? `Deload ${day.name}` : day.name,
+            name:
+              phase?.dayNames?.[day.sourceTemplateDayId ?? day.id] ??
+              (deload ? `Deload ${day.name}` : day.name),
             workoutSnapshot: {
               activeCycleName: cycle.name,
               templateName: template?.name ?? null,
@@ -248,9 +321,23 @@ export function createWorkoutRepository(
           await database.workouts.add(workout)
           await testHooks.afterWorkoutAdded?.()
 
-          const sourceExercises = await database.activeCycleWorkoutExercises
+          const storedExercises = await database.activeCycleWorkoutExercises
             .where({ dayId: day.id })
             .sortBy('orderIndex')
+          const sourceExercises = periodizedPlan
+            ? storedExercises.flatMap((exercise) => {
+                const resolved = resolvePeriodizedExercise(
+                  periodizedPlan,
+                  programWeekNumber,
+                  exercise,
+                )
+                return resolved ? [resolved] : []
+              })
+            : storedExercises
+          if (periodizedPlan && !sourceExercises.length)
+            throw new Error(
+              'There is no workout scheduled for this day in the selected week.',
+            )
           const workoutExercises: WorkoutExercise[] = []
           const workoutSets: WorkoutSet[] = []
 
@@ -279,12 +366,14 @@ export function createWorkoutRepository(
             const sourceForWorkout: ActiveCycleWorkoutExercise = {
               ...sourceExercise,
               exerciseSnapshot,
-              targetSetCount: deload
-                ? deloadTargetSetCount(sourceExercise.targetSetCount)
-                : sourceExercise.targetSetCount,
-              targetRir: deload
-                ? deloadTargetRir(sourceExercise.targetRir)
-                : sourceExercise.targetRir,
+              targetSetCount:
+                deload && !periodizedPlan
+                  ? deloadTargetSetCount(sourceExercise.targetSetCount)
+                  : sourceExercise.targetSetCount,
+              targetRir:
+                deload && !periodizedPlan
+                  ? deloadTargetRir(sourceExercise.targetRir)
+                  : sourceExercise.targetRir,
             }
             const workoutExercise = createWorkoutExercise(
               workout.id,
@@ -293,6 +382,176 @@ export function createWorkoutRepository(
             )
             workoutExercises.push(workoutExercise)
             await database.workoutExercises.add(workoutExercise)
+            const periodizedPrescription = periodizedPlan
+              ? resolvePrescription(
+                  periodizedPlan,
+                  programWeekNumber,
+                  prescriptionKey(sourceExercise),
+                )
+              : undefined
+            if (periodizedPrescription) {
+              const targetExerciseId =
+                periodizedPrescription.substitutionId ??
+                sourceForWorkout.exerciseId
+              if (periodizedPrescription.substitutionId) {
+                const substitute =
+                  await database.exercises.get(targetExerciseId)
+                if (!substitute)
+                  throw new Error(
+                    'Selected exercise substitution was not found.',
+                  )
+                if (
+                  substitute.trackingMethodId !==
+                  sourceForWorkout.exerciseSnapshot.trackingMethodId
+                )
+                  throw new Error(
+                    'Choose a substitution with the same tracking method so planned sets remain compatible.',
+                  )
+                workoutExercise.exerciseId = substitute.id
+                workoutExercise.exerciseSnapshot = snapshotExercise(substitute)
+                await database.workoutExercises.update(workoutExercise.id, {
+                  exerciseId: substitute.id,
+                  exerciseSnapshot: snapshotExercise(substitute),
+                })
+              }
+              let history = await getPreviousCompletedExerciseSets({
+                database,
+                exerciseId: targetExerciseId,
+                exerciseName: workoutExercise.exerciseSnapshot.exerciseName,
+                trackingMethodId:
+                  sourceForWorkout.exerciseSnapshot.trackingMethodId,
+                beforeStartedAt: now,
+                excludeDeload: true,
+                excludeTechnique: true,
+              })
+              if (
+                !history.length &&
+                periodizedPrescription.referenceExerciseId &&
+                periodizedPrescription.referenceExerciseId !== targetExerciseId
+              ) {
+                const reference = await database.exercises.get(
+                  periodizedPrescription.referenceExerciseId,
+                )
+                if (reference)
+                  history = (
+                    await getPreviousCompletedExerciseSets({
+                      database,
+                      exerciseId: reference.id,
+                      exerciseName: reference.name,
+                      trackingMethodId: reference.trackingMethodId,
+                      beforeStartedAt: now,
+                      excludeDeload: true,
+                      excludeTechnique: true,
+                    })
+                  ).map((set) => ({
+                    ...set,
+                    metricValues: {
+                      ...set.metricValues,
+                      weight:
+                        typeof set.metricValues.weight === 'number'
+                          ? set.metricValues.weight *
+                            (periodizedPrescription.referenceScale ?? 1)
+                          : set.metricValues.weight,
+                    },
+                  }))
+              }
+              const increment = currentExercise?.defaultWeightIncrement ?? 5
+              let number = 0
+              for (const group of periodizedPrescription.sets) {
+                const groupHistory = history.filter(
+                  (set) =>
+                    !set.plannedSet || set.plannedSet.kind === group.kind,
+                )
+                const smart =
+                  periodizedPrescription.progression === 'double progression' &&
+                  workoutAutofillMode === 'smart_progression'
+                    ? buildWorkoutPrefillPlan({
+                        previousSets: groupHistory
+                          .filter(
+                            (set) =>
+                              set.completed && set.metricValues.failed !== true,
+                          )
+                          .flatMap((set) =>
+                            typeof set.metricValues.weight === 'number' &&
+                            typeof set.metricValues.reps === 'number'
+                              ? [
+                                  {
+                                    id: set.id,
+                                    setNumber: set.setNumber,
+                                    load: set.metricValues.weight,
+                                    reps: set.metricValues.reps,
+                                    rir: set.rir,
+                                  },
+                                ]
+                              : [],
+                          ),
+                        targetSetCount: group.count,
+                        targetRepsMin: group.repsMin,
+                        targetRepsMax: group.repsMax,
+                        targetRir: group.rir,
+                        trackingMethodId:
+                          sourceForWorkout.exerciseSnapshot.trackingMethodId,
+                        sameProgramDay: false,
+                      })
+                    : null
+                for (let index = 0; index < group.count; index += 1) {
+                  number += 1
+                  const load =
+                    periodizedPrescription.progression === 'double progression'
+                      ? (smart?.sets[index]?.load ??
+                        groupHistory.find(
+                          (set) =>
+                            set.completed && set.metricValues.failed !== true,
+                        )?.metricValues.weight ??
+                        group.startingWeight ??
+                        null)
+                      : recommendPeriodizedLoad(
+                          group,
+                          periodizedPrescription,
+                          history,
+                          Math.min(5, increment),
+                        )
+                  const targetWeight = typeof load === 'number' ? load : null
+                  const set: WorkoutSet = {
+                    id: createId(),
+                    workoutId: workout.id,
+                    workoutExerciseId: workoutExercise.id,
+                    setNumber: number,
+                    plannedSet: { ...group, count: 1 },
+                    targetSnapshot: {
+                      trackingMethodId:
+                        sourceForWorkout.exerciseSnapshot.trackingMethodId,
+                      targetWeight,
+                      targetRepsMin: group.repsMin,
+                      targetRepsMax: group.repsMax,
+                    },
+                    targetRecommendation: null,
+                    metricValues: {},
+                    metricValueSources: {},
+                    rir: null,
+                    completed: false,
+                    completedAt: null,
+                    restSecondsUsed: group.restSeconds,
+                    createdAt: now,
+                    updatedAt: now,
+                  }
+                  set.targetRecommendation = {
+                    version: 1,
+                    originalTarget: set.targetSnapshot!,
+                    suggestedTarget: null,
+                    userEditedTarget: null,
+                    reason: 'within_range_hold',
+                    explanation:
+                      'Editable estimate within this week’s set type, repetition range and RIR. Actual performance is recorded separately.',
+                    sourceSetId: null,
+                    generatedAt: now,
+                  }
+                  workoutSets.push(set)
+                  await database.workoutSets.add(set)
+                }
+              }
+              continue
+            }
             const trackingMethodId =
               sourceForWorkout.exerciseSnapshot.trackingMethodId
             const sameDayPreviousSets = await getPreviousCompletedExerciseSets({
@@ -777,6 +1036,7 @@ export function createWorkoutRepository(
               : undefined
           const updated: WorkoutSet = {
             ...set,
+            ...(input.barSpeed ? { barSpeed: input.barSpeed } : {}),
             metricValues: input.metricValues
               ? { ...set.metricValues, ...input.metricValues }
               : set.metricValues,
@@ -849,7 +1109,12 @@ export function createWorkoutRepository(
             .where({ workoutExerciseId: set.workoutExerciseId })
             .sortBy('setNumber')
           const updates = buildSetMetricPropagationUpdates({
-            allSets,
+            allSets: set.plannedSet
+              ? allSets.filter(
+                  (candidate) =>
+                    candidate.plannedSet?.kind === set.plannedSet?.kind,
+                )
+              : allSets,
             sourceSet: set,
             metricKey,
             value,
@@ -955,6 +1220,56 @@ export function createWorkoutRepository(
           const existing = await database.workoutSets
             .where({ workoutExerciseId })
             .sortBy('setNumber')
+          const attempts = existing.filter(
+            (set) => set.plannedSet?.kind === 'max attempt',
+          )
+          if (attempts.length) {
+            const last = attempts.at(-1)!
+            const weight = last.metricValues.weight
+            const target =
+              attempts.length === 3 &&
+              attempts.every(
+                (set) =>
+                  set.completed &&
+                  set.metricValues.failed !== true &&
+                  set.metricValues.reps === 1,
+              ) &&
+              typeof weight === 'number'
+                ? recommendNextAttempt({
+                    capacity: recentCapacity([last]) ?? weight,
+                    previousWeight: weight,
+                    succeeded: true,
+                    rir: last.rir,
+                    speed: last.barSpeed,
+                    fourth: true,
+                  })
+                : null
+            if (!target)
+              throw new Error(
+                'An optional fourth attempt requires three successful singles and a fast third attempt with at least 1 RIR. Stop after a miss or grind.',
+              )
+            const set: WorkoutSet = {
+              id: createId(),
+              workoutId: exercise.workoutId,
+              workoutExerciseId,
+              setNumber: existing.length + 1,
+              plannedSet: { ...last.plannedSet!, count: 1 },
+              targetSnapshot: { ...last.targetSnapshot!, targetWeight: target },
+              targetRecommendation: null,
+              metricValues: {},
+              rir: null,
+              completed: false,
+              completedAt: null,
+              restSecondsUsed: 300,
+              createdAt: now,
+              updatedAt: now,
+            }
+            await database.workoutSets.add(set)
+            await database.workouts.update(exercise.workoutId, {
+              updatedAt: now,
+            })
+            return set
+          }
           const settings = await database.userSettings.get('settings')
           const workoutAutofillMode =
             settings?.workoutAutofillMode ?? 'history_copy'
@@ -1631,6 +1946,9 @@ export function createWorkoutRepository(
           await database.workoutHistorySets.bulkAdd(
             sets.map((set) => {
               const historySet: WorkoutHistorySet = {
+                ...(set.plannedSet
+                  ? { plannedSet: set.plannedSet, barSpeed: set.barSpeed }
+                  : {}),
                 id: set.id,
                 workoutId: set.workoutId,
                 workoutExerciseId: set.workoutExerciseId,
@@ -1667,7 +1985,7 @@ export function createWorkoutRepository(
             CompleteWorkoutInput['detectedChanges']
           > = input.detectedChanges
             ? [...input.detectedChanges]
-            : workout.sourceDayId
+            : workout.sourceDayId && !workout.periodizedSession
               ? detectWorkoutStructuralChanges({
                   sourceExercises,
                   workout,
@@ -1678,6 +1996,7 @@ export function createWorkoutRepository(
           if (
             !input.detectedChanges &&
             !workout.isDeload &&
+            !workout.periodizedSession &&
             workout.sourceDayId
           ) {
             const settings = await database.userSettings.get('settings')
@@ -1769,7 +2088,10 @@ export function createWorkoutRepository(
                       weekNumber,
                     })
                   : selectedWeekNumber
-              if (nextWeekNumber !== selectedWeekNumber) {
+              if (
+                !cycle.periodization &&
+                nextWeekNumber !== selectedWeekNumber
+              ) {
                 await database.activeProgramCycles.update(cycle.id, {
                   currentWeekNumber: nextWeekNumber,
                   updatedAt: completedAt,
@@ -2136,11 +2458,61 @@ async function recomputeWorkoutExerciseRecommendations(
     .where({ workoutExerciseId })
     .sortBy('setNumber')
   const programmedSets = sets.filter(
-    (set) => prescription && set.setNumber <= prescription.targetSetCount,
+    (set) =>
+      set.plannedSet ||
+      (prescription && set.setNumber <= prescription.targetSetCount),
   )
 
   for (const set of programmedSets) {
     if (set.completed) {
+      continue
+    }
+    // Periodized groups keep independent targets; a top set must never overwrite back-offs.
+    if (set.plannedSet) {
+      if (set.plannedSet.kind === 'max attempt') {
+        const previous = [...sets]
+          .reverse()
+          .find(
+            (entry) =>
+              entry.completed &&
+              entry.setNumber < set.setNumber &&
+              entry.plannedSet?.kind === 'max attempt',
+          )
+        const weight = previous?.metricValues.weight
+        if (previous && typeof weight === 'number') {
+          const capacity = recentCapacity([previous]) ?? weight
+          const target = recommendNextAttempt({
+            capacity,
+            previousWeight: weight,
+            succeeded:
+              previous.metricValues.failed !== true &&
+              previous.metricValues.reps === 1,
+            rir: previous.rir,
+            speed: previous.barSpeed,
+          })
+          await database.workoutSets.update(set.id, {
+            targetRecommendation: set.targetSnapshot
+              ? {
+                  version: 1,
+                  originalTarget: set.targetSnapshot,
+                  suggestedTarget: {
+                    ...set.targetSnapshot,
+                    targetWeight: target,
+                  },
+                  userEditedTarget:
+                    set.targetRecommendation?.userEditedTarget ?? null,
+                  reason: 'within_range_hold',
+                  explanation: target
+                    ? 'Review this attempt against the previous successful lift, RIR and reported bar speed.'
+                    : 'No further increase is recommended after this result. Stop testing after a miss or slow maximal lift.',
+                  sourceSetId: previous.id,
+                  generatedAt,
+                }
+              : null,
+            updatedAt: generatedAt,
+          })
+        }
+      }
       continue
     }
     const sourceSet = [...programmedSets]
@@ -2683,6 +3055,7 @@ async function getPreviousCompletedExerciseSets({
   beforeStartedAt,
   sourceDayId,
   excludeDeload = false,
+  excludeTechnique = false,
 }: {
   database: TrainingLogDatabase
   exerciseId: string
@@ -2691,6 +3064,7 @@ async function getPreviousCompletedExerciseSets({
   beforeStartedAt: string
   sourceDayId?: string | null
   excludeDeload?: boolean
+  excludeTechnique?: boolean
 }) {
   let searchBefore = beforeStartedAt
   while (true) {
@@ -2717,7 +3091,12 @@ async function getPreviousCompletedExerciseSets({
       .sortBy('setNumber')
     if (
       !previousExercise.skipped &&
-      sets.some((set) => usableHistoricalSet(set, trackingMethodId))
+      sets.some(
+        (set) =>
+          usableHistoricalSet(set, trackingMethodId) &&
+          (!excludeTechnique ||
+            !['warm-up', 'technique set'].includes(set.plannedSet?.kind ?? '')),
+      )
     ) {
       return sets
     }

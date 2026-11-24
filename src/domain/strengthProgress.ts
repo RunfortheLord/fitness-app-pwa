@@ -105,6 +105,10 @@ export function createStrengthGraphPoints(workouts: StrengthGraphWorkout[]) {
         continue
       }
       const completedSets = (structure.setsByExercise[exercise.id] ?? [])
+        .filter(
+          (set) =>
+            !['warm-up', 'technique set'].includes(set.plannedSet?.kind ?? ''),
+        )
         .map((set) =>
           setMetrics(set, exercise.exerciseSnapshot.trackingMethodId),
         )

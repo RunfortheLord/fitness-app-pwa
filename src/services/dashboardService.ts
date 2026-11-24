@@ -120,7 +120,7 @@ export function createDashboardService(database: TrainingLogDatabase = db) {
       ] = await Promise.all([
         nutritionSummaryService.getDailySummary(selectedDate),
         bodyweightRepository.listBodyweightEntriesForDate(selectedDate),
-        programRepository.getCurrentActiveCycleStructure(),
+        programRepository.getCurrentActiveCycleStructure(selectedDate),
         workoutRepository.getActiveWorkout(),
         workoutRepository.getMostRecentCompletedWorkout(),
         database.appMetadata.get('app'),

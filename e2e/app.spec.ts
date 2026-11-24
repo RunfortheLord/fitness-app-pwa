@@ -569,10 +569,10 @@ test('creates, activates, starts the next day, and persists a program cycle', as
   await expect(page.getByText('E2E Squat')).toBeVisible({ timeout: 15_000 })
 
   await page
-    .getByLabel('Current Program')
+    .getByRole('region', { name: 'Current Program', exact: true })
     .getByRole('button', { name: 'Create program' })
     .click()
-  await page.getByRole('textbox', { name: 'Name' }).fill('E2E Strength')
+  await page.getByRole('textbox', { name: 'Program name' }).fill('E2E Strength')
   await page.getByRole('button', { name: 'Save program' }).click()
   const builder = page.getByRole('dialog', { name: 'Edit template' })
   await expect(builder).toBeVisible()
@@ -648,7 +648,9 @@ test('creates, activates, starts the next day, and persists a program cycle', as
 
   await page.reload()
   await expect(
-    page.getByLabel('Current Program').getByText('E2E Strength'),
+    page
+      .getByRole('region', { name: 'Current Program', exact: true })
+      .getByText('E2E Strength'),
   ).toBeVisible()
   await page.getByRole('button', { name: /^Day A/ }).click()
   const dayPreview = page.getByRole('region', { name: 'Day A' })
@@ -708,10 +710,12 @@ test(
     })
 
     await page
-      .getByLabel('Current Program')
+      .getByRole('region', { name: 'Current Program', exact: true })
       .getByRole('button', { name: 'Create program' })
       .click()
-    await page.getByRole('textbox', { name: 'Name' }).fill('E2E Live program')
+    await page
+      .getByRole('textbox', { name: 'Program name' })
+      .fill('E2E Live program')
     await page.getByRole('button', { name: 'Save program' }).click()
     const builder = page.getByRole('dialog', { name: 'Edit template' })
     await addWorkoutDay(builder, 'Live A')
@@ -1085,11 +1089,11 @@ test(
     await waitForExerciseLibrary(page)
 
     await page
-      .getByLabel('Current Program')
+      .getByRole('region', { name: 'Current Program', exact: true })
       .getByRole('button', { name: 'Create program' })
       .click()
     await page
-      .getByRole('textbox', { name: 'Name' })
+      .getByRole('textbox', { name: 'Program name' })
       .fill('Installed keypad program')
     await page.getByRole('button', { name: 'Save program' }).click()
     const builder = page.getByRole('dialog', { name: 'Edit template' })
@@ -1842,10 +1846,12 @@ test('completes the release workflow through backup restore', async ({
   await createExercise(page, 'Audit row', '90')
 
   await page
-    .getByLabel('Current Program')
+    .getByRole('region', { name: 'Current Program', exact: true })
     .getByRole('button', { name: 'Create program' })
     .click()
-  await page.getByRole('textbox', { name: 'Name' }).fill('Audit program')
+  await page
+    .getByRole('textbox', { name: 'Program name' })
+    .fill('Audit program')
   await page.getByRole('button', { name: 'Save program' }).click()
   const builder = page.getByRole('dialog', { name: 'Edit template' })
   await addWorkoutDay(builder, 'Audit A')

@@ -8,3 +8,4 @@ reference
 .vercel
 .claude
 *.log
+.codex-periodization-backup

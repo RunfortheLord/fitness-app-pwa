@@ -1410,3 +1410,9 @@ as the blank band visible in the failed workout screenshot.
   secrets plus rate-limit counters. The two PWA origins keep separate local
   IndexedDB data. Keep the old variables until the new connection is verified;
   a dedicated stable Redis resource can replace the shared connection later.
+
+## 2026-11-23: Calendar-based periodized programs
+
+- The user's explicit request extends the frozen programming scope with calendar-selected weeks and phase-specific prescriptions. Users still choose and start each workout manually. Conventional repeating programs retain their existing behavior.
+- Store a validated optional plan on existing program/cycle records, with defaults and sparse phase/week overrides. No destructive migration or persisted identifier change is required. Snapshot actual session prescriptions into the existing workout/history records and include them in full backups.
+- Strength references seed recommendations only; they never create performance or bodyweight records. Recovery sessions do not change progression capacity. Planned set groups keep top sets, back-offs, warm-ups, technique sets, and attempts independent.

@@ -1115,7 +1115,10 @@ function LiveWorkoutPageContent() {
           exerciseCount={state.exercises.length}
           exerciseIndex={activeIndex}
           enterDirection={workspaceEnterDirection}
-          forceRir={state.workout.isDeload === true}
+          forceRir={
+            state.workout.isDeload === true ||
+            Boolean(state.workout.periodizedSession)
+          }
           isWorkoutPauseBusy={isWorkoutPauseBusy}
           rirTargetOnEverySet={state.workout.trackRirEverySet ?? false}
           key={activeExercise.id}
@@ -2011,6 +2014,10 @@ function SetRow({
   const { t } = useLanguage()
   const [validationRequested, setValidationRequested] = useState(false)
   const [rirTouched, setRirTouched] = useState(false)
+  const [plannedLoadMessage, setPlannedLoadMessage] = useState('')
+  const [barSpeedDraft, setBarSpeedDraft] = useState<
+    WorkoutSet['barSpeed'] | ''
+  >(set.barSpeed ?? '')
   const [rirDraft, setRirDraft] = useState(set.rir?.toString() ?? '')
   const rirEditingRef = useRef(false)
   const lastRirPropRef = useRef(set.rir)
@@ -2049,7 +2056,111 @@ function SetRow({
     <div className={set.completed ? 'set-row completed' : 'set-row'}>
       <div className="set-number">
         <strong>{set.setNumber}</strong>
+        {set.plannedSet ? <small>{set.plannedSet.kind}</small> : null}
       </div>
+      {set.plannedSet ? (
+        <p className="muted">
+          Planned: {set.plannedSet.repsMin}
+          {set.plannedSet.repsMax !== set.plannedSet.repsMin
+            ? `–${set.plannedSet.repsMax}`
+            : ''}{' '}
+          reps{set.plannedSet.rir != null ? ` · ${set.plannedSet.rir} RIR` : ''}
+          {(
+            set.targetRecommendation?.userEditedTarget ??
+            set.targetRecommendation?.suggestedTarget ??
+            set.targetSnapshot
+          )?.targetWeight != null
+            ? ` · ${formatWeightWithUnit((set.targetRecommendation?.userEditedTarget ?? set.targetRecommendation?.suggestedTarget ?? set.targetSnapshot)!.targetWeight!, weightUnit, 'lifting')}`
+            : ''}
+          . Enter your actual results below.
+        </p>
+      ) : null}
+      {set.plannedSet && set.targetSnapshot ? (
+        <details>
+          <summary>Edit this set’s planned load</summary>
+          <label>
+            Planned load ({weightUnit})
+            <input
+              aria-label={`Set ${set.setNumber} planned load`}
+              type="number"
+              step="0.5"
+              min="0"
+              disabled={set.completed}
+              defaultValue={
+                (
+                  set.targetRecommendation?.userEditedTarget ??
+                  set.targetRecommendation?.suggestedTarget ??
+                  set.targetSnapshot
+                ).targetWeight == null
+                  ? ''
+                  : weightInputValue(
+                      (
+                        set.targetRecommendation?.userEditedTarget ??
+                        set.targetRecommendation?.suggestedTarget ??
+                        set.targetSnapshot
+                      ).targetWeight!,
+                      weightUnit,
+                    )
+              }
+              onBlur={(event) => {
+                const weight =
+                  event.target.value === ''
+                    ? null
+                    : weightInputToLb(Number(event.target.value), weightUnit)
+                if (
+                  weight !== null &&
+                  (!Number.isFinite(weight) || weight < 0)
+                ) {
+                  setPlannedLoadMessage('Enter a valid nonnegative load.')
+                  return
+                }
+                void workoutRepository
+                  .updateWorkoutSetTarget(set.id, { targetWeight: weight })
+                  .then(() =>
+                    setPlannedLoadMessage('Saved for this workout only.'),
+                  )
+                  .catch((caught: unknown) =>
+                    setPlannedLoadMessage(
+                      caught instanceof Error
+                        ? caught.message
+                        : 'Unable to save target.',
+                    ),
+                  )
+              }}
+            />
+          </label>
+          <p role="status">{plannedLoadMessage}</p>
+        </details>
+      ) : null}
+      {set.plannedSet?.kind === 'max attempt' &&
+      set.targetRecommendation?.sourceSetId ? (
+        <p role="status">{set.targetRecommendation.explanation}</p>
+      ) : null}
+      {set.plannedSet?.kind === 'max attempt' ? (
+        <label>
+          Bar speed
+          <select
+            aria-label={`Set ${set.setNumber} bar speed`}
+            disabled={set.completed}
+            value={barSpeedDraft}
+            onChange={(event) => {
+              setBarSpeedDraft(event.target.value as WorkoutSet['barSpeed'])
+              void workoutRepository.updateWorkoutSet(set.id, {
+                barSpeed: event.target.value as WorkoutSet['barSpeed'],
+              })
+            }}
+          >
+            <option value="">Choose after lifting</option>
+            <option value="fast">Fast</option>
+            <option value="normal">Normal</option>
+            <option value="slow">Slow / grind</option>
+          </select>
+          <small>
+            Use spotters and safeties. Stop after a miss or painful lift. Review
+            the next attempt before lifting.
+          </small>
+        </label>
+      ) : null}
       {metrics.map((metric) => {
         // Weight metrics (unit "lb") persist in canonical pounds; show and read
         // them in the user's display unit while leaving reps/duration untouched.
@@ -2123,9 +2234,11 @@ function SetRow({
             disabled={set.completed}
             aria-invalid={(validationRequested || rirTouched) && isRirInvalid}
             placeholder={
-              isRirTargetSet && prescription?.targetRir != null
-                ? String(prescription.targetRir)
-                : undefined
+              set.plannedSet?.rir != null
+                ? String(set.plannedSet.rir)
+                : isRirTargetSet && prescription?.targetRir != null
+                  ? String(prescription.targetRir)
+                  : undefined
             }
             mode="decimal"
             onCommit={() => {

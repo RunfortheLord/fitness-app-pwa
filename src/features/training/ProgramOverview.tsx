@@ -120,6 +120,7 @@ export function ProgramOverview({
           <label className="program-week-selector">
             <span>Program week</span>
             <select
+              disabled={Boolean(currentCycle.cycle.periodization)}
               aria-label="Select program week"
               ref={weekSelectRef}
               onChange={(event) => {

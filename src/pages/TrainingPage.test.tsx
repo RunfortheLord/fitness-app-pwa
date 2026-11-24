@@ -18,6 +18,8 @@ import { LiveWorkoutPage } from '@pages/LiveWorkoutPage'
 import { TrainingPage } from '@pages/TrainingPage'
 import { clearCachedTrainingPageData } from '@pages/trainingPageCache'
 import { createProgramRepository } from '@repositories/programRepository'
+import { periodizationRepository } from '@repositories/periodizationRepository'
+import { februaryProgramName } from '@domain/februaryPeak'
 import { settingsRepository } from '@repositories/settingsRepository'
 import {
   createExerciseRepository,
@@ -44,6 +46,8 @@ beforeEach(async () => {
   await db.delete()
   await db.open()
   await initializeAppData()
+  await createProgramRepository(db).seedBuiltInPrograms()
+  await periodizationRepository.seedFebruaryProgram()
   await settingsRepository.saveRirTrackingEnabled(true)
 })
 
@@ -330,7 +334,9 @@ describe('TrainingPage', () => {
       // prescription should be user-owned.
       const all = await db.templateWorkoutExercises.toArray()
       const userOwned = all.filter(
-        (entry) => !entry.templateId.startsWith('builtin-program:'),
+        (entry) =>
+          !entry.templateId.startsWith('builtin-program:') &&
+          entry.templateId !== 'february-2027-peak',
       )
       expect(userOwned).toHaveLength(1)
     })
@@ -424,7 +430,11 @@ describe('TrainingPage', () => {
       await db.templateWorkoutExercises
         .where({ exerciseId: exercise.id })
         .toArray()
-    ).find((entry) => !entry.templateId.startsWith('builtin-program:'))
+    ).find(
+      (entry) =>
+        !entry.templateId.startsWith('builtin-program:') &&
+        entry.templateId !== 'february-2027-peak',
+    )
     expect(prescription).toMatchObject({
       restSecondsOverride: null,
       exerciseSnapshot: { defaultRestSeconds: 105 },
@@ -2672,16 +2682,18 @@ describe('TrainingPage', () => {
       expect(screen.queryByText('Upper Lower')).not.toBeInTheDocument(),
     )
     // The user template is gone; the main library shows its empty state.
-    expect(screen.getByText('No saved programs')).toBeInTheDocument()
+    expect(screen.getByText(februaryProgramName)).toBeInTheDocument()
   })
 
   it('adds a built-in program from Browse programs into the user library', async () => {
     const user = userEvent.setup()
     renderTraining()
 
-    await screen.findByText('No saved programs')
+    await screen.findByText(februaryProgramName)
 
-    await user.click(screen.getByRole('button', { name: 'Browse programs' }))
+    await user.click(
+      screen.getAllByRole('button', { name: 'Browse programs' })[0],
+    )
     expect(
       screen.queryByRole('heading', { name: 'Current Program' }),
     ).not.toBeInTheDocument()
@@ -2712,8 +2724,10 @@ describe('TrainingPage', () => {
     const user = userEvent.setup()
     renderTraining()
 
-    await screen.findByText('No saved programs')
-    await user.click(screen.getByRole('button', { name: 'Browse programs' }))
+    await screen.findByText(februaryProgramName)
+    await user.click(
+      screen.getAllByRole('button', { name: 'Browse programs' })[0],
+    )
     await user.click(
       await screen.findByRole('button', {
         name: 'Preview Powerlifting-Focused Full Body - Four Days per Week',
@@ -2771,8 +2785,10 @@ describe('TrainingPage', () => {
     const user = userEvent.setup()
     renderTraining()
 
-    await screen.findByText('No saved programs')
-    await user.click(screen.getByRole('button', { name: 'Browse programs' }))
+    await screen.findByText(februaryProgramName)
+    await user.click(
+      screen.getAllByRole('button', { name: 'Browse programs' })[0],
+    )
     await user.click(
       await screen.findByRole('button', {
         name: 'Preview Bodybuilding-Biased Powerbuilding',
@@ -2800,8 +2816,10 @@ describe('TrainingPage', () => {
     const user = userEvent.setup()
     renderTraining()
 
-    await screen.findByText('No saved programs')
-    await user.click(screen.getByRole('button', { name: 'Browse programs' }))
+    await screen.findByText(februaryProgramName)
+    await user.click(
+      screen.getAllByRole('button', { name: 'Browse programs' })[0],
+    )
     expect(
       await screen.findByText('Beginner Full Body A/B'),
     ).toBeInTheDocument()
@@ -2809,7 +2827,7 @@ describe('TrainingPage', () => {
     await user.keyboard('{Escape}')
 
     expect(
-      await screen.findByRole('button', { name: 'Browse programs' }),
+      (await screen.findAllByRole('button', { name: 'Browse programs' }))[0],
     ).toBeInTheDocument()
   })
 
@@ -3084,7 +3102,9 @@ describe('TrainingPage', () => {
       name: 'Program Editor',
     })
     await user.click(
-      within(editor).getByRole('button', { name: 'Program information' }),
+      await within(editor).findByRole('button', {
+        name: 'Program information',
+      }),
     )
     const information = await screen.findByRole('dialog', {
       name: 'Program information',
