@@ -180,6 +180,15 @@ as passed from desktop emulation, Playwright, or simulator testing.
 
 ## Input and Layout
 
+- [ ] In the installed Home Screen app on a physical iPhone, enter a partial set,
+      scroll its set list, lock the phone for several minutes, and resume. Repeat
+      after switching apps and after leaving the workout idle. Tap the visible
+      centers of Weight, Reps, Complete Set, and navigation: each must activate
+      the intended control without restarting. Check draft values and list position.
+- [ ] Repeat after opening and dismissing exercise notes (native keyboard),
+      closing the app-owned number pad, rotating, and interrupting an exercise
+      swipe. No delayed exercise change, shifted touches, or lost workout data.
+      Desktop/emulated browser checks do not replace this physical-device check.
 - [ ] Test every numeric keyboard.
 - [ ] Drag while editing a numeric set field and confirm it does not accidentally navigate exercises.
 - [ ] Test long exercise names.

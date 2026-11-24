@@ -198,11 +198,9 @@ textarea:focus-visible {
   transform: translateY(0);
 }
 
-/* Pin the shell to the layout viewport as a flex column: the header sits on top,
-   the scrollable main takes the remaining space, and the bottom nav is a normal
-   in-flow row at the end. Because nothing here is `position: fixed` relative to
-   the viewport, iOS/WebKit has no fixed element to drag up when the software
-   keyboard opens/closes — the recurring "dashboard creeps up" bug cannot occur. */
+/* Most routes use a viewport-sized flex shell with an internally scrolling
+   main and an in-flow bottom navigation row. Live Workout overrides the fixed
+   shell below to avoid stale iOS hit-test coordinates after resume. */
 .app-shell {
   position: fixed;
   inset: 0;
@@ -234,9 +232,8 @@ textarea:focus-visible {
   margin-left: auto;
 }
 
-/* The only scroll container in the app. It grows to fill the space between the
-   header and the bottom nav and scrolls its own overflow, so the document never
-   scrolls and fixed-element drift is impossible. */
+/* Normal routes scroll inside main, between the header and bottom navigation.
+   Live Workout instead gives scrolling to its set list. */
 .app-main {
   flex: 1 1 0;
   min-height: 0;
@@ -2255,17 +2252,16 @@ body.live-workout-open #root {
   overflow: hidden;
 }
 
-/* Pin the live-workout shell to the layout viewport with position: fixed so a
-   stray document-scroll offset (iOS focus scroll-into-view, rubber-banding)
-   can never slide the in-flow bottom navigation off screen. There is no native
-   keyboard here — numeric entry uses the in-app keypad overlay — so fixed
-   positioning is not affected by a software-keyboard visual-viewport shift. */
+/* Keep the live screen in normal flow. A full-screen fixed layer can retain
+   stale iOS hit-test coordinates after keyboard dismissal or PWA resume.
+   CSS viewport units size the locked layout; only the set list scrolls. */
 body.live-workout-open .app-shell {
-  position: fixed;
-  inset: 0;
+  position: relative;
+  inset: auto;
   display: flex;
   width: 100%;
-  height: 100%;
+  height: 100vh;
+  height: 100dvh;
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
@@ -2320,8 +2316,13 @@ body.live-workout-open .bottom-nav {
   grid-template-rows: auto minmax(0, 1fr);
   gap: var(--space-2);
   overflow: hidden;
-  transform: translate3d(var(--exercise-swipe-x, 0), 0, 0);
   touch-action: pan-y;
+}
+
+/* Release the compositor layer when idle so restored visual and touch
+   coordinates use the same ordinary layout tree. */
+.exercise-workspace-swipe-area.is-animating {
+  transform: translateX(var(--exercise-swipe-x, 0));
   will-change: transform;
 }
 

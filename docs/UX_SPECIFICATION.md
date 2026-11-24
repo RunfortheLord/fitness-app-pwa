@@ -347,6 +347,11 @@
   exercise header, add-set control, exercise actions, navigator, and session
   controls remain stable.
 - Horizontal exercise swipes transform only the exercise header and set list.
+  The live shell uses normal flow and CSS viewport height rather than a
+  full-screen fixed layer. Swipe transforms and compositor hints are released
+  when idle; suspended gestures are cancelled when the app leaves or resumes.
+  Resume and keyboard dismissal clear stray document offsets without replacing
+  workout controls, changing set-list scroll, or writing viewport dimensions.
   Add Set, exercise actions, the session bar, and bottom navigation never move
   with the swipe. The session bar sits one standard action-grid gap below the
   exercise actions.

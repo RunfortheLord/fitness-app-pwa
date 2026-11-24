@@ -827,9 +827,8 @@ test(
     expect(lockedLayout.htmlOverflow).toBe('hidden')
     expect(lockedLayout.rootOverflow).toBe('hidden')
     expect(lockedLayout.navPosition).toBe('relative')
-    // The shell is pinned to the layout viewport so a stray scroll offset can
-    // never slide the in-flow bottom dashboard off screen.
-    expect(lockedLayout.shellPosition).toBe('fixed')
+    // Normal flow avoids the stale full-screen fixed-layer hit-test mapping.
+    expect(lockedLayout.shellPosition).toBe('relative')
     expect(lockedLayout.shellHeight).toBe(lockedLayout.viewportHeight)
     expect(lockedLayout.lockedWorkoutHeight).toBe('')
     expect(lockedLayout.pageScrollHeight).toBeLessThanOrEqual(
@@ -1070,10 +1069,7 @@ test(
   'uses the installed-iPhone workout keypad without moving or removing the dashboard',
   { tag: '@smoke' },
   async ({ page }, testInfo) => {
-    test.skip(
-      testInfo.project.name === 'mobile-webkit',
-      'The installed-keypad interaction is covered in the iPhone-sized browser profile; parallel WebKit can stall while its expanded exercise seed is installing.',
-    )
+    test.setTimeout(120_000)
     await page.setViewportSize({ width: 390, height: 844 })
     await page.addInitScript(() => {
       Object.defineProperty(window.navigator, 'standalone', {
@@ -1184,26 +1180,68 @@ test(
     await expect(nav).toHaveCSS('position', 'relative')
     await expect(nav).toHaveAttribute('data-installed-keypad-nav', 'same')
 
-    // Even a stray document scroll offset (what an iOS focus scroll-into-view
-    // would produce) must not pull the pinned dashboard off screen.
-    const navBottomAfterForcedScroll = await page.evaluate(() => {
+    // Simulate focus-scroll and a suspended PWA returning. Browser emulation
+    // cannot reproduce iOS compositor corruption; verify the structural fix,
+    // lifecycle recovery, retained drafts, and actual taps at visual centers.
+    await expect(page.locator('.app-shell')).toHaveCSS('position', 'relative')
+    await expect(page.locator('.exercise-workspace-swipe-area')).toHaveCSS(
+      'transform',
+      'none',
+    )
+    const title = await page.locator('.exercise-title-block').boundingBox()
+    expect(title).not.toBeNull()
+    if (title) {
+      await page.mouse.move(title.x + 80, title.y + 10)
+      await page.mouse.down()
+      await page.mouse.move(title.x + 40, title.y + 10)
+      await expect(page.locator('.exercise-workspace-swipe-area')).toHaveClass(
+        /is-animating/,
+      )
+      await page.evaluate(() => {
+        window.dispatchEvent(new Event('pagehide'))
+        window.dispatchEvent(new Event('pageshow'))
+      })
+      await expect(page.locator('.exercise-workspace-swipe-area')).toHaveCSS(
+        'transform',
+        'none',
+      )
+      await page.mouse.up()
+    }
+    await page.evaluate(() => {
       document.documentElement.style.minHeight = '3000px'
       window.scrollTo(0, 400)
-      const navBottom = document
-        .querySelector('.bottom-nav')!
-        .getBoundingClientRect().bottom
-      document.documentElement.style.minHeight = ''
-      window.scrollTo(0, 0)
-      return { navBottom, viewportHeight: window.innerHeight }
+      window.dispatchEvent(
+        new PageTransitionEvent('pageshow', { persisted: true }),
+      )
     })
-    expect(
-      Math.abs(
-        navBottomAfterForcedScroll.navBottom -
-          navBottomAfterForcedScroll.viewportHeight,
-      ),
-    ).toBeLessThanOrEqual(1)
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+    await page.evaluate(() => {
+      document.documentElement.style.minHeight = ''
+    })
+    await page.setViewportSize({ width: 390, height: 650 })
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(weight).toHaveValue('185')
+    await expect(reps).toHaveValue('8')
+    await expect(nav).toHaveAttribute('data-installed-keypad-nav', 'same')
 
-    await page.getByRole('button', { name: 'Complete set 1' }).click()
+    const complete = page.getByRole('button', { name: 'Complete set 1' })
+    const center = await complete.evaluate((button) => {
+      const box = button.getBoundingClientRect()
+      const x = box.x + box.width / 2
+      const y = box.y + box.height / 2
+      return {
+        x,
+        y,
+        hitsButton: button.contains(document.elementFromPoint(x, y)),
+      }
+    })
+    expect(center.hitsButton).toBe(true)
+    if (testInfo.project.name !== 'desktop-chromium') {
+      await page.touchscreen.tap(center.x, center.y)
+    } else {
+      await page.mouse.click(center.x, center.y)
+    }
+
     await expect(
       page.getByRole('button', { name: 'Mark incomplete set 1' }),
     ).toBeVisible()

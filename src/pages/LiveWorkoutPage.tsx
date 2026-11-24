@@ -77,6 +77,7 @@ import {
   weightInputValue,
 } from '@domain/weightUnits'
 import { useRirTracking } from '@hooks/useRirTracking'
+import { useWorkoutViewportRecovery } from '@hooks/useWorkoutViewportRecovery'
 import { useWeightUnit } from '@hooks/useWeightUnit'
 import { exerciseRepository } from '@repositories/exerciseRepository'
 import { settingsRepository } from '@repositories/settingsRepository'
@@ -192,6 +193,8 @@ function LiveWorkoutPageContent() {
       document.body.classList.remove('live-workout-open')
     }
   }, [state.status])
+
+  useWorkoutViewportRecovery(state.status === 'ready')
 
   useEffect(() => {
     let isCurrent = true
@@ -1715,6 +1718,7 @@ function ExerciseWorkspace({
               ? 'exercise-workspace-enter-previous'
               : '',
           swipe.isDragging ? 'is-swiping' : '',
+          swipe.isAnimating ? 'is-animating' : '',
         ]
           .filter(Boolean)
           .join(' ')}
@@ -3222,14 +3226,28 @@ function useSwipeNavigation({
   const [isDragging, setIsDragging] = useState(false)
   const [isSettling, setIsSettling] = useState(false)
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    function cancelSwipe() {
+      pointerStart.current = null
       if (navigationTimeout.current !== null) {
         window.clearTimeout(navigationTimeout.current)
+        navigationTimeout.current = null
       }
-    },
-    [],
-  )
+      setOffset(0)
+      setIsDragging(false)
+      setIsSettling(false)
+    }
+    document.addEventListener('visibilitychange', cancelSwipe)
+    window.addEventListener('pagehide', cancelSwipe)
+    window.addEventListener('pageshow', cancelSwipe)
+    return () => {
+      document.removeEventListener('visibilitychange', cancelSwipe)
+      window.removeEventListener('pagehide', cancelSwipe)
+      window.removeEventListener('pageshow', cancelSwipe)
+      if (navigationTimeout.current !== null)
+        window.clearTimeout(navigationTimeout.current)
+    }
+  }, [])
 
   function settleAt(nextOffset: number, navigate?: () => void) {
     setIsDragging(false)
@@ -3257,6 +3275,7 @@ function useSwipeNavigation({
 
   return {
     isDragging,
+    isAnimating: isDragging || isSettling,
     style: {
       '--exercise-swipe-x': `${offset}px`,
       transition: isDragging
