@@ -1,3 +1,4 @@
+import { migrateWeekPlan } from '@domain/periodization'
 import { z } from 'zod'
 import {
   periodizedPlanSchema,
@@ -436,6 +437,7 @@ const exerciseSnapshotSchema = z.object({
   recordsRepsPerSide: z.boolean().default(false),
 })
 const exerciseSchema = z.object({
+  savedOneRepMax: z.number().positive().nullable().optional(),
   id: idSchema,
   name: z.string().min(1),
   notes: z.string(),
@@ -1253,10 +1255,35 @@ async function putBackupData(database: TrainingLogDatabase, data: BackupData) {
   await database.barcodeProductCache.bulkPut(data.barcodeProductCache)
   await database.bodyweightEntries.bulkPut(data.bodyweightEntries)
   await database.exercises.bulkPut(data.exercises)
-  await database.programTemplates.bulkPut(data.programTemplates)
+  await database.programTemplates.bulkPut(
+    data.programTemplates.map((record) =>
+      record.periodization
+        ? {
+            ...record,
+            periodization: migrateWeekPlan(
+              record.periodization,
+              record.id === 'february-2027-peak',
+            ),
+          }
+        : record,
+    ),
+  )
   await database.templateWorkoutDays.bulkPut(data.templateWorkoutDays)
   await database.templateWorkoutExercises.bulkPut(data.templateWorkoutExercises)
-  await database.activeProgramCycles.bulkPut(data.activeProgramCycles)
+  await database.activeProgramCycles.bulkPut(
+    data.activeProgramCycles.map((record) =>
+      record.periodization
+        ? {
+            ...record,
+            periodization: migrateWeekPlan(
+              record.periodization,
+              false,
+              record.sourceTemplateId === 'february-2027-peak',
+            ),
+          }
+        : record,
+    ),
+  )
   await database.activeCycleWorkoutDays.bulkPut(data.activeCycleWorkoutDays)
   await database.activeCycleWorkoutExercises.bulkPut(
     data.activeCycleWorkoutExercises,

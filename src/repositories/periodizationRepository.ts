@@ -11,6 +11,8 @@ import {
   periodizedPlanSchema,
   prescriptionKey,
   type PeriodizedPlan,
+  type ExercisePrescription,
+  resolvePrescription,
 } from '@domain/periodization'
 import { createStrengthGraphPoints } from '@domain/strengthProgress'
 import { BUILT_IN_EXERCISES } from '@domain/exerciseLibrary'
@@ -223,6 +225,145 @@ export function createPeriodizationRepository(
         },
       )
     },
+    async editWeeks(
+      id: string,
+      mode: 'template' | 'cycle',
+      change: (plan: PeriodizedPlan) => void,
+    ) {
+      const table =
+        mode === 'template'
+          ? database.programTemplates
+          : database.activeProgramCycles
+      return database.transaction('rw', table, async () => {
+        const record = await table.get(id)
+        if (!record?.periodization?.enabled)
+          throw new Error('Enable asymmetrical weeks first.')
+        const plan = record.periodization
+        change(plan)
+        return this.savePlan(id, mode, plan)
+      })
+    },
+    async selectWeek(id: string, week: number) {
+      return this.editWeeks(id, 'cycle', (plan) => {
+        if (!plan.weeks[week - 1]) throw new Error('Choose an existing week.')
+        plan.selectedWeek = week
+      })
+    },
+    async saveWeekExercise(
+      id: string,
+      mode: 'template' | 'cycle',
+      weeks: number[],
+      key: string,
+      base: ExercisePrescription,
+      patch: Partial<ExercisePrescription>,
+      maxes: Record<string, number | null> = {},
+    ) {
+      return database.transaction(
+        'rw',
+        [
+          database.programTemplates,
+          database.activeProgramCycles,
+          database.exercises,
+        ],
+        async () => {
+          for (const [lift, value] of Object.entries(maxes)) {
+            if (value !== null && (!Number.isFinite(value) || value <= 0))
+              throw new Error('Enter a positive one-rep max.')
+            if (
+              !(await database.exercises.update(lift, {
+                savedOneRepMax: value,
+                updatedAt: new Date().toISOString(),
+              }))
+            )
+              throw new Error('Reference lift was not found.')
+          }
+          return this.editWeeks(id, mode, (plan) => {
+            plan.defaults[key] ??= structuredClone(base)
+            for (const week of weeks) {
+              const assigned = plan.weeks[week - 1]
+              if (!assigned) throw new Error('Choose an existing week.')
+              const changes = structuredClone(patch)
+              // If group structure is stable, carry only the edited fields into
+              // another week. Its other weight and rep targets stay independent.
+              const other = resolvePrescription(plan, week, key)
+              if (
+                week !== weeks[0] &&
+                changes.sets &&
+                other &&
+                changes.sets.length === base.sets.length &&
+                other.sets.length === base.sets.length
+              ) {
+                changes.sets = changes.sets.map((group, i) => {
+                  const changed = Object.fromEntries(
+                    Object.entries({ ...base.sets[i], ...group })
+                      .filter(
+                        ([field]) =>
+                          group[field as keyof typeof group] !==
+                          base.sets[i][field as keyof typeof group],
+                      )
+                      .map(([field]) => [
+                        field,
+                        group[field as keyof typeof group],
+                      ]),
+                  )
+                  return { ...other.sets[i], ...changed }
+                })
+              }
+              assigned.overrides[key] = {
+                ...assigned.overrides[key],
+                ...changes,
+              }
+            }
+          })
+        },
+      )
+    },
+    async addWeekExercise(
+      id: string,
+      mode: 'template' | 'cycle',
+      dayId: string,
+      week: number,
+      exerciseId: string,
+      copy?: ExercisePrescription,
+    ) {
+      return database.transaction(
+        'rw',
+        [
+          database.programTemplates,
+          database.activeProgramCycles,
+          database.templateWorkoutDays,
+          database.templateWorkoutExercises,
+          database.activeCycleWorkoutDays,
+          database.activeCycleWorkoutExercises,
+          database.exercises,
+        ],
+        async () => {
+          const input = { exerciseId, targetSetCount: 3 }
+          const row =
+            mode === 'template'
+              ? await programs.addTemplateExercise(dayId, input)
+              : await programs.addActiveCycleExercise(dayId, input)
+          const value: ExercisePrescription = copy ?? {
+            included: true,
+            optional: false,
+            progression: 'hold',
+            notes: '',
+            sets: [
+              prescriptionSet('straight set', 3, 8, 12, null, {
+                loadMode: 'fixed',
+              }),
+            ],
+          }
+          return this.editWeeks(id, mode, (plan) => {
+            plan.defaults[row.id] = { ...value, included: false }
+            plan.weeks[week - 1].overrides[row.id] = {
+              ...value,
+              included: true,
+            }
+          })
+        },
+      )
+    },
     async savePlan(
       id: string,
       mode: 'template' | 'cycle',
@@ -244,7 +385,6 @@ export function createPeriodizationRepository(
         ...(plan.enabled
           ? {
               durationWeeks: plan.weeks.length,
-              deloadSchedulingEnabled: false,
             }
           : {}),
         updatedAt: new Date().toISOString(),
@@ -282,6 +422,7 @@ export function createPeriodizationRepository(
               exercise.targetRepsMax ?? exercise.targetRepsMin ?? 8,
               exercise.targetRir,
               {
+                loadMode: 'fixed',
                 startingWeight: exercise.targetWeight ?? undefined,
                 restSeconds: exercise.restSecondsOverride ?? 120,
               },
@@ -313,6 +454,7 @@ export function createPeriodizationRepository(
         ],
         weeks: Array.from({ length: duration }, () => ({
           phaseId: 'phase-1',
+          name: 'Training',
           overrides: {},
         })),
       })

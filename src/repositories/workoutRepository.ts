@@ -7,9 +7,11 @@ import { createId } from '@domain/ids'
 import {
   programPosition,
   prescriptionKey,
-  resolvePrescription,
+  scheduledPrescription,
+  isRecoveryWeek,
   resolvePeriodizedExercise,
-  recommendPeriodizedLoad,
+  configuredLoad,
+  orderedWeekExercises,
   scheduledDate,
   recommendNextAttempt,
   recentCapacity,
@@ -227,15 +229,8 @@ export function createWorkoutRepository(
           const position = periodizedPlan
             ? programPosition(periodizedPlan, input.localDate)
             : null
-          if (
-            position &&
-            (position.paused || position.beforeStart || position.finished)
-          )
-            throw new Error(
-              position.paused
-                ? 'Resume the program before starting a workout.'
-                : 'This date is outside the program schedule. Adjust the schedule first.',
-            )
+          if (position?.paused)
+            throw new Error('Resume the program before starting a workout.')
           const programWeekNumber = periodizedPlan
             ? (input.programWeekNumber ?? position!.week)
             : Math.min(
@@ -256,10 +251,16 @@ export function createWorkoutRepository(
                   periodizedPlan.weeks[programWeekNumber - 1].phaseId,
               )
             : undefined
-          const deload = periodizedPlan
-            ? phase?.name === 'Deload' || phase?.name === 'Taper'
-            : (cycle.deloadSchedulingEnabled ?? false) &&
-              isDeloadWeek(programWeekNumber, cycle.deloadWeekNumbers)
+          const scheduledDeload = Boolean(
+            cycle.deloadSchedulingEnabled &&
+            isDeloadWeek(programWeekNumber, cycle.deloadWeekNumbers),
+          )
+          const deload =
+            scheduledDeload ||
+            Boolean(
+              periodizedPlan &&
+              isRecoveryWeek(periodizedPlan, programWeekNumber),
+            )
           const sessionRirEnabled =
             rirTrackingEnabled || deload || Boolean(periodizedPlan)
           if (periodizedPlan) {
@@ -327,11 +328,16 @@ export function createWorkoutRepository(
             .where({ dayId: day.id })
             .sortBy('orderIndex')
           const sourceExercises = periodizedPlan
-            ? storedExercises.flatMap((exercise) => {
+            ? orderedWeekExercises(
+                storedExercises,
+                periodizedPlan,
+                programWeekNumber,
+              ).flatMap((exercise) => {
                 const resolved = resolvePeriodizedExercise(
                   periodizedPlan,
                   programWeekNumber,
                   exercise,
+                  scheduledDeload,
                 )
                 return resolved ? [resolved] : []
               })
@@ -385,10 +391,11 @@ export function createWorkoutRepository(
             workoutExercises.push(workoutExercise)
             await database.workoutExercises.add(workoutExercise)
             const periodizedPrescription = periodizedPlan
-              ? resolvePrescription(
+              ? scheduledPrescription(
                   periodizedPlan,
                   programWeekNumber,
                   prescriptionKey(sourceExercise),
+                  scheduledDeload,
                 )
               : undefined
             if (periodizedPrescription) {
@@ -416,104 +423,25 @@ export function createWorkoutRepository(
                   exerciseSnapshot: snapshotExercise(substitute),
                 })
               }
-              let history = await getPreviousCompletedExerciseSets({
-                database,
-                exerciseId: targetExerciseId,
-                exerciseName: workoutExercise.exerciseSnapshot.exerciseName,
-                trackingMethodId:
-                  sourceForWorkout.exerciseSnapshot.trackingMethodId,
-                beforeStartedAt: now,
-                excludeDeload: true,
-                excludeTechnique: true,
-              })
-              if (
-                !history.length &&
-                periodizedPrescription.referenceExerciseId &&
-                periodizedPrescription.referenceExerciseId !== targetExerciseId
-              ) {
-                const reference = await database.exercises.get(
-                  periodizedPrescription.referenceExerciseId,
-                )
-                if (reference)
-                  history = (
-                    await getPreviousCompletedExerciseSets({
-                      database,
-                      exerciseId: reference.id,
-                      exerciseName: reference.name,
-                      trackingMethodId: reference.trackingMethodId,
-                      beforeStartedAt: now,
-                      excludeDeload: true,
-                      excludeTechnique: true,
-                    })
-                  ).map((set) => ({
-                    ...set,
-                    metricValues: {
-                      ...set.metricValues,
-                      weight:
-                        typeof set.metricValues.weight === 'number'
-                          ? set.metricValues.weight *
-                            (periodizedPrescription.referenceScale ?? 1)
-                          : set.metricValues.weight,
-                    },
-                  }))
-              }
-              const increment = currentExercise?.defaultWeightIncrement ?? 5
+              const increment =
+                (await database.exercises.get(targetExerciseId))
+                  ?.defaultWeightIncrement ?? 5
               let number = 0
               for (const group of periodizedPrescription.sets) {
-                const groupHistory = history.filter(
-                  (set) =>
-                    !set.plannedSet || set.plannedSet.kind === group.kind,
+                const referenceLift =
+                  group.loadMode === 'percent' ||
+                  (!group.loadMode && group.percent)
+                    ? await database.exercises.get(
+                        group.maxExerciseId ?? targetExerciseId,
+                      )
+                    : undefined
+                const targetWeight = configuredLoad(
+                  group,
+                  referenceLift?.savedOneRepMax,
+                  increment,
                 )
-                const smart =
-                  periodizedPrescription.progression === 'double progression' &&
-                  workoutAutofillMode === 'smart_progression'
-                    ? buildWorkoutPrefillPlan({
-                        previousSets: groupHistory
-                          .filter(
-                            (set) =>
-                              set.completed && set.metricValues.failed !== true,
-                          )
-                          .flatMap((set) =>
-                            typeof set.metricValues.weight === 'number' &&
-                            typeof set.metricValues.reps === 'number'
-                              ? [
-                                  {
-                                    id: set.id,
-                                    setNumber: set.setNumber,
-                                    load: set.metricValues.weight,
-                                    reps: set.metricValues.reps,
-                                    rir: set.rir,
-                                  },
-                                ]
-                              : [],
-                          ),
-                        targetSetCount: group.count,
-                        targetRepsMin: group.repsMin,
-                        targetRepsMax: group.repsMax,
-                        targetRir: group.rir,
-                        trackingMethodId:
-                          sourceForWorkout.exerciseSnapshot.trackingMethodId,
-                        sameProgramDay: false,
-                      })
-                    : null
                 for (let index = 0; index < group.count; index += 1) {
                   number += 1
-                  const load =
-                    periodizedPrescription.progression === 'double progression'
-                      ? (smart?.sets[index]?.load ??
-                        groupHistory.find(
-                          (set) =>
-                            set.completed && set.metricValues.failed !== true,
-                        )?.metricValues.weight ??
-                        group.startingWeight ??
-                        null)
-                      : recommendPeriodizedLoad(
-                          group,
-                          periodizedPrescription,
-                          history,
-                          Math.min(5, increment),
-                        )
-                  const targetWeight = typeof load === 'number' ? load : null
                   const set: WorkoutSet = {
                     id: createId(),
                     workoutId: workout.id,
@@ -2476,7 +2404,7 @@ async function recomputeWorkoutExerciseRecommendations(
     }
     // Periodized groups keep independent targets; a top set must never overwrite back-offs.
     if (set.plannedSet) {
-      if (set.plannedSet.kind === 'max attempt') {
+      if (set.plannedSet.kind === 'max attempt' && !set.plannedSet.loadMode) {
         const previous = [...sets]
           .reverse()
           .find(

@@ -6766,45 +6766,8 @@ body.keyboard-input-open .bottom-nav {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
-.periodized-save {
-  position: sticky;
-  bottom: 0;
-  padding-block: 8px;
-  background: var(--color-sheet);
-}
-.periodized-save button {
-  width: 100%;
-}
-.plan-week-picker select {
-  font-weight: 650;
-}
-.plan-week-dates {
-  margin: 0;
-  color: var(--color-muted);
-  font-size: 14px;
-}
-.plan-week-tools {
-  display: flex;
-  gap: 8px;
-}
-.plan-week-tools button {
-  flex: 1;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  color: var(--color-text);
-  font: inherit;
-  font-size: 14px;
-}
 .plan-heading p,
-.plan-list-row small,
-.plan-disclosure small,
-.plan-saved {
+.plan-disclosure small {
   margin: 0;
   display: block;
   color: var(--color-muted);
@@ -6815,57 +6778,11 @@ body.keyboard-input-open .bottom-nav {
   margin: 4px 0 0;
   font-size: 22px;
 }
-.plan-list,
 .plan-disclosure {
   min-width: 0;
   border: 1px solid var(--color-border);
   border-radius: 12px;
   background: var(--color-surface);
-}
-.plan-list:empty {
-  display: none;
-}
-.plan-list-row {
-  width: 100%;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  text-align: left;
-  min-height: 60px;
-  border: 0;
-  background: transparent;
-  color: var(--color-text);
-  font-size: 15px;
-  padding: 10px 12px;
-}
-.plan-list-row + .plan-list-row {
-  border-top: 1px solid var(--color-border-soft);
-}
-.plan-list-row > span {
-  flex: 1;
-  min-width: 0;
-}
-.plan-list-row > svg {
-  flex: none;
-  color: var(--color-muted);
-}
-.plan-date {
-  width: 40px;
-  flex: none;
-  display: grid;
-  justify-items: center;
-  border-radius: 8px;
-  padding: 4px 0;
-  background: var(--color-surface-strong);
-}
-.plan-date small {
-  font-size: 10px;
-  font-weight: 650;
-  text-transform: uppercase;
-}
-.plan-date strong {
-  font-size: 18px;
-  line-height: 1.2;
 }
 .plan-disclosure {
   padding: 0 12px;
@@ -6902,4 +6819,37 @@ body.keyboard-input-open .bottom-nav {
 }
 .plan-group > summary small {
   font-weight: 400;
+}
+
+.builder-week-selector {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+.builder-week-selector label {
+  display: grid;
+  gap: 5px;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+.builder-week-selector select {
+  min-height: 44px;
+  min-width: 0;
+  width: 100%;
+  font-size: 16px;
+}
+.week-choices {
+  display: grid;
+  gap: 2px;
+}
+
+.builder-settings {
+  margin-block: 6px 12px;
+}
+.builder-settings .form-field {
+  margin-block: 8px;
+}
+.builder-week-selector + .builder-settings[open] {
+  padding-bottom: 12px;
 }

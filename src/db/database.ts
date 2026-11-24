@@ -1,3 +1,4 @@
+import { migrateWeekPlan } from '@domain/periodization'
 import Dexie, { type EntityTable } from 'dexie'
 
 import { FOOD_NORMALIZER_VERSION } from '@domain/foodProviderModels'
@@ -46,7 +47,7 @@ import type {
   WorkoutSet,
 } from '@shared-types/app'
 
-export const DATABASE_SCHEMA_VERSION = 22
+export const DATABASE_SCHEMA_VERSION = 23
 export const BACKUP_SCHEMA_VERSION = 1
 export const DATABASE_NAME = 'training-log'
 
@@ -1509,6 +1510,32 @@ export class TrainingLogDatabase extends Dexie {
           })
         }
       })
+    this.version(23).upgrade(async (tx) => {
+      await tx
+        .table<ProgramTemplate>('programTemplates')
+        .toCollection()
+        .modify((record) => {
+          if (record.periodization)
+            record.periodization = migrateWeekPlan(
+              record.periodization,
+              record.id === 'february-2027-peak',
+            )
+        })
+      await tx
+        .table<ActiveProgramCycle>('activeProgramCycles')
+        .toCollection()
+        .modify((record) => {
+          if (record.periodization)
+            record.periodization = migrateWeekPlan(
+              record.periodization,
+              false,
+              record.sourceTemplateId === 'february-2027-peak',
+            )
+        })
+      await tx
+        .table<AppMetadata>('appMetadata')
+        .update('app', { databaseSchemaVersion: DATABASE_SCHEMA_VERSION })
+    })
   }
 }
 

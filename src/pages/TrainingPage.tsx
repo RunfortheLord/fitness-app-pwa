@@ -305,8 +305,12 @@ export function TrainingPage() {
   }
 
   function selectProgramWeek(cycle: ActiveProgramCycle, weekNumber: number) {
-    void programRepository
-      .updateActiveCycle(cycle.id, { currentWeekNumber: weekNumber })
+    const update = cycle.periodization?.enabled
+      ? periodizationRepository.selectWeek(cycle.id, weekNumber)
+      : programRepository.updateActiveCycle(cycle.id, {
+          currentWeekNumber: weekNumber,
+        })
+    void update
       .then(() => reload())
       .catch(() => setMessage('Could not change the program week.'))
   }

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { TrainingLogDatabase } from '@db/database'
+import Dexie from 'dexie'
+import { TrainingLogDatabase } from '@db/database'
 import { createTestDatabase, destroyTestDatabase } from '@test/database'
 import { seedProgram, seedFood } from '@test/seedFactories'
 import { createPeriodizationRepository } from './periodizationRepository'
@@ -8,6 +9,10 @@ import { createWorkoutRepository } from './workoutRepository'
 import { createBackupService, validateBackup } from '@services/backupService'
 import {
   programPosition,
+  copyTrainingWeek,
+  migrateWeekPlan,
+  weekLabel,
+  configuredLoad,
   resolvePrescription,
   scheduledDate,
   recentCapacity,
@@ -31,11 +36,11 @@ async function fixture(enabled = true) {
   await periodization.seedFebruaryProgram()
   const programs = createProgramRepository(database)
   const source = await programs.getTemplateStructure('february-2027-peak')
-  if (enabled) {
+  if ((source.template.periodization?.enabled ?? false) !== enabled) {
     source.template.periodization = await periodization.savePlan(
       source.template.id,
       'template',
-      { ...source.template.periodization!, enabled: true },
+      { ...source.template.periodization!, enabled },
     )
   }
   return {
@@ -47,7 +52,184 @@ async function fixture(enabled = true) {
 }
 
 describe('periodized programs', () => {
-  it('keeps new and legacy plans off until explicitly enabled, with ordinary weeks and set logging', async () => {
+  it('upgrades a version 22 database in place without rewriting active and completed sets', async () => {
+    const { source, plan } = await fixture()
+    const legacy = structuredClone(plan)
+    delete legacy.enabled
+    delete legacy.weeks[1].name
+    const old = new Dexie(`asym-upgrade-${crypto.randomUUID()}`)
+    old
+      .version(22)
+      .stores(
+        Object.fromEntries(
+          database.tables.map((table) => [
+            table.name,
+            [
+              table.schema.primKey.src,
+              ...table.schema.indexes.map((index) => index.src),
+            ].join(','),
+          ]),
+        ),
+      )
+    const before = {
+      id: 'existing-set',
+      workoutId: 'existing-workout',
+      metricValues: { weight: 185, reps: 5 },
+      plannedSet: plan.defaults[Object.keys(plan.defaults)[0]].sets[0],
+    }
+    await old
+      .table('programTemplates')
+      .put({ ...source.template, periodization: legacy })
+    await old.table('activeProgramCycles').put({
+      id: 'old-cycle',
+      sourceTemplateId: source.template.id,
+      periodization: { ...legacy, enabled: false },
+    })
+    await old.table('workoutSets').put(before)
+    await old.table('workoutHistorySets').put(before)
+    old.close()
+    const upgraded = new TrainingLogDatabase(old.name)
+    try {
+      await upgraded.open()
+      expect(
+        (await upgraded.programTemplates.get(source.template.id))?.periodization
+          ?.enabled,
+      ).toBe(true)
+      const migrated = (await upgraded.activeProgramCycles.get('old-cycle'))
+        ?.periodization
+      expect(migrated?.enabled).toBe(false)
+      expect(migrated?.weeks[1].name).toBe('Volume')
+      expect(await upgraded.workoutSets.get(before.id)).toEqual(before)
+      expect(await upgraded.workoutHistorySets.get(before.id)).toEqual(before)
+    } finally {
+      await destroyTestDatabase(upgraded)
+    }
+  })
+  it('migrates legacy names, explicit toggle choices and independent overrides without altering the original', async () => {
+    const { plan, source } = await fixture()
+    const old = structuredClone(plan)
+    const key = source.exercisesByDay[source.days[0].id][0].id
+    delete old.enabled
+    delete old.weeks[1].name
+    delete old.defaults[key].sets[0].loadMode
+    old.weeks[1].overrides[key] = { notes: 'Only this week' }
+    expect(migrateWeekPlan(old).enabled).toBe(false)
+    expect(migrateWeekPlan({ ...old, enabled: false }, true).enabled).toBe(
+      false,
+    )
+    const converted = migrateWeekPlan(old, true)
+    expect(converted.enabled).toBe(true)
+    expect(weekLabel(converted, 2)).toBe('Week 2 · Volume')
+    expect(resolvePrescription(converted, 2, key)?.notes).toBe('Only this week')
+    converted.weeks[1].name = 'Heavy'
+    const copied = copyTrainingWeek(converted, 2, [3])
+    expect(weekLabel(copied, 3)).toBe('Week 3 · Heavy')
+    copied.weeks[2].overrides[key].notes = 'Copy'
+    expect(converted.weeks[1].overrides[key].notes).toBe('Only this week')
+    expect(old.enabled).toBeUndefined()
+  })
+  it('rounds selected lift percentages, preserves a live and completed snapshot, and leaves missing maxes empty', async () => {
+    const { programs, periodization, source } = await fixture()
+    const cycle = await programs.activateTemplate(source.template.id)
+    const row = source.exercisesByDay[source.days[0].id][0]
+    const reference = source.exercisesByDay[source.days[1].id][0].exerciseId
+    const target = resolvePrescription(cycle.cycle.periodization!, 2, row.id)!
+    const change = {
+      sets: [
+        {
+          ...target.sets[0],
+          loadMode: 'percent' as const,
+          maxExerciseId: reference,
+          percent: 0.8,
+        },
+      ],
+    }
+    const wt = createWorkoutRepository(database)
+    expect(configuredLoad(change.sets[0], null, 5)).toBeNull()
+    expect(configuredLoad(change.sets[0], 203, 2.5)).toBe(162.5)
+    await periodization.saveWeekExercise(
+      cycle.cycle.id,
+      'cycle',
+      [2, 3],
+      row.id,
+      target,
+      change,
+      { [reference]: 203 },
+    )
+    const session = await wt.startWorkout({
+      activeCycleId: cycle.cycle.id,
+      dayId: cycle.days[0].id,
+      localDate: '2026-11-30',
+    })
+    expect(session.sets[0].targetSnapshot?.targetWeight).toBe(160)
+    await periodization.saveWeekExercise(
+      cycle.cycle.id,
+      'cycle',
+      [2],
+      row.id,
+      target,
+      {},
+      { [reference]: 250 },
+    )
+    expect(
+      (await database.workoutSets.get(session.sets[0].id))?.targetSnapshot
+        ?.targetWeight,
+    ).toBe(160)
+    await wt.updateWorkoutSet(session.sets[0].id, {
+      metricValues: { weight: 165, reps: 5 },
+      completed: true,
+    })
+    await wt.completeWorkout({ workoutId: session.workout.id })
+    const next = await wt.startWorkout({
+      activeCycleId: cycle.cycle.id,
+      dayId: cycle.days[0].id,
+      localDate: '2026-12-07',
+    })
+    expect(next.sets[0].targetSnapshot?.targetWeight).toBe(200)
+    expect(
+      (await database.workoutHistorySets.get(session.sets[0].id))
+        ?.targetSnapshot?.targetWeight,
+    ).toBe(160)
+    expect((await database.exercises.get(reference))?.savedOneRepMax).toBe(250)
+  })
+  it('keeps a week-only exercise scoped and preserves manual deload reductions', async () => {
+    const { programs, periodization, source } = await fixture()
+    const active = await programs.activateTemplate(source.template.id)
+    const row = active.exercises[0]
+    const next = await periodization.addWeekExercise(
+      active.cycle.id,
+      'cycle',
+      active.days[0].id,
+      2,
+      row.exerciseId,
+    )
+    const extra = Object.keys(next.defaults).find(
+      (k) => !active.cycle.periodization!.defaults[k],
+    )!
+    expect(resolvePrescription(next, 2, extra)?.included).toBe(true)
+    expect(resolvePrescription(next, 3, extra)?.included).toBe(false)
+    await programs.updateActiveCycle(active.cycle.id, {
+      deloadSchedulingEnabled: true,
+      deloadWeekNumbers: [2],
+    })
+    await periodization.selectWeek(active.cycle.id, 2)
+    const stored = await database.activeProgramCycles.get(active.cycle.id)
+    expect(stored?.deloadSchedulingEnabled).toBe(true)
+    const session = await createWorkoutRepository(database).startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: '2026-12-08',
+    })
+    expect(session.workout.isDeload).toBe(true)
+    expect(
+      session.sets.filter(
+        (set) => set.workoutExerciseId === session.exercises[0].id,
+      ),
+    ).toHaveLength(3)
+    expect(session.sets[0].plannedSet?.rir).toBe(5)
+  })
+
+  it('uses ordinary weeks and set logging when asymmetrical weeks are disabled', async () => {
     const { programs, source, plan } = await fixture(false)
     expect(plan.enabled ?? false).toBe(false)
     const active = await programs.activateTemplate(source.template.id)
@@ -131,7 +313,7 @@ describe('periodized programs', () => {
       dayId: active.days[3].id,
       localDate: '2026-12-11',
     })
-    expect(nextHeavy.sets[0].targetSnapshot?.targetWeight).toBe(360)
+    expect(nextHeavy.sets[0].targetSnapshot?.targetWeight).toBe(350)
     const performance = await periodization.performance(active.cycle.id)
     expect(
       performance.trends.some((point) => point.workoutId === easy.workout.id),
@@ -373,7 +555,7 @@ describe('periodized programs', () => {
     )
     expect(sets).toHaveLength(4)
     expect(sets[0].targetSnapshot?.targetWeight).toBe(185)
-    expect(sets[1].targetSnapshot?.targetWeight).toBe(175)
+    expect(sets[1].targetSnapshot?.targetWeight).toBeNull()
     expect(sets[0].metricValues).toEqual({})
     expect(sets[0].rir).toBeNull()
     await workouts.updateWorkoutSet(sets[0].id, {
@@ -384,7 +566,7 @@ describe('periodized programs', () => {
     expect(
       (await database.workoutSets.get(sets[1].id))?.targetSnapshot
         ?.targetWeight,
-    ).toBe(175)
+    ).toBeNull()
     await workouts.completeWorkout({ workoutId: started.workout.id })
     const history = await database.workoutHistorySets.toArray()
     const next = structuredClone(plan),
@@ -418,9 +600,7 @@ describe('periodized programs', () => {
       dayId: active.days[0].id,
       localDate: '2027-01-18',
     })
-    expect(
-      intensification.sets[0].targetSnapshot?.targetWeight,
-    ).toBeGreaterThan(185)
+    expect(intensification.sets[0].targetSnapshot?.targetWeight).toBeNull()
     expect(intensification.sets[0].targetSnapshot?.targetRepsMin).toBe(1)
   })
 

@@ -437,6 +437,7 @@ export type Exercise = {
   name: string
   notes: string
   defaultRestSeconds: number
+  savedOneRepMax?: number | null
   defaultWeightIncrement: number | null
   trackingMethodId: TrackingMethodId
   trackingMetrics: TrackingMetric[]

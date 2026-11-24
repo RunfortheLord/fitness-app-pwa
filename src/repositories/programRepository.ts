@@ -4,6 +4,7 @@ import { BUILT_IN_EXERCISES } from '@domain/exerciseLibrary'
 import {
   periodizedPlanSchema,
   programPosition,
+  orderedWeekExercises,
   resolvePeriodizedExercise,
   remapPeriodizedPlan,
 } from '@domain/periodization'
@@ -1253,13 +1254,19 @@ export function createProgramRepository(
       const position = programPosition(plan, date)
       structure.cycle = { ...cycle, currentWeekNumber: position.week }
       for (const day of structure.days) {
-        structure.exercisesByDay[day.id] = structure.exercisesByDay[
-          day.id
-        ].flatMap((exercise) => {
+        structure.exercisesByDay[day.id] = orderedWeekExercises(
+          structure.exercisesByDay[day.id],
+          plan,
+          position.week,
+        ).flatMap((exercise) => {
           const resolved = resolvePeriodizedExercise(
             plan,
             position.week,
             exercise,
+            Boolean(
+              cycle.deloadSchedulingEnabled &&
+              cycle.deloadWeekNumbers?.includes(position.week),
+            ),
           )
           return resolved ? [resolved] : []
         })

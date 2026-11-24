@@ -54,7 +54,14 @@ import {
   type ProgramInformationStructure,
 } from './ProgramInformationSheet'
 import { PrescriptionEditor } from './PrescriptionEditor'
-import { PeriodizedProgramPanel } from './PeriodizedProgramPanel'
+import { WeekControls, WeekExerciseEditor } from './WeekEditor'
+import {
+  programPosition,
+  orderedWeekExercises,
+  resolvePrescription,
+  type ExercisePrescription,
+} from '@domain/periodization'
+import { prescriptionSet } from '@domain/februaryPeak'
 import { PrescriptionSummaryText } from './prescriptionSummary'
 import {
   emptyProgramForm,
@@ -79,7 +86,7 @@ export function ProgramBuilderSheet({
   onClose: () => void
   target: ProgramSheetTarget
 }) {
-  const [structure, setStructure] =
+  const [rawStructure, setStructure] =
     useState<ProgramInformationStructure | null>(null)
   const [nameForm, setNameForm] = useState(emptyProgramForm)
   const [dayName, setDayName] = useState('')
@@ -107,7 +114,7 @@ export function ProgramBuilderSheet({
   const [isDiscardPrescriptionOpen, setIsDiscardPrescriptionOpen] =
     useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const [isPeriodizationOpen, setIsPeriodizationOpen] = useState(false)
+  const [editorWeek, setEditorWeek] = useState<number | null>(null)
   const [isPeriodizationBusy, setIsPeriodizationBusy] = useState(false)
   const [periodizationToggle, setPeriodizationToggle] = useState<
     boolean | null
@@ -116,6 +123,69 @@ export function ProgramBuilderSheet({
   const isMountedRef = useRef(true)
 
   const mode: BuilderMode = target.mode
+  const plan = rawStructure?.record.periodization?.enabled
+    ? rawStructure.record.periodization
+    : undefined
+  const week = plan
+    ? Math.min(
+        editorWeek ??
+          (mode === 'cycle'
+            ? programPosition(plan, formatLocalDate(new Date())).week
+            : 1),
+        plan.weeks.length,
+      )
+    : 1
+  const phase = plan?.phases.find((p) => p.id === plan.weeks[week - 1]?.phaseId)
+  type Row = TemplateWorkoutExercise | ActiveCycleWorkoutExercise
+  const keyFor = (row: Row) =>
+    'sourceTemplateExerciseId' in row
+      ? (row.sourceTemplateExerciseId ?? row.id)
+      : row.id
+  const weekTarget = (row: Row): ExercisePrescription =>
+    (plan && resolvePrescription(plan, week, keyFor(row))) ?? {
+      included: true,
+      optional: false,
+      notes: row.notes,
+      progression: 'hold',
+      sets: [
+        prescriptionSet(
+          'straight set',
+          row.targetSetCount,
+          row.targetRepsMin ?? 8,
+          row.targetRepsMax ?? row.targetRepsMin ?? 8,
+          row.targetRir,
+          {
+            loadMode: 'fixed',
+            startingWeight: row.targetWeight ?? undefined,
+            restSeconds: row.restSecondsOverride ?? 120,
+          },
+        ),
+      ],
+    }
+  const structure =
+    rawStructure && plan
+      ? {
+          ...rawStructure,
+          days: rawStructure.days.map((day) => ({
+            ...day,
+            name:
+              phase?.dayNames?.[
+                'sourceTemplateDayId' in day
+                  ? (day.sourceTemplateDayId ?? day.id)
+                  : day.id
+              ] ?? day.name,
+          })),
+          exercisesByDay: Object.fromEntries(
+            Object.entries(rawStructure.exercisesByDay).map(([id, rows]) => [
+              id,
+              orderedWeekExercises(rows, plan, week).filter((row) => {
+                const target = weekTarget(row)
+                return target.included && target.sets.length > 0
+              }),
+            ]),
+          ),
+        }
+      : rawStructure
   const rirEnabled = useRirTracking()
   const trackRirEverySet = structure?.record.trackRirEverySet ?? false
   const deloadSchedulingEnabled =
@@ -318,6 +388,35 @@ export function ProgramBuilderSheet({
     if (nextWeeks === (structure.record.durationWeeks ?? null)) {
       return
     }
+    if (plan) {
+      if (!nextWeeks || nextWeeks < 1 || nextWeeks > 104) {
+        setError('Choose 1–104 weeks.')
+        return
+      }
+      if (
+        nextWeeks < plan.weeks.length &&
+        !window.confirm(
+          `Remove weeks ${nextWeeks + 1}–${plan.weeks.length} from this program?`,
+        )
+      ) {
+        setNameForm(programFormFromRecord(structure.record))
+        return
+      }
+      run(
+        periodizationRepository.editWeeks(structure.record.id, mode, (next) => {
+          while (next.weeks.length < nextWeeks)
+            next.weeks.push(structuredClone(next.weeks[next.weeks.length - 1]))
+          next.weeks.length = nextWeeks
+          if (next.selectedWeek)
+            next.selectedWeek = Math.min(nextWeeks, next.selectedWeek)
+          const last = next.phases.find(
+            (p) => p.id === next.weeks[nextWeeks - 1].phaseId,
+          )
+          if (last) last.endWeek = Math.max(last.endWeek, nextWeeks)
+        }),
+      )
+      return
+    }
     run(
       mode === 'template'
         ? programRepository.updateProgramTemplate(structure.record.id, {
@@ -435,6 +534,19 @@ export function ProgramBuilderSheet({
   function removeExerciseWithUndo(
     exercise: TemplateWorkoutExercise | ActiveCycleWorkoutExercise,
   ) {
+    if (plan && structure) {
+      run(
+        periodizationRepository.saveWeekExercise(
+          structure.record.id,
+          mode,
+          [week],
+          keyFor(exercise),
+          weekTarget(exercise),
+          { included: false },
+        ),
+      )
+      return
+    }
     setStructure((current) =>
       current
         ? {
@@ -528,6 +640,35 @@ export function ProgramBuilderSheet({
     const dayIds = structure.days.map((day) => day.id)
     const activeIsDay = dayIds.includes(activeId)
     const overIsDay = dayIds.includes(overId)
+    if (plan) {
+      if (activeIsDay || overIsDay || !selectedDay) return
+      const rows = structure.exercisesByDay[selectedDay.id] ?? []
+      const ids = reorderIds(
+        rows.map((row) => row.id),
+        activeId,
+        overId,
+      )
+      if (ids)
+        run(
+          periodizationRepository.editWeeks(
+            structure.record.id,
+            mode,
+            (plan) => {
+              const keys = ids.map((id) =>
+                keyFor(rows.find((row) => row.id === id)!),
+              )
+              const assigned = plan.weeks[week - 1]
+              assigned.exerciseOrder = [
+                ...(assigned.exerciseOrder ?? []).filter(
+                  (key) => !keys.includes(key),
+                ),
+                ...keys,
+              ]
+            },
+          ),
+        )
+      return
+    }
     if (activeIsDay && overIsDay) {
       const next = reorderIds(dayIds, activeId, overId)
       if (next) {
@@ -615,6 +756,23 @@ export function ProgramBuilderSheet({
   }
 
   function duplicateExercise(exerciseId: string) {
+    if (plan && structure && selectedDay) {
+      const row = structure.exercisesByDay[selectedDay.id]?.find(
+        (row) => row.id === exerciseId,
+      )
+      if (row)
+        run(
+          periodizationRepository.addWeekExercise(
+            structure.record.id,
+            mode,
+            selectedDay.id,
+            week,
+            row.exerciseId,
+            weekTarget(row),
+          ),
+        )
+      return
+    }
     run(
       mode === 'template'
         ? programRepository.duplicateTemplateExercise(exerciseId)
@@ -752,6 +910,95 @@ export function ProgramBuilderSheet({
     )
   }
 
+  const programFields = structure ? (
+    <>
+      {' '}
+      <FormField id="builder-program-name" label="Program name">
+        <div className="rename-field">
+          <input
+            className="rename-field-input"
+            id="builder-program-name"
+            onBlur={() => saveName()}
+            onChange={(event) =>
+              setNameForm((current) => ({
+                ...current,
+                name: event.target.value,
+              }))
+            }
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.currentTarget.blur()
+              }
+            }}
+            value={nameForm.name}
+          />
+          <Edit2 aria-hidden="true" className="rename-field-icon" size={16} />
+        </div>
+        <small className="rename-field-hint">Tap to rename</small>
+      </FormField>
+      <FormField id="builder-program-weeks" label="Program length (weeks)">
+        <input
+          id="builder-program-weeks"
+          inputMode="numeric"
+          type="number"
+          min={1}
+          onBlur={() => saveDuration()}
+          onChange={(event) =>
+            setNameForm((current) => ({
+              ...current,
+              durationWeeks: event.target.value,
+            }))
+          }
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.currentTarget.blur()
+            }
+          }}
+          value={nameForm.durationWeeks}
+        />
+      </FormField>
+      {deloadSchedulingEnabled ? (
+        <fieldset className="deload-week-fieldset">
+          <legend>Schedule deload weeks</legend>
+          <p className="muted">
+            Click a week number to make it a deload week. Deload workouts use
+            one fewer set and add 3 RIR to each target.
+          </p>
+          <div
+            aria-label="Program weeks for deload scheduling"
+            className="deload-week-scroller"
+          >
+            {Array.from(
+              {
+                length:
+                  structure.record.durationWeeks ??
+                  DEFAULT_PROGRAM_DURATION_WEEKS,
+              },
+              (_, index) => index + 1,
+            ).map((weekNumber) => {
+              const selected = (
+                structure.record.deloadWeekNumbers ?? []
+              ).includes(weekNumber)
+              return (
+                <button
+                  aria-pressed={selected}
+                  className={selected ? 'is-selected' : ''}
+                  key={weekNumber}
+                  onClick={() => toggleDeloadWeek(weekNumber)}
+                  type="button"
+                >
+                  {formatProgramWeekLabel(
+                    weekNumber,
+                    structure.record.deloadWeekNumbers,
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </fieldset>
+      ) : null}
+    </>
+  ) : null
   return (
     <>
       <BottomSheet
@@ -791,7 +1038,25 @@ export function ProgramBuilderSheet({
         variant="page"
       >
         {!structure ? <LoadingState label="Loading program" /> : null}
-        {structure && editingPrescription ? (
+        {structure && plan && editingPrescription?.exercise ? (
+          <WeekExerciseEditor
+            key={editingPrescription.exercise.id}
+            id={structure.record.id}
+            mode={mode}
+            plan={plan}
+            week={week}
+            exerciseKey={keyFor(editingPrescription.exercise)}
+            exerciseId={editingPrescription.exercise.exerciseId}
+            original={weekTarget(editingPrescription.exercise)}
+            library={exercises}
+            onDirty={setIsPrescriptionDirty}
+            onSaved={() => {
+              setEditingPrescription(null)
+              refresh()
+            }}
+          />
+        ) : null}
+        {structure && !plan && editingPrescription ? (
           <PrescriptionEditor
             exerciseUsage={exerciseUsage}
             exercises={exercises}
@@ -809,105 +1074,28 @@ export function ProgramBuilderSheet({
         ) : null}
         {structure && !editingPrescription ? (
           <>
-            {structure.record.periodization?.enabled ? (
-              <SecondaryButton onClick={() => setIsPeriodizationOpen(true)}>
-                Weekly plan
-              </SecondaryButton>
-            ) : null}
-            <FormField id="builder-program-name" label="Program name">
-              <div className="rename-field">
-                <input
-                  className="rename-field-input"
-                  id="builder-program-name"
-                  onBlur={() => saveName()}
-                  onChange={(event) =>
-                    setNameForm((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.currentTarget.blur()
-                    }
-                  }}
-                  value={nameForm.name}
-                />
-                <Edit2
-                  aria-hidden="true"
-                  className="rename-field-icon"
-                  size={16}
-                />
-              </div>
-              <small className="rename-field-hint">Tap to rename</small>
-            </FormField>
-
-            <FormField
-              id="builder-program-weeks"
-              label="Program length (weeks)"
-            >
-              <input
-                id="builder-program-weeks"
-                inputMode="numeric"
-                type="number"
-                min={1}
-                onBlur={() => saveDuration()}
-                onChange={(event) =>
-                  setNameForm((current) => ({
-                    ...current,
-                    durationWeeks: event.target.value,
-                  }))
-                }
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.currentTarget.blur()
-                  }
+            {plan ? (
+              <WeekControls
+                id={structure.record.id}
+                mode={mode}
+                plan={plan}
+                week={week}
+                onWeek={(n) => {
+                  setEditorWeek(n)
+                  setIsSelecting(false)
+                  setQuickAddQuery('')
                 }}
-                value={nameForm.durationWeeks}
+                onSaved={refresh}
               />
-            </FormField>
-
-            {deloadSchedulingEnabled ? (
-              <fieldset className="deload-week-fieldset">
-                <legend>Schedule deload weeks</legend>
-                <p className="muted">
-                  Click a week number to make it a deload week. Deload workouts
-                  use one fewer set and add 3 RIR to each target.
-                </p>
-                <div
-                  aria-label="Program weeks for deload scheduling"
-                  className="deload-week-scroller"
-                >
-                  {Array.from(
-                    {
-                      length:
-                        structure.record.durationWeeks ??
-                        DEFAULT_PROGRAM_DURATION_WEEKS,
-                    },
-                    (_, index) => index + 1,
-                  ).map((weekNumber) => {
-                    const selected = (
-                      structure.record.deloadWeekNumbers ?? []
-                    ).includes(weekNumber)
-                    return (
-                      <button
-                        aria-pressed={selected}
-                        className={selected ? 'is-selected' : ''}
-                        key={weekNumber}
-                        onClick={() => toggleDeloadWeek(weekNumber)}
-                        type="button"
-                      >
-                        {formatProgramWeekLabel(
-                          weekNumber,
-                          structure.record.deloadWeekNumbers,
-                        )}
-                      </button>
-                    )
-                  })}
-                </div>
-              </fieldset>
             ) : null}
-
+            {plan ? (
+              <details className="plan-disclosure builder-settings">
+                <summary>Program details</summary>
+                {programFields}
+              </details>
+            ) : (
+              programFields
+            )}
             <SortableArea
               getItemLabel={builderItemLabel}
               onDragEnd={handleBuilderDragEnd}
@@ -993,48 +1181,52 @@ export function ProgramBuilderSheet({
                         {selectedDay.notes}
                       </small>
                     ) : null}
-                    <div className="button-row">
-                      <SecondaryButton
-                        className="button-danger"
-                        type="button"
-                        onClick={() =>
-                          setRemoveDayConfirmation({
-                            id: selectedDay.id,
-                            name: selectedDay.name,
-                          })
-                        }
-                      >
-                        <Trash2 aria-hidden="true" size={16} />
-                        Remove day
-                      </SecondaryButton>
-                    </div>
+                    {!plan ? (
+                      <div className="button-row">
+                        <SecondaryButton
+                          className="button-danger"
+                          type="button"
+                          onClick={() =>
+                            setRemoveDayConfirmation({
+                              id: selectedDay.id,
+                              name: selectedDay.name,
+                            })
+                          }
+                        >
+                          <Trash2 aria-hidden="true" size={16} />
+                          Remove day
+                        </SecondaryButton>
+                      </div>
+                    ) : null}
 
-                    <div className="button-row">
-                      <SecondaryButton
-                        type="button"
-                        onClick={() =>
-                          setEditingPrescription({
-                            dayId: selectedDay.id,
-                            exercise: null,
-                          })
-                        }
-                      >
-                        Add exercise
-                      </SecondaryButton>
-                      <SecondaryButton
-                        disabled={
-                          !(structure.exercisesByDay[selectedDay.id] ?? [])
-                            .length
-                        }
-                        type="button"
-                        onClick={() => {
-                          setIsSelecting((current) => !current)
-                          setSelectedExerciseIds(new Set())
-                        }}
-                      >
-                        {isSelecting ? 'Done' : 'Select'}
-                      </SecondaryButton>
-                    </div>
+                    {!plan ? (
+                      <div className="button-row">
+                        <SecondaryButton
+                          type="button"
+                          onClick={() =>
+                            setEditingPrescription({
+                              dayId: selectedDay.id,
+                              exercise: null,
+                            })
+                          }
+                        >
+                          Add exercise
+                        </SecondaryButton>
+                        <SecondaryButton
+                          disabled={
+                            !(structure.exercisesByDay[selectedDay.id] ?? [])
+                              .length
+                          }
+                          type="button"
+                          onClick={() => {
+                            setIsSelecting((current) => !current)
+                            setSelectedExerciseIds(new Set())
+                          }}
+                        >
+                          {isSelecting ? 'Done' : 'Select'}
+                        </SecondaryButton>
+                      </div>
+                    ) : null}
                     {isSelecting ? (
                       <div className="bulk-actions">
                         <span className="bulk-actions-count">
@@ -1077,7 +1269,13 @@ export function ProgramBuilderSheet({
                       <div className="program-prescription-list">
                         {(structure.exercisesByDay[selectedDay.id] ?? []).map(
                           (prescribed) => {
+                            const selected = plan
+                              ? weekTarget(prescribed)
+                              : undefined
                             const exerciseName =
+                              exercises.find(
+                                (e) => e.id === selected?.substitutionId,
+                              )?.name ??
                               prescribed.exerciseSnapshot.exerciseName
                             const exerciseRecord = exercises.find(
                               (entry) => entry.id === prescribed.exerciseId,
@@ -1136,11 +1334,20 @@ export function ProgramBuilderSheet({
                                     >
                                       <strong>{exerciseName}</strong>
                                       <small>
-                                        <PrescriptionSummaryText
-                                          prescribed={prescribed}
-                                        />
+                                        {selected ? (
+                                          selected.sets
+                                            .map(
+                                              (group) =>
+                                                `${group.count} × ${group.repsMin}${group.repsMax !== group.repsMin ? '–' + group.repsMax : ''} · ${group.kind}`,
+                                            )
+                                            .join(' / ')
+                                        ) : (
+                                          <PrescriptionSummaryText
+                                            prescribed={prescribed}
+                                          />
+                                        )}
                                       </small>
-                                      {exerciseRecord ? (
+                                      {exerciseRecord && !plan ? (
                                         <span className="exercise-chip-row">
                                           <span className="exercise-chip">
                                             {formatEquipment(
@@ -1159,7 +1366,7 @@ export function ProgramBuilderSheet({
                                             ))}
                                         </span>
                                       ) : null}
-                                      {prescribed.notes ? (
+                                      {prescribed.notes && !plan ? (
                                         <small>{prescribed.notes}</small>
                                       ) : null}
                                     </button>
@@ -1202,7 +1409,11 @@ export function ProgramBuilderSheet({
                       <div className="quick-add">
                         <FormField
                           id="quick-add-exercise"
-                          label="Quick add exercise"
+                          label={
+                            plan
+                              ? 'Add exercise to this week'
+                              : 'Quick add exercise'
+                          }
                         >
                           <input
                             autoComplete="off"
@@ -1320,7 +1531,7 @@ export function ProgramBuilderSheet({
                       setPeriodizationToggle(null)
                       refresh()
                       setIsSettingsOpen(false)
-                      setIsPeriodizationOpen(enabled)
+                      setEditorWeek(null)
                     })
                     .catch((caught: unknown) => {
                       setPeriodizationToggle(null)
@@ -1333,7 +1544,7 @@ export function ProgramBuilderSheet({
                     .finally(() => setIsPeriodizationBusy(false))
                 }}
               />
-              Enable periodization
+              Asymmetrical weeks
             </label>
           </>
         ) : null}
@@ -1360,14 +1571,6 @@ export function ProgramBuilderSheet({
           </label>
         ) : null}
       </BottomSheet>
-      {structure && isPeriodizationOpen ? (
-        <PeriodizedProgramPanel
-          record={structure.record}
-          mode={mode}
-          onChanged={refresh}
-          onClose={() => setIsPeriodizationOpen(false)}
-        />
-      ) : null}
       <ModalConfirmationDialog
         confirmLabel="Delete Day"
         isOpen={removeDayConfirmation !== null}

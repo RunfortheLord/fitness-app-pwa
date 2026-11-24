@@ -485,6 +485,7 @@ async function seedBuiltInExerciseRecords(
     if ((existing.seedDataVersion ?? 0) < BUILT_IN_EXERCISE_SEED_VERSION) {
       recordsToPut.push({
         ...seed,
+        savedOneRepMax: existing.savedOneRepMax,
         id: existing.id,
         createdAt: existing.createdAt,
         status: 'active',

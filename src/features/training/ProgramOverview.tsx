@@ -9,7 +9,11 @@ import {
   SecondaryButton,
 } from '@components/ui'
 import { useLanguage } from '@components/languageContextValue'
-import { prescriptionKey, resolvePrescription } from '@domain/periodization'
+import {
+  prescriptionKey,
+  scheduledPrescription,
+  weekLabel,
+} from '@domain/periodization'
 import { formatProgramWeekLabel } from '@domain/programWeeks'
 import type {
   ActiveCycleWorkoutDay,
@@ -70,10 +74,14 @@ export function ProgramOverview({
       const exercises = currentCycle.exercisesByDay[day.id] ?? []
       if (!plan) return [{ day, exercises }]
       const scheduled = exercises.flatMap((exercise) => {
-        const target = resolvePrescription(
+        const target = scheduledPrescription(
           plan,
           weekNumber,
           prescriptionKey(exercise),
+          Boolean(
+            currentCycle.cycle.deloadSchedulingEnabled &&
+            currentCycle.cycle.deloadWeekNumbers?.includes(weekNumber),
+          ),
         )
         // Exercises added after the plan was created keep their ordinary targets.
         if (!target) return [exercise]
@@ -171,39 +179,34 @@ export function ProgramOverview({
               Deactivate
             </SecondaryButton>
           </div>
-          {plan ? (
-            <p className="muted">
-              Week {weekNumber} · {phase?.name}
-              {plan.pausedOn ? ' · Paused' : ''}
-            </p>
-          ) : (
-            <label className="program-week-selector">
-              <span>Program week</span>
-              <select
-                aria-label="Select program week"
-                ref={weekSelectRef}
-                onChange={(event) => {
-                  onSelectWeek(currentCycle.cycle, Number(event.target.value))
-                  event.currentTarget.blur()
-                }}
-                value={weekNumber}
-              >
-                {Array.from(
-                  { length: currentCycle.cycle.durationWeeks ?? 10 },
-                  (_, index) => index + 1,
-                ).map((week) => (
-                  <option key={week} value={week}>
-                    {formatProgramWeekLabel(
-                      week,
-                      currentCycle.cycle.deloadSchedulingEnabled
-                        ? currentCycle.cycle.deloadWeekNumbers
-                        : [],
-                    )}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
+          <label className="program-week-selector">
+            <span>Program week</span>
+            <select
+              aria-label="Select program week"
+              ref={weekSelectRef}
+              onChange={(event) => {
+                onSelectWeek(currentCycle.cycle, Number(event.target.value))
+                event.currentTarget.blur()
+              }}
+              value={weekNumber}
+            >
+              {Array.from(
+                { length: currentCycle.cycle.durationWeeks ?? 10 },
+                (_, index) => index + 1,
+              ).map((week) => (
+                <option key={week} value={week}>
+                  {plan
+                    ? weekLabel(plan, week)
+                    : formatProgramWeekLabel(
+                        week,
+                        currentCycle.cycle.deloadSchedulingEnabled
+                          ? currentCycle.cycle.deloadWeekNumbers
+                          : [],
+                      )}
+                </option>
+              ))}
+            </select>
+          </label>
           {days.length ? (
             <div className="program-day-grid" aria-label={t('Workout days')}>
               {days.map(({ day, exercises }) => {

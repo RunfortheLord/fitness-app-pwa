@@ -2095,6 +2095,9 @@ function SessionSetTarget({ set }: { set: WorkoutSet }) {
         {planned.repsMax !== planned.repsMin ? `–${planned.repsMax}` : ''} reps
         {planned.rir == null ? '' : ` · ${planned.rir} RIR`}
       </p>
+      {planned.loadMode === 'percent' && target?.targetWeight == null ? (
+        <p>Enter the lift’s 1RM in the program editor for future workouts.</p>
+      ) : null}
       {target ? (
         <label>
           Planned load ({weightUnit})

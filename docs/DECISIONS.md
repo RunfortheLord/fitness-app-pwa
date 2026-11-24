@@ -1422,3 +1422,9 @@ as the blank band visible in the failed workout screenshot.
 - The user's iPhone recording showed duplicated Training content and planned-set prose breaking the live logging grid. Keep all periodization editing in the program editor, with a separate subpage and compact section navigation.
 - Periodization requires an explicit per-program Enable periodization setting. Missing or false means off, including previously saved plans; preserve those plans and all active/history snapshots. Off uses ordinary repeating prescriptions and manual week selection. Creating a repeating plan through the editor is an explicit opt-in.
 - Keep live logging controls and swipes. Enabled top-set, back-off, and max-attempt cards use distinct accents and short labels. Put longer targets, planned-load edits, and attempt feedback in a separate sheet, outside the fixed-height logging grid.
+
+## 2026-11-24: Asymmetrical weeks inside the standard editor
+
+- Keep existing program, exercise and workout identifiers. Use sparse per-week changes over existing structures and retain legacy phase metadata for the February split, recovery behavior and calendar dates. New week names are display labels.
+- Keep the existing calendar as the initial week for scheduled programs and allow a persistent manual selection. Copying a whole week includes its name and assignments. Applying an exercise edit defaults to one week.
+- Enable the supplied February template when its legacy flag is missing. Preserve explicit saved switch choices and the effective state of existing active cycles. Saved lift maxima are user-entered exercise data. Prior reference estimates are preserved separately.

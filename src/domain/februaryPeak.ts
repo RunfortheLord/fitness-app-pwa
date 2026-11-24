@@ -1,3 +1,4 @@
+import { migrateWeekPlan } from './periodization'
 import type {
   ExercisePrescription,
   PeriodizedPlan,
@@ -380,5 +381,5 @@ export function createFebruaryPlan(
     plan.phases[6].overrides[keys[dayIndex][0]].notes +=
       ` ${goal} Goals are not prescribed attempts; recent performance must support each load.`
   }
-  return plan
+  return migrateWeekPlan(plan, true)
 }

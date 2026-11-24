@@ -20,54 +20,17 @@ async function activateProgram(page: Page, date = '2026-11-30T12:00:00') {
   if (await dismiss.isVisible()) await dismiss.click()
 }
 
-async function openPeriodization(page: Page, enable = false) {
+async function openEditor(page: Page) {
   await page
     .getByRole('button', { name: 'Edit active program', exact: true })
     .click()
-  if (enable) {
-    await page.getByRole('button', { name: 'Program editor settings' }).click()
-    const settings = page.getByRole('dialog', {
-      name: 'Program settings',
-      exact: true,
-    })
-    await expect(settings.getByLabel('Enable periodization')).not.toBeChecked()
-    await settings.getByLabel('Enable periodization').check()
-  } else
-    await page.getByRole('button', { name: 'Weekly plan', exact: true }).click()
-  const editor = page.getByRole('dialog', { name: 'Weekly plan', exact: true })
-  await expect(editor.getByLabel('Training week')).toBeVisible()
-  return editor
+  return page.getByRole('dialog', { name: 'Program Editor', exact: true })
 }
-
 async function returnToTraining(page: Page) {
-  await page.getByRole('button', { name: 'Back from weekly plan' }).click()
   await page.getByRole('button', { name: 'Back from program editor' }).click()
   await expect(
     page.getByRole('button', { name: 'Edit active program', exact: true }),
   ).toBeVisible()
-  await expect(page.locator('[aria-label="Periodized program"]')).toHaveCount(0)
-}
-
-async function firstExercise(page: Page) {
-  await page
-    .getByRole('dialog', { name: 'Weekly plan', exact: true })
-    .getByRole('button', { name: /Monday — Heavy Bench/ })
-    .click()
-  await page
-    .getByRole('dialog', { name: 'Workout day', exact: true })
-    .getByRole('button', { name: /Barbell Bench Press/ })
-    .first()
-    .click()
-  const editor = page.getByRole('dialog', {
-    name: 'Exercise plan',
-    exact: true,
-  })
-  await editor.locator('.plan-group summary').first().click()
-  return editor
-}
-async function closeExercisePlan(page: Page) {
-  await page.getByRole('button', { name: 'Back from exercise plan' }).click()
-  await page.getByRole('button', { name: 'Back from workout day' }).click()
 }
 async function openSetTargets(page: Page, number: number) {
   await page.getByRole('button', { name: 'More exercise actions' }).click()
@@ -88,11 +51,16 @@ async function startFirstDay(page: Page) {
   await expect(page).toHaveURL(/\/workout/, { timeout: 45000 })
 }
 
-test('keeps periodization off by default and the familiar Training and live-workout layout', async ({
+test('returns to the familiar live-workout layout when asymmetrical weeks are switched off', async ({
   page,
 }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await activateProgram(page)
+  const editor = await openEditor(page)
+  await editor.getByRole('button', { name: 'Program editor settings' }).click()
+  await page.getByLabel('Asymmetrical weeks').uncheck()
+  await expect(editor.getByLabel('Training week')).toHaveCount(0)
+  await returnToTraining(page)
   await expect(page.getByLabel('Select program week')).toBeEnabled()
   await expect(page.locator('[aria-label="Periodized program"]')).toHaveCount(0)
   await expect(
@@ -129,43 +97,46 @@ test('edits periodization only inside the program editor and logs in compact pho
 }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await activateProgram(page)
-  let editor = await openPeriodization(page, true)
+  const editor = await openEditor(page)
   await expect(editor.getByLabel('Training week')).toHaveValue('2')
   await editor.getByLabel('Training week').selectOption('9')
-  await expect(editor.getByText('Jan 18 – Jan 24, 2027')).toBeVisible()
-  await editor.getByLabel('Training week').selectOption('14')
-  for (const date of ['2027-02-22', '2027-02-24', '2027-02-27'])
-    await expect(
-      editor.locator(`.plan-list time[datetime="${date}"]`),
-    ).toBeVisible()
-  await expect(editor.locator('.plan-list > button')).toHaveCount(3)
-  await editor.getByLabel('Training week').selectOption('11')
-  await expect(
-    editor.getByRole('button', { name: 'Save changes' }),
-  ).toHaveCount(0)
   await page.screenshot({
-    path: testInfo.outputPath('periodization-editor.png'),
+    animations: 'disabled',
+    path: testInfo.outputPath('asymmetrical-editor.png'),
   })
-  const exercise = await firstExercise(page)
-  await expect(exercise.getByLabel('% estimated 1RM').first()).toBeHidden()
-  await page.screenshot({ path: testInfo.outputPath('exercise-plan.png') })
-  await exercise.getByLabel('Apply changes to').selectOption('week')
-  await exercise.getByLabel('Sets', { exact: true }).first().fill('2')
-  await exercise
-    .getByRole('button', { name: 'Save changes', exact: true })
+  await editor
+    .getByRole('button', {
+      name: 'Edit Barbell Bench Press prescription',
+      exact: true,
+    })
     .click()
-  await expect(exercise.getByRole('status')).toContainText('Changes saved.')
-  await closeExercisePlan(page)
-  await returnToTraining(page)
-  await page.reload()
-  editor = await openPeriodization(page)
-  await expect(editor.getByLabel('Training week')).toHaveValue('2')
-  await editor.getByLabel('Training week').selectOption('11')
-  await firstExercise(page)
+  await editor.locator('.plan-group summary').first().click()
+  const group = editor.locator('.plan-group').first()
   await expect(
-    exercise.getByLabel('Sets', { exact: true }).first(),
-  ).toHaveValue('2')
-  await closeExercisePlan(page)
+    group.getByText('Enter a saved 1RM to calculate this target.'),
+  ).toBeVisible()
+  await group.getByLabel('Saved 1RM (lb)').fill('250')
+  await expect(group.getByText('Target · 225 lb')).toBeVisible()
+  await page.screenshot({
+    path: testInfo.outputPath('asymmetrical-weight.png'),
+  })
+  await group.getByLabel('Sets', { exact: true }).fill('2')
+  await editor.getByText('Apply edits to other weeks', { exact: true }).click()
+  await editor.getByLabel('Week 10 · Intensification').check()
+
+  await editor
+    .getByRole('button', { name: 'Save exercise', exact: true })
+    .click()
+  await editor.getByLabel('Training week').selectOption('10')
+  await editor
+    .getByRole('button', {
+      name: 'Edit Barbell Bench Press prescription',
+      exact: true,
+    })
+    .click()
+  await editor.locator('.plan-group summary').first().click()
+  await expect(group.getByLabel('Sets', { exact: true })).toHaveValue('2')
+  await editor.getByRole('button', { name: 'Back from program editor' }).click()
   await returnToTraining(page)
   await startFirstDay(page)
   await expect(page.getByLabel('Set 1 Weight', { exact: true })).toBeVisible()
@@ -325,23 +296,23 @@ test('creates a second editable periodized program through the existing clone fl
   await page
     .getByRole('button', { name: `Edit ${programName} copy`, exact: true })
     .click()
-  await page.getByRole('button', { name: 'Program editor settings' }).click()
-  const settings = page.getByRole('dialog', {
-    name: 'Program settings',
+  const editor = page.getByRole('dialog', {
+    name: 'Edit template',
     exact: true,
   })
-  await expect(settings.getByLabel('Enable periodization')).not.toBeChecked()
-  await settings.getByLabel('Enable periodization').check()
-  await page.getByRole('button', { name: 'Edit schedule' }).click()
-  const editor = page.getByRole('dialog', { name: 'Schedule', exact: true })
-  await editor.getByLabel('Assigned start date').fill('2027-03-01')
-  await editor
-    .getByRole('button', { name: 'Save changes', exact: true })
-    .click()
-  await expect(editor.getByRole('status')).toContainText('Changes saved.')
-  await editor.getByRole('button', { name: 'Back from schedule' }).click()
-  await page.getByLabel('Training week').selectOption('1')
-  await expect(page.getByText('Mar 1 – Mar 7, 2027')).toBeVisible()
+  await editor.getByLabel('Training week').selectOption('3')
+  await editor.getByRole('button', { name: 'Week options' }).click()
+  const options = page.getByRole('dialog', {
+    name: 'Week 3 options',
+    exact: true,
+  })
+  await options.getByLabel('Week name').fill('Volume B')
+  await options.getByText('Copy this week to…', { exact: true }).click()
+  await options.getByLabel('Week 4 · Volume').check()
+  await options.getByRole('button', { name: 'Save week' }).click()
+  await expect(
+    editor.getByLabel('Training week').locator('option[value="4"]'),
+  ).toHaveText('Week 4 · Volume B')
 })
 
 test('distinguishes max attempts from ordinary sets without expanding the logging rows', async ({
@@ -359,13 +330,13 @@ test('distinguishes max attempts from ordinary sets without expanding the loggin
     })
   })
   await activateProgram(page, '2027-02-22T12:00:00')
-  await openPeriodization(page, true)
-  await returnToTraining(page)
+  await page.getByLabel('Select program week').selectOption('13')
+  await page.getByLabel('Select program week').selectOption('14')
   const program = page.getByRole('region', {
     name: 'Current Program',
     exact: true,
   })
-  await expect(program.getByText('Week 14 · Max testing')).toBeVisible()
+  await expect(program.getByLabel('Select program week')).toHaveValue('14')
   await expect(
     program.getByRole('button', { name: 'Start Workout', exact: true }),
   ).toHaveCount(3)
