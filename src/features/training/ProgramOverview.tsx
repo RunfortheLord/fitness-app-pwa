@@ -9,17 +9,19 @@ import {
   SecondaryButton,
 } from '@components/ui'
 import { useLanguage } from '@components/languageContextValue'
+import { prescriptionKey, resolvePrescription } from '@domain/periodization'
 import { formatProgramWeekLabel } from '@domain/programWeeks'
 import type {
   ActiveCycleWorkoutDay,
-  ActiveCycleWorkoutExercise,
+  Exercise,
   ActiveProgramCycle,
 } from '@shared-types/app'
 
-import type { CurrentCycleStructure, LoadStatus } from './types'
+import type { CurrentCycleStructure, LoadStatus, SelectedDay } from './types'
 
 export function ProgramOverview({
   currentCycle,
+  exerciseLibrary,
   checkedDayIds,
   weekNumber,
   onToggleDayCheck,
@@ -32,6 +34,7 @@ export function ProgramOverview({
   onSelectDay,
   onStartDay,
 }: {
+  exerciseLibrary: Exercise[]
   currentCycle: CurrentCycleStructure | undefined
   checkedDayIds: string[]
   weekNumber: number
@@ -49,13 +52,64 @@ export function ProgramOverview({
   onSelectDay: (
     cycle: ActiveProgramCycle,
     day: ActiveCycleWorkoutDay,
-    exercises: ActiveCycleWorkoutExercise[],
+    exercises: SelectedDay['exercises'],
   ) => void
   onStartDay: (cycle: ActiveProgramCycle, day: ActiveCycleWorkoutDay) => void
 }) {
   const { t } = useLanguage()
   const weekSelectRef = useRef<HTMLSelectElement>(null)
   const checkedSet = new Set(checkedDayIds)
+  const plan = currentCycle?.cycle.periodization?.enabled
+    ? currentCycle.cycle.periodization
+    : undefined
+  const phase = plan?.phases.find(
+    (item) => item.id === plan.weeks[weekNumber - 1]?.phaseId,
+  )
+  const days =
+    currentCycle?.days.flatMap((day) => {
+      const exercises = currentCycle.exercisesByDay[day.id] ?? []
+      if (!plan) return [{ day, exercises }]
+      const scheduled = exercises.flatMap((exercise) => {
+        const target = resolvePrescription(
+          plan,
+          weekNumber,
+          prescriptionKey(exercise),
+        )
+        // Exercises added after the plan was created keep their ordinary targets.
+        if (!target) return [exercise]
+        if (!target.included || !target.sets.length) return []
+        const replacement = target.substitutionId
+          ? exerciseLibrary.find((entry) => entry.id === target.substitutionId)
+          : undefined
+        return [
+          {
+            ...exercise,
+            plannedGroups: target.sets,
+            notes: [target.optional ? 'Optional.' : '', target.notes]
+              .filter(Boolean)
+              .join(' '),
+            exerciseSnapshot: {
+              ...exercise.exerciseSnapshot,
+              exerciseName:
+                replacement?.name ?? exercise.exerciseSnapshot.exerciseName,
+            },
+          },
+        ]
+      })
+      return scheduled.length
+        ? [
+            {
+              day: {
+                ...day,
+                name:
+                  phase?.dayNames?.[day.sourceTemplateDayId ?? day.id] ??
+                  day.name,
+              },
+              exercises: scheduled,
+            },
+          ]
+        : []
+    }) ?? []
 
   useEffect(() => {
     function removeTouchFocus(event: PointerEvent) {
@@ -117,36 +171,42 @@ export function ProgramOverview({
               Deactivate
             </SecondaryButton>
           </div>
-          <label className="program-week-selector">
-            <span>Program week</span>
-            <select
-              disabled={currentCycle.cycle.periodization?.enabled === true}
-              aria-label="Select program week"
-              ref={weekSelectRef}
-              onChange={(event) => {
-                onSelectWeek(currentCycle.cycle, Number(event.target.value))
-                event.currentTarget.blur()
-              }}
-              value={weekNumber}
-            >
-              {Array.from(
-                { length: currentCycle.cycle.durationWeeks ?? 10 },
-                (_, index) => index + 1,
-              ).map((week) => (
-                <option key={week} value={week}>
-                  {formatProgramWeekLabel(
-                    week,
-                    currentCycle.cycle.deloadSchedulingEnabled
-                      ? currentCycle.cycle.deloadWeekNumbers
-                      : [],
-                  )}
-                </option>
-              ))}
-            </select>
-          </label>
-          {currentCycle.days.length ? (
+          {plan ? (
+            <p className="muted">
+              Week {weekNumber} · {phase?.name}
+              {plan.pausedOn ? ' · Paused' : ''}
+            </p>
+          ) : (
+            <label className="program-week-selector">
+              <span>Program week</span>
+              <select
+                aria-label="Select program week"
+                ref={weekSelectRef}
+                onChange={(event) => {
+                  onSelectWeek(currentCycle.cycle, Number(event.target.value))
+                  event.currentTarget.blur()
+                }}
+                value={weekNumber}
+              >
+                {Array.from(
+                  { length: currentCycle.cycle.durationWeeks ?? 10 },
+                  (_, index) => index + 1,
+                ).map((week) => (
+                  <option key={week} value={week}>
+                    {formatProgramWeekLabel(
+                      week,
+                      currentCycle.cycle.deloadSchedulingEnabled
+                        ? currentCycle.cycle.deloadWeekNumbers
+                        : [],
+                    )}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {days.length ? (
             <div className="program-day-grid" aria-label={t('Workout days')}>
-              {currentCycle.days.map((day) => {
+              {days.map(({ day, exercises }) => {
                 const isChecked = checkedSet.has(day.id)
                 return (
                   <div
@@ -178,24 +238,17 @@ export function ProgramOverview({
                       className="program-day-open"
                       type="button"
                       onClick={() =>
-                        onSelectDay(
-                          currentCycle.cycle,
-                          day,
-                          currentCycle.exercisesByDay[day.id] ?? [],
-                        )
+                        onSelectDay(currentCycle.cycle, day, exercises)
                       }
                     >
                       <strong>{day.name}</strong>
                       <small>
-                        {(currentCycle.exercisesByDay[day.id] ?? []).length}{' '}
-                        {t('exercises')}
+                        {exercises.length} {t('exercises')}
                       </small>
                     </button>
                     <SecondaryButton
                       className="program-day-start"
-                      disabled={
-                        !(currentCycle.exercisesByDay[day.id] ?? []).length
-                      }
+                      disabled={!exercises.length || Boolean(plan?.pausedOn)}
                       type="button"
                       onClick={() => onStartDay(currentCycle.cycle, day)}
                     >
@@ -207,8 +260,12 @@ export function ProgramOverview({
             </div>
           ) : (
             <EmptyState
-              title="No workout days"
-              message="Edit the current cycle to add days before training."
+              title={plan ? 'No workouts this week' : 'No workout days'}
+              message={
+                plan
+                  ? 'Open the weekly plan to schedule a workout.'
+                  : 'Edit the current cycle to add days before training.'
+              }
             />
           )}
         </>

@@ -12,6 +12,7 @@ import {
 import { useLanguage } from '@components/languageContextValue'
 import { useSubpageBackGesture } from '@hooks/useSubpageBackGesture'
 import { formatLocalDate } from '@domain/dates'
+import { programPosition } from '@domain/periodization'
 import { currentProgramWeek } from '@domain/programWeeks'
 import type { ExerciseTrackingCategory } from '@domain/exerciseSearch'
 import {
@@ -245,11 +246,16 @@ export function TrainingPage() {
               await programRepository.listAllActiveCycleDayChecks(
                 currentCycle.cycle.id,
               )
-            const week = currentProgramWeek(
-              currentCycle.cycle.currentWeekNumber,
-              allChecks,
-              currentCycle.days.map((day) => day.id),
-            )
+            const week = currentCycle.cycle.periodization?.enabled
+              ? programPosition(
+                  currentCycle.cycle.periodization,
+                  formatLocalDate(new Date()),
+                ).week
+              : currentProgramWeek(
+                  currentCycle.cycle.currentWeekNumber,
+                  allChecks,
+                  currentCycle.days.map((day) => day.id),
+                )
             if (isCurrent) {
               setWeekChecks({
                 week,
@@ -442,6 +448,7 @@ export function TrainingPage() {
           <div id="active-program" className="training-section-anchor">
             <ProgramOverview
               currentCycle={loadState.currentCycle}
+              exerciseLibrary={programExercises}
               checkedDayIds={weekChecks.checkedDayIds}
               weekNumber={weekChecks.week}
               onToggleDayCheck={toggleDayCheck}

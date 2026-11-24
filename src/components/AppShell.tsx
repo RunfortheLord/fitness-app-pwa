@@ -154,7 +154,9 @@ function AppShellContent({ children }: AppShellProps) {
           workout
             ? {
                 type: 'workout',
-                dayName: workout.workoutSnapshot.dayName,
+                dayName: workout.periodizedSession
+                  ? workout.name
+                  : workout.workoutSnapshot.dayName,
                 id: workout.id,
                 pausedAt: workout.pausedAt ?? null,
                 updatedAt: workout.updatedAt,

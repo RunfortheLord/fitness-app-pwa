@@ -137,7 +137,13 @@ export function WorkoutDayDetailPage({
         <div className="button-row workout-day-page-actions">
           {!existingWorkoutId && !existingRunId ? (
             <PrimaryButton
-              disabled={!selectedDay.exercises.length}
+              disabled={
+                !selectedDay.exercises.length ||
+                Boolean(
+                  selectedDay.cycle.periodization?.enabled &&
+                  selectedDay.cycle.periodization.pausedOn,
+                )
+              }
               type="button"
               onClick={startWorkout}
             >
@@ -155,7 +161,16 @@ export function WorkoutDayDetailPage({
                 <div>
                   <strong>{exercise.exerciseSnapshot.exerciseName}</strong>
                   <small>
-                    <PrescriptionSummaryText prescribed={exercise} />
+                    {exercise.plannedGroups ? (
+                      exercise.plannedGroups
+                        .map(
+                          (group) =>
+                            `${group.kind} · ${group.count} × ${group.repsMin}${group.repsMin === group.repsMax ? '' : '–' + group.repsMax}`,
+                        )
+                        .join(' / ')
+                    ) : (
+                      <PrescriptionSummaryText prescribed={exercise} />
+                    )}
                   </small>
                   {exercise.notes ? <small>{exercise.notes}</small> : null}
                 </div>

@@ -15,6 +15,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import {
+  Fragment,
   useEffect,
   useRef,
   useState,
@@ -1599,6 +1600,11 @@ function ExerciseWorkspace({
   const weightUnit = useWeightUnit()
   const rirEnabled = useRirTracking()
   const canEditTargetRir = supportsRir(metrics) && rirEnabled
+  const plannedSets = periodizationEnabled
+    ? sets.filter((set) => set.plannedSet)
+    : []
+  const [targetSetId, setTargetSetId] = useState<string | null>(null)
+  const targetSet = plannedSets.find((set) => set.id === targetSetId)
   const finalProgrammedSetId = getFinalProgrammedSetId(sets)
   const exerciseNotes = exercise.notes.trim()
   const [isEditingNotes, setIsEditingNotes] = useState(false)
@@ -1766,24 +1772,58 @@ function ExerciseWorkspace({
           </div>
         </div>
 
-        <div className="set-list">
-          {sets.map((set) => (
-            <SetRow
-              exercise={exercise}
-              finalProgrammedSetId={finalProgrammedSetId}
-              forceRir={forceRir}
-              showTargets={periodizationEnabled}
-              key={set.id}
-              metrics={metrics}
-              onComplete={(completed) => onCompleteSet(set, completed)}
-              onDelete={() => onDeleteSet(set.id)}
-              onMetricChange={(key, value) => onSetMetric(set, { key, value })}
-              onRirChange={(rir) => onSetRir(set, rir)}
-              prescription={prescription}
-              rirTargetOnEverySet={rirTargetOnEverySet}
-              set={set}
-            />
-          ))}
+        <div
+          className={
+            plannedSets.length ? 'set-list planned-set-list' : 'set-list'
+          }
+        >
+          {plannedSets.length ? (
+            <div className="planned-set-columns" aria-hidden="true">
+              <span>Set</span>
+              {metrics.map((metric) => (
+                <span key={metric.key}>
+                  {formatMetricLabel(
+                    metric,
+                    exerciseRecordsRepsPerSide(exercise),
+                  )}
+                  {metric.key === 'weight' ? ` (${weightUnit})` : ''}
+                </span>
+              ))}
+              {supportsRir(metrics) && (rirEnabled || forceRir) ? (
+                <span>RIR</span>
+              ) : null}
+            </div>
+          ) : null}
+          {sets.map((set, index) => {
+            const kind = plannedSets.length ? set.plannedSet?.kind : undefined
+            const groupStart =
+              kind !== undefined && sets[index - 1]?.plannedSet?.kind !== kind
+            return (
+              <Fragment key={set.id}>
+                {groupStart ? (
+                  <h3 className="set-group-title" data-set-kind={kind}>
+                    {kind}
+                  </h3>
+                ) : null}
+                <SetRow
+                  exercise={exercise}
+                  finalProgrammedSetId={finalProgrammedSetId}
+                  forceRir={forceRir}
+                  showTargets={periodizationEnabled}
+                  metrics={metrics}
+                  onComplete={(completed) => onCompleteSet(set, completed)}
+                  onDelete={() => onDeleteSet(set.id)}
+                  onMetricChange={(key, value) =>
+                    onSetMetric(set, { key, value })
+                  }
+                  onRirChange={(rir) => onSetRir(set, rir)}
+                  prescription={prescription}
+                  rirTargetOnEverySet={rirTargetOnEverySet}
+                  set={set}
+                />
+              </Fragment>
+            )
+          })}
         </div>
       </div>
 
@@ -1905,19 +1945,35 @@ function ExerciseWorkspace({
           </div>
         ) : (
           <div className="exercise-options-sheet-actions">
-            <div className="exercise-options-prescription">
-              <div>
-                <p className="eyebrow">Current workout target</p>
-                <h3>{formatPrescriptionSummary(prescription, weightUnit)}</h3>
-              </div>
-              <IconButton
-                aria-label="Edit current workout target"
-                title="Edit current workout target"
-                onClick={() => setIsEditingPrescription(true)}
+            {plannedSets.length ? (
+              <SecondaryButton
+                onClick={() => {
+                  setIsExerciseOptionsOpen(false)
+                  setTargetSetId(
+                    (
+                      plannedSets.find((set) => !set.completed) ??
+                      plannedSets[0]
+                    ).id,
+                  )
+                }}
               >
-                <Pencil aria-hidden="true" size={18} />
-              </IconButton>
-            </div>
+                Set targets
+              </SecondaryButton>
+            ) : (
+              <div className="exercise-options-prescription">
+                <div>
+                  <p className="eyebrow">Current workout target</p>
+                  <h3>{formatPrescriptionSummary(prescription, weightUnit)}</h3>
+                </div>
+                <IconButton
+                  aria-label="Edit current workout target"
+                  title="Edit current workout target"
+                  onClick={() => setIsEditingPrescription(true)}
+                >
+                  <Pencil aria-hidden="true" size={18} />
+                </IconButton>
+              </div>
+            )}
             <ExerciseOptionsTimerSettings
               defaultRestSeconds={
                 exercise.exerciseSnapshot.defaultRestSeconds ?? 0
@@ -1956,6 +2012,31 @@ function ExerciseWorkspace({
         )}
       </BottomSheet>
 
+      {targetSet ? (
+        <BottomSheet
+          isOpen
+          onClose={() => setTargetSetId(null)}
+          title="Set targets"
+        >
+          <div className="set-target-fields">
+            <label>
+              Set
+              <select
+                aria-label="Target set"
+                value={targetSet.id}
+                onChange={(event) => setTargetSetId(event.target.value)}
+              >
+                {plannedSets.map((set) => (
+                  <option key={set.id} value={set.id}>
+                    Set {set.setNumber} · {set.plannedSet?.kind}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <SessionSetTarget key={targetSet.id} set={targetSet} />
+          </div>
+        </BottomSheet>
+      ) : null}
       <BottomSheet
         isOpen={isEditingNotes}
         onClose={() => {
@@ -1997,6 +2078,106 @@ function ExerciseWorkspace({
   )
 }
 
+function SessionSetTarget({ set }: { set: WorkoutSet }) {
+  const weightUnit = useWeightUnit()
+  const [message, setMessage] = useState('')
+  const [speed, setSpeed] = useState(set.barSpeed ?? '')
+  const target =
+    set.targetRecommendation?.userEditedTarget ??
+    set.targetRecommendation?.suggestedTarget ??
+    set.targetSnapshot
+  const planned = set.plannedSet
+  if (!planned) return null
+  return (
+    <>
+      <p>
+        {planned.repsMin}
+        {planned.repsMax !== planned.repsMin ? `–${planned.repsMax}` : ''} reps
+        {planned.rir == null ? '' : ` · ${planned.rir} RIR`}
+      </p>
+      {target ? (
+        <label>
+          Planned load ({weightUnit})
+          <input
+            aria-label={`Set ${set.setNumber} planned load`}
+            type="number"
+            step="any"
+            min="0"
+            disabled={set.completed}
+            defaultValue={weightInputValue(
+              target.targetWeight ?? null,
+              weightUnit,
+            )}
+            onBlur={async (event) => {
+              const input = event.currentTarget
+              if (!input.validity.valid) {
+                setMessage('Enter a valid load.')
+                return
+              }
+              const weight =
+                input.value === ''
+                  ? null
+                  : weightInputToLb(Number(input.value), weightUnit)
+              try {
+                await workoutRepository.updateWorkoutSetTarget(set.id, {
+                  targetWeight: weight,
+                })
+                setMessage('Saved for this workout.')
+              } catch (error) {
+                setMessage(
+                  error instanceof Error
+                    ? error.message
+                    : 'Could not save target.',
+                )
+              }
+            }}
+          />
+        </label>
+      ) : null}
+      {planned.kind === 'max attempt' ? (
+        <>
+          <label>
+            Bar speed
+            <select
+              aria-label={`Set ${set.setNumber} bar speed`}
+              disabled={set.completed}
+              value={speed}
+              onChange={async (event) => {
+                const next = event.currentTarget.value as WorkoutSet['barSpeed']
+                try {
+                  await workoutRepository.updateWorkoutSet(set.id, {
+                    barSpeed: next,
+                  })
+                  setSpeed(next ?? '')
+                  setMessage('Saved for this workout.')
+                } catch (error) {
+                  setMessage(
+                    error instanceof Error
+                      ? error.message
+                      : 'Could not save bar speed.',
+                  )
+                }
+              }}
+            >
+              <option value="">Choose after lifting</option>
+              <option value="fast">Fast</option>
+              <option value="normal">Normal</option>
+              <option value="slow">Slow / grind</option>
+            </select>
+          </label>
+          {set.targetRecommendation?.sourceSetId ? (
+            <p>{set.targetRecommendation.explanation}</p>
+          ) : null}
+          <small>
+            Use spotters and safeties. Stop after a miss or painful lift.
+          </small>
+        </>
+      ) : null}
+      {message ? <p role="status">{message}</p> : null}
+    </>
+  )
+}
+
 function SetRow({
   exercise,
   finalProgrammedSetId,
@@ -2027,11 +2208,6 @@ function SetRow({
   const { t } = useLanguage()
   const [validationRequested, setValidationRequested] = useState(false)
   const [rirTouched, setRirTouched] = useState(false)
-  const [plannedLoadMessage, setPlannedLoadMessage] = useState('')
-  const [isTargetOpen, setIsTargetOpen] = useState(false)
-  const [barSpeedDraft, setBarSpeedDraft] = useState<
-    WorkoutSet['barSpeed'] | ''
-  >(set.barSpeed ?? '')
   const [rirDraft, setRirDraft] = useState(set.rir?.toString() ?? '')
   const rirEditingRef = useRef(false)
   const lastRirPropRef = useRef(set.rir)
@@ -2068,150 +2244,14 @@ function SetRow({
 
   return (
     <div
-      className={[
-        'set-row',
-        set.completed ? 'completed' : '',
-        showTargets && set.plannedSet ? 'has-target' : '',
-      ]
+      className={['set-row', set.completed ? 'completed' : '']
         .filter(Boolean)
         .join(' ')}
       data-set-kind={showTargets ? set.plannedSet?.kind : undefined}
     >
       <div className="set-number">
-        {showTargets && set.plannedSet ? (
-          <button
-            className="set-target-button"
-            aria-label={`Set ${set.setNumber} targets`}
-            onClick={() => setIsTargetOpen(true)}
-          >
-            <strong>{set.setNumber}</strong>
-            <small>
-              {set.plannedSet.kind === 'top set'
-                ? 'Top'
-                : set.plannedSet.kind === 'back-off'
-                  ? 'Back-off'
-                  : set.plannedSet.kind === 'max attempt'
-                    ? 'Max'
-                    : 'Target'}
-            </small>
-          </button>
-        ) : (
-          <strong>{set.setNumber}</strong>
-        )}
+        <strong>{set.setNumber}</strong>
       </div>
-      {showTargets && set.plannedSet ? (
-        <BottomSheet
-          isOpen={isTargetOpen}
-          onClose={() => setIsTargetOpen(false)}
-          title={`Set ${set.setNumber} targets`}
-        >
-          <p className="eyebrow">{set.plannedSet.kind}</p>
-          <p className="muted">
-            Planned: {set.plannedSet.repsMin}
-            {set.plannedSet.repsMax !== set.plannedSet.repsMin
-              ? `–${set.plannedSet.repsMax}`
-              : ''}{' '}
-            reps
-            {set.plannedSet.rir != null ? ` · ${set.plannedSet.rir} RIR` : ''}
-            {(
-              set.targetRecommendation?.userEditedTarget ??
-              set.targetRecommendation?.suggestedTarget ??
-              set.targetSnapshot
-            )?.targetWeight != null
-              ? ` · ${formatWeightWithUnit((set.targetRecommendation?.userEditedTarget ?? set.targetRecommendation?.suggestedTarget ?? set.targetSnapshot)!.targetWeight!, weightUnit, 'lifting')}`
-              : ''}
-          </p>
-
-          {set.targetSnapshot ? (
-            <div className="set-target-fields">
-              <label>
-                Planned load ({weightUnit})
-                <input
-                  aria-label={`Set ${set.setNumber} planned load`}
-                  type="number"
-                  step="0.5"
-                  min="0"
-                  disabled={set.completed}
-                  defaultValue={
-                    (
-                      set.targetRecommendation?.userEditedTarget ??
-                      set.targetRecommendation?.suggestedTarget ??
-                      set.targetSnapshot
-                    ).targetWeight == null
-                      ? ''
-                      : weightInputValue(
-                          (
-                            set.targetRecommendation?.userEditedTarget ??
-                            set.targetRecommendation?.suggestedTarget ??
-                            set.targetSnapshot
-                          ).targetWeight!,
-                          weightUnit,
-                        )
-                  }
-                  onBlur={(event) => {
-                    const weight =
-                      event.target.value === ''
-                        ? null
-                        : weightInputToLb(
-                            Number(event.target.value),
-                            weightUnit,
-                          )
-                    if (
-                      weight !== null &&
-                      (!Number.isFinite(weight) || weight < 0)
-                    ) {
-                      setPlannedLoadMessage('Enter a valid nonnegative load.')
-                      return
-                    }
-                    void workoutRepository
-                      .updateWorkoutSetTarget(set.id, { targetWeight: weight })
-                      .then(() =>
-                        setPlannedLoadMessage('Saved for this workout only.'),
-                      )
-                      .catch((caught: unknown) =>
-                        setPlannedLoadMessage(
-                          caught instanceof Error
-                            ? caught.message
-                            : 'Unable to save target.',
-                        ),
-                      )
-                  }}
-                />
-              </label>
-              <p role="status">{plannedLoadMessage}</p>
-            </div>
-          ) : null}
-          {set.plannedSet?.kind === 'max attempt' &&
-          set.targetRecommendation?.sourceSetId ? (
-            <p role="status">{set.targetRecommendation.explanation}</p>
-          ) : null}
-          {set.plannedSet?.kind === 'max attempt' ? (
-            <label>
-              Bar speed
-              <select
-                aria-label={`Set ${set.setNumber} bar speed`}
-                disabled={set.completed}
-                value={barSpeedDraft}
-                onChange={(event) => {
-                  setBarSpeedDraft(event.target.value as WorkoutSet['barSpeed'])
-                  void workoutRepository.updateWorkoutSet(set.id, {
-                    barSpeed: event.target.value as WorkoutSet['barSpeed'],
-                  })
-                }}
-              >
-                <option value="">Choose after lifting</option>
-                <option value="fast">Fast</option>
-                <option value="normal">Normal</option>
-                <option value="slow">Slow / grind</option>
-              </select>
-              <small>
-                Use spotters and safeties. Stop after a miss or painful lift.
-                Review the next attempt before lifting.
-              </small>
-            </label>
-          ) : null}
-        </BottomSheet>
-      ) : null}
       {metrics.map((metric) => {
         // Weight metrics (unit "lb") persist in canonical pounds; show and read
         // them in the user's display unit while leaving reps/duration untouched.

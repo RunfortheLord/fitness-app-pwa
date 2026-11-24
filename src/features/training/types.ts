@@ -1,3 +1,4 @@
+import type { SetPrescription } from '@domain/periodization'
 import type {
   ActiveCycleWorkoutDay,
   ActiveCycleWorkoutExercise,
@@ -13,7 +14,9 @@ export type ProgramSheetTarget =
 export type SelectedDay = {
   cycle: ActiveProgramCycle
   day: ActiveCycleWorkoutDay
-  exercises: ActiveCycleWorkoutExercise[]
+  exercises: (ActiveCycleWorkoutExercise & {
+    plannedGroups?: SetPrescription[]
+  })[]
 }
 export type CurrentCycleStructure = {
   cycle: ActiveProgramCycle

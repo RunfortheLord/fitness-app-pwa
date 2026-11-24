@@ -14,40 +14,69 @@ async function activateProgram(page: Page, date = '2026-11-30T12:00:00') {
   await expect(
     page.getByRole('button', { name: 'Edit active program', exact: true }),
   ).toBeVisible()
+  const dismiss = page
+    .getByRole('button', { name: 'Dismiss notification' })
+    .first()
+  if (await dismiss.isVisible()) await dismiss.click()
 }
 
 async function openPeriodization(page: Page, enable = false) {
   await page
     .getByRole('button', { name: 'Edit active program', exact: true })
     .click()
-  await page.getByRole('button', { name: 'Program editor settings' }).click()
-  const settings = page.getByRole('dialog', {
-    name: 'Program settings',
-    exact: true,
-  })
   if (enable) {
+    await page.getByRole('button', { name: 'Program editor settings' }).click()
+    const settings = page.getByRole('dialog', {
+      name: 'Program settings',
+      exact: true,
+    })
     await expect(settings.getByLabel('Enable periodization')).not.toBeChecked()
     await settings.getByLabel('Enable periodization').check()
-  } else {
-    await settings
-      .getByRole('button', { name: 'Edit phases and weeks', exact: true })
-      .click()
-  }
-  const editor = page.getByRole('dialog', {
-    name: 'Periodization',
-    exact: true,
-  })
-  await expect(editor.getByLabel('Preview training week')).toBeVisible()
+  } else
+    await page.getByRole('button', { name: 'Weekly plan', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: 'Weekly plan', exact: true })
+  await expect(editor.getByLabel('Training week')).toBeVisible()
   return editor
 }
 
 async function returnToTraining(page: Page) {
-  await page.getByRole('button', { name: 'Back from periodization' }).click()
+  await page.getByRole('button', { name: 'Back from weekly plan' }).click()
   await page.getByRole('button', { name: 'Back from program editor' }).click()
   await expect(
     page.getByRole('button', { name: 'Edit active program', exact: true }),
   ).toBeVisible()
   await expect(page.locator('[aria-label="Periodized program"]')).toHaveCount(0)
+}
+
+async function firstExercise(page: Page) {
+  await page
+    .getByRole('dialog', { name: 'Weekly plan', exact: true })
+    .getByRole('button', { name: /Monday — Heavy Bench/ })
+    .click()
+  await page
+    .getByRole('dialog', { name: 'Workout day', exact: true })
+    .getByRole('button', { name: /Barbell Bench Press/ })
+    .first()
+    .click()
+  const editor = page.getByRole('dialog', {
+    name: 'Exercise plan',
+    exact: true,
+  })
+  await editor.locator('.plan-group summary').first().click()
+  return editor
+}
+async function closeExercisePlan(page: Page) {
+  await page.getByRole('button', { name: 'Back from exercise plan' }).click()
+  await page.getByRole('button', { name: 'Back from workout day' }).click()
+}
+async function openSetTargets(page: Page, number: number) {
+  await page.getByRole('button', { name: 'More exercise actions' }).click()
+  await page.getByRole('button', { name: 'Set targets', exact: true }).click()
+  const targets = page.getByRole('dialog', { name: 'Set targets', exact: true })
+  await targets
+    .getByRole('combobox', { name: 'Target set' })
+    .selectOption({ index: number - 1 })
+  return targets
 }
 
 async function startFirstDay(page: Page) {
@@ -101,45 +130,54 @@ test('edits periodization only inside the program editor and logs in compact pho
   await page.setViewportSize({ width: 390, height: 844 })
   await activateProgram(page)
   let editor = await openPeriodization(page, true)
-  await expect(editor.getByLabel('Preview training week')).toHaveValue('2')
-  await editor.getByLabel('Preview training week').selectOption('9')
-  await expect(
-    editor.getByText('2027-01-18 – 2027-01-24 · Intensification', {
-      exact: true,
-    }),
-  ).toBeVisible()
-  await editor.getByLabel('Preview training week').selectOption('14')
+  await expect(editor.getByLabel('Training week')).toHaveValue('2')
+  await editor.getByLabel('Training week').selectOption('9')
+  await expect(editor.getByText('Jan 18 – Jan 24, 2027')).toBeVisible()
+  await editor.getByLabel('Training week').selectOption('14')
   for (const date of ['2027-02-22', '2027-02-24', '2027-02-27'])
-    await expect(editor.getByText(date, { exact: true })).toBeVisible()
-  await expect(editor.locator('.periodized-day')).toHaveCount(3)
-  await editor.getByLabel('Preview training week').selectOption('11')
-  await editor.getByRole('button', { name: 'Sets', exact: true }).click()
-  await editor.getByLabel('Prescription edit scope').selectOption('week')
-  await editor.getByLabel('Sets', { exact: true }).first().fill('2')
-  await editor
-    .getByRole('button', { name: 'Save periodized program', exact: true })
-    .click()
-  await expect(editor.getByRole('status')).toContainText(
-    'Saved future prescriptions',
-  )
-  await editor.getByRole('button', { name: 'Preview', exact: true }).click()
+    await expect(
+      editor.locator(`.plan-list time[datetime="${date}"]`),
+    ).toBeVisible()
+  await expect(editor.locator('.plan-list > button')).toHaveCount(3)
+  await editor.getByLabel('Training week').selectOption('11')
+  await expect(
+    editor.getByRole('button', { name: 'Save changes' }),
+  ).toHaveCount(0)
   await page.screenshot({
     path: testInfo.outputPath('periodization-editor.png'),
   })
+  const exercise = await firstExercise(page)
+  await expect(exercise.getByLabel('% estimated 1RM').first()).toBeHidden()
+  await page.screenshot({ path: testInfo.outputPath('exercise-plan.png') })
+  await exercise.getByLabel('Apply changes to').selectOption('week')
+  await exercise.getByLabel('Sets', { exact: true }).first().fill('2')
+  await exercise
+    .getByRole('button', { name: 'Save changes', exact: true })
+    .click()
+  await expect(exercise.getByRole('status')).toContainText('Changes saved.')
+  await closeExercisePlan(page)
   await returnToTraining(page)
   await page.reload()
   editor = await openPeriodization(page)
-  await expect(editor.getByLabel('Preview training week')).toHaveValue('2')
-  await editor.getByLabel('Preview training week').selectOption('11')
-  await editor.getByRole('button', { name: 'Sets', exact: true }).click()
-  await expect(editor.getByLabel('Sets', { exact: true }).first()).toHaveValue(
-    '2',
-  )
+  await expect(editor.getByLabel('Training week')).toHaveValue('2')
+  await editor.getByLabel('Training week').selectOption('11')
+  await firstExercise(page)
+  await expect(
+    exercise.getByLabel('Sets', { exact: true }).first(),
+  ).toHaveValue('2')
+  await closeExercisePlan(page)
   await returnToTraining(page)
   await startFirstDay(page)
+  await expect(page.getByLabel('Set 1 Weight', { exact: true })).toBeVisible()
+  await expect(page.locator('.set-row button')).toHaveCount(
+    (await page.locator('.set-row').count()) * 2,
+  )
   await expect(
-    page.getByRole('button', { name: 'Set 1 targets', exact: true }),
+    page.getByRole('heading', { name: 'top set', exact: true }),
   ).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'back-off', exact: true }),
+  ).toHaveCount(1)
   await expect(page.getByText(/Planned:/)).not.toBeVisible()
   await expect(page.locator('.set-row').first()).toHaveAttribute(
     'data-set-kind',
@@ -192,7 +230,7 @@ test('edits periodization only inside the program editor and logs in compact pho
         viewport: window.innerWidth,
         scrollWidth: document.documentElement.scrollWidth,
       }))
-    expect(boxes.row.height).toBeCloseTo(72, 1)
+    expect(boxes.row.height).toBeCloseTo(56, 1)
     expect(boxes.scrollWidth).toBe(boxes.viewport)
     for (const field of boxes.fields) {
       expect(Number(field.width.toFixed(2))).toBeGreaterThanOrEqual(44)
@@ -212,18 +250,14 @@ test('edits periodization only inside the program editor and logs in compact pho
       path: testInfo.outputPath(`workout-enabled-${width}.png`),
     })
   }
-  await page.getByRole('button', { name: 'Set 1 targets', exact: true }).click()
-  const targets = page.getByRole('dialog', {
-    name: 'Set 1 targets',
-    exact: true,
-  })
-  await expect(targets.getByText(/Planned: 4–6 reps · 2 RIR/)).toBeVisible()
+  const targets = await openSetTargets(page, 1)
+  await expect(targets.getByText('4–6 reps · 2 RIR')).toBeVisible()
   await targets.getByLabel('Set 1 planned load', { exact: true }).fill('190')
   await targets.getByLabel('Set 1 planned load', { exact: true }).blur()
   await expect(targets.getByRole('status')).toContainText(
-    'Saved for this workout only',
+    'Saved for this workout.',
   )
-  await targets.getByRole('button', { name: 'Close set 1 targets' }).click()
+  await targets.getByRole('button', { name: 'Close set targets' }).click()
   await expect(targets).toBeHidden()
   await page.getByLabel('Set 1 Weight', { exact: true }).click()
   await page.getByLabel('Set 1 Weight', { exact: true }).fill('185')
@@ -275,7 +309,7 @@ test('edits periodization only inside the program editor and logs in compact pho
     { timeout: 45000 },
   )
   await expect(page.getByLabel('Set 1 Reps', { exact: true })).toHaveValue('5')
-  await page.getByRole('button', { name: 'Set 1 targets', exact: true }).click()
+  await openSetTargets(page, 1)
   await expect(
     page.getByLabel('Set 1 planned load', { exact: true }),
   ).toHaveValue('190')
@@ -298,21 +332,16 @@ test('creates a second editable periodized program through the existing clone fl
   })
   await expect(settings.getByLabel('Enable periodization')).not.toBeChecked()
   await settings.getByLabel('Enable periodization').check()
-  const editor = page.getByRole('dialog', {
-    name: 'Periodization',
-    exact: true,
-  })
-  await editor.getByRole('button', { name: 'Schedule', exact: true }).click()
+  await page.getByRole('button', { name: 'Edit schedule' }).click()
+  const editor = page.getByRole('dialog', { name: 'Schedule', exact: true })
   await editor.getByLabel('Assigned start date').fill('2027-03-01')
   await editor
-    .getByRole('button', { name: 'Save periodized program', exact: true })
+    .getByRole('button', { name: 'Save changes', exact: true })
     .click()
-  await expect(editor.getByRole('status')).toContainText(
-    'Saved future prescriptions',
-  )
-  await expect(
-    editor.getByText('14 weeks · 2027-03-01 – 2027-06-06', { exact: true }),
-  ).toBeVisible()
+  await expect(editor.getByRole('status')).toContainText('Changes saved.')
+  await editor.getByRole('button', { name: 'Back from schedule' }).click()
+  await page.getByLabel('Training week').selectOption('1')
+  await expect(page.getByText('Mar 1 – Mar 7, 2027')).toBeVisible()
 })
 
 test('distinguishes max attempts from ordinary sets without expanding the logging rows', async ({
@@ -332,11 +361,27 @@ test('distinguishes max attempts from ordinary sets without expanding the loggin
   await activateProgram(page, '2027-02-22T12:00:00')
   await openPeriodization(page, true)
   await returnToTraining(page)
+  const program = page.getByRole('region', {
+    name: 'Current Program',
+    exact: true,
+  })
+  await expect(program.getByText('Week 14 · Max testing')).toBeVisible()
+  await expect(
+    program.getByRole('button', { name: 'Start Workout', exact: true }),
+  ).toHaveCount(3)
+  await expect(
+    program.getByText('Wednesday — Squat 1RM test', { exact: true }),
+  ).toBeVisible()
   await startFirstDay(page)
+  await expect(
+    page.getByRole('heading', { name: 'Monday — Bench 1RM test', exact: true }),
+  ).toBeVisible()
   const row = page.locator('.set-row[data-set-kind="max attempt"]').first()
   await expect(row).toHaveAttribute('data-set-kind', 'max attempt')
-  await expect(row.getByText('Max', { exact: true })).toBeVisible()
-  await expect(row).toHaveCSS('height', '72px')
+  await expect(
+    page.getByRole('heading', { name: 'max attempt', exact: true }),
+  ).toBeVisible()
+  await expect(row).toHaveCSS('height', '56px')
   await expect(page.getByLabel('Set 1 Reps', { exact: true })).toHaveAttribute(
     'placeholder',
     '5',
@@ -358,6 +403,6 @@ test('distinguishes max attempts from ordinary sets without expanding the loggin
   await page.screenshot({
     path: testInfo.outputPath('workout-max-attempt.png'),
   })
-  await row.getByRole('button', { name: 'Set 4 targets', exact: true }).click()
+  await openSetTargets(page, 4)
   await expect(page.getByLabel('Set 4 bar speed')).toBeVisible()
 })

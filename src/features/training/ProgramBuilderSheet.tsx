@@ -809,6 +809,11 @@ export function ProgramBuilderSheet({
         ) : null}
         {structure && !editingPrescription ? (
           <>
+            {structure.record.periodization?.enabled ? (
+              <SecondaryButton onClick={() => setIsPeriodizationOpen(true)}>
+                Weekly plan
+              </SecondaryButton>
+            ) : null}
             <FormField id="builder-program-name" label="Program name">
               <div className="rename-field">
                 <input
@@ -1330,16 +1335,6 @@ export function ProgramBuilderSheet({
               />
               Enable periodization
             </label>
-            {structure.record.periodization?.enabled ? (
-              <SecondaryButton
-                onClick={() => {
-                  setIsSettingsOpen(false)
-                  setIsPeriodizationOpen(true)
-                }}
-              >
-                Edit phases and weeks
-              </SecondaryButton>
-            ) : null}
           </>
         ) : null}
         <label className="checkbox-row">
@@ -1365,20 +1360,14 @@ export function ProgramBuilderSheet({
           </label>
         ) : null}
       </BottomSheet>
-      <BottomSheet
-        isOpen={isPeriodizationOpen}
-        onClose={() => setIsPeriodizationOpen(false)}
-        title="Periodization"
-        variant="page"
-      >
-        {structure && isPeriodizationOpen ? (
-          <PeriodizedProgramPanel
-            record={structure.record}
-            mode={mode}
-            onChanged={refresh}
-          />
-        ) : null}
-      </BottomSheet>
+      {structure && isPeriodizationOpen ? (
+        <PeriodizedProgramPanel
+          record={structure.record}
+          mode={mode}
+          onChanged={refresh}
+          onClose={() => setIsPeriodizationOpen(false)}
+        />
+      ) : null}
       <ModalConfirmationDialog
         confirmLabel="Delete Day"
         isOpen={removeDayConfirmation !== null}
