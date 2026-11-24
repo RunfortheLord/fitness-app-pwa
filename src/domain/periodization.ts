@@ -81,6 +81,8 @@ const calendarDateSchema = z
 export const periodizedPlanSchema = z
   .object({
     version: z.literal(1),
+    // Existing plans remain available, but scheduling requires an explicit opt-in.
+    enabled: z.boolean().optional(),
     startDate: calendarDateSchema,
     pausedOn: calendarDateSchema.optional(),
     defaults: z.record(z.string(), exercisePrescriptionSchema),

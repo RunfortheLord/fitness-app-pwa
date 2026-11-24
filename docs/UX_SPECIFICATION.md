@@ -261,6 +261,10 @@
 - Exercise library entry point.
 - Create Program and Create Exercise actions.
 - Resume active workout banner when applicable.
+- Periodization is off by default, including for existing plans that have not
+  been explicitly enabled. Training keeps the same compact program card and
+  workout-day rows; schedule previews and prescription editing never appear
+  as an additional dashboard panel.
 
 ### Exercise Library
 
@@ -288,6 +292,10 @@
 
 ### Program Builder
 
+- Program settings contains an unchecked Enable periodization switch. Enabling
+  it opens a dedicated editor subpage with Preview, Schedule, Sets, and Progress
+  sections. Disabling it retains the saved plan and restores normal manual
+  week selection and repeating prescriptions. Editing does not start a workout.
 - Program name and notes.
 - Program length. Program settings contains a disabled-by-default Schedule
   deload weeks toggle. Enabling it reveals a compact horizontal-only week
@@ -334,6 +342,12 @@
   Increasing the count creates blank sets; decreasing it removes only
   uncompleted sets and never deletes completed work.
 - Previous performance in compact set rows.
+- Enabled periodized workouts retain 72 px logging rows. Top sets, back-offs,
+  and max attempts have distinct accent borders and short labels beside their
+  set numbers; ordinary sets stay neutral. Planned-load editing, explanations,
+  and attempt feedback open in a separate set-target sheet. Exercise swipes,
+  tabs, position labels, number entry, completion, and session controls stay
+  available. With periodization off, its labels and target sheets are absent.
 - Skip and replace exercise actions remain available in the compact
   exercise-options sheet opened beside the notes control.
 - Add set action.

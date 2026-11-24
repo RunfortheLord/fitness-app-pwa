@@ -1416,3 +1416,9 @@ as the blank band visible in the failed workout screenshot.
 - The user's explicit request extends the frozen programming scope with calendar-selected weeks and phase-specific prescriptions. Users still choose and start each workout manually. Conventional repeating programs retain their existing behavior.
 - Store a validated optional plan on existing program/cycle records, with defaults and sparse phase/week overrides. No destructive migration or persisted identifier change is required. Snapshot actual session prescriptions into the existing workout/history records and include them in full backups.
 - Strength references seed recommendations only; they never create performance or bodyweight records. Recovery sessions do not change progression capacity. Planned set groups keep top sets, back-offs, warm-ups, technique sets, and attempts independent.
+
+## 2026-11-24: Explicit periodization opt-in and compact phone logging
+
+- The user's iPhone recording showed duplicated Training content and planned-set prose breaking the live logging grid. Keep all periodization editing in the program editor, with a separate subpage and compact section navigation.
+- Periodization requires an explicit per-program Enable periodization setting. Missing or false means off, including previously saved plans; preserve those plans and all active/history snapshots. Off uses ordinary repeating prescriptions and manual week selection. Creating a repeating plan through the editor is an explicit opt-in.
+- Keep live logging controls and swipes. Enabled top-set, back-off, and max-attempt cards use distinct accents and short labels. Put longer targets, planned-load edits, and attempt feedback in a separate sheet, outside the fixed-height logging grid.

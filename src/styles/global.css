@@ -2396,6 +2396,70 @@ body.live-workout-open .bottom-nav {
   background: rgb(255 255 255 / 4%);
 }
 
+.set-row.has-target {
+  grid-template-columns: 44px repeat(3, minmax(0, 1fr)) 44px 44px;
+}
+
+.set-row[data-set-kind='top set'] {
+  border-left: 3px solid #d1b475;
+  background:
+    linear-gradient(90deg, rgb(209 180 117 / 10%), transparent 70%),
+    var(--color-surface-strong);
+}
+
+.set-row[data-set-kind='back-off'] {
+  border-left: 3px solid #80b7e3;
+  background:
+    linear-gradient(90deg, rgb(128 183 227 / 9%), transparent 70%),
+    var(--color-surface-strong);
+}
+
+.set-row[data-set-kind='max attempt'] {
+  border: 1px solid rgb(237 151 113 / 55%);
+  border-left: 3px solid #ed9771;
+  background:
+    linear-gradient(90deg, rgb(237 151 113 / 17%), transparent 85%),
+    var(--color-surface-strong);
+}
+
+.set-row[data-set-kind='top set'] .set-target-button small {
+  color: #d1b475;
+}
+.set-row[data-set-kind='back-off'] .set-target-button small {
+  color: #80b7e3;
+}
+.set-row[data-set-kind='max attempt'] .set-target-button small {
+  color: #ed9771;
+}
+
+.set-target-button {
+  width: 44px;
+  min-height: 44px;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.set-number .set-target-button small {
+  font-size: 10px;
+  color: var(--color-accent);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.set-target-fields {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.set-target-fields label {
+  display: grid;
+  gap: var(--space-2);
+}
+
 .set-row .icon-button,
 .set-complete-button {
   justify-self: stretch;
@@ -6664,6 +6728,59 @@ body.keyboard-input-open .bottom-nav {
   display: grid;
   gap: 6px;
 }
+
+.periodized-caption {
+  color: var(--color-muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.periodized-sections {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.periodized-sections button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.periodized-sections button[aria-pressed='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}
+
+.periodized-panel label:has(input[type='checkbox']) {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  gap: var(--space-2);
+}
+
+.periodized-panel input[type='checkbox'] {
+  flex: 0 0 24px;
+  min-height: 24px;
+}
+
+.periodized-save {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding-block: var(--space-2);
+  background: var(--color-sheet);
+}
+
+.periodized-save button {
+  width: 100%;
+}
 .periodized-panel input,
 .periodized-panel select,
 .periodized-panel textarea {
@@ -6704,6 +6821,39 @@ body.keyboard-input-open .bottom-nav {
   padding: 12px 0;
   min-height: 44px;
   cursor: pointer;
+}
+
+.periodized-day > summary strong,
+.periodized-day > summary span {
+  display: block;
+  overflow-wrap: anywhere;
+  grid-column: 1;
+}
+
+.periodized-day > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20px;
+  gap: 4px;
+  align-content: center;
+  min-height: 56px;
+  padding: 0;
+  list-style: none;
+}
+
+.periodized-day > summary::-webkit-details-marker {
+  display: none;
+}
+.periodized-day > summary::after {
+  content: '›';
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  font-size: 22px;
+  text-align: center;
+  color: var(--color-muted);
+}
+.periodized-day[open] > summary::after {
+  transform: rotate(90deg);
 }
 .periodized-day li {
   margin-bottom: 10px;

@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import {
-  Card,
   PrimaryButton,
   SecondaryButton,
   ValidationMessage,
@@ -22,7 +20,6 @@ import {
 import { prescriptionSet } from '@domain/februaryPeak'
 import { programRepository } from '@repositories/programRepository'
 import { periodizationRepository } from '@repositories/periodizationRepository'
-import { workoutRepository } from '@repositories/workoutRepository'
 import { exerciseRepository } from '@repositories/exerciseRepository'
 import type {
   ActiveProgramCycle,
@@ -65,7 +62,6 @@ export function PeriodizedProgramPanel({
   mode: 'template' | 'cycle'
   onChanged: () => void
 }) {
-  const navigate = useNavigate()
   const weightUnit = useWeightUnit()
   const [structure, setStructure] = useState<Structure | null>(null)
   const [plan, setPlan] = useState<PeriodizedPlan | undefined>(
@@ -78,7 +74,9 @@ export function PeriodizedProgramPanel({
   )
   const [scope, setScope] = useState<'week' | 'phase' | 'program'>('week')
   const [selectedKey, setSelectedKey] = useState('')
-  const [editing, setEditing] = useState(false)
+  const [section, setSection] = useState<
+    'schedule' | 'sets' | 'preview' | 'progress'
+  >('preview')
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -176,9 +174,6 @@ export function PeriodizedProgramPanel({
     (entry) => entry.id === plan.weeks[week - 1]?.phaseId,
   )
   const prescription = plan ? resolvePrescription(plan, week, key) : undefined
-  const position = plan
-    ? programPosition(plan, formatLocalDate(new Date()))
-    : undefined
   const showWeight = (weight: number) =>
     Math.round(convertFromLb(weight, weightUnit) * 10) / 10
 
@@ -265,7 +260,7 @@ export function PeriodizedProgramPanel({
                   .then((created) => {
                     setPlan(created)
                     setWeek(1)
-                    setEditing(true)
+                    setSection('schedule')
                     onChanged()
                   })
                   .catch((caught: unknown) =>
@@ -295,13 +290,6 @@ export function PeriodizedProgramPanel({
     plan.startDate as typeof startDate,
     (week - 1) * 7,
   )
-  const nextPhase = plan.phases
-    .filter(
-      (entry) =>
-        entry.startWeek > (position?.week ?? 1) &&
-        /Deload|Peaking|Taper|Max testing/.test(entry.name),
-    )
-    .sort((a, b) => a.startWeek - b.startWeek)[0]
   const displayedPrescription =
     scope === 'program'
       ? plan.defaults[key]
@@ -309,446 +297,417 @@ export function PeriodizedProgramPanel({
         ? { ...plan.defaults[key], ...phase?.overrides[key] }
         : prescription
   return (
-    <Card aria-label="Periodized program">
-      <div className="periodized-panel">
-        <h3>Periodized program</h3>
-        <p>
-          {plan.startDate} –{' '}
-          {addLocalDays(
-            plan.startDate as typeof startDate,
-            plan.weeks.length * 7 - 1,
-          )}{' '}
-          · {plan.weeks.length} weeks
-        </p>
-        <p>
-          <strong>
-            {position?.paused
-              ? 'Paused'
-              : position?.beforeStart
-                ? 'Starts soon'
-                : position?.finished
-                  ? 'Program complete'
-                  : `Current week ${position?.week}: ${position?.phase.name}`}
-          </strong>
-        </p>
-        {position ? (
-          <progress
-            aria-label="Progress through current phase"
-            max={position.phase.endWeek - position.phase.startWeek + 1}
-            value={position.week - position.phase.startWeek + 1}
-          />
-        ) : null}
-        {nextPhase ? (
-          <p>
-            Next {nextPhase.name.toLowerCase()}:{' '}
-            {addLocalDays(
-              plan.startDate as typeof startDate,
-              (nextPhase.startWeek - 1) * 7,
-            )}
-          </p>
-        ) : null}
-        <label>
-          Preview training week
-          <select
-            aria-label="Preview training week"
-            value={week}
-            onChange={(event) => setWeek(Number(event.target.value))}
+    <section aria-label="Periodized program" className="periodized-panel">
+      <p className="periodized-caption">
+        {plan.weeks.length} weeks · {plan.startDate} –{' '}
+        {addLocalDays(
+          plan.startDate as typeof startDate,
+          plan.weeks.length * 7 - 1,
+        )}
+      </p>
+      <label>
+        Preview training week
+        <select
+          aria-label="Preview training week"
+          value={week}
+          onChange={(event) => setWeek(Number(event.target.value))}
+        >
+          {plan.weeks.map((assigned, index) => (
+            <option key={index} value={index + 1}>
+              Week {index + 1} ·{' '}
+              {plan.phases.find((entry) => entry.id === assigned.phaseId)?.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p>
+        {weekStart} – {addLocalDays(weekStart, 6)} · {phase?.name}
+      </p>
+      <div
+        className="periodized-sections"
+        role="group"
+        aria-label="Periodization sections"
+      >
+        {(['preview', 'schedule', 'sets', 'progress'] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={section === value}
+            onClick={() => setSection(value)}
           >
-            {plan.weeks.map((assigned, index) => (
-              <option key={index} value={index + 1}>
-                Week {index + 1} ·{' '}
-                {
-                  plan.phases.find((entry) => entry.id === assigned.phaseId)
-                    ?.name
-                }
-              </option>
-            ))}
-          </select>
-        </label>
-        <p>
-          {weekStart} – {addLocalDays(weekStart, 6)} · {phase?.name}
-        </p>
-        <p className="muted">
-          The calendar selects the week. You choose which workout to start.
-          Missed sessions never add extra volume.
-        </p>
-        <div className="button-row">
-          <SecondaryButton onClick={() => setEditing(!editing)}>
-            {editing ? 'Close periodization editor' : 'Edit phases and weeks'}
-          </SecondaryButton>
-          <PrimaryButton disabled={busy} onClick={() => void save()}>
-            Save periodized program
-          </PrimaryButton>
-        </div>
-        {editing ? (
-          <fieldset>
-            <legend>Program schedule and overrides</legend>
-            <label>
-              Assigned start date
-              <input
-                type="date"
-                value={plan.startDate}
-                onChange={(event) =>
-                  setPlan({ ...plan, startDate: event.target.value })
-                }
-              />
-            </label>
-            <div className="button-row">
-              <SecondaryButton
-                onClick={() => {
-                  const next = structuredClone(plan)
-                  if (next.pausedOn) {
-                    const days = differenceInCalendarDays(
-                      new Date(),
-                      parseLocalDate(next.pausedOn as typeof startDate),
-                    )
-                    next.startDate = addLocalDays(
-                      next.startDate as typeof startDate,
-                      days,
-                    )
-                    delete next.pausedOn
-                  } else next.pausedOn = formatLocalDate(new Date())
-                  void save(next)
-                }}
-              >
-                {plan.pausedOn
-                  ? 'Resume and shift future dates'
-                  : 'Pause program'}
-              </SecondaryButton>
-              <SecondaryButton
-                disabled={plan.weeks.length >= 104}
-                onClick={() => {
-                  const next = structuredClone(plan)
-                  next.weeks.splice(
-                    week,
-                    0,
-                    structuredClone(next.weeks[week - 1]),
-                  )
-                  setPlan(normalizePhaseRanges(next))
-                  setWeek(week + 1)
-                }}
-              >
-                Duplicate selected week
-              </SecondaryButton>
-              <SecondaryButton
-                disabled={
-                  !phase ||
-                  plan.weeks.length + (phase.endWeek - phase.startWeek + 1) >
-                    104
-                }
-                onClick={() => {
-                  if (!phase) return
-                  const next = structuredClone(plan),
-                    id = crypto.randomUUID()
-                  next.phases.push({
-                    ...structuredClone(phase),
-                    id,
-                    name: `${phase.name} copy`,
-                  })
-                  const copies = next.weeks
-                    .slice(phase.startWeek - 1, phase.endWeek)
-                    .map((entry) => ({
-                      ...structuredClone(entry),
-                      phaseId: id,
-                    }))
-                  next.weeks.splice(phase.endWeek, 0, ...copies)
-                  setPlan(normalizePhaseRanges(next))
-                  setWeek(phase.endWeek + 1)
-                }}
-              >
-                Duplicate selected phase
-              </SecondaryButton>
-            </div>
-            <label>
-              Phase for this week
-              <select
-                value={phase?.id ?? ''}
-                onChange={(event) => {
-                  const next = structuredClone(plan)
-                  next.weeks[week - 1].phaseId = event.target.value
-                  setPlan(normalizePhaseRanges(next))
-                }}
-              >
-                {plan.phases.map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              New phase name
-              <input
-                list="periodized-phase-names"
-                value={newName}
-                onChange={(event) => setNewName(event.target.value)}
-              />
-            </label>
-            <datalist id="periodized-phase-names">
-              {phaseNames.map((name) => (
-                <option key={name}>{name}</option>
-              ))}
-            </datalist>
+            {
+              {
+                preview: 'Preview',
+                schedule: 'Schedule',
+                sets: 'Sets',
+                progress: 'Progress',
+              }[value]
+            }
+          </button>
+        ))}
+      </div>
+      {section === 'schedule' ? (
+        <fieldset>
+          <legend>Schedule</legend>
+          <label>
+            Assigned start date
+            <input
+              type="date"
+              value={plan.startDate}
+              onChange={(event) =>
+                setPlan({ ...plan, startDate: event.target.value })
+              }
+            />
+          </label>
+          <div className="button-row">
             <SecondaryButton
-              disabled={!newName.trim()}
               onClick={() => {
+                const next = structuredClone(plan)
+                if (next.pausedOn) {
+                  const days = differenceInCalendarDays(
+                    new Date(),
+                    parseLocalDate(next.pausedOn as typeof startDate),
+                  )
+                  next.startDate = addLocalDays(
+                    next.startDate as typeof startDate,
+                    days,
+                  )
+                  delete next.pausedOn
+                } else next.pausedOn = formatLocalDate(new Date())
+                void save(next)
+              }}
+            >
+              {plan.pausedOn
+                ? 'Resume and shift future dates'
+                : 'Pause program'}
+            </SecondaryButton>
+            <SecondaryButton
+              disabled={plan.weeks.length >= 104}
+              onClick={() => {
+                const next = structuredClone(plan)
+                next.weeks.splice(
+                  week,
+                  0,
+                  structuredClone(next.weeks[week - 1]),
+                )
+                setPlan(normalizePhaseRanges(next))
+                setWeek(week + 1)
+              }}
+            >
+              Duplicate selected week
+            </SecondaryButton>
+            <SecondaryButton
+              disabled={
+                !phase ||
+                plan.weeks.length + (phase.endWeek - phase.startWeek + 1) > 104
+              }
+              onClick={() => {
+                if (!phase) return
                 const next = structuredClone(plan),
                   id = crypto.randomUUID()
                 next.phases.push({
+                  ...structuredClone(phase),
                   id,
-                  name: newName.trim(),
-                  startWeek: week,
-                  endWeek: week,
-                  overrides: {},
+                  name: `${phase.name} copy`,
                 })
-                next.weeks[week - 1].phaseId = id
+                const copies = next.weeks
+                  .slice(phase.startWeek - 1, phase.endWeek)
+                  .map((entry) => ({
+                    ...structuredClone(entry),
+                    phaseId: id,
+                  }))
+                next.weeks.splice(phase.endWeek, 0, ...copies)
                 setPlan(normalizePhaseRanges(next))
-                setNewName('')
+                setWeek(phase.endWeek + 1)
               }}
             >
-              Add phase at selected week
+              Duplicate selected phase
             </SecondaryButton>
-            <p className="muted">
-              Adding a phase assigns its name. Set its training prescriptions
-              below. Precedence: program defaults → phase overrides → week
-              overrides → editable live workout targets.
-            </p>
-            <label>
-              Edit scope
-              <select
-                aria-label="Prescription edit scope"
-                value={scope}
-                onChange={(event) =>
-                  setScope(event.target.value as typeof scope)
-                }
-              >
-                <option value="week">Selected week only</option>
-                <option value="phase">Selected phase</option>
-                <option value="program">Program defaults</option>
-              </select>
-            </label>
-            <label>
-              Exercise prescription
-              <select
-                value={key}
-                onChange={(event) => setSelectedKey(event.target.value)}
-              >
-                {structure.days.map((day) => (
-                  <optgroup key={day.id} label={day.name}>
-                    {(structure.exercisesByDay[day.id] ?? []).map(
-                      (exercise) => (
-                        <option key={exercise.id} value={exerciseKey(exercise)}>
-                          {exercise.exerciseSnapshot.exerciseName}
-                        </option>
-                      ),
-                    )}
-                  </optgroup>
-                ))}
-              </select>
-            </label>
-            {displayedPrescription ? (
-              <>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={displayedPrescription.included}
-                    onChange={(event) =>
-                      changePrescription({ included: event.target.checked })
-                    }
-                  />{' '}
-                  Include exercise
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={displayedPrescription.optional}
-                    onChange={(event) =>
-                      changePrescription({ optional: event.target.checked })
-                    }
-                  />{' '}
-                  Optional exercise
-                </label>
-                <label>
-                  Progression rule
-                  <select
-                    value={displayedPrescription.progression}
-                    onChange={(event) =>
-                      changePrescription({
-                        progression: event.target
-                          .value as ExercisePrescription['progression'],
-                      })
-                    }
-                  >
-                    {['double progression', 'capacity', 'hold', 'attempts'].map(
-                      (rule) => (
-                        <option key={rule}>{rule}</option>
-                      ),
-                    )}
-                  </select>
-                </label>
-                <label>
-                  Exercise substitution
-                  <select
-                    value={displayedPrescription.substitutionId ?? ''}
-                    onChange={(event) =>
-                      changePrescription({
-                        substitutionId: event.target.value || undefined,
-                      })
-                    }
-                  >
-                    <option value="">Original exercise</option>
-                    {library.map((exercise) => (
-                      <option key={exercise.id} value={exercise.id}>
-                        {exercise.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {displayedPrescription.sets.map((group, index) => (
-                  <fieldset key={index}>
-                    <legend>Set group {index + 1}</legend>
-                    <label>
-                      Set type
-                      <select
-                        value={group.kind}
-                        onChange={(event) =>
-                          changePrescription({
-                            sets: displayedPrescription.sets.map((set, at) =>
-                              at === index
-                                ? {
-                                    ...set,
-                                    kind: event.target.value as typeof set.kind,
-                                  }
-                                : set,
-                            ),
-                          })
-                        }
-                      >
-                        {setKinds.map((kind) => (
-                          <option key={kind}>{kind}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <div className="periodized-fields">
-                      {(
-                        [
-                          'count',
-                          'repsMin',
-                          'repsMax',
-                          'rir',
-                          'percent',
-                          'startingWeight',
-                          'restSeconds',
-                        ] as const
-                      ).map((field) => (
-                        <label key={field}>
-                          {
-                            {
-                              count: 'Sets',
-                              repsMin: 'Minimum reps',
-                              repsMax: 'Maximum reps',
-                              rir: 'Target RIR',
-                              percent: '% estimated 1RM',
-                              startingWeight: `Starting load (${weightUnit})`,
-                              restSeconds: 'Rest seconds',
-                            }[field]
-                          }
-                          <input
-                            type="number"
-                            step={
-                              field === 'rir'
-                                ? 0.5
-                                : field === 'startingWeight'
-                                  ? 0.5
-                                  : 1
-                            }
-                            value={
-                              group[field] == null
-                                ? ''
-                                : field === 'percent'
-                                  ? Math.round(group[field] * 100)
-                                  : field === 'startingWeight'
-                                    ? showWeight(group[field])
-                                    : group[field]
-                            }
-                            onChange={(event) => {
-                              const value =
-                                event.target.value === ''
-                                  ? field === 'rir'
-                                    ? null
-                                    : undefined
-                                  : field === 'percent'
-                                    ? Number(event.target.value) / 100
-                                    : field === 'startingWeight'
-                                      ? convertToLb(
-                                          Number(event.target.value),
-                                          weightUnit,
-                                        )
-                                      : Number(event.target.value)
-                              changePrescription({
-                                sets: displayedPrescription.sets.map(
-                                  (set, at) =>
-                                    at === index
-                                      ? { ...set, [field]: value }
-                                      : set,
-                                ),
-                              })
-                            }}
-                          />
-                        </label>
-                      ))}
-                    </div>
-                    <SecondaryButton
-                      onClick={() =>
+          </div>
+          <label>
+            Phase for this week
+            <select
+              value={phase?.id ?? ''}
+              onChange={(event) => {
+                const next = structuredClone(plan)
+                next.weeks[week - 1].phaseId = event.target.value
+                setPlan(normalizePhaseRanges(next))
+              }}
+            >
+              {plan.phases.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            New phase name
+            <input
+              list="periodized-phase-names"
+              value={newName}
+              onChange={(event) => setNewName(event.target.value)}
+            />
+          </label>
+          <datalist id="periodized-phase-names">
+            {phaseNames.map((name) => (
+              <option key={name}>{name}</option>
+            ))}
+          </datalist>
+          <SecondaryButton
+            disabled={!newName.trim()}
+            onClick={() => {
+              const next = structuredClone(plan),
+                id = crypto.randomUUID()
+              next.phases.push({
+                id,
+                name: newName.trim(),
+                startWeek: week,
+                endWeek: week,
+                overrides: {},
+              })
+              next.weeks[week - 1].phaseId = id
+              setPlan(normalizePhaseRanges(next))
+              setNewName('')
+            }}
+          >
+            Add phase at selected week
+          </SecondaryButton>
+        </fieldset>
+      ) : null}
+      {section === 'sets' ? (
+        <fieldset>
+          <legend>Set prescriptions</legend>
+          <label>
+            Edit scope
+            <select
+              aria-label="Prescription edit scope"
+              value={scope}
+              onChange={(event) => setScope(event.target.value as typeof scope)}
+            >
+              <option value="week">Selected week only</option>
+              <option value="phase">Selected phase</option>
+              <option value="program">Program defaults</option>
+            </select>
+          </label>
+          <label>
+            Exercise prescription
+            <select
+              value={key}
+              onChange={(event) => setSelectedKey(event.target.value)}
+            >
+              {structure.days.map((day) => (
+                <optgroup key={day.id} label={day.name}>
+                  {(structure.exercisesByDay[day.id] ?? []).map((exercise) => (
+                    <option key={exercise.id} value={exerciseKey(exercise)}>
+                      {exercise.exerciseSnapshot.exerciseName}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+          {displayedPrescription ? (
+            <>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={displayedPrescription.included}
+                  onChange={(event) =>
+                    changePrescription({ included: event.target.checked })
+                  }
+                />{' '}
+                Include exercise
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={displayedPrescription.optional}
+                  onChange={(event) =>
+                    changePrescription({ optional: event.target.checked })
+                  }
+                />{' '}
+                Optional exercise
+              </label>
+              <label>
+                Progression rule
+                <select
+                  value={displayedPrescription.progression}
+                  onChange={(event) =>
+                    changePrescription({
+                      progression: event.target
+                        .value as ExercisePrescription['progression'],
+                    })
+                  }
+                >
+                  {['double progression', 'capacity', 'hold', 'attempts'].map(
+                    (rule) => (
+                      <option key={rule}>{rule}</option>
+                    ),
+                  )}
+                </select>
+              </label>
+              <label>
+                Exercise substitution
+                <select
+                  value={displayedPrescription.substitutionId ?? ''}
+                  onChange={(event) =>
+                    changePrescription({
+                      substitutionId: event.target.value || undefined,
+                    })
+                  }
+                >
+                  <option value="">Original exercise</option>
+                  {library.map((exercise) => (
+                    <option key={exercise.id} value={exercise.id}>
+                      {exercise.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {displayedPrescription.sets.map((group, index) => (
+                <fieldset key={index}>
+                  <legend>Set group {index + 1}</legend>
+                  <label>
+                    Set type
+                    <select
+                      value={group.kind}
+                      onChange={(event) =>
                         changePrescription({
-                          sets: displayedPrescription.sets.filter(
-                            (_, at) => at !== index,
+                          sets: displayedPrescription.sets.map((set, at) =>
+                            at === index
+                              ? {
+                                  ...set,
+                                  kind: event.target.value as typeof set.kind,
+                                }
+                              : set,
                           ),
                         })
                       }
                     >
-                      Remove set group {index + 1}
-                    </SecondaryButton>
-                  </fieldset>
-                ))}
-                <SecondaryButton
-                  onClick={() =>
-                    changePrescription({
-                      sets: [
-                        ...displayedPrescription.sets,
-                        prescriptionSet('straight set', 2, 8, 12),
-                      ],
-                    })
-                  }
-                >
-                  Add set group
-                </SecondaryButton>
-                <label>
-                  Notes
-                  <textarea
-                    value={displayedPrescription.notes}
-                    onChange={(event) =>
-                      changePrescription({ notes: event.target.value })
+                      {setKinds.map((kind) => (
+                        <option key={kind}>{kind}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="periodized-fields">
+                    {(
+                      [
+                        'count',
+                        'repsMin',
+                        'repsMax',
+                        'rir',
+                        'percent',
+                        'startingWeight',
+                        'restSeconds',
+                      ] as const
+                    ).map((field) => (
+                      <label key={field}>
+                        {
+                          {
+                            count: 'Sets',
+                            repsMin: 'Minimum reps',
+                            repsMax: 'Maximum reps',
+                            rir: 'Target RIR',
+                            percent: '% estimated 1RM',
+                            startingWeight: `Starting load (${weightUnit})`,
+                            restSeconds: 'Rest seconds',
+                          }[field]
+                        }
+                        <input
+                          type="number"
+                          step={
+                            field === 'rir'
+                              ? 0.5
+                              : field === 'startingWeight'
+                                ? 0.5
+                                : 1
+                          }
+                          value={
+                            group[field] == null
+                              ? ''
+                              : field === 'percent'
+                                ? Math.round(group[field] * 100)
+                                : field === 'startingWeight'
+                                  ? showWeight(group[field])
+                                  : group[field]
+                          }
+                          onChange={(event) => {
+                            const value =
+                              event.target.value === ''
+                                ? field === 'rir'
+                                  ? null
+                                  : undefined
+                                : field === 'percent'
+                                  ? Number(event.target.value) / 100
+                                  : field === 'startingWeight'
+                                    ? convertToLb(
+                                        Number(event.target.value),
+                                        weightUnit,
+                                      )
+                                    : Number(event.target.value)
+                            changePrescription({
+                              sets: displayedPrescription.sets.map((set, at) =>
+                                at === index ? { ...set, [field]: value } : set,
+                              ),
+                            })
+                          }}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <SecondaryButton
+                    onClick={() =>
+                      changePrescription({
+                        sets: displayedPrescription.sets.filter(
+                          (_, at) => at !== index,
+                        ),
+                      })
                     }
-                  />
-                </label>
-                <SecondaryButton
-                  onClick={() => {
-                    const next = structuredClone(plan)
-                    if (scope === 'week')
-                      delete next.weeks[week - 1].overrides[key]
-                    else if (scope === 'phase' && phase)
-                      delete next.phases.find((entry) => entry.id === phase.id)!
-                        .overrides[key]
-                    setPlan(next)
-                  }}
-                >
-                  Reset selected override to inherited values
-                </SecondaryButton>
-              </>
-            ) : null}
-          </fieldset>
-        ) : null}
+                  >
+                    Remove set group {index + 1}
+                  </SecondaryButton>
+                </fieldset>
+              ))}
+              <SecondaryButton
+                onClick={() =>
+                  changePrescription({
+                    sets: [
+                      ...displayedPrescription.sets,
+                      prescriptionSet('straight set', 2, 8, 12),
+                    ],
+                  })
+                }
+              >
+                Add set group
+              </SecondaryButton>
+              <label>
+                Notes
+                <textarea
+                  value={displayedPrescription.notes}
+                  onChange={(event) =>
+                    changePrescription({ notes: event.target.value })
+                  }
+                />
+              </label>
+              <SecondaryButton
+                onClick={() => {
+                  const next = structuredClone(plan)
+                  if (scope === 'week')
+                    delete next.weeks[week - 1].overrides[key]
+                  else if (scope === 'phase' && phase)
+                    delete next.phases.find((entry) => entry.id === phase.id)!
+                      .overrides[key]
+                  setPlan(next)
+                }}
+              >
+                Reset selected override to inherited values
+              </SecondaryButton>
+            </>
+          ) : null}
+        </fieldset>
+      ) : null}
+      {section === 'preview' ? (
         <div className="periodized-timeline">
           {structure.days.map((day) => {
             const exercises = (structure.exercisesByDay[day.id] ?? []).flatMap(
@@ -775,16 +734,18 @@ export function PeriodizedProgramPanel({
                 entry.sourceDayId === day.id,
             )
             return (
-              <section className="periodized-day" key={day.id}>
-                <h4>
-                  {phase?.dayNames?.[day.sourceTemplateDayId ?? day.id] ??
-                    day.name}
-                </h4>
-                <p>
-                  {date}
-                  {done ? ' · Completed' : ''}
-                </p>
-                {editing ? (
+              <details className="periodized-day" key={day.id}>
+                <summary>
+                  <strong>
+                    {phase?.dayNames?.[day.sourceTemplateDayId ?? day.id] ??
+                      day.name}
+                  </strong>
+                  <span className="periodized-caption">
+                    {date}
+                    {done ? ' · Completed' : ''}
+                  </span>
+                </summary>
+                {section === 'preview' ? (
                   <label>
                     Scheduled date for this week
                     <input
@@ -886,72 +847,37 @@ export function PeriodizedProgramPanel({
                     {selected.notes ? <p>{selected.notes}</p> : null}
                   </details>
                 ))}
-                {mode === 'cycle' ? (
-                  <SecondaryButton
-                    disabled={busy || done || Boolean(plan.pausedOn)}
-                    onClick={() => {
-                      setBusy(true)
-                      setError(null)
-                      void workoutRepository
-                        .startWorkout({
-                          activeCycleId: record.id,
-                          dayId: day.id,
-                          localDate: formatLocalDate(new Date()),
-                          programWeekNumber: week,
-                        })
-                        .then(() => navigate('/workout'))
-                        .catch((caught: unknown) =>
-                          setError(
-                            caught instanceof Error
-                              ? caught.message
-                              : 'Workout could not start.',
-                          ),
-                        )
-                        .finally(() => setBusy(false))
-                    }}
-                  >
-                    Start week {week} workout
-                  </SecondaryButton>
-                ) : null}
-              </section>
+              </details>
             )
           })}
         </div>
-        <p className="muted">
-          Next week:{' '}
-          {plan.weeks[week]
-            ? plan.phases.find((entry) => entry.id === plan.weeks[week].phaseId)
-                ?.name
-            : 'Program complete'}
-          {plan.weeks[week]
-            ? ` · ${allExercises.filter((exercise) => JSON.stringify(resolvePrescription(plan, week, exerciseKey(exercise))) !== JSON.stringify(resolvePrescription(plan, week + 1, exerciseKey(exercise)))).length} exercise prescriptions change`
-            : ''}
-          . Preview each week to compare its exact prescriptions. Estimated
-          loads are editable suggestions; high-rep estimates are less certain.
-        </p>
-        {performance && mode === 'cycle' ? (
-          <p>
-            Week adherence:{' '}
-            {
-              performance.completed.filter(
-                (entry) => entry.programWeekNumber === week,
-              ).length
-            }{' '}
-            completed sessions. Optional sessions and illness skips do not
-            create makeup work.
-          </p>
-        ) : null}
-        {performance &&
-        Object.keys(performance.latestPerformanceByExercise).length ? (
-          <details>
-            <summary>Strength and hypertrophy progress</summary>
+      ) : null}
+      {section === 'progress' ? (
+        <>
+          {performance && mode === 'cycle' ? (
             <p>
-              Estimated 1RM trends use completed weighted sets. Recovery
-              sessions are excluded.
+              Week adherence:{' '}
+              {
+                performance.completed.filter(
+                  (entry) => entry.programWeekNumber === week,
+                ).length
+              }{' '}
+              completed sessions. Optional sessions and illness skips do not
+              create makeup work.
             </p>
-            <ul>
-              {[...new Set(allExercises.map((entry) => entry.exerciseId))].map(
-                (id) => {
+          ) : null}
+          {performance &&
+          Object.keys(performance.latestPerformanceByExercise).length ? (
+            <details>
+              <summary>Strength and hypertrophy progress</summary>
+              <p>
+                Estimated 1RM trends use completed weighted sets. Recovery
+                sessions are excluded.
+              </p>
+              <ul>
+                {[
+                  ...new Set(allExercises.map((entry) => entry.exerciseId)),
+                ].map((id) => {
                   const points = performance.trends
                     .filter((entry) => entry.exerciseId === id)
                     .sort((a, b) => a.localDate.localeCompare(b.localDate))
@@ -987,19 +913,24 @@ export function PeriodizedProgramPanel({
                       charts.
                     </li>
                   )
-                },
-              )}
-            </ul>
-          </details>
-        ) : (
-          <p className="muted">
-            Completed exercise performances will appear here; reference strength
-            values are not workout records.
-          </p>
-        )}
-        {message ? <p role="status">{message}</p> : null}
-        {error ? <ValidationMessage message={error} /> : null}
+                })}
+              </ul>
+            </details>
+          ) : (
+            <p className="muted">
+              Completed exercise performances will appear here; reference
+              strength values are not workout records.
+            </p>
+          )}
+        </>
+      ) : null}
+      <div className="periodized-save">
+        <PrimaryButton disabled={busy} onClick={() => void save()}>
+          Save periodized program
+        </PrimaryButton>
       </div>
-    </Card>
+      {message ? <p role="status">{message}</p> : null}
+      {error ? <ValidationMessage message={error} /> : null}
+    </section>
   )
 }

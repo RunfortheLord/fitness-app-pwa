@@ -26,11 +26,18 @@ afterEach(async () => {
   await destroyTestDatabase(database)
 })
 
-async function fixture() {
+async function fixture(enabled = true) {
   const periodization = createPeriodizationRepository(database)
   await periodization.seedFebruaryProgram()
   const programs = createProgramRepository(database)
   const source = await programs.getTemplateStructure('february-2027-peak')
+  if (enabled) {
+    source.template.periodization = await periodization.savePlan(
+      source.template.id,
+      'template',
+      { ...source.template.periodization!, enabled: true },
+    )
+  }
   return {
     periodization,
     programs,
@@ -40,6 +47,56 @@ async function fixture() {
 }
 
 describe('periodized programs', () => {
+  it('keeps new and legacy plans off until explicitly enabled, with ordinary weeks and set logging', async () => {
+    const { programs, source, plan } = await fixture(false)
+    expect(plan.enabled ?? false).toBe(false)
+    const active = await programs.activateTemplate(source.template.id)
+    const current = await programs.getCurrentActiveCycleStructure('2027-05-01')
+    expect(current?.cycle.currentWeekNumber).toBe(1)
+    expect(current?.days).toHaveLength(active.days.length)
+    const workouts = createWorkoutRepository(database)
+    const session = await workouts.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: '2027-05-01',
+    })
+    expect(session.workout.periodizedSession).toBeUndefined()
+    expect(session.workout.isDeload).toBe(false)
+    expect(session.sets.every((set) => !set.plannedSet)).toBe(true)
+    expect(
+      session.sets.filter(
+        (set) => set.workoutExerciseId === session.exercises[0].id,
+      ),
+    ).toHaveLength(current!.exercisesByDay[active.days[0].id][0].targetSetCount)
+    expect(
+      (await database.activeProgramCycles.get(active.cycle.id))?.periodization,
+    ).toEqual(plan)
+  })
+
+  it('can disable an enabled plan without losing overrides or changing an active workout snapshot', async () => {
+    const { programs, periodization, plan } = await fixture()
+    const active = await programs.activateTemplate('february-2027-peak')
+    const workouts = createWorkoutRepository(database)
+    const session = await workouts.startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: '2026-11-30',
+    })
+    await periodization.savePlan(active.cycle.id, 'cycle', {
+      ...plan,
+      enabled: false,
+    })
+    const restored = await workouts.getActiveWorkoutStructure()
+    expect(restored?.periodizationEnabled).toBe(false)
+    expect(restored?.workout).toEqual(session.workout)
+    expect(Object.values(restored!.setsByExercise).flat()).toEqual(
+      expect.arrayContaining(session.sets),
+    )
+    expect(
+      (await database.activeProgramCycles.get(active.cycle.id))?.periodization
+        ?.defaults,
+    ).toEqual(plan.defaults)
+  })
   it('keeps easy technique deadlifts out of capacity comparisons and strength trends', async () => {
     const { programs, periodization } = await fixture(),
       active = await programs.activateTemplate('february-2027-peak'),
@@ -424,6 +481,29 @@ describe('periodized programs', () => {
       expect(
         validated.backup.data.activeProgramCycles[0].periodization,
       ).toEqual(active.cycle.periodization)
+  })
+
+  it('opts an ordinary active program in without losing its source exercise mappings', async () => {
+    const ordinary = await seedProgram(database)
+    const programs = createProgramRepository(database)
+    const active = await programs.activateTemplate(ordinary.template.id)
+    const periodization = createPeriodizationRepository(database)
+    const plan = await periodization.fromRepeatingTemplate(
+      active.cycle.id,
+      '2027-03-01',
+      8,
+      'cycle',
+    )
+    expect(plan.enabled).toBe(true)
+    const session = await createWorkoutRepository(database).startWorkout({
+      activeCycleId: active.cycle.id,
+      dayId: active.days[0].id,
+      localDate: '2027-03-01',
+    })
+    expect(session.exercises).toHaveLength(1)
+    expect(session.sets).toHaveLength(ordinary.exercises[0].targetSetCount)
+    expect(session.sets[0].plannedSet?.kind).toBe('straight set')
+    expect(session.workout.periodizedSession?.scheduledDate).toBe('2027-03-01')
   })
 
   it('rejects invalid schedules and stops aggressive attempts after misses or slow lifts', async () => {

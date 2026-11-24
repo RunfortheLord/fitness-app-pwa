@@ -109,6 +109,7 @@ type LiveWorkoutState =
       exercises: WorkoutExercise[]
       setsByExercise: Record<string, WorkoutSet[]>
       sourcePrescriptionsByExercise: Record<string, ActiveCycleWorkoutExercise>
+      periodizationEnabled: boolean
     }
   | { status: 'error'; message: string }
 
@@ -227,6 +228,7 @@ function LiveWorkoutPageContent() {
           exercises: loaded.exercises,
           setsByExercise: loaded.setsByExercise,
           sourcePrescriptionsByExercise: loaded.sourcePrescriptionsByExercise,
+          periodizationEnabled: loaded.periodizationEnabled,
         })
       })
       .catch((caught: unknown) => {
@@ -1119,9 +1121,11 @@ function LiveWorkoutPageContent() {
           exerciseIndex={activeIndex}
           enterDirection={workspaceEnterDirection}
           forceRir={
-            state.workout.isDeload === true ||
-            Boolean(state.workout.periodizedSession)
+            state.workout.periodizedSession
+              ? state.periodizationEnabled
+              : state.workout.isDeload === true
           }
+          periodizationEnabled={state.periodizationEnabled}
           isWorkoutPauseBusy={isWorkoutPauseBusy}
           rirTargetOnEverySet={state.workout.trackRirEverySet ?? false}
           key={activeExercise.id}
@@ -1520,6 +1524,7 @@ function ExerciseWorkspace({
   exerciseIndex,
   enterDirection,
   forceRir,
+  periodizationEnabled,
   isWorkoutPauseBusy,
   onAddExercise,
   onAddSet,
@@ -1553,6 +1558,7 @@ function ExerciseWorkspace({
   exerciseIndex: number
   enterDirection: 'next' | 'previous' | null
   forceRir: boolean
+  periodizationEnabled: boolean
   isWorkoutPauseBusy: boolean
   rirTargetOnEverySet: boolean
   onAddExercise: () => void
@@ -1766,6 +1772,7 @@ function ExerciseWorkspace({
               exercise={exercise}
               finalProgrammedSetId={finalProgrammedSetId}
               forceRir={forceRir}
+              showTargets={periodizationEnabled}
               key={set.id}
               metrics={metrics}
               onComplete={(completed) => onCompleteSet(set, completed)}
@@ -1994,6 +2001,7 @@ function SetRow({
   exercise,
   finalProgrammedSetId,
   forceRir,
+  showTargets,
   metrics,
   onComplete,
   onDelete,
@@ -2006,6 +2014,7 @@ function SetRow({
   exercise: WorkoutExercise
   finalProgrammedSetId: string | null
   forceRir: boolean
+  showTargets: boolean
   metrics: TrackingMetric[]
   onComplete: (completed: boolean) => void
   onDelete: () => void
@@ -2019,6 +2028,7 @@ function SetRow({
   const [validationRequested, setValidationRequested] = useState(false)
   const [rirTouched, setRirTouched] = useState(false)
   const [plannedLoadMessage, setPlannedLoadMessage] = useState('')
+  const [isTargetOpen, setIsTargetOpen] = useState(false)
   const [barSpeedDraft, setBarSpeedDraft] = useState<
     WorkoutSet['barSpeed'] | ''
   >(set.barSpeed ?? '')
@@ -2057,113 +2067,150 @@ function SetRow({
   }, [set.rir])
 
   return (
-    <div className={set.completed ? 'set-row completed' : 'set-row'}>
+    <div
+      className={[
+        'set-row',
+        set.completed ? 'completed' : '',
+        showTargets && set.plannedSet ? 'has-target' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      data-set-kind={showTargets ? set.plannedSet?.kind : undefined}
+    >
       <div className="set-number">
-        <strong>{set.setNumber}</strong>
-        {set.plannedSet ? <small>{set.plannedSet.kind}</small> : null}
-      </div>
-      {set.plannedSet ? (
-        <p className="muted">
-          Planned: {set.plannedSet.repsMin}
-          {set.plannedSet.repsMax !== set.plannedSet.repsMin
-            ? `–${set.plannedSet.repsMax}`
-            : ''}{' '}
-          reps{set.plannedSet.rir != null ? ` · ${set.plannedSet.rir} RIR` : ''}
-          {(
-            set.targetRecommendation?.userEditedTarget ??
-            set.targetRecommendation?.suggestedTarget ??
-            set.targetSnapshot
-          )?.targetWeight != null
-            ? ` · ${formatWeightWithUnit((set.targetRecommendation?.userEditedTarget ?? set.targetRecommendation?.suggestedTarget ?? set.targetSnapshot)!.targetWeight!, weightUnit, 'lifting')}`
-            : ''}
-          . Enter your actual results below.
-        </p>
-      ) : null}
-      {set.plannedSet && set.targetSnapshot ? (
-        <details>
-          <summary>Edit this set’s planned load</summary>
-          <label>
-            Planned load ({weightUnit})
-            <input
-              aria-label={`Set ${set.setNumber} planned load`}
-              type="number"
-              step="0.5"
-              min="0"
-              disabled={set.completed}
-              defaultValue={
-                (
-                  set.targetRecommendation?.userEditedTarget ??
-                  set.targetRecommendation?.suggestedTarget ??
-                  set.targetSnapshot
-                ).targetWeight == null
-                  ? ''
-                  : weightInputValue(
-                      (
-                        set.targetRecommendation?.userEditedTarget ??
-                        set.targetRecommendation?.suggestedTarget ??
-                        set.targetSnapshot
-                      ).targetWeight!,
-                      weightUnit,
-                    )
-              }
-              onBlur={(event) => {
-                const weight =
-                  event.target.value === ''
-                    ? null
-                    : weightInputToLb(Number(event.target.value), weightUnit)
-                if (
-                  weight !== null &&
-                  (!Number.isFinite(weight) || weight < 0)
-                ) {
-                  setPlannedLoadMessage('Enter a valid nonnegative load.')
-                  return
-                }
-                void workoutRepository
-                  .updateWorkoutSetTarget(set.id, { targetWeight: weight })
-                  .then(() =>
-                    setPlannedLoadMessage('Saved for this workout only.'),
-                  )
-                  .catch((caught: unknown) =>
-                    setPlannedLoadMessage(
-                      caught instanceof Error
-                        ? caught.message
-                        : 'Unable to save target.',
-                    ),
-                  )
-              }}
-            />
-          </label>
-          <p role="status">{plannedLoadMessage}</p>
-        </details>
-      ) : null}
-      {set.plannedSet?.kind === 'max attempt' &&
-      set.targetRecommendation?.sourceSetId ? (
-        <p role="status">{set.targetRecommendation.explanation}</p>
-      ) : null}
-      {set.plannedSet?.kind === 'max attempt' ? (
-        <label>
-          Bar speed
-          <select
-            aria-label={`Set ${set.setNumber} bar speed`}
-            disabled={set.completed}
-            value={barSpeedDraft}
-            onChange={(event) => {
-              setBarSpeedDraft(event.target.value as WorkoutSet['barSpeed'])
-              void workoutRepository.updateWorkoutSet(set.id, {
-                barSpeed: event.target.value as WorkoutSet['barSpeed'],
-              })
-            }}
+        {showTargets && set.plannedSet ? (
+          <button
+            className="set-target-button"
+            aria-label={`Set ${set.setNumber} targets`}
+            onClick={() => setIsTargetOpen(true)}
           >
-            <option value="">Choose after lifting</option>
-            <option value="fast">Fast</option>
-            <option value="normal">Normal</option>
-            <option value="slow">Slow / grind</option>
-          </select>
-          <small>
-            Use spotters and safeties. Stop after a miss or painful lift. Review
-            the next attempt before lifting.
-          </small>
-        </label>
+            <strong>{set.setNumber}</strong>
+            <small>
+              {set.plannedSet.kind === 'top set'
+                ? 'Top'
+                : set.plannedSet.kind === 'back-off'
+                  ? 'Back-off'
+                  : set.plannedSet.kind === 'max attempt'
+                    ? 'Max'
+                    : 'Target'}
+            </small>
+          </button>
+        ) : (
+          <strong>{set.setNumber}</strong>
+        )}
+      </div>
+      {showTargets && set.plannedSet ? (
+        <BottomSheet
+          isOpen={isTargetOpen}
+          onClose={() => setIsTargetOpen(false)}
+          title={`Set ${set.setNumber} targets`}
+        >
+          <p className="eyebrow">{set.plannedSet.kind}</p>
+          <p className="muted">
+            Planned: {set.plannedSet.repsMin}
+            {set.plannedSet.repsMax !== set.plannedSet.repsMin
+              ? `–${set.plannedSet.repsMax}`
+              : ''}{' '}
+            reps
+            {set.plannedSet.rir != null ? ` · ${set.plannedSet.rir} RIR` : ''}
+            {(
+              set.targetRecommendation?.userEditedTarget ??
+              set.targetRecommendation?.suggestedTarget ??
+              set.targetSnapshot
+            )?.targetWeight != null
+              ? ` · ${formatWeightWithUnit((set.targetRecommendation?.userEditedTarget ?? set.targetRecommendation?.suggestedTarget ?? set.targetSnapshot)!.targetWeight!, weightUnit, 'lifting')}`
+              : ''}
+          </p>
+
+          {set.targetSnapshot ? (
+            <div className="set-target-fields">
+              <label>
+                Planned load ({weightUnit})
+                <input
+                  aria-label={`Set ${set.setNumber} planned load`}
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  disabled={set.completed}
+                  defaultValue={
+                    (
+                      set.targetRecommendation?.userEditedTarget ??
+                      set.targetRecommendation?.suggestedTarget ??
+                      set.targetSnapshot
+                    ).targetWeight == null
+                      ? ''
+                      : weightInputValue(
+                          (
+                            set.targetRecommendation?.userEditedTarget ??
+                            set.targetRecommendation?.suggestedTarget ??
+                            set.targetSnapshot
+                          ).targetWeight!,
+                          weightUnit,
+                        )
+                  }
+                  onBlur={(event) => {
+                    const weight =
+                      event.target.value === ''
+                        ? null
+                        : weightInputToLb(
+                            Number(event.target.value),
+                            weightUnit,
+                          )
+                    if (
+                      weight !== null &&
+                      (!Number.isFinite(weight) || weight < 0)
+                    ) {
+                      setPlannedLoadMessage('Enter a valid nonnegative load.')
+                      return
+                    }
+                    void workoutRepository
+                      .updateWorkoutSetTarget(set.id, { targetWeight: weight })
+                      .then(() =>
+                        setPlannedLoadMessage('Saved for this workout only.'),
+                      )
+                      .catch((caught: unknown) =>
+                        setPlannedLoadMessage(
+                          caught instanceof Error
+                            ? caught.message
+                            : 'Unable to save target.',
+                        ),
+                      )
+                  }}
+                />
+              </label>
+              <p role="status">{plannedLoadMessage}</p>
+            </div>
+          ) : null}
+          {set.plannedSet?.kind === 'max attempt' &&
+          set.targetRecommendation?.sourceSetId ? (
+            <p role="status">{set.targetRecommendation.explanation}</p>
+          ) : null}
+          {set.plannedSet?.kind === 'max attempt' ? (
+            <label>
+              Bar speed
+              <select
+                aria-label={`Set ${set.setNumber} bar speed`}
+                disabled={set.completed}
+                value={barSpeedDraft}
+                onChange={(event) => {
+                  setBarSpeedDraft(event.target.value as WorkoutSet['barSpeed'])
+                  void workoutRepository.updateWorkoutSet(set.id, {
+                    barSpeed: event.target.value as WorkoutSet['barSpeed'],
+                  })
+                }}
+              >
+                <option value="">Choose after lifting</option>
+                <option value="fast">Fast</option>
+                <option value="normal">Normal</option>
+                <option value="slow">Slow / grind</option>
+              </select>
+              <small>
+                Use spotters and safeties. Stop after a miss or painful lift.
+                Review the next attempt before lifting.
+              </small>
+            </label>
+          ) : null}
+        </BottomSheet>
       ) : null}
       {metrics.map((metric) => {
         // Weight metrics (unit "lb") persist in canonical pounds; show and read
@@ -2208,8 +2255,22 @@ function SetRow({
               }}
               placeholder={
                 metric.key === 'reps'
-                  ? (formatRepTargetPlaceholder(prescription) ?? undefined)
-                  : undefined
+                  ? showTargets && set.plannedSet
+                    ? set.plannedSet.repsMin === set.plannedSet.repsMax
+                      ? String(set.plannedSet.repsMin)
+                      : `${set.plannedSet.repsMin}–${set.plannedSet.repsMax}`
+                    : (formatRepTargetPlaceholder(prescription) ?? undefined)
+                  : metric.key === 'weight' && showTargets
+                    ? weightInputValue(
+                        (
+                          set.targetRecommendation?.userEditedTarget ??
+                          set.targetRecommendation?.suggestedTarget ??
+                          set.targetSnapshot
+                        )?.targetWeight ?? null,
+                        weightUnit,
+                        'lifting',
+                      ) || undefined
+                    : undefined
               }
               metricKey={metric.key}
               value={
@@ -2238,8 +2299,10 @@ function SetRow({
             disabled={set.completed}
             aria-invalid={(validationRequested || rirTouched) && isRirInvalid}
             placeholder={
-              set.plannedSet?.rir != null
-                ? String(set.plannedSet.rir)
+              showTargets && set.plannedSet
+                ? set.plannedSet.rir == null
+                  ? undefined
+                  : String(set.plannedSet.rir)
                 : isRirTargetSet && prescription?.targetRir != null
                   ? String(prescription.targetRir)
                   : undefined
@@ -3415,7 +3478,7 @@ function isSwipeBlockedElement(target: EventTarget | null) {
   }
   return Boolean(
     target.closest(
-      'button, select, textarea, a, [contenteditable="true"], [role="slider"]',
+      'button, select, textarea, a, [contenteditable="true"], [role="slider"], [role="dialog"]',
     ),
   )
 }

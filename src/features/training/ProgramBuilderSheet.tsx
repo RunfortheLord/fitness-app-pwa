@@ -39,6 +39,8 @@ import {
   formatProgramWeekLabel,
 } from '@domain/programWeeks'
 import { useRirTracking } from '@hooks/useRirTracking'
+import { formatLocalDate } from '@domain/dates'
+import { periodizationRepository } from '@repositories/periodizationRepository'
 import { programRepository } from '@repositories/programRepository'
 import type {
   ActiveCycleWorkoutExercise,
@@ -105,6 +107,11 @@ export function ProgramBuilderSheet({
   const [isDiscardPrescriptionOpen, setIsDiscardPrescriptionOpen] =
     useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isPeriodizationOpen, setIsPeriodizationOpen] = useState(false)
+  const [isPeriodizationBusy, setIsPeriodizationBusy] = useState(false)
+  const [periodizationToggle, setPeriodizationToggle] = useState<
+    boolean | null
+  >(null)
   const [isInformationOpen, setIsInformationOpen] = useState(false)
   const isMountedRef = useRef(true)
 
@@ -802,18 +809,6 @@ export function ProgramBuilderSheet({
         ) : null}
         {structure && !editingPrescription ? (
           <>
-            {!(
-              'isBuiltIn' in structure.record && structure.record.isBuiltIn
-            ) ? (
-              <details>
-                <summary>Advanced periodized programming (optional)</summary>
-                <PeriodizedProgramPanel
-                  record={structure.record}
-                  mode={mode}
-                  onChanged={onChanged}
-                />
-              </details>
-            ) : null}
             <FormField id="builder-program-name" label="Program name">
               <div className="rename-field">
                 <input
@@ -1276,6 +1271,77 @@ export function ProgramBuilderSheet({
         onClose={() => setIsSettingsOpen(false)}
         title="Program settings"
       >
+        {error ? <ValidationMessage message={error} /> : null}
+        {structure ? (
+          <>
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={
+                  periodizationToggle ??
+                  structure.record.periodization?.enabled === true
+                }
+                disabled={isPeriodizationBusy}
+                onChange={(event) => {
+                  const enabled = event.currentTarget.checked
+                  setPeriodizationToggle(enabled)
+                  const record = structure.record
+                  setIsPeriodizationBusy(true)
+                  setError(null)
+                  const change = record.periodization
+                    ? periodizationRepository.savePlan(record.id, mode, {
+                        ...record.periodization,
+                        enabled,
+                      })
+                    : periodizationRepository.fromRepeatingTemplate(
+                        record.id,
+                        formatLocalDate(new Date()),
+                        record.durationWeeks ?? DEFAULT_PROGRAM_DURATION_WEEKS,
+                        mode,
+                      )
+                  void change
+                    .then((plan) => {
+                      setStructure((current) =>
+                        current
+                          ? {
+                              ...current,
+                              record: {
+                                ...current.record,
+                                periodization: plan,
+                              },
+                            }
+                          : current,
+                      )
+                      setPeriodizationToggle(null)
+                      refresh()
+                      setIsSettingsOpen(false)
+                      setIsPeriodizationOpen(enabled)
+                    })
+                    .catch((caught: unknown) => {
+                      setPeriodizationToggle(null)
+                      setError(
+                        caught instanceof Error
+                          ? caught.message
+                          : 'Unable to change periodization.',
+                      )
+                    })
+                    .finally(() => setIsPeriodizationBusy(false))
+                }}
+              />
+              Enable periodization
+            </label>
+            {structure.record.periodization?.enabled ? (
+              <SecondaryButton
+                onClick={() => {
+                  setIsSettingsOpen(false)
+                  setIsPeriodizationOpen(true)
+                }}
+              >
+                Edit phases and weeks
+              </SecondaryButton>
+            ) : null}
+          </>
+        ) : null}
         <label className="checkbox-row">
           <input
             checked={deloadSchedulingEnabled}
@@ -1297,6 +1363,20 @@ export function ProgramBuilderSheet({
             />
             Track RIR on every set?
           </label>
+        ) : null}
+      </BottomSheet>
+      <BottomSheet
+        isOpen={isPeriodizationOpen}
+        onClose={() => setIsPeriodizationOpen(false)}
+        title="Periodization"
+        variant="page"
+      >
+        {structure && isPeriodizationOpen ? (
+          <PeriodizedProgramPanel
+            record={structure.record}
+            mode={mode}
+            onChanged={refresh}
+          />
         ) : null}
       </BottomSheet>
       <ModalConfirmationDialog

@@ -1246,7 +1246,9 @@ export function createProgramRepository(
       }
 
       const structure = await this.getActiveCycleStructure(cycle.id)
-      const plan = cycle.periodization
+      const plan = cycle.periodization?.enabled
+        ? cycle.periodization
+        : undefined
       if (!plan) return structure
       const position = programPosition(plan, date)
       structure.cycle = { ...cycle, currentWeekNumber: position.week }
@@ -1347,7 +1349,10 @@ export function createProgramRepository(
                   weekNumber: input.weekNumber,
                 })
               : currentWeekNumber
-          if (!cycle.periodization && nextWeekNumber !== currentWeekNumber) {
+          if (
+            !cycle.periodization?.enabled &&
+            nextWeekNumber !== currentWeekNumber
+          ) {
             await database.activeProgramCycles.update(cycle.id, {
               currentWeekNumber: nextWeekNumber,
               updatedAt: now,

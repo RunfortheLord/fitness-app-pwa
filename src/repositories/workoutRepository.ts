@@ -221,7 +221,9 @@ export function createWorkoutRepository(
           if (!cycle || !day || day.activeCycleId !== cycle.id) {
             throw new Error('Active cycle workout day was not found.')
           }
-          const periodizedPlan = cycle.periodization
+          const periodizedPlan = cycle.periodization?.enabled
+            ? cycle.periodization
+            : undefined
           const position = periodizedPlan
             ? programPosition(periodizedPlan, input.localDate)
             : null
@@ -843,6 +845,10 @@ export function createWorkoutRepository(
         .where({ workoutId })
         .sortBy('orderIndex')
       const sets = await database.workoutSets.where({ workoutId }).toArray()
+      const periodizationEnabled = workout.sourceActiveCycleId
+        ? (await database.activeProgramCycles.get(workout.sourceActiveCycleId))
+            ?.periodization?.enabled === true
+        : false
       const sourcePrescriptions = await Promise.all(
         exercises.map(async (exercise) => [
           exercise.id,
@@ -868,6 +874,7 @@ export function createWorkoutRepository(
         workout,
         exercises,
         setsByExercise: mapSetsByExercise(exercises, sets),
+        periodizationEnabled,
         sourcePrescriptionsByExercise: Object.fromEntries(
           sourcePrescriptions.filter(
             (entry): entry is [string, ActiveCycleWorkoutExercise] =>
@@ -2089,7 +2096,7 @@ export function createWorkoutRepository(
                     })
                   : selectedWeekNumber
               if (
-                !cycle.periodization &&
+                !cycle.periodization?.enabled &&
                 nextWeekNumber !== selectedWeekNumber
               ) {
                 await database.activeProgramCycles.update(cycle.id, {

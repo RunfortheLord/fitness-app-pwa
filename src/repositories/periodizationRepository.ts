@@ -9,6 +9,7 @@ import {
 } from '@domain/februaryPeak'
 import {
   periodizedPlanSchema,
+  prescriptionKey,
   type PeriodizedPlan,
 } from '@domain/periodization'
 import { createStrengthGraphPoints } from '@domain/strengthProgress'
@@ -240,8 +241,12 @@ export function createPeriodizationRepository(
       if (!(await table.get(id))) throw new Error('Program was not found.')
       await table.update(id, {
         periodization: plan,
-        durationWeeks: plan.weeks.length,
-        deloadSchedulingEnabled: false,
+        ...(plan.enabled
+          ? {
+              durationWeeks: plan.weeks.length,
+              deloadSchedulingEnabled: false,
+            }
+          : {}),
         updatedAt: new Date().toISOString(),
       })
       return plan
@@ -250,13 +255,21 @@ export function createPeriodizationRepository(
       templateId: string,
       startDate: string,
       duration: number,
+      mode: 'template' | 'cycle' = 'template',
     ) {
       if (!Number.isInteger(duration) || duration < 1 || duration > 104)
         throw new Error('Choose 1–104 weeks.')
-      const source = await programs.getTemplateStructure(templateId)
+      const source =
+        mode === 'template'
+          ? await programs.getTemplateStructure(templateId)
+          : await programs.getActiveCycleStructure(templateId)
       const defaults: PeriodizedPlan['defaults'] = {}
       for (const exercise of Object.values(source.exercisesByDay).flat()) {
-        defaults[exercise.id] = {
+        defaults[
+          'sourceTemplateExerciseId' in exercise
+            ? prescriptionKey(exercise)
+            : exercise.id
+        ] = {
           included: true,
           optional: false,
           progression: 'double progression',
@@ -276,12 +289,18 @@ export function createPeriodizationRepository(
           ],
         }
       }
-      return this.savePlan(templateId, 'template', {
+      return this.savePlan(templateId, mode, {
         version: 1,
+        enabled: true,
         startDate,
         defaults,
         dayOffsets: Object.fromEntries(
-          source.days.map((day, index) => [day.id, Math.min(6, index)]),
+          source.days.map((day, index) => [
+            'sourceTemplateDayId' in day
+              ? (day.sourceTemplateDayId ?? day.id)
+              : day.id,
+            Math.min(6, index),
+          ]),
         ),
         phases: [
           {

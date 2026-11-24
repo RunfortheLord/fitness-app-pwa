@@ -37,7 +37,6 @@ import type {
 import { exerciseRepository } from '@repositories/exerciseRepository'
 import { programRepository } from '@repositories/programRepository'
 import { periodizationRepository } from '@repositories/periodizationRepository'
-import { PeriodizedProgramPanel } from '@features/training/PeriodizedProgramPanel'
 import { workoutRepository } from '@repositories/workoutRepository'
 import type {
   ActiveCycleWorkoutDay,
@@ -467,14 +466,6 @@ export function TrainingPage() {
               }
               onStartDay={startWorkoutDay}
             />
-            {loadState.currentCycle?.cycle.periodization ? (
-              <PeriodizedProgramPanel
-                key={loadState.currentCycle.cycle.id}
-                record={loadState.currentCycle.cycle}
-                mode="cycle"
-                onChanged={reload}
-              />
-            ) : null}
           </div>
 
           <div id="program-library" className="training-section-anchor">
