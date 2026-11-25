@@ -4868,6 +4868,22 @@ body.keyboard-input-open .bottom-nav {
   padding-bottom: calc(env(safe-area-inset-bottom) + var(--space-6));
 }
 
+/* The editor and its child dialogs share the visible screen outside the
+   scrolling Training route. Its page scrolls in a bounded grid track. */
+.program-editor-layers > :is(.sheet-backdrop, .modal-backdrop) {
+  top: var(--editor-top, 0px);
+  bottom: auto;
+  height: var(--editor-height, 100dvh);
+}
+
+.program-editor-layers > .sheet-backdrop--page {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.program-editor-layers > .sheet-backdrop--page > .bottom-sheet--page {
+  min-height: 0;
+}
+
 .bottom-sheet--app-background,
 .bottom-sheet--app-background .sheet-header,
 .bottom-sheet--app-background .sheet-header--page::before {

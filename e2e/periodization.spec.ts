@@ -467,3 +467,73 @@ test('distinguishes max attempts from ordinary sets without expanding the loggin
   await openSetTargets(page, 4)
   await expect(page.getByLabel('Set 4 bar speed')).toBeVisible()
 })
+
+test('keeps the last program editor field reachable after phone scrolling settles', async ({
+  page,
+  browserName,
+}, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  if (browserName === 'chromium') {
+    const session = await page.context().newCDPSession(page)
+    await session.send('Emulation.setSafeAreaInsetsOverride', {
+      insets: { top: 47, bottom: 34 },
+    })
+    await session.send('Emulation.setEmulatedMedia', {
+      features: [{ name: 'display-mode', value: 'standalone' }],
+    })
+  }
+  await activateProgram(page)
+  // A transforming route establishes a containing block for fixed descendants.
+  await page.addStyleTag({
+    content: '.route-transition { transform: translateY(0) }',
+  })
+  const editor = await openEditor(page)
+  const field = editor.getByRole('textbox', {
+    name: 'Add exercise to this week',
+  })
+  await expect(field).toBeAttached()
+
+  if (browserName === 'chromium') {
+    await expect
+      .poll(() =>
+        editor.evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom)),
+      )
+      .toBeGreaterThan(34)
+  }
+
+  // Model the mobile keyboard resizing the visible viewport while the layout
+  // viewport stays full height. Restore it to exercise the settled scroll end.
+  for (const height of [844, 570, 844]) {
+    await page.evaluate((height) => {
+      const viewport = window.visualViewport!
+      Object.defineProperty(viewport, 'height', {
+        configurable: true,
+        value: height,
+      })
+      viewport.dispatchEvent(new Event('resize'))
+    }, height)
+    await expect
+      .poll(() =>
+        editor.evaluate((el) => Math.round(el.getBoundingClientRect().bottom)),
+      )
+      .toBe(height)
+    await editor.evaluate((el) => {
+      el.scrollTop = el.scrollHeight
+    })
+    await expect
+      .poll(() =>
+        field.evaluate((el) => {
+          const r = el.getBoundingClientRect()
+          const sheet = el.closest('[role=dialog]')!
+          const bottom = window.visualViewport!.height
+          const clearance = parseFloat(getComputedStyle(sheet).paddingBottom)
+          return (
+            r.bottom <= bottom - clearance + 1 &&
+            document.elementFromPoint(r.left + r.width / 2, r.bottom - 1) === el
+          )
+        }),
+      )
+      .toBe(true)
+  }
+  await page.screenshot({ path: testInfo.outputPath('editor-scroll-end.png') })
+})

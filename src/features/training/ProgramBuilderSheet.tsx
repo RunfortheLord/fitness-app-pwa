@@ -8,7 +8,8 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import {
   SortableArea,
@@ -126,6 +127,32 @@ export function ProgramBuilderSheet({
   >(null)
   const [isInformationOpen, setIsInformationOpen] = useState(false)
   const isMountedRef = useRef(true)
+  const editorLayers = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    const viewport = window.visualViewport
+    const layers = editorLayers.current
+    if (!viewport || !layers || !isOpen) return
+
+    const fitVisibleViewport = () => {
+      // Leave pinch zoom to the browser. At normal scale the keyboard can
+      // shorten or pan the visible screen without resizing the layout viewport.
+      if (viewport.scale === 1 && viewport.height > 0) {
+        layers.style.setProperty('--editor-height', `${viewport.height}px`)
+        layers.style.setProperty('--editor-top', `${viewport.offsetTop}px`)
+      } else {
+        layers.style.removeProperty('--editor-height')
+        layers.style.removeProperty('--editor-top')
+      }
+    }
+    fitVisibleViewport()
+    viewport.addEventListener('resize', fitVisibleViewport)
+    viewport.addEventListener('scroll', fitVisibleViewport)
+    return () => {
+      viewport.removeEventListener('resize', fitVisibleViewport)
+      viewport.removeEventListener('scroll', fitVisibleViewport)
+    }
+  }, [isOpen])
 
   const mode: BuilderMode = target.mode
   const plan = rawStructure?.record.periodization?.enabled
@@ -1013,8 +1040,8 @@ export function ProgramBuilderSheet({
       ) : null}
     </>
   ) : null
-  return (
-    <>
+  return createPortal(
+    <div className="program-editor-layers" ref={editorLayers}>
       <BottomSheet
         className="bottom-sheet--app-background"
         headerAction={
@@ -1620,6 +1647,7 @@ export function ProgramBuilderSheet({
       >
         <p>Entered prescription values will be discarded.</p>
       </ModalConfirmationDialog>
-    </>
+    </div>,
+    document.body,
   )
 }
