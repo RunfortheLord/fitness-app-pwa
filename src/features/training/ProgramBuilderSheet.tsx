@@ -1002,6 +1002,7 @@ export function ProgramBuilderSheet({
   return (
     <>
       <BottomSheet
+        className="bottom-sheet--app-background"
         headerAction={
           structure ? (
             <>
