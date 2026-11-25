@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { differenceInCalendarDays } from 'date-fns'
 import {
   formatLocalDate,
@@ -37,6 +37,55 @@ type Props = {
   mode: BuilderMode
   plan: PeriodizedPlan
   week: number
+}
+
+function changedFields(
+  base: ExercisePrescription,
+  next: ExercisePrescription,
+): Partial<ExercisePrescription> {
+  const fields: Partial<ExercisePrescription> = {}
+  if (JSON.stringify(base.sets) !== JSON.stringify(next.sets))
+    fields.sets = next.sets
+  if (base.notes !== next.notes) fields.notes = next.notes
+  if (base.optional !== next.optional) fields.optional = next.optional
+  if (base.substitutionId !== next.substitutionId)
+    fields.substitutionId = next.substitutionId
+  return fields
+}
+
+function isValidPrescription(
+  value: ExercisePrescription,
+  maxValues: Record<string, number | null>,
+) {
+  return (
+    value.sets.length > 0 &&
+    value.sets.every(
+      (group) =>
+        group.count != null &&
+        Number.isFinite(group.count) &&
+        group.count >= 1 &&
+        group.repsMin != null &&
+        Number.isFinite(group.repsMin) &&
+        group.repsMin >= 1 &&
+        group.repsMax != null &&
+        Number.isFinite(group.repsMax) &&
+        group.repsMax >= group.repsMin &&
+        (group.rir == null || (Number.isFinite(group.rir) && group.rir >= 0)) &&
+        Number.isFinite(group.restSeconds) &&
+        group.restSeconds >= 0 &&
+        (group.loadMode === 'percent'
+          ? group.percent != null &&
+            Number.isFinite(group.percent) &&
+            group.percent >= 0.1 &&
+            group.percent <= 1.05
+          : group.startingWeight == null ||
+            (Number.isFinite(group.startingWeight) &&
+              group.startingWeight >= 0)),
+    ) &&
+    Object.values(maxValues).every(
+      (value) => value === null || (Number.isFinite(value) && value > 0),
+    )
+  )
 }
 function WeekChoices({
   plan,
@@ -219,49 +268,123 @@ export function WeekExerciseEditor({
   const [draft, setDraft] = useState(() => structuredClone(original)),
     [to, setTo] = useState<number[]>([]),
     [maxes, setMaxes] = useState<Record<string, number | null>>({}),
-    [busy, setBusy] = useState(false),
+    [savePhase, setSavePhase] = useState<'idle' | 'saving' | 'saved' | 'error'>(
+      'idle',
+    ),
     [error, setError] = useState('')
+  // The prescription as it was when this editor opened. Autosaves and the
+  // explicit apply-to-other-weeks action both diff against it, so an
+  // autosave of this week never consumes the edits another week still needs.
+  const [initialOriginal] = useState(() => structuredClone(original))
   const unit = useWeightUnit()
   const liftId = draft.substitutionId ?? exerciseId
   const lift = library.find((e) => e.id === liftId)
-  const patch = (change: Partial<ExercisePrescription>) => {
+  const patch = (change: Partial<ExercisePrescription>) =>
     setDraft({ ...draft, ...change })
-    onDirty(true)
-  }
   const updateGroup = (i: number, fields: Partial<SetPrescription>) =>
     patch({
       sets: draft.sets.map((g, n) => (n === i ? { ...g, ...fields } : g)),
     })
-  const save = async () => {
-    setError('')
-    setBusy(true)
-    try {
-      const fields: Partial<ExercisePrescription> = {}
-      if (JSON.stringify(original.sets) !== JSON.stringify(draft.sets))
-        fields.sets = draft.sets
-      if (original.notes !== draft.notes) fields.notes = draft.notes
-      if (original.optional !== draft.optional) fields.optional = draft.optional
-      if (original.substitutionId !== draft.substitutionId)
-        fields.substitutionId = draft.substitutionId
-      await periodizationRepository.saveWeekExercise(
+  const draftRef = useRef(draft)
+  const maxesRef = useRef(maxes)
+  const saveFailedRef = useRef(false)
+  const mountedRef = useRef(true)
+  const saveChainRef = useRef<Promise<boolean>>(Promise.resolve(true))
+  const persist = (weeksToSave: number[]): Promise<boolean> => {
+    const run = async (): Promise<boolean> => {
+      const current = draftRef.current,
+        currentMaxes = maxesRef.current
+      const fields = changedFields(initialOriginal, current)
+      if (!Object.keys(fields).length && !Object.keys(currentMaxes).length)
+        return true
+      if (!isValidPrescription(current, currentMaxes)) return false
+      if (mountedRef.current) setSavePhase('saving')
+      try {
+        await periodizationRepository.saveWeekExercise(
+          id,
+          mode,
+          weeksToSave,
+          exerciseKey,
+          initialOriginal,
+          fields,
+          currentMaxes,
+        )
+        saveFailedRef.current = false
+        if (mountedRef.current) {
+          setError('')
+          setSavePhase('saved')
+        }
+        onSaved()
+        return true
+      } catch (e) {
+        saveFailedRef.current = true
+        if (mountedRef.current) {
+          setError(e instanceof Error ? e.message : 'Could not save exercise.')
+          setSavePhase('error')
+        }
+        onDirty(true)
+        return false
+      }
+    }
+    const result = saveChainRef.current.then(run, run)
+    saveChainRef.current = result
+    return result
+  }
+  const persistRef = useRef(persist)
+  useEffect(() => {
+    mountedRef.current = true
+    draftRef.current = draft
+    maxesRef.current = maxes
+    persistRef.current = persist
+  })
+  const hasChanges =
+    Object.keys(changedFields(initialOriginal, draft)).length > 0 ||
+    Object.keys(maxes).length > 0
+  const valid = isValidPrescription(draft, maxes)
+  // Autosave valid edits to the selected week after a short typing pause.
+  // Invalid edits never save; they keep the discard prompt armed instead.
+  useEffect(() => {
+    onDirty(hasChanges && !valid)
+    if (!hasChanges || !valid) return
+    const timer = setTimeout(() => void persistRef.current([week]), 700)
+    return () => clearTimeout(timer)
+  }, [draft, maxes, hasChanges, valid, onDirty, week])
+  // Going back closes this editor without a prompt when the edits are valid,
+  // so flush any still-pending valid edits on the way out.
+  useEffect(
+    () => () => {
+      mountedRef.current = false
+      if (saveFailedRef.current) return
+      const current = draftRef.current,
+        currentMaxes = maxesRef.current
+      const fields = changedFields(initialOriginal, current)
+      if (!Object.keys(fields).length && !Object.keys(currentMaxes).length)
+        return
+      if (!isValidPrescription(current, currentMaxes)) return
+      void periodizationRepository.saveWeekExercise(
         id,
         mode,
-        [week, ...to],
+        [week],
         exerciseKey,
-        original,
+        initialOriginal,
         fields,
-        maxes,
+        currentMaxes,
       )
-      onDirty(false)
-      onSaved()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save exercise.')
-    } finally {
-      setBusy(false)
-    }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
+  const applyToSelectedWeeks = async () => {
+    if (await persist([week, ...to])) setTo([])
   }
   return (
-    <div className="periodized-panel">
+    <div
+      className="periodized-panel"
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null))
+          void persistRef.current([week])
+      }}
+    >
       <div className="plan-heading">
         <p>{weekLabel(plan, week)}</p>
         <h3>{lift?.name ?? 'Exercise'}</h3>
@@ -410,7 +533,7 @@ export function WeekExerciseEditor({
                         key={reference}
                         placeholder="Enter 1RM"
                         value={weightInputValue(max ?? null, unit)}
-                        onChange={(e) => {
+                        onChange={(e) =>
                           setMaxes({
                             ...maxes,
                             [reference]:
@@ -418,8 +541,7 @@ export function WeekExerciseEditor({
                                 ? null
                                 : convertToLb(Number(e.target.value), unit),
                           })
-                          onDirty(true)
-                        }}
+                        }
                       />
                     </label>
                   </div>
@@ -525,9 +647,18 @@ export function WeekExerciseEditor({
         <WeekChoices plan={plan} week={week} selected={to} onChange={setTo} />
       </details>
       {error && <ValidationMessage message={error} />}
-      <PrimaryButton disabled={busy} onClick={() => void save()}>
-        Save exercise
-      </PrimaryButton>
+      <p className="muted" role="status">
+        {savePhase === 'saving'
+          ? 'Saving…'
+          : hasChanges && !valid
+            ? 'Enter valid set values and your changes will save automatically.'
+            : 'Changes save automatically.'}
+      </p>
+      {to.length ? (
+        <PrimaryButton onClick={() => void applyToSelectedWeeks()}>
+          Apply edits to {to.length} selected week{to.length === 1 ? '' : 's'}
+        </PrimaryButton>
+      ) : null}
     </div>
   )
 }

@@ -1052,7 +1052,7 @@ export function ProgramBuilderSheet({
             library={exercises}
             onDirty={setIsPrescriptionDirty}
             onSaved={() => {
-              setEditingPrescription(null)
+              setIsPrescriptionDirty(false)
               refresh()
             }}
           />
