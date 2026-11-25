@@ -6863,3 +6863,14 @@ body.keyboard-input-open .bottom-nav {
 .builder-week-selector + .builder-settings[open] {
   padding-bottom: 12px;
 }
+
+.week-exercise-form {
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+.week-exercise-form .plan-heading [role='status'] {
+  display: block;
+  min-height: 1.3em;
+  color: var(--color-muted);
+}

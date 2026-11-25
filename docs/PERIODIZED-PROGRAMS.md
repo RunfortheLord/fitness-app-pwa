@@ -2,7 +2,7 @@
 
 In Training, open the program editor and turn on **Asymmetrical weeks** in Settings. Ordinary programs start with the switch off. Enabling it starts each week with the program's existing days and exercises. The editor keeps its usual day tabs. Select a training week before adding, removing, reordering or editing an exercise.
 
-**Week options** can rename the week, change the start date, or copy the whole week to selected destinations. Copying replaces the destination weeks' prescriptions, week names and day assignments. To apply an exercise change more narrowly, open its row, edit a set group and choose **Apply edits to other weeks** before saving. By default an exercise edit applies to the displayed week. Program name and length are under **Program details**.
+**Week options** can rename the week, change the start date, or copy the whole week to selected destinations. Copying replaces the destination weeks' prescriptions, week names and day assignments. Exercise and set edits save automatically to the displayed week. To copy the edits made since opening that exercise, expand **Apply edits to other weeks**, choose the destinations and tap **Apply to selected weeks**. Program name and length are under **Program details**.
 
 ## Loads and workout logging
 

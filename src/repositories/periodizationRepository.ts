@@ -257,14 +257,15 @@ export function createPeriodizationRepository(
       base: ExercisePrescription,
       patch: Partial<ExercisePrescription>,
       maxes: Record<string, number | null> = {},
+      sourceWeek = weeks[0],
     ) {
+      const table =
+        mode === 'template'
+          ? database.programTemplates
+          : database.activeProgramCycles
       return database.transaction(
         'rw',
-        [
-          database.programTemplates,
-          database.activeProgramCycles,
-          database.exercises,
-        ],
+        Object.keys(maxes).length ? [table, database.exercises] : [table],
         async () => {
           for (const [lift, value] of Object.entries(maxes)) {
             if (value !== null && (!Number.isFinite(value) || value <= 0))
@@ -287,7 +288,7 @@ export function createPeriodizationRepository(
               // another week. Its other weight and rep targets stay independent.
               const other = resolvePrescription(plan, week, key)
               if (
-                week !== weeks[0] &&
+                week !== sourceWeek &&
                 changes.sets &&
                 other &&
                 changes.sets.length === base.sets.length &&

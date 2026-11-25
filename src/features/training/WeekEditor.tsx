@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type Ref,
+} from 'react'
+import { useBlocker } from 'react-router-dom'
 import { differenceInCalendarDays } from 'date-fns'
 import {
   formatLocalDate,
@@ -17,6 +25,7 @@ import {
   weekLabel,
   setKinds,
   configuredLoad,
+  exercisePrescriptionSchema,
   type PeriodizedPlan,
   type ExercisePrescription,
   type SetPrescription,
@@ -37,55 +46,6 @@ type Props = {
   mode: BuilderMode
   plan: PeriodizedPlan
   week: number
-}
-
-function changedFields(
-  base: ExercisePrescription,
-  next: ExercisePrescription,
-): Partial<ExercisePrescription> {
-  const fields: Partial<ExercisePrescription> = {}
-  if (JSON.stringify(base.sets) !== JSON.stringify(next.sets))
-    fields.sets = next.sets
-  if (base.notes !== next.notes) fields.notes = next.notes
-  if (base.optional !== next.optional) fields.optional = next.optional
-  if (base.substitutionId !== next.substitutionId)
-    fields.substitutionId = next.substitutionId
-  return fields
-}
-
-function isValidPrescription(
-  value: ExercisePrescription,
-  maxValues: Record<string, number | null>,
-) {
-  return (
-    value.sets.length > 0 &&
-    value.sets.every(
-      (group) =>
-        group.count != null &&
-        Number.isFinite(group.count) &&
-        group.count >= 1 &&
-        group.repsMin != null &&
-        Number.isFinite(group.repsMin) &&
-        group.repsMin >= 1 &&
-        group.repsMax != null &&
-        Number.isFinite(group.repsMax) &&
-        group.repsMax >= group.repsMin &&
-        (group.rir == null || (Number.isFinite(group.rir) && group.rir >= 0)) &&
-        Number.isFinite(group.restSeconds) &&
-        group.restSeconds >= 0 &&
-        (group.loadMode === 'percent'
-          ? group.percent != null &&
-            Number.isFinite(group.percent) &&
-            group.percent >= 0.1 &&
-            group.percent <= 1.05
-          : group.startingWeight == null ||
-            (Number.isFinite(group.startingWeight) &&
-              group.startingWeight >= 0)),
-    ) &&
-    Object.values(maxValues).every(
-      (value) => value === null || (Number.isFinite(value) && value > 0),
-    )
-  )
 }
 function WeekChoices({
   plan,
@@ -246,6 +206,24 @@ export function WeekControls({
   )
 }
 
+type ExerciseDraft = {
+  prescription: ExercisePrescription
+  maxes: Record<string, number | null>
+}
+
+function editedFields(base: ExercisePrescription, draft: ExercisePrescription) {
+  const fields: Partial<ExercisePrescription> = {}
+  if (JSON.stringify(base.sets) !== JSON.stringify(draft.sets))
+    fields.sets = draft.sets
+  if (base.notes !== draft.notes) fields.notes = draft.notes
+  if (base.optional !== draft.optional) fields.optional = draft.optional
+  if (base.substitutionId !== draft.substitutionId)
+    fields.substitutionId = draft.substitutionId
+  return fields
+}
+
+export type WeekExerciseSaveHandle = { flush: () => Promise<boolean> }
+
 export function WeekExerciseEditor({
   id,
   mode,
@@ -255,140 +233,252 @@ export function WeekExerciseEditor({
   exerciseId,
   original,
   library,
-  onSaved,
-  onDirty,
+  saveHandle,
 }: Props & {
   exerciseKey: string
   exerciseId: string
   original: ExercisePrescription
   library: Exercise[]
-  onSaved: () => void
-  onDirty: (dirty: boolean) => void
+  saveHandle: Ref<WeekExerciseSaveHandle>
 }) {
-  const [draft, setDraft] = useState(() => structuredClone(original)),
-    [to, setTo] = useState<number[]>([]),
-    [maxes, setMaxes] = useState<Record<string, number | null>>({}),
-    [savePhase, setSavePhase] = useState<'idle' | 'saving' | 'saved' | 'error'>(
-      'idle',
-    ),
-    [error, setError] = useState('')
-  // The prescription as it was when this editor opened. Autosaves and the
-  // explicit apply-to-other-weeks action both diff against it, so an
-  // autosave of this week never consumes the edits another week still needs.
-  const [initialOriginal] = useState(() => structuredClone(original))
+  const [opening] = useState(() => structuredClone(original))
+  const [entry, setEntry] = useState<ExerciseDraft>(() => ({
+    prescription: opening,
+    maxes: {},
+  }))
+  const [to, setTo] = useState<number[]>([])
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>(
+    'idle',
+  )
+  const [error, setError] = useState('')
+  const [applyMessage, setApplyMessage] = useState('')
+  const [applying, setApplying] = useState(false)
+  const form = useRef<HTMLFieldSetElement>(null)
+  const latest = useRef(entry),
+    saved = useRef(entry)
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const queue = useRef<Promise<void>>(Promise.resolve())
+  const alive = useRef(true)
+  const { prescription: draft, maxes } = entry
   const unit = useWeightUnit()
   const liftId = draft.substitutionId ?? exerciseId
   const lift = library.find((e) => e.id === liftId)
-  const patch = (change: Partial<ExercisePrescription>) =>
-    setDraft({ ...draft, ...change })
+  const flush = useCallback(() => {
+    clearTimeout(timer.current)
+    const result = queue.current.then(async () => {
+      while (saved.current !== latest.current) {
+        const pending = latest.current
+        const base = saved.current
+        try {
+          const invalid =
+            form.current?.querySelector<HTMLInputElement>('input:invalid')
+          if (invalid)
+            throw new Error(
+              `${invalid.labels?.[0]?.textContent?.trim() ?? 'Number'}: ${invalid.validationMessage}`,
+            )
+          if (
+            pending.prescription.sets.some((group) => group.restSeconds == null)
+          )
+            throw new Error('Enter a rest duration in seconds.')
+          const validation = exercisePrescriptionSchema.safeParse(
+            pending.prescription,
+          )
+          if (!validation.success) {
+            const issue = validation.error.issues[0]
+            const names: Record<string, string> = {
+              count: 'Sets',
+              repsMin: 'Minimum reps',
+              repsMax: 'Maximum reps',
+              rir: 'Target RIR',
+              restSeconds: 'Rest',
+              percent: 'Percentage',
+              startingWeight: 'Fixed weight',
+            }
+            const label = names[String(issue.path.at(-1))] ?? 'Set group'
+            throw new Error(`${label}: ${issue.message}`)
+          }
+          const changes = editedFields(base.prescription, pending.prescription)
+          const weights = Object.fromEntries(
+            Object.entries(pending.maxes).filter(
+              ([key, value]) => base.maxes[key] !== value,
+            ),
+          )
+          if (Object.keys(changes).length || Object.keys(weights).length) {
+            await periodizationRepository.saveWeekExercise(
+              id,
+              mode,
+              [week],
+              exerciseKey,
+              base.prescription,
+              changes,
+              weights,
+            )
+          }
+          saved.current = pending
+        } catch (caught) {
+          if (pending !== latest.current) continue
+          if (alive.current) {
+            setStatus('error')
+            setError(
+              caught instanceof Error
+                ? caught.message
+                : 'Could not save changes.',
+            )
+          }
+          return false
+        }
+      }
+      if (
+        alive.current &&
+        (saved.current.prescription !== opening ||
+          Object.keys(saved.current.maxes).length > 0)
+      ) {
+        setStatus('saved')
+        setError('')
+      }
+      return true
+    })
+    queue.current = result.then(() => {})
+    return result
+  }, [id, mode, week, exerciseKey, opening])
+  const change = (next: ExerciseDraft) => {
+    latest.current = next
+    setEntry(next)
+    setStatus('saving')
+    setError('')
+    setApplyMessage('')
+    clearTimeout(timer.current)
+    timer.current = setTimeout(() => void flush(), 450)
+  }
+  const patch = (fields: Partial<ExercisePrescription>) =>
+    change({
+      ...latest.current,
+      prescription: { ...latest.current.prescription, ...fields },
+    })
   const updateGroup = (i: number, fields: Partial<SetPrescription>) =>
     patch({
-      sets: draft.sets.map((g, n) => (n === i ? { ...g, ...fields } : g)),
+      sets: latest.current.prescription.sets.map((g, n) =>
+        i === n ? { ...g, ...fields } : g,
+      ),
     })
-  const draftRef = useRef(draft)
-  const maxesRef = useRef(maxes)
-  const saveFailedRef = useRef(false)
-  const mountedRef = useRef(true)
-  const saveChainRef = useRef<Promise<boolean>>(Promise.resolve(true))
-  const persist = (weeksToSave: number[]): Promise<boolean> => {
-    const run = async (): Promise<boolean> => {
-      const current = draftRef.current,
-        currentMaxes = maxesRef.current
-      const fields = changedFields(initialOriginal, current)
-      if (!Object.keys(fields).length && !Object.keys(currentMaxes).length)
-        return true
-      if (!isValidPrescription(current, currentMaxes)) return false
-      if (mountedRef.current) setSavePhase('saving')
+  const applyPending = useRef<Promise<boolean> | null>(null)
+  const finish = useCallback(async () => {
+    if (applyPending.current && !(await applyPending.current)) return false
+    return flush()
+  }, [flush])
+  useImperativeHandle(saveHandle, () => ({ flush: finish }), [finish])
+  const blocker = useBlocker(
+    useCallback(
+      () => saved.current !== latest.current || applyPending.current !== null,
+      [],
+    ),
+  )
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return
+    let active = true
+    void finish().then((ok) => {
+      if (active) {
+        if (ok) blocker.proceed()
+        else blocker.reset()
+      }
+    })
+    return () => {
+      active = false
+    }
+  }, [blocker, finish])
+  useEffect(() => {
+    alive.current = true
+    function onHide() {
+      if (
+        document.visibilityState === 'hidden' &&
+        latest.current !== saved.current
+      )
+        void flush()
+    }
+    function beforeUnload(event: BeforeUnloadEvent) {
+      if (latest.current !== saved.current || applyPending.current) {
+        void flush()
+        event.preventDefault()
+        event.returnValue = ''
+      }
+    }
+    document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('beforeunload', beforeUnload)
+    return () => {
+      alive.current = false
+      clearTimeout(timer.current)
+      document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('beforeunload', beforeUnload)
+    }
+  }, [flush])
+  const apply = () => {
+    if (applyPending.current || !to.length) return
+    setApplying(true)
+    setApplyMessage('')
+    applyPending.current = (async () => {
+      if (!(await flush())) return false
+      const fields = editedFields(opening, saved.current.prescription)
       try {
         await periodizationRepository.saveWeekExercise(
           id,
           mode,
-          weeksToSave,
+          to,
           exerciseKey,
-          initialOriginal,
+          opening,
           fields,
-          currentMaxes,
+          {},
+          week,
         )
-        saveFailedRef.current = false
-        if (mountedRef.current) {
-          setError('')
-          setSavePhase('saved')
-        }
-        onSaved()
+        setApplyMessage('Applied to selected weeks.')
+        setTo([])
         return true
-      } catch (e) {
-        saveFailedRef.current = true
-        if (mountedRef.current) {
-          setError(e instanceof Error ? e.message : 'Could not save exercise.')
-          setSavePhase('error')
-        }
-        onDirty(true)
+      } catch (caught) {
+        setApplyMessage(
+          caught instanceof Error ? caught.message : 'Could not apply changes.',
+        )
         return false
       }
-    }
-    const result = saveChainRef.current.then(run, run)
-    saveChainRef.current = result
-    return result
-  }
-  const persistRef = useRef(persist)
-  useEffect(() => {
-    mountedRef.current = true
-    draftRef.current = draft
-    maxesRef.current = maxes
-    persistRef.current = persist
-  })
-  const hasChanges =
-    Object.keys(changedFields(initialOriginal, draft)).length > 0 ||
-    Object.keys(maxes).length > 0
-  const valid = isValidPrescription(draft, maxes)
-  // Autosave valid edits to the selected week after a short typing pause.
-  // Invalid edits never save; they keep the discard prompt armed instead.
-  useEffect(() => {
-    onDirty(hasChanges && !valid)
-    if (!hasChanges || !valid) return
-    const timer = setTimeout(() => void persistRef.current([week]), 700)
-    return () => clearTimeout(timer)
-  }, [draft, maxes, hasChanges, valid, onDirty, week])
-  // Going back closes this editor without a prompt when the edits are valid,
-  // so flush any still-pending valid edits on the way out.
-  useEffect(
-    () => () => {
-      mountedRef.current = false
-      if (saveFailedRef.current) return
-      const current = draftRef.current,
-        currentMaxes = maxesRef.current
-      const fields = changedFields(initialOriginal, current)
-      if (!Object.keys(fields).length && !Object.keys(currentMaxes).length)
-        return
-      if (!isValidPrescription(current, currentMaxes)) return
-      void periodizationRepository.saveWeekExercise(
-        id,
-        mode,
-        [week],
-        exerciseKey,
-        initialOriginal,
-        fields,
-        currentMaxes,
-      )
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  )
-  const applyToSelectedWeeks = async () => {
-    if (await persist([week, ...to])) setTo([])
+    })().finally(() => {
+      applyPending.current = null
+      if (alive.current) setApplying(false)
+    })
   }
   return (
-    <div
-      className="periodized-panel"
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null))
-          void persistRef.current([week])
+    <fieldset
+      ref={form}
+      className="periodized-panel week-exercise-form"
+      disabled={applying}
+      onBlur={() => {
+        if (status === 'saving' && latest.current !== saved.current)
+          void flush()
       }}
     >
       <div className="plan-heading">
         <p>{weekLabel(plan, week)}</p>
         <h3>{lift?.name ?? 'Exercise'}</h3>
+        <small role="status" aria-live="polite">
+          {status === 'saving'
+            ? 'Saving…'
+            : status === 'saved'
+              ? 'Saved'
+              : status === 'error'
+                ? 'Changes unsaved'
+                : ''}
+        </small>
       </div>
+      {error ? (
+        <div>
+          <ValidationMessage message={error} />
+          <SecondaryButton
+            onClick={() => {
+              setStatus('saving')
+              void flush()
+            }}
+          >
+            Retry
+          </SecondaryButton>
+        </div>
+      ) : null}
       {draft.sets.map((group, i) => {
         const reference = group.maxExerciseId ?? liftId,
           referenceLift = library.find((e) => e.id === reference)
@@ -445,6 +535,7 @@ export function WeekExerciseEditor({
                       }
                       <input
                         type="number"
+                        required={key !== 'rir'}
                         min={key === 'rir' ? 0 : 1}
                         step={key === 'rir' ? 0.5 : 1}
                         value={group[key] ?? ''}
@@ -512,6 +603,7 @@ export function WeekExerciseEditor({
                             : Number((group.percent * 100).toFixed(3))
                         }
                         min="10"
+                        required
                         max="105"
                         step="any"
                         onChange={(e) =>
@@ -533,15 +625,18 @@ export function WeekExerciseEditor({
                         key={reference}
                         placeholder="Enter 1RM"
                         value={weightInputValue(max ?? null, unit)}
-                        onChange={(e) =>
-                          setMaxes({
-                            ...maxes,
-                            [reference]:
-                              e.target.value === ''
-                                ? null
-                                : convertToLb(Number(e.target.value), unit),
+                        onChange={(e) => {
+                          change({
+                            ...latest.current,
+                            maxes: {
+                              ...latest.current.maxes,
+                              [reference]:
+                                e.target.value === ''
+                                  ? null
+                                  : convertToLb(Number(e.target.value), unit),
+                            },
                           })
-                        }
+                        }}
                       />
                     </label>
                   </div>
@@ -575,9 +670,15 @@ export function WeekExerciseEditor({
                 <input
                   type="number"
                   min="0"
-                  value={group.restSeconds}
+                  required
+                  value={group.restSeconds ?? ''}
                   onChange={(e) =>
-                    updateGroup(i, { restSeconds: Number(e.target.value) })
+                    updateGroup(i, {
+                      restSeconds:
+                        e.target.value === ''
+                          ? undefined
+                          : Number(e.target.value),
+                    })
                   }
                 />
               </label>
@@ -644,21 +745,25 @@ export function WeekExerciseEditor({
         <summary>
           Apply edits to other weeks{to.length ? ` (${to.length})` : ''}
         </summary>
-        <WeekChoices plan={plan} week={week} selected={to} onChange={setTo} />
+        <WeekChoices
+          plan={plan}
+          week={week}
+          selected={to}
+          onChange={(n) => {
+            setTo(n)
+            setApplyMessage('')
+          }}
+        />
+        <SecondaryButton
+          disabled={
+            !to.length || !Object.keys(editedFields(opening, draft)).length
+          }
+          onClick={apply}
+        >
+          Apply to selected weeks
+        </SecondaryButton>
+        {applyMessage ? <p role="status">{applyMessage}</p> : null}
       </details>
-      {error && <ValidationMessage message={error} />}
-      <p className="muted" role="status">
-        {savePhase === 'saving'
-          ? 'Saving…'
-          : hasChanges && !valid
-            ? 'Enter valid set values and your changes will save automatically.'
-            : 'Changes save automatically.'}
-      </p>
-      {to.length ? (
-        <PrimaryButton onClick={() => void applyToSelectedWeeks()}>
-          Apply edits to {to.length} selected week{to.length === 1 ? '' : 's'}
-        </PrimaryButton>
-      ) : null}
-    </div>
+    </fieldset>
   )
 }

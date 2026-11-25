@@ -123,16 +123,28 @@ test('edits periodization only inside the program editor and logs in compact pho
   ).toBeVisible()
   await group.getByLabel('Saved 1RM (lb)').fill('250')
   await expect(group.getByText('Target · 225 lb')).toBeVisible()
+  // A fresh WebKit install can still be seeding the shared exercise library.
+  await expect(editor.getByText('Saved', { exact: true })).toBeVisible({
+    timeout: 45000,
+  })
   await page.screenshot({
     path: testInfo.outputPath('asymmetrical-weight.png'),
   })
+  await expect(
+    editor.getByRole('button', { name: 'Save exercise', exact: true }),
+  ).toHaveCount(0)
+  await group.getByLabel('Sets', { exact: true }).fill('3')
   await group.getByLabel('Sets', { exact: true }).fill('2')
+  await expect(editor.getByText('Saved', { exact: true })).toBeVisible()
   await editor.getByText('Apply edits to other weeks', { exact: true }).click()
   await editor.getByLabel('Week 10 · Intensification').check()
 
   await editor
-    .getByRole('button', { name: 'Apply edits to 1 selected week' })
+    .getByRole('button', { name: 'Apply to selected weeks', exact: true })
     .click()
+  await expect(
+    editor.getByText('Applied to selected weeks.', { exact: true }),
+  ).toBeVisible()
   await editor.getByRole('button', { name: 'Back from program editor' }).click()
   await editor.getByLabel('Training week').selectOption('10')
   await editor
@@ -291,6 +303,77 @@ test('edits periodization only inside the program editor and logs in compact pho
   await expect(
     page.getByLabel('Set 1 planned load', { exact: true }),
   ).toHaveValue('190')
+})
+
+test('autosaves only the open week and keeps invalid input available for correction', async ({
+  page,
+}) => {
+  await activateProgram(page)
+  const editor = await openEditor(page)
+  const select = editor.getByLabel('Training week')
+  const back = editor.getByRole('button', { name: 'Back from program editor' })
+  const sets = editor
+    .locator('.plan-group')
+    .first()
+    .getByLabel('Sets', { exact: true })
+  const openExercise = async (week: string) => {
+    await select.selectOption(week)
+    await editor
+      .getByRole('button', {
+        name: 'Edit Barbell Bench Press prescription',
+        exact: true,
+      })
+      .click()
+    await editor.locator('.plan-group summary').first().click()
+  }
+  await openExercise('9')
+  // Exercise the real retry control after one failed local database write.
+  await page.evaluate(() => {
+    const put = IDBObjectStore.prototype.put
+    IDBObjectStore.prototype.put = function (...args) {
+      if (this.name === 'activeProgramCycles') {
+        IDBObjectStore.prototype.put = put
+        throw new DOMException(
+          'Test storage write failed',
+          'QuotaExceededError',
+        )
+      }
+      return put.apply(this, args)
+    }
+  })
+  await sets.fill('3')
+  await expect(
+    editor.getByText('Changes unsaved', { exact: true }),
+  ).toBeVisible()
+  await editor.getByRole('button', { name: 'Retry', exact: true }).click()
+  await expect(editor.getByText('Saved', { exact: true })).toBeVisible()
+  await sets.fill('0')
+  await expect(
+    editor.getByText('Changes unsaved', { exact: true }),
+  ).toBeVisible()
+  await back.click()
+  const discard = page.getByRole('dialog', {
+    name: 'Discard prescription changes?',
+  })
+  await expect(discard).toBeVisible()
+  await discard.getByRole('button', { name: 'Cancel' }).click()
+  await expect(sets).toHaveValue('0')
+  await sets.fill('2')
+  await editor.getByText('Apply edits to other weeks', { exact: true }).click()
+  await editor.getByLabel('Week 10 · Intensification').check()
+  await back.click()
+  await openExercise('10')
+  await expect(sets).toHaveValue('1')
+  await back.click()
+  await openExercise('9')
+  await expect(sets).toHaveValue('2')
+  await sets.fill('4')
+  await back.click()
+  await expect(select).toBeVisible()
+  await page.reload()
+  await openEditor(page)
+  await openExercise('9')
+  await expect(sets).toHaveValue('4')
 })
 
 test('creates a second editable periodized program through the existing clone flow', async ({

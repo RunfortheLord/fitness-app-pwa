@@ -54,7 +54,11 @@ import {
   type ProgramInformationStructure,
 } from './ProgramInformationSheet'
 import { PrescriptionEditor } from './PrescriptionEditor'
-import { WeekControls, WeekExerciseEditor } from './WeekEditor'
+import {
+  WeekControls,
+  WeekExerciseEditor,
+  type WeekExerciseSaveHandle,
+} from './WeekEditor'
 import {
   programPosition,
   orderedWeekExercises,
@@ -110,6 +114,7 @@ export function ProgramBuilderSheet({
     () => new Set(),
   )
   const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false)
+  const weekExerciseSave = useRef<WeekExerciseSaveHandle>(null)
   const [isPrescriptionDirty, setIsPrescriptionDirty] = useState(false)
   const [isDiscardPrescriptionOpen, setIsDiscardPrescriptionOpen] =
     useState(false)
@@ -510,6 +515,15 @@ export function ProgramBuilderSheet({
   }
 
   function closePrescription() {
+    if (weekExerciseSave.current) {
+      void weekExerciseSave.current.flush().then((ok) => {
+        if (ok) {
+          setEditingPrescription(null)
+          refresh()
+        } else setIsDiscardPrescriptionOpen(true)
+      })
+      return
+    }
     if (isPrescriptionDirty) {
       setIsDiscardPrescriptionOpen(true)
       return
@@ -1050,11 +1064,7 @@ export function ProgramBuilderSheet({
             exerciseId={editingPrescription.exercise.exerciseId}
             original={weekTarget(editingPrescription.exercise)}
             library={exercises}
-            onDirty={setIsPrescriptionDirty}
-            onSaved={() => {
-              setIsPrescriptionDirty(false)
-              refresh()
-            }}
+            saveHandle={weekExerciseSave}
           />
         ) : null}
         {structure && !plan && editingPrescription ? (
@@ -1602,6 +1612,7 @@ export function ProgramBuilderSheet({
         onCancel={() => setIsDiscardPrescriptionOpen(false)}
         onConfirm={() => {
           setIsDiscardPrescriptionOpen(false)
+          if (plan) refresh()
           setIsPrescriptionDirty(false)
           setEditingPrescription(null)
         }}
