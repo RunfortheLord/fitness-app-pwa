@@ -127,9 +127,7 @@ test('edits periodization only inside the program editor and logs in compact pho
   await editor
     .getByRole('button', { name: 'Apply edits to 1 selected week' })
     .click()
-  await editor
-    .getByRole('button', { name: 'Back from program editor' })
-    .click()
+  await editor.getByRole('button', { name: 'Back from program editor' }).click()
   await editor.getByLabel('Training week').selectOption('10')
   await editor
     .getByRole('button', {
