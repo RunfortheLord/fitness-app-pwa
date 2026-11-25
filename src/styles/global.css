@@ -1589,7 +1589,6 @@ body.workout-day-page-open .app-header {
   color: var(--color-muted);
 }
 
-.program-builder-day,
 .inline-editor {
   display: grid;
   gap: var(--space-3);
@@ -1597,6 +1596,13 @@ body.workout-day-page-open .app-header {
   border: 1px solid var(--color-border-soft);
   border-radius: var(--radius-sm);
   background: var(--color-surface-strong);
+}
+
+/* The builder day rests directly on the app background. The exercise rows
+   are the cards, so the day itself has no grey panel behind them. */
+.program-builder-day {
+  display: grid;
+  gap: var(--space-3);
 }
 
 .prescription-workflow {
@@ -4851,11 +4857,15 @@ body.keyboard-input-open .bottom-nav {
 .bottom-sheet--page {
   width: 100%;
   max-width: 720px;
-  max-height: 100dvh;
-  height: 100dvh;
+  /* Size to the fixed backdrop, which is exactly the visible screen. Using
+     100dvh here can exceed the visible area in an installed iOS PWA, which
+     pushes the end of the scroll range (and the last buttons) off screen. */
+  max-height: 100%;
+  height: 100%;
   border: 0;
   border-radius: 0;
   padding-top: calc(env(safe-area-inset-top) + var(--space-3));
+  padding-bottom: calc(env(safe-area-inset-bottom) + var(--space-6));
 }
 
 .bottom-sheet--app-background,

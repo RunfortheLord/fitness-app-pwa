@@ -98,6 +98,12 @@ test('edits periodization only inside the program editor and logs in compact pho
   await page.setViewportSize({ width: 390, height: 844 })
   await activateProgram(page)
   const editor = await openEditor(page)
+  // The day content rests directly on the app background; there is no grey
+  // panel behind the exercise rows.
+  await expect(editor.locator('.program-builder-day')).toHaveCSS(
+    'background-color',
+    'rgba(0, 0, 0, 0)',
+  )
   await expect(editor.getByLabel('Training week')).toHaveValue('2')
   await editor.getByLabel('Training week').selectOption('9')
   await page.screenshot({
