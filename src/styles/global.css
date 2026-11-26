@@ -4757,6 +4757,8 @@ input::placeholder {
    applies whenever any software keyboard is open (e.g. the History exercise
    search): a fixed element would otherwise be dragged up with the iOS visual
    viewport and can be left shifted after the keyboard closes. */
+/* A page editor owns the entire screen, including the home-indicator area. */
+body:has(> .program-editor-layers) .bottom-nav,
 body.food-search-open .bottom-nav,
 body.keyboard-input-open .bottom-nav {
   display: none;

@@ -786,6 +786,18 @@ export function ProgramBuilderSheet({
       return
     }
     setQuickAddQuery('')
+    if (plan && structure) {
+      run(
+        periodizationRepository.addWeekExercise(
+          structure.record.id,
+          mode,
+          selectedDay.id,
+          week,
+          exerciseId,
+        ),
+      )
+      return
+    }
     // Same default the prescription form starts from; everything is editable
     // afterwards by tapping the row.
     const input = { exerciseId, targetSetCount: 3 }

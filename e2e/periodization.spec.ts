@@ -535,5 +535,29 @@ test('keeps the last program editor field reachable after phone scrolling settle
       )
       .toBe(true)
   }
+  const nav = page.locator('.bottom-nav')
+  await expect(nav).toBeHidden()
   await page.screenshot({ path: testInfo.outputPath('editor-scroll-end.png') })
+  await field.click()
+  await expect(field).toBeFocused()
+  await field.fill('Barbell Curl')
+  const result = editor
+    .locator('.quick-add-result')
+    .filter({ has: page.getByText('Barbell Curl', { exact: true }) })
+  await result.click()
+  const added = editor.getByRole('button', {
+    name: 'Edit Barbell Curl prescription',
+    exact: true,
+  })
+  await expect(added).toBeVisible()
+  const week = editor.getByLabel('Training week')
+  const selectedWeek = await week.inputValue()
+  await week.selectOption(selectedWeek === '1' ? '2' : '1')
+  await expect(added).toHaveCount(0)
+  await returnToTraining(page)
+  await expect(nav).toBeVisible()
+  await page.reload()
+  await openEditor(page)
+  await week.selectOption(selectedWeek)
+  await expect(added).toBeVisible()
 })
